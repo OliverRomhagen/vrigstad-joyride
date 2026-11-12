@@ -67,6 +67,7 @@ GitHub issues are the backlog: every bug, idea and piece of work is one issue.
   - A tracking issue holds its parts as **sub-issues** (`gh issue edit 61 --add-sub-issue 43,44`). An issue has at most one parent.
   - When an issue can't start before another is done, mark it **blocked by** that one (`gh issue edit 44 --add-blocked-by 43`). "Easier after" or "should come first" stays in the body as a mention.
 - When you split an issue, the new issues mention the old one, and the old one is closed or becomes their parent.
+- To check issues against these rules, run the read-only `ticket-triage` agent ([.claude/agents/ticket-triage.md](.claude/agents/ticket-triage.md)); another agent can follow that file's instructions directly.
 
 ### Several agents at once
 
