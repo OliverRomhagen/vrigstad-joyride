@@ -282,6 +282,15 @@ function inWater(x, z) {
 }
 
 // ---------- buildings (painted in Swedish house colours) + collision grid ----------
+// walls and roof halves of an outline; a pitched roof (g = ridge over the bounding rectangle) is cut to the outline, which gets a corner wherever it crosses the ridge
+function roofParts(contour, g, top) {
+  if (!g) return { ring: contour, yAt: () => top, sides: [contour] };
+  const [ax, az, bx, bz, w] = g, l = Math.hypot(bx - ax, bz - az), nx = (az - bz) / l, nz = (bx - ax) / l, rise = Math.min(w * 0.7, 5);
+  const off = v => (v.x - ax) * nx + (v.y - az) * nz, yAt = v => top + rise * Math.max(0, 1 - Math.abs(off(v)) / w), ring = [], o = [];
+  contour.forEach((a, i) => { const d = contour[(i + 1) % contour.length], oa = off(a), od = off(d), t = oa / (oa - od); ring.push(a); o.push(oa);
+    if (oa * od < 0) { ring.push(new THREE.Vector2(a.x + (d.x - a.x) * t, a.y + (d.y - a.y) * t)); o.push(0); } });
+  return { ring, yAt, sides: [1, -1].map(s => ring.filter((v, i) => s * o[i] >= 0)).filter(h => h.length > 2) };
+}
 const BC = 40, bGrid = new Map(), bPolys = [];
 (function () {
   const pos = [], col = [], c = new THREE.Color(), c2 = new THREE.Color();
@@ -293,15 +302,11 @@ const BC = 40, bGrid = new Map(), bPolys = [];
       x0 = Math.min(x0, x); x1 = Math.max(x1, x); z0 = Math.min(z0, z); z1 = Math.max(z1, z); area += x * b.p[j * 2 + 1] - b.p[j * 2] * z; }
     area = Math.abs(area) / 2;
     c.set(b.k === 2 ? '#9c3a2c' : b.k ? '#efece3' : area > 450 ? pick(big) : pick(house)); c2.set(b.k === 2 ? '#a8573f' : b.k ? '#3f4447' : rnd() < 0.35 ? '#4d4a48' : '#a8573f');
-    const base = lo - 1, top = hi + b.h;
-    for (let i = 0; i < n; i++) { const a = contour[i], d = contour[(i + 1) % n];
-      pos.push(a.x, base, a.y, d.x, base, d.y, d.x, top, d.y, a.x, base, a.y, d.x, top, d.y, a.x, top, a.y);
+    const base = lo - 1, top = hi + b.h, { ring, yAt, sides } = roofParts(contour, b.g, top), m = ring.length;
+    for (let i = 0; i < m; i++) { const a = ring[i], d = ring[(i + 1) % m], ta = yAt(a), td = yAt(d);
+      pos.push(a.x, base, a.y, d.x, base, d.y, d.x, td, d.y, a.x, base, a.y, d.x, td, d.y, a.x, ta, a.y);
       for (let k = 0; k < 6; k++) col.push(c.r, c.g, c.b); }
-    if (b.g) { const [ax, az, bx, bz, w] = b.g, l = Math.hypot(bx - ax, bz - az), vx = (az - bz) / l * w, vz = (bx - ax) / l * w, rt = top + Math.min(w * 0.7, 5);   // pitched roof
-      const tri = (k, ...v) => { pos.push(...v); for (let i = 0; i < 3; i++) col.push(k.r, k.g, k.b); };
-      for (const s of [1, -1]) { tri(c2, ax + s * vx, top, az + s * vz, bx + s * vx, top, bz + s * vz, bx, rt, bz); tri(c2, ax + s * vx, top, az + s * vz, bx, rt, bz, ax, rt, az); }
-      tri(c, ax + vx, top, az + vz, ax - vx, top, az - vz, ax, rt, az); tri(c, bx + vx, top, bz + vz, bx - vx, top, bz - vz, bx, rt, bz); }
-    else for (const f of THREE.ShapeUtils.triangulateShape(contour, [])) for (const i of f) { pos.push(contour[i].x, top, contour[i].y); col.push(c2.r, c2.g, c2.b); }
+    for (const h of sides) for (const f of THREE.ShapeUtils.triangulateShape(h, [])) for (const i of f) { pos.push(h[i].x, yAt(h[i]), h[i].y); col.push(c2.r, c2.g, c2.b); }
     if (b.s) { let cx = 0, cz = 0; for (const v of contour) { cx += v.x / n; cz += v.y / n; }   // spire
       for (let i = 0; i < n; i++) { const a = contour[i], d = contour[(i + 1) % n]; pos.push(a.x, top, a.y, d.x, top, d.y, cx, top + b.s, cz); for (let k = 0; k < 3; k++) col.push(c2.r, c2.g, c2.b); } }
     bPolys.push({ p: b.p, x0, x1, z0, z1 });

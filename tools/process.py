@@ -164,7 +164,7 @@ def length(pts):
 
 
 def gable(ring):
-    """Ridge [ax, az, bx, bz, half-width] of a pitched roof over the footprint's bounding rectangle, or None if the footprint is not roughly a rectangle."""
+    """Ridge [ax, az, bx, bz, half-width] of a pitched roof over the footprint's bounding rectangle, or None if the footprint is not roughly a rectangle. The pages cut the roof to the footprint."""
     n = len(ring)
     i = max(range(n), key=lambda i: math.dist(ring[i - 1], ring[i]))
     d = math.dist(ring[i - 1], ring[i])
@@ -224,6 +224,7 @@ LAND = {'residential': 0, 'farmland': 1, 'meadow': 1, 'industrial': 2, 'recreati
 LEIS = {'pitch': 6, 'playground': 3, 'sports_centre': 3, 'park': 3}
 SHORT = {'Best Western Hotell Vrigstad Värdshus': 'Vrigstad Värdshus', 'Torget Vrigstad': 'Torget',
          'Tallåsen, Vrigstads Idrottsplats': 'Tallåsen idrottsplats', 'Hagabanan - Vrigstad Motorklubb': 'Hagabanan'}
+CHURCH_WAY = 48762655   # Vrigstad kyrka; its tower is split out of this way's outline
 buildings, roads, water, waterways, land, labels = [], [], [], [], [], {}
 
 
@@ -257,13 +258,18 @@ for e in d['elements']:
         h = 2.8 if a < 40 else 5.5 if a < 150 else 6.5 if a < 400 else 8 if a < 1500 else 9
         if t['building'] == 'church': h = 12 if a > 300 else 8
         if t['building'] == 'hotel': h = 9
-        b = {'p': flat(ring), 'h': h, 'k': kind}
-        if gable(ring): b['g'] = gable(ring)
-        buildings.append(b)
-        if name == 'Vrigstad Kyrka':
-            # shortcut: tower corners picked by index from OSM way 48762655, redo if the way is re-mapped
+        walls, tower = ring, None
+        if e['type'] == 'way' and e['id'] == CHURCH_WAY:
+            # shortcut: tower corners picked by index, redo if the way is re-mapped
             assert len(ring) == 13, len(ring)
-            buildings.append({'p': flat([ring[i] for i in (7, 8, 10, 11)]), 'h': 25, 'k': 1, 's': 13})   # s = spire height
+            tower = [ring[i] for i in (7, 8, 10, 11)]
+            walls = [p for i, p in enumerate(ring) if i not in (8, 9, 10)]   # the nave, closed along the tower's south wall
+        b = {'p': flat(walls), 'h': h, 'k': kind}
+        g = gable(walls)
+        if g: b['g'] = g
+        buildings.append(b)
+        if tower:
+            buildings.append({'p': flat(tower), 'h': 25, 'k': 1, 's': 13})   # s = spire height
         if name: add_label(name, centroid(ring), 'p', a)
     elif 'highway' in t:
         if ring and (t.get('area') == 'yes') and name:
@@ -302,6 +308,7 @@ for e in d['elements']:
         if len(r) > 2:
             land.append({'k': k, 'p': flat(r)})
 
+assert sum('s' in b for b in buildings) == 1, f'church way {CHURCH_WAY} missing from osm.json'
 out = {'size': S, 'n': N, 'elev': elev_flat, 'b': buildings, 'r': roads, 'w': water, 'ww': waterways, 'l': land,
        'labels': [{'t': k, 'x': v[0], 'z': v[1], 'k': v[2]} for k, v in labels.items()]}
 json.dump(out, open(out_path, 'w'), ensure_ascii=False, separators=(',', ':'))

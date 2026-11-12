@@ -300,6 +300,16 @@ const earthMat = new THREE.MeshLambertMaterial({ side: THREE.DoubleSide });
 })();
 
 // ---- buildings ----
+// walls and roof halves of an outline; a pitched roof (g = ridge over the bounding rectangle) is cut to the outline, which gets a corner wherever it crosses the ridge
+// (a copy of the game's roofParts until the shared world module, #48)
+function roofParts(contour, g, top) {
+  if (!g) return { ring: contour, yAt: () => top, sides: [contour] };
+  const [ax, az, bx, bz, w] = g, l = Math.hypot(bx - ax, bz - az), nx = (az - bz) / l, nz = (bx - ax) / l, rise = Math.min(w * 0.7, 5);
+  const off = v => (v.x - ax) * nx + (v.y - az) * nz, yAt = v => top + rise * Math.max(0, 1 - Math.abs(off(v)) / w), ring = [], o = [];
+  contour.forEach((a, i) => { const d = contour[(i + 1) % contour.length], oa = off(a), od = off(d), t = oa / (oa - od); ring.push(a); o.push(oa);
+    if (oa * od < 0) { ring.push(new THREE.Vector2(a.x + (d.x - a.x) * t, a.y + (d.y - a.y) * t)); o.push(0); } });
+  return { ring, yAt, sides: [1, -1].map(s => ring.filter((v, i) => s * o[i] >= 0)).filter(h => h.length > 2) };
+}
 const mats = { wall: new THREE.MeshLambertMaterial({ side: THREE.DoubleSide }), roof: new THREE.MeshLambertMaterial({ side: THREE.DoubleSide }),
   lmWall: new THREE.MeshLambertMaterial({ side: THREE.DoubleSide }), lmRoof: new THREE.MeshLambertMaterial({ side: THREE.DoubleSide }) };
 (function () {
@@ -310,13 +320,11 @@ const mats = { wall: new THREE.MeshLambertMaterial({ side: THREE.DoubleSide }), 
     for (let i = 0; i < n; i++) { const x = b.p[i * 2], z = b.p[i * 2 + 1], h = hAt(x, z);
       contour.push(new THREE.Vector2(x, z)); if (h < lo) lo = h; if (h > hi) hi = h; }
     const base = lo - 1, top = hi + b.h, W = buf[b.k ? 'lmWall' : 'wall'], R = buf[b.k ? 'lmRoof' : 'roof'];
-    for (let i = 0; i < n; i++) { const a = contour[i], c = contour[(i + 1) % n];
-      W.push(a.x, base, a.y, c.x, base, c.y, c.x, top, c.y, a.x, base, a.y, c.x, top, c.y, a.x, top, a.y); }
-    if (b.g) { const [ax, az, bx, bz, w] = b.g, l = Math.hypot(bx - ax, bz - az), vx = (az - bz) / l * w, vz = (bx - ax) / l * w, rt = top + Math.min(w * 0.7, 5);   // pitched roof
-      for (const s of [1, -1]) R.push(ax + s * vx, top, az + s * vz, bx + s * vx, top, bz + s * vz, bx, rt, bz, ax + s * vx, top, az + s * vz, bx, rt, bz, ax, rt, az);
-      W.push(ax + vx, top, az + vz, ax - vx, top, az - vz, ax, rt, az, bx + vx, top, bz + vz, bx - vx, top, bz - vz, bx, rt, bz); }
-    else for (const f of THREE.ShapeUtils.triangulateShape(contour, []))
-      for (const i of f) R.push(contour[i].x, top, contour[i].y);
+    const { ring, yAt, sides } = roofParts(contour, b.g, top), m = ring.length;
+    for (let i = 0; i < m; i++) { const a = ring[i], c = ring[(i + 1) % m], ta = yAt(a), tc = yAt(c);
+      W.push(a.x, base, a.y, c.x, base, c.y, c.x, tc, c.y, a.x, base, a.y, c.x, tc, c.y, a.x, ta, a.y); }
+    for (const h of sides) for (const f of THREE.ShapeUtils.triangulateShape(h, []))
+      for (const i of f) R.push(h[i].x, yAt(h[i]), h[i].y);
     if (b.s) { let cx = 0, cz = 0; for (const v of contour) { cx += v.x / n; cz += v.y / n; }   // spire
       for (let i = 0; i < n; i++) { const a = contour[i], c = contour[(i + 1) % n]; R.push(a.x, top, a.y, c.x, top, c.y, cx, top + b.s, cz); } }
   }
