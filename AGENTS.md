@@ -32,6 +32,8 @@ npm run build               # production build into dist/
 - Work on a branch and open a PR; don't push to `main`.
 - Keep a PR to one concern. Don't mix a refactor with a feature, and don't reformat code you aren't otherwise changing.
 - Reference the issue in the PR (`Closes #12`, or `Part of #12` if it doesn't fully close it). Say in the PR what is *not* done.
+- Until [#45](https://github.com/OliverRomhagen/vrigstad-joyride/issues/45) lands, the built `index.html` and `map.html` are committed. Rebuild them in the same commit as the `src/` change, and never edit them by hand.
+- Big structural moves conflict with every open feature branch. Check open PRs first, and coordinate rather than rebasing someone else's work.
 
 ### Commits and PR titles: Conventional Commits
 
@@ -42,23 +44,28 @@ Every commit message **and every PR title** follows [Conventional Commits](https
 ```
 
 - Types: `feat` (new gameplay or feature), `fix`, `perf`, `refactor` (no behaviour change), `docs`, `test`, `build` (Vite, npm, `tools/build.py`), `ci`, `style` (formatting only), `chore`, and `data` for changes to `data/` or the map pipeline.
-- Scopes are optional and name the area: `police`, `traffic`, `npc`, `hud`, `map`, `world`, `input`, `audio`, `safehouse`, `minigames`, `pipeline`.
+- Scopes are optional and name the area. They are the same list as the `scope:` labels (see Tickets): `world`, `npc`, `police`, `vehicles`, `player`, `hud`, `audio`, `minigames`, `architecture`.
 - Examples: `feat(police): add roadblocks at three stars`, `fix(hud): keep street sign inside safe area on iPhone`, `refactor(world): share terrain code between game and map`, `data: refresh OSM extract`.
 - Summary under ~70 characters. Add a body for the *why* when it isn't obvious.
 - Release notes are generated from PR titles (see "Releases" in the README), and the type sets the version bump: `feat` → minor, `fix` / `perf` → patch.
 - Merge PRs with **squash**. The PR title should become the commit subject, so it must follow the same format. (This needs the repo's squash setting to use the PR title; until the owner changes that, check the squash commit title when merging.)
 
-### Labels on PRs
+### Tickets
 
-Label every PR when you open it, the same way issues are labelled:
+GitHub issues are the backlog: every bug, idea and piece of work is one issue.
 
-- **A type:** `feature request` (new gameplay or content), `enhancement` (tech, tooling, performance, or improving an existing feature), `bug`, `documentation`.
-- **A priority** on issues: `prio:high`, `prio:mid` or `prio:low`. Use `status:future` for options to decide on later.
-- **A scope**, if one fits: `scope:architecture`, `scope:npc`, `scope:minigames`, ...
-- If no existing scope fits and the area will clearly see more work, **create a new `scope:<area>` label** with a one-line description (`gh label create "scope:audio" --description "Sound, music and radio"`). Don't create one-off labels for a single PR.
-- Check existing labels first (`gh label list`), reuse their spelling, and say in the PR description if you created a new one.
-- Until [#45](https://github.com/OliverRomhagen/vrigstad-joyride/issues/45) lands, the built `index.html` and `map.html` are committed. Rebuild them in the same commit as the `src/` change, and never edit them by hand.
-- Big structural moves conflict with every open feature branch. Check open PRs first, and coordinate rather than rebasing someone else's work.
+- **Write** the outcome in the title ("Police lose you after 18 s out of sight", not "police fix"). The body says the problem, the proposal and when it's done; the issue forms in `.github/ISSUE_TEMPLATE/` ask for exactly that.
+- **Label** every issue when you file it, and every PR when you open it:
+  - **A type:** `feature request` (new gameplay or content), `enhancement` (tech, tooling, performance, or improving an existing feature), `bug`, `documentation`.
+  - **A priority**, on issues: `prio:high`, `prio:mid` or `prio:low`. Use `status:future` for options to decide on later. Whoever files an issue picks the priority they think fits; the maintainers change it when they rank differently.
+  - **At most one scope**, if one fits: `scope:world`, `npc`, `police`, `vehicles`, `player`, `hud`, `audio`, `minigames`, `architecture` (`gh label list` says what each covers). If two fit, the issue is probably two issues.
+- Create a new `scope:<area>` label only when several issues need it, with a one-line description, and add it to the commit scopes above in the same PR. Don't create one-off labels for a single issue or PR.
+- **Link** issues by what the link means:
+  - `#12` in text is a mention: it shows in #12's timeline and nowhere else. Use it for "related" and "see also".
+  - `Closes #12` in a PR description links the PR to the issue and closes it when the PR merges.
+  - A tracking issue holds its parts as **sub-issues** (`gh issue edit 61 --add-sub-issue 43,44`). An issue has at most one parent.
+  - When an issue can't start before another is done, mark it **blocked by** that one (`gh issue edit 44 --add-blocked-by 43`). "Easier after" or "should come first" stays in the body as a mention.
+- When you split an issue, the new issues mention the old one, and the old one is closed or becomes their parent.
 
 ### Several agents at once
 

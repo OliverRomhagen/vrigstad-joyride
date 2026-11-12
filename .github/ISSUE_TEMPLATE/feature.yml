@@ -1,0 +1,17 @@
+name: Feature request
+description: New gameplay, content or a place in Vrigstad
+labels: [feature request]
+body:
+  - type: textarea
+    attributes:
+      label: What the player gets
+      description: The feature from the player's side. Why is it fun, or why does it belong in Vrigstad?
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Done when
+      description: What has to work for this issue to be closed. Leave later ideas for their own issues.
+  - type: markdown
+    attributes:
+      value: Add a priority (`prio:*`) and, if one fits, a scope (`scope:*`). Link the issues this depends on as "blocked by", not only as `#n`; AGENTS.md (Tickets) says how.

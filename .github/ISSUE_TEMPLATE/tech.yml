@@ -1,0 +1,19 @@
+name: Tech or tooling
+description: Code structure, tooling, performance, or improving an existing feature
+labels: [enhancement]
+body:
+  - type: textarea
+    attributes:
+      label: Problem
+      description: What is hard, slow or fragile today, with an example from the code.
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Proposal
+  - type: textarea
+    attributes:
+      label: Done when
+  - type: markdown
+    attributes:
+      value: Add a priority (`prio:*`) and a scope (usually `scope:architecture`). If it belongs to a tracking issue such as #61, add it as a sub-issue there; AGENTS.md (Tickets) says how.

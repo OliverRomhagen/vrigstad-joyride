@@ -1,0 +1,24 @@
+name: Bug
+description: Something in the game or the map doesn't work as it should
+labels: [bug]
+body:
+  - type: textarea
+    attributes:
+      label: What happens
+      description: What you did, what you saw, and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Start at Torget
+        2. Steal the Volvo 240
+        3. ...
+  - type: input
+    attributes:
+      label: Device and browser
+      placeholder: iPhone 15, Safari / desktop Chrome
+  - type: markdown
+    attributes:
+      value: Add a priority (`prio:*`) and, if one fits, a scope (`scope:*`). AGENTS.md (Tickets) says how.
