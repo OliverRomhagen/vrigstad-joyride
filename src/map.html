@@ -312,8 +312,13 @@ const mats = { wall: new THREE.MeshLambertMaterial({ side: THREE.DoubleSide }), 
     const base = lo - 1, top = hi + b.h, W = buf[b.k ? 'lmWall' : 'wall'], R = buf[b.k ? 'lmRoof' : 'roof'];
     for (let i = 0; i < n; i++) { const a = contour[i], c = contour[(i + 1) % n];
       W.push(a.x, base, a.y, c.x, base, c.y, c.x, top, c.y, a.x, base, a.y, c.x, top, c.y, a.x, top, a.y); }
-    for (const f of THREE.ShapeUtils.triangulateShape(contour, []))
+    if (b.g) { const [ax, az, bx, bz, w] = b.g, l = Math.hypot(bx - ax, bz - az), vx = (az - bz) / l * w, vz = (bx - ax) / l * w, rt = top + Math.min(w * 0.7, 5);   // pitched roof
+      for (const s of [1, -1]) R.push(ax + s * vx, top, az + s * vz, bx + s * vx, top, bz + s * vz, bx, rt, bz, ax + s * vx, top, az + s * vz, bx, rt, bz, ax, rt, az);
+      W.push(ax + vx, top, az + vz, ax - vx, top, az - vz, ax, rt, az, bx + vx, top, bz + vz, bx - vx, top, bz - vz, bx, rt, bz); }
+    else for (const f of THREE.ShapeUtils.triangulateShape(contour, []))
       for (const i of f) R.push(contour[i].x, top, contour[i].y);
+    if (b.s) { let cx = 0, cz = 0; for (const v of contour) { cx += v.x / n; cz += v.y / n; }   // spire
+      for (let i = 0; i < n; i++) { const a = contour[i], c = contour[(i + 1) % n]; R.push(a.x, top, a.y, c.x, top, c.y, cx, top + b.s, cz); } }
   }
   for (const k in buf) {
     const g = new THREE.BufferGeometry();

@@ -163,6 +163,24 @@ def length(pts):
     return sum(math.dist(pts[i - 1], pts[i]) for i in range(1, len(pts)))
 
 
+def gable(ring):
+    """Ridge [ax, az, bx, bz, half-width] of a pitched roof over the footprint's bounding rectangle, or None if the footprint is not roughly a rectangle."""
+    n = len(ring)
+    i = max(range(n), key=lambda i: math.dist(ring[i - 1], ring[i]))
+    d = math.dist(ring[i - 1], ring[i])
+    ux, uz = (ring[i][0] - ring[i - 1][0]) / d, (ring[i][1] - ring[i - 1][1]) / d
+    us, vs = [x * ux + z * uz for x, z in ring], [z * ux - x * uz for x, z in ring]
+    cu, cv, L, W = (min(us) + max(us)) / 2, (min(vs) + max(vs)) / 2, (max(us) - min(us)) / 2, (max(vs) - min(vs)) / 2
+    if area(ring) < 0.85 * 4 * L * W: return None
+    if W > L: ux, uz, cu, cv, L, W = -uz, ux, cv, -cu, W, L   # ridge runs along the long side
+    px, pz = cu * ux - cv * uz, cu * uz + cv * ux
+    return [round(v, 1) for v in (px - L * ux, pz - L * uz, px + L * ux, pz + L * uz, W)]
+
+
+assert gable([(0, 0), (4, 0), (4, 10), (0, 10)]) in ([2, 0, 2, 10, 2], [2, 10, 2, 0, 2])
+assert gable([(0, 0), (10, 0), (10, 4), (4, 4), (4, 10), (0, 10)]) is None
+
+
 def flat(pts):
     out = []
     for p in pts:
@@ -235,11 +253,17 @@ for e in d['elements']:
     if 'building' in t:
         if not ring or not inside(centroid(ring)): continue
         a = area(ring)
-        kind = 1 if t['building'] in ('church', 'hotel') else 0
+        kind = {'church': 1, 'hotel': 2}.get(t['building'], 0)
         h = 2.8 if a < 40 else 5.5 if a < 150 else 6.5 if a < 400 else 8 if a < 1500 else 9
         if t['building'] == 'church': h = 12 if a > 300 else 8
         if t['building'] == 'hotel': h = 9
-        buildings.append({'p': flat(ring), 'h': h, 'k': kind})
+        b = {'p': flat(ring), 'h': h, 'k': kind}
+        if gable(ring): b['g'] = gable(ring)
+        buildings.append(b)
+        if name == 'Vrigstad Kyrka':
+            # shortcut: tower corners picked by index from OSM way 48762655, redo if the way is re-mapped
+            assert len(ring) == 13, len(ring)
+            buildings.append({'p': flat([ring[i] for i in (7, 8, 10, 11)]), 'h': 25, 'k': 1, 's': 13})   # s = spire height
         if name: add_label(name, centroid(ring), 'p', a)
     elif 'highway' in t:
         if ring and (t.get('area') == 'yes') and name:
