@@ -1,0 +1,9 @@
+# Scope labels for PRs, from the paths they change. src/game.html holds every area until #44 splits it,
+# so it maps to no scope: label those PRs by hand. Add a mapping here when a split gives an area its own files.
+scope:world:
+  - changed-files:
+      - any-glob-to-any-file: ['data/**', 'tools/process.py', 'tools/fetch.sh', 'src/map.html']
+
+scope:architecture:
+  - changed-files:
+      - any-glob-to-any-file: ['.github/**', '.claude/**', 'AGENTS.md', 'ARCHITECTURE.md', 'CLAUDE.md', 'tools/build.py']

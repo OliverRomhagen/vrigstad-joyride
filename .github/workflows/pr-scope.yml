@@ -1,0 +1,19 @@
+name: PR scope labels
+
+# Adds scope labels from the paths a PR changes (.github/labeler.yml). It never checks out the PR's code,
+# which is what makes pull_request_target safe here.
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  label:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/labeler@bf12e9b00b37c5c0ca2b87b79b2daf7891dbda13 # v7.0.0

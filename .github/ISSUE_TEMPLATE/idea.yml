@@ -1,0 +1,9 @@
+name: Quick idea
+description: Jot an idea down in a few seconds, from a phone if need be. It gets fleshed out afterwards.
+body:
+  - type: textarea
+    attributes:
+      label: The idea
+      description: One or two sentences are enough. Type, priority and scope get added during triage.
+    validations:
+      required: true
