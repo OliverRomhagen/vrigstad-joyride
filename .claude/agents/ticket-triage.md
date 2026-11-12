@@ -15,7 +15,7 @@ Only reads: `gh issue list`, `gh issue view`, `gh label list`, `gh pr list`, `gh
 
 For one issue, or every open one when asked for the backlog:
 
-- **Labels:** a type, a priority, and at most one scope that exists in `gh label list`. A priority is the maintainers' call, so propose one only when the ticket makes it obvious, and mark it as a proposal.
+- **Type and labels:** a Type (`gh issue list --json issueType`; fix with `gh issue edit <n> --type Task`), a priority, and at most one scope that exists in `gh label list`. A priority is the maintainers' call, so propose one only when the ticket makes it obvious, and mark it as a proposal.
 - **Links:** a "Depends on", "Requires" or "Builds on" in the body that has no matching "blocked by"; a tracking issue whose listed parts aren't its sub-issues. "Easier after" and "related" stay mentions; leave them alone.
 - **Duplicates:** two open issues asking for the same outcome. Name both and say what overlaps.
 - **Stale:** an open issue that a merged PR already closed in substance, or that a later issue replaced.
