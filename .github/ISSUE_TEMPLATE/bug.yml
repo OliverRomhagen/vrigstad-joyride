@@ -1,6 +1,6 @@
 name: Bug
 description: Something in the game or the map doesn't work as it should
-labels: [bug]
+type: Bug
 body:
   - type: textarea
     attributes:

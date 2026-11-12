@@ -1,6 +1,6 @@
 name: Tech or tooling
 description: Code structure, tooling, performance, or improving an existing feature
-labels: [enhancement]
+type: Task
 body:
   - type: textarea
     attributes:

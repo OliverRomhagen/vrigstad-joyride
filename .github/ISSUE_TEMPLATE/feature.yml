@@ -1,6 +1,6 @@
 name: Feature request
 description: New gameplay, content or a place in Vrigstad
-labels: [feature request]
+type: Feature
 body:
   - type: textarea
     attributes:
