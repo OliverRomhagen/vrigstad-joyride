@@ -32,6 +32,7 @@ npm run build               # production build into dist/
 - Work on a branch and open a PR; don't push to `main`.
 - Keep a PR to one concern. Don't mix a refactor with a feature, and don't reformat code you aren't otherwise changing.
 - Reference the issue in the PR (`Closes #12`, or `Part of #12` if it doesn't fully close it). Say in the PR what is *not* done.
+- PRs that build on each other are a stack: make them with `gh stack` (`gh extension install github/gh-stack`), never `gh pr create --base <another branch>`. `gh stack init` or `add` builds the stack, `gh stack submit` pushes it and opens the PRs, and `gh stack sync` rebases what's left after a lower PR merges. Merge from the bottom up.
 - Until [#45](https://github.com/OliverRomhagen/vrigstad-joyride/issues/45) lands, the built `index.html` and `map.html` are committed. Rebuild them in the same commit as the `src/` change, and never edit them by hand.
 - Big structural moves conflict with every open feature branch. Check open PRs first, and coordinate rather than rebasing someone else's work.
 
