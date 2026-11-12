@@ -3,3 +3,6 @@ __pycache__/
 tools/trailer/node_modules/
 tools/trailer/.work/
 .claude/worktrees/
+node_modules/
+test-results/
+playwright-report/

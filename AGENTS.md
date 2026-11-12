@@ -4,16 +4,18 @@ Instructions for AI coding agents (and a quick start for humans) working on Vrig
 
 ## The project in one paragraph
 
-A browser open-world driving game set in the real village of Vrigstad, Sweden, built from OpenStreetMap data and elevation tiles, plus a 3D map of the same area. Rendering is three.js. The codebase is in transition from a single-file prototype to a modular Vite + TypeScript app; the plan is tracked in [#61](https://github.com/OliverRomhagen/vrigstad-joyride/issues/61). **Check which side of the transition you're on** (is there a `package.json`?) and follow the matching instructions below.
+A browser open-world driving game set in the real village of Vrigstad, Sweden, built from OpenStreetMap data and elevation tiles, plus a 3D map of the same area. Rendering is three.js. The codebase is in transition from a single-file prototype to a modular Vite + TypeScript app; the plan is tracked in [#61](https://github.com/OliverRomhagen/vrigstad-joyride/issues/61). **Check which side of the transition you're on** (is there a `vite.config.*`?) and follow the matching instructions below.
 
 ## Commands
 
-Today (no `package.json` yet):
+Today (before Vite; `package.json` only holds the smoke tests):
 
 ```sh
 python3 tools/build.py      # rebuild index.html and map.html from src/ and data/
 tools/fetch.sh              # re-download OSM + elevation (rarely needed; hits public APIs)
 python3 -m http.server      # then open http://localhost:8000 (opening index.html from disk also works)
+npm install && npx playwright install chromium   # once, for the smoke tests
+npm run test:e2e            # Playwright smoke tests against the built index.html and map.html; rebuild first
 ```
 
 Live site: https://oliverromhagen.github.io/vrigstad-joyride/ (GitHub Pages, from `main`).
@@ -101,7 +103,8 @@ Until the migration reaches a given rule, don't make the existing code worse in 
 - **Smoke tests** (Playwright, [#43](https://github.com/OliverRomhagen/vrigstad-joyride/issues/43)): the pages load without console errors, Start works, the player can move and get into a car. Every PR keeps them green. When you add a major feature, add one smoke step for it.
 - **Unit tests** (Vitest, [#52](https://github.com/OliverRomhagen/vrigstad-joyride/issues/52)): game rules and pure helpers such as height lookup, driving model, wanted level, police AI and spatial queries. Write them for new gameplay rules; use the seeded RNG for deterministic scenarios.
 - **No pixel-diff tests.** Headless WebGL output varies. Assert on state exposed through the test hook instead, and attach screenshots to the PR when visuals change.
-- Until the test tooling exists, test in a browser and describe what you did in the PR.
+- The smoke tests live in `tests/e2e/` and run in CI on every PR (`.github/workflows/e2e.yml`), which uploads one screenshot per page as the `e2e-screenshots` artifact. They read game state from `window.__joyride.state()` (defined at the end of `src/game.html`); add a field there when a new smoke step needs one, and keep the hook read-only.
+- Until the unit-test tooling exists, also test gameplay changes in a browser and describe what you did in the PR.
 
 ## Data and coordinates
 

@@ -1,0 +1,31 @@
+name: e2e
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    name: Smoke tests (Playwright)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+      # One screenshot per page (plus traces of any failure). Not pixel-diffed: headless WebGL output varies.
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: e2e-screenshots
+          path: test-results/
+          retention-days: 14

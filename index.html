@@ -813,6 +813,9 @@ function frame(now) {
 $('go').addEventListener('click', () => { started = true; $('intro').hidden = true; camYaw = 0.6; camPitch = 0.34; canvas.focus();
   toast('Find a car and press E to take it. Occupied cars always get you a wanted star.', 5); });
 resize(); requestAnimationFrame(frame);
+
+// ---------- test hook: read-only state for the smoke tests (tests/e2e), so they do not have to read pixels ----------
+window.__joyride = { state: () => ({ started, x: player.x, z: player.z, h: player.h, speed: player.speed, inCar, car: pcar ? pcar.type : null, stars }) };
 })();
 </script>
 </body>

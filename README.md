@@ -57,6 +57,16 @@ python3 tools/build.py
 
 Refresh the map data first with `tools/fetch.sh` if you want the latest OpenStreetMap edits. Only the Python standard library is needed.
 
+## Tests
+
+A small Playwright suite in `tests/e2e/` smoke-tests the built pages: both load without console errors, Start shows the HUD, and the player can walk and get into the parked Volvo at Torget. It needs Node, and runs on every pull request.
+
+```sh
+npm install
+npx playwright install chromium   # once
+npm run test:e2e
+```
+
 ## Releases
 
 Versions use semver tags (`vMAJOR.MINOR.PATCH`) on `main`. Bump the minor version for new features and the patch version for fixes.

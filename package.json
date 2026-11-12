@@ -1,0 +1,12 @@
+{
+  "name": "vrigstad-joyride",
+  "private": true,
+  "description": "Open-world driving game set in Vrigstad, Sweden",
+  "type": "module",
+  "scripts": {
+    "test:e2e": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.65.0"
+  }
+}
