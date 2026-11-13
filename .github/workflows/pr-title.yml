@@ -42,6 +42,7 @@ jobs:
             hud
             audio
             minigames
+            multiplayer
             architecture
           requireScope: false
           # The action builds the RegExp without the u flag, so no \p{Lu}: list the Swedish capitals.
