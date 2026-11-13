@@ -1,7 +1,8 @@
 import { defineConfig } from '@playwright/test';
 
 // Smoke tests run against the built pages (index.html, map.html) in the repo root, served the way GitHub Pages serves them.
-const PORT = 8043;
+// Set E2E_PORT per worktree when running several at once, so a run never reuses another worktree's server.
+const PORT = Number(process.env.E2E_PORT) || 8043;
 
 export default defineConfig({
   testDir: 'tests/e2e',

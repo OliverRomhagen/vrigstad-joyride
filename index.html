@@ -815,7 +815,7 @@ $('go').addEventListener('click', () => { started = true; $('intro').hidden = tr
 resize(); requestAnimationFrame(frame);
 
 // ---------- test hook: read-only state for the smoke tests (tests/e2e), so they do not have to read pixels ----------
-window.__joyride = { state: () => ({ started, x: player.x, z: player.z, inCar, car: pcar ? pcar.type : null }) };
+window.__joyride = { state: () => { const n = nearestCar(); return { started, x: player.x, z: player.z, inCar, car: pcar ? pcar.type : null, near: n ? n.mode : null, stars }; } };
 })();
 </script>
 </body>

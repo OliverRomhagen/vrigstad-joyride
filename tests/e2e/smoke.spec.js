@@ -5,7 +5,13 @@ import { test, expect } from '@playwright/test';
 // Collects console errors and uncaught exceptions from the moment the page starts loading.
 function watchErrors(page) {
   const errors = [];
-  page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
+  page.on('console', m => {
+    if (m.type() !== 'error') return;
+    // A CDN or font outage is not our bug; failed loads from our own origin still count.
+    const url = m.location().url;
+    if (m.text().startsWith('Failed to load resource') && url && new URL(url).origin !== new URL(page.url()).origin) return;
+    errors.push(m.text());
+  });
   page.on('pageerror', e => errors.push(String(e)));
   return errors;
 }
@@ -31,6 +37,7 @@ test.describe('game (index.html)', () => {
   });
 
   test('Start hides the intro and shows the HUD', async ({ page }) => {
+    const errors = watchErrors(page);
     await page.goto('/index.html');
     await expect(page.locator('#intro')).toBeVisible();                 // covers the whole view, HUD included
     expect(await state(page)).toMatchObject({ started: false });
@@ -44,6 +51,7 @@ test.describe('game (index.html)', () => {
     await expect(page.locator('#stars')).toHaveText('★★★');
     await expect(page.locator('#stars b')).toHaveCount(0);              // <b> is a lit star: none when not wanted
     await expect(page.locator('#mini')).toBeVisible();
+    expect(errors).toEqual([]);
   });
 
   test('W moves the player, and E next to the parked Volvo gets you in', async ({ page }, testInfo) => {
@@ -59,14 +67,18 @@ test.describe('game (index.html)', () => {
     await page.keyboard.press('KeyR');                            // back to the spawn point at Torget
 
     // With the camera as Start leaves it, the parked Volvo is about 7 m to the player's right.
+    // Release D as soon as any car is in reach, so a slow runner can't walk past it between polls.
     await page.keyboard.down('KeyD');
-    await expect(page.locator('#prompt')).toHaveText('ESteal the Volvo 240');
+    await expect.poll(async () => (await state(page)).near, { intervals: [50] }).not.toBeNull();
     await page.keyboard.up('KeyD');
+    // The parked Volvo, not AI traffic passing through Torget (that would be a carjack and a star).
+    await expect.poll(async () => (await state(page)).near).toBe('parked');
+    await expect(page.locator('#prompt')).toHaveText('ESteal the Volvo 240');
     await page.keyboard.press('KeyE');
 
     await expect(page.locator('#speed')).toBeVisible();
     await expect(page.locator('#carname')).toHaveText('Volvo 240');
-    expect(await state(page)).toMatchObject({ inCar: true, car: 'volvo' });
+    expect(await state(page)).toMatchObject({ inCar: true, car: 'volvo', stars: 0 });
     await page.screenshot({ path: testInfo.outputPath('game-in-volvo.png') });
     expect(errors).toEqual([]);
   });
