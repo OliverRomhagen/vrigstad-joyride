@@ -197,12 +197,16 @@ const ctx = tex2d.getContext('2d');
 const P = v => (v + HALF) * K;
 function trace(p, close) { ctx.moveTo(P(p[0]), P(p[1])); for (let i = 2; i < p.length; i += 2) ctx.lineTo(P(p[i]), P(p[i + 1])); if (close) ctx.closePath(); }
 const ROAD_W = [9, 7.5, 5.5, 3.5, 2.6, 1.5];
-const roadLift = c => 0.25 - c * 0.03;   // m above the terrain each road class is drawn at; cars on it sit this high too
+const roadLift = c => 0.25 - c * 0.03;   // m above the terrain each road class is drawn at; groundAt() puts people and cars on top of it
+const HOUSE_MIN_M2 = 40, HOUSE_MAX_M2 = 1500;   // footprints in this range count as homes and shops
+const polyArea = p => { let a = 0; for (let i = 0, j = p.length - 2; i < p.length; j = i, i += 2) a += p[j] * p[i + 1] - p[i] * p[j + 1]; return Math.abs(a / 2); };
 (function paint() {
   const land = ['#a6c083', '#d9cf8b', '#b9b4a8', '#8fc072', '#93b77d', '#6f9a5e', '#7cc163'];
   ctx.lineCap = 'round'; ctx.lineJoin = 'round';
   ctx.fillStyle = '#9db87a'; ctx.fillRect(0, 0, CW, CW);
-  for (let k = 0; k < 7; k++) { ctx.fillStyle = land[k]; ctx.beginPath(); for (const l of D.l) if (l.k === k) trace(l.p, true); ctx.fill(); }
+  const fillLand = k => { ctx.fillStyle = land[k]; ctx.beginPath(); for (const l of D.l) if (l.k === k) trace(l.p, true); ctx.fill(); };
+  const GRASS = [0, 3];   // residential and grass/parks; farmland, industrial, cemetery, forest and pitches are filled over the mottling
+  GRASS.forEach(fillLand);
   // mottled grass: its own generator, so the look doesn't shift the seeded rnd() sequence
   let ns = 7; const nr = () => (ns = ns * 48271 % 2147483647) / 2147483647;
   for (let i = 0; i < 2600; i++) { const cx = nr() * CW, cy = nr() * CW, r = (6 + nr() * 24) * K, g = ctx.createRadialGradient(cx, cy, 0, cx, cy, r), c = ['143,176,111', '169,196,134', '120,150,95', '179,201,141'][i % 4];
@@ -210,7 +214,9 @@ const roadLift = c => 0.25 - c * 0.03;   // m above the terrain each road class 
   ctx.globalAlpha = 0.45;
   for (const c of ['#86a866', '#b0c88e', '#7c9d5c', '#c3cf98']) { ctx.fillStyle = c; for (let i = 0; i < 40000; i++) ctx.fillRect(nr() * CW, nr() * CW, 1 + nr() * 1.5, 1 + nr() * 1.5); }
   ctx.globalAlpha = 1;
-  ctx.strokeStyle = 'rgba(172,199,138,.55)'; ctx.lineWidth = 9 * K; ctx.beginPath(); for (const b of D.b) if (b.k !== 1) trace(b.p, true); ctx.stroke();   // mown lawns around houses (not the church)
+  for (let k = 0; k < 7; k++) if (!GRASS.includes(k)) fillLand(k);
+  ctx.strokeStyle = 'rgba(172,199,138,.55)'; ctx.lineWidth = 9 * K; ctx.beginPath();   // mown lawns around homes (not the church, barns or halls)
+  for (const b of D.b) { const a = polyArea(b.p); if (b.k !== 1 && a >= HOUSE_MIN_M2 && a <= HOUSE_MAX_M2) trace(b.p, true); } ctx.stroke();
   ctx.strokeStyle = '#4f8fb8';
   for (const w of D.ww) { ctx.lineWidth = (w.k === 0 ? 6 : 2) * K; ctx.beginPath(); trace(w.p); ctx.stroke(); }
   ctx.fillStyle = '#4f8fb8';
@@ -300,6 +306,13 @@ function nearestRoad(x, z) {
   if (l) for (let i = 0; i < l.length; i += 5) { const d = segDist(x, z, l[i], l[i + 1], l[i + 2], l[i + 3]) - ROAD_W[R[l[i + 4]].c] / 2; if (d < near.d) { near.d = d; near.ri = l[i + 4]; } }
   return near;                                   // d = distance to the road's edge (negative when on it)
 }
+// terrain plus the highest road ribbon at (x, z), eased out over the metre past its edge so nothing snaps at the kerb
+function groundAt(x, z) { let lift = 0;
+  const l = roadGrid.get(Math.floor(x / RC) + ',' + Math.floor(z / RC));
+  if (l) for (let i = 0; i < l.length; i += 5) { const c = R[l[i + 4]].c, d = segDist(x, z, l[i], l[i + 1], l[i + 2], l[i + 3]) - ROAD_W[c] / 2;
+    if (d < 1) lift = Math.max(lift, roadLift(c) * Math.min(1, 1 - d)); }
+  return hAt(x, z) + lift;
+}
 const nodeKey = p => Math.round(p[0] * 2) + ',' + Math.round(p[1] * 2), nodes = new Map(), driveable = [];
 R.forEach((r, ri) => { if (r.c > 2 || r.p.length < 2) return; driveable.push(ri);
   r.p.forEach((p, vi) => { const k = nodeKey(p); let l = nodes.get(k); if (!l) nodes.set(k, l = []); l.push(ri, vi); }); });
@@ -331,13 +344,14 @@ function roofParts(contour, g, top) {
 }
 const BC = 40, bGrid = new Map(), bPolys = [];
 // house details: windows (a texture on a skin just outside the walls), white corner boards and eave boards, a dark plinth, and a chimney on gabled roofs
-const WIN_W = 2.6, STOREY = 2.8, HOUSE_MIN_M2 = 40, HOUSE_MAX_M2 = 1500;   // window spacing and storey height (m); footprints in this range count as homes and shops
+const WIN_W = 2.6, STOREY = 2.8;   // window spacing and storey height (m)
 const winTex = (function () {
   const cv = document.createElement('canvas'); cv.width = cv.height = 128; const x = cv.getContext('2d'), u = v => v / WIN_W * 128, y = v => 128 - v / STOREY * 128;
   x.fillStyle = '#f1efe8'; x.fillRect(u(0.8), y(2.15), u(1), y(0.9) - y(2.15));                    // frame: 1.0 x 1.25 m, sill 0.9 m up
   x.fillStyle = '#26323a'; x.fillRect(u(0.88), y(2.07), u(0.84), y(0.98) - y(2.07));
   x.fillStyle = '#f1efe8'; x.fillRect(u(1.265), y(2.07), u(0.07), y(0.98) - y(2.07)); x.fillRect(u(0.88), y(1.75), u(0.84), y(1.68) - y(1.75));   // cross bars
-  const t = new THREE.CanvasTexture(cv); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.encoding = THREE.sRGBEncoding; t.anisotropy = renderer.capabilities.getMaxAnisotropy(); return t;
+  const t = new THREE.CanvasTexture(cv); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.encoding = THREE.sRGBEncoding; t.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  t.generateMipmaps = false; t.minFilter = THREE.LinearFilter; return t;   // mips average the mostly transparent tile below alphaTest, so windows would vanish at a distance
 })();
 (function () {
   const pos = [], cols = [], c = new THREE.Color(), c2 = new THREE.Color(), c3 = new THREE.Color();
@@ -382,7 +396,7 @@ const winTex = (function () {
           trim(WHITE, cx, cz, cx + ux * k * s, cz + uz * k * s, base, yAt(v) - 0.2, base, yAt(v) - 0.2);
         }
       }
-      if (b.g) { const [ax, az, bx, bz, w] = b.g, cx = ax + (bx - ax) * 0.3, cz = az + (bz - az) * 0.3, ry = top + Math.min(w * 0.7, 5);
+      if (b.g) { const [ax, az, bx, bz, w] = b.g, cx = ax + (bx - ax) * 0.3, cz = az + (bz - az) * 0.3, ry = yAt({ x: cx, y: cz });
         if (inPoly(b.p, cx, cz)) box(cx, cz, ry - 0.6, ry + 0.9, 0.6, hAt(cx, cz) * 7 % 1 < 0.5 ? col('#8a3b2d') : col('#d8d2c4')); }
     }
     bPolys.push({ p: b.p, x0, x1, z0, z1 });
@@ -439,16 +453,21 @@ function collide(o, r) {
   ];
   const BIRCH_SHARE = 0.3, m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), v = new THREE.Vector3(), s = new THREE.Vector3(), c = new THREE.Color();
   const N = spots.length / 3, kind = i => hash(spots[i * 3], spots[i * 3 + 1], 1) < BIRCH_SHARE ? 1 : 0;
+  // one InstancedMesh per kind and cell, placed at the cell centre, so the main and shadow passes cull whole cells (r128 culls by geometry bounds, not instances)
+  const TREE_CELL_M = 400, cellOf = v => Math.floor((v + HALF) / TREE_CELL_M), cellMid = k => k * TREE_CELL_M + TREE_CELL_M / 2 - HALF;
   KINDS.forEach((kd, ki) => {
-    const idx = []; for (let i = 0; i < N; i++) if (kind(i) === ki) idx.push(i);
-    const crown = new THREE.InstancedMesh(kd.crown, new THREE.MeshLambertMaterial({ color: 0xffffff }), idx.length);
-    const trunk = new THREE.InstancedMesh(kd.trunk, new THREE.MeshLambertMaterial({ color: col(kd.bark), side: THREE.DoubleSide }), idx.length);
+    const cells = new Map(); for (let i = 0; i < N; i++) if (kind(i) === ki) { const k = cellOf(spots[i * 3]) + ',' + cellOf(spots[i * 3 + 1]); let l = cells.get(k); if (!l) cells.set(k, l = []); l.push(i); }
+    const bound = new THREE.Sphere(new THREE.Vector3(0, 0, 0), TREE_CELL_M * 0.71 + 60);   // cell half-diagonal, plus tree size and the terrain's height range
+    kd.crown.boundingSphere = bound; kd.trunk.boundingSphere = bound;
+    const crownMat = new THREE.MeshLambertMaterial({ color: 0xffffff }), trunkMat = new THREE.MeshLambertMaterial({ color: col(kd.bark), side: THREE.DoubleSide });
     const lo = col(kd.leaf[0]), hiC = col(kd.leaf[1]);
-    idx.forEach((i, j) => { const x = spots[i * 3], z = spots[i * 3 + 1], sc = spots[i * 3 + 2];
-      e.set((hash(x, z, 2) - 0.5) * 0.1, hash(x, z, 3) * 6.283, (hash(x, z, 4) - 0.5) * 0.1); q.setFromEuler(e);
-      m4.compose(v.set(x, hAt(x, z) - 0.3, z), q, s.set(sc, sc * (0.85 + hash(x, z, 5) * 0.3), sc));
-      crown.setMatrixAt(j, m4); trunk.setMatrixAt(j, m4); crown.setColorAt(j, c.copy(lo).lerp(hiC, hash(x, z, 6))); });
-    for (const m of [crown, trunk]) { m.castShadow = true; m.frustumCulled = false; scene.add(m); }   // instances span the map; the base geometry's bounds would cull them all
+    for (const [k, idx] of cells) { const [ci, cj] = k.split(',').map(Number), ox = cellMid(ci), oz = cellMid(cj), oy = hAt(ox, oz);
+      const crown = new THREE.InstancedMesh(kd.crown, crownMat, idx.length), trunk = new THREE.InstancedMesh(kd.trunk, trunkMat, idx.length);
+      idx.forEach((i, j) => { const x = spots[i * 3], z = spots[i * 3 + 1], sc = spots[i * 3 + 2];
+        e.set((hash(x, z, 2) - 0.5) * 0.1, hash(x, z, 3) * 6.283, (hash(x, z, 4) - 0.5) * 0.1); q.setFromEuler(e);
+        m4.compose(v.set(x - ox, hAt(x, z) - 0.3 - oy, z - oz), q, s.set(sc, sc * (0.85 + hash(x, z, 5) * 0.3), sc));
+        crown.setMatrixAt(j, m4); trunk.setMatrixAt(j, m4); crown.setColorAt(j, c.copy(lo).lerp(hiC, hash(x, z, 6))); });
+      for (const m of [crown, trunk]) { m.position.set(ox, oy, oz); m.castShadow = true; scene.add(m); } }
   });
   // bake a soft shadow under every tree into the ground texture (the minimap shows them too)
   ctx.globalAlpha = 0.5;
@@ -541,8 +560,7 @@ function placeCar(c) {
   const n = normalAt(c.x, c.z);
   _f.set(Math.sin(c.h), 0, -Math.cos(c.h)); _f.addScaledVector(n, -_f.dot(n)).normalize(); _r.crossVectors(_f, n);
   _m.makeBasis(_r, n, _f.negate()); c.mesh.quaternion.setFromRotationMatrix(_m);
-  const r = nearestRoad(c.x, c.z);
-  c.mesh.position.set(c.x, hAt(c.x, c.z) + (r.d < 0 ? roadLift(R[r.ri].c) : 0) - (c.wet ? 0.55 : 0), c.z);
+  c.mesh.position.set(c.x, groundAt(c.x, c.z) - (c.wet ? 0.55 : 0), c.z);
 }
 function addCar(type, x, z, h, mode) {
   const T = TYPES[type], mesh = new THREE.Mesh(carGeo(type, pick(T.cols)), carMat); mesh.castShadow = true; blob(mesh, 2.8, 5.8);
@@ -676,7 +694,7 @@ function updateNpc(n, dt) {
   const ph = Math.hypot(player.x - n.x, player.z - n.z), want = n.idle > 0 ? (ph < 8 ? Math.atan2(player.x - n.x, -(player.z - n.z)) : n.h) : Math.atan2(dx, -dz);
   n.h = n.first ? want : wrap(n.h + wrap(want - n.h) * Math.min(1, dt * 5)); n.first = false;
   const sw = Math.sin(n.phase) * 0.6; n.mesh.legs[0].rotation.x = sw; n.mesh.legs[1].rotation.x = -sw;
-  n.mesh.position.set(n.x, hAt(n.x, n.z), n.z); n.mesh.rotation.y = -n.h;
+  n.mesh.position.set(n.x, groundAt(n.x, n.z), n.z); n.mesh.rotation.y = -n.h;
 }
 // keep a crowd around the player that matches how busy the area is; refill everything after a teleport
 let npcT = 0, npcX = 1e9, npcZ = 1e9;
@@ -845,7 +863,7 @@ function action() {
   const c = nearestCar(); if (!c) return;
   if (c.mode === 'ai') {
     const p = personParts(pick(['#b5463a', '#3f6b8a', '#5c7a4a', '#7a5a8a']), '#3a3a3a');
-    p.position.set(c.x - Math.cos(c.h) * 2.2, 0, c.z - Math.sin(c.h) * 2.2); p.position.y = hAt(p.position.x, p.position.z); p.ttl = 14; scene.add(p); peds.push(p);
+    p.position.set(c.x - Math.cos(c.h) * 2.2, 0, c.z - Math.sin(c.h) * 2.2); p.position.y = groundAt(p.position.x, p.position.z); p.ttl = 14; scene.add(p); peds.push(p);
     toast(pick(['”Hörru! Det där är min bil!”', '”Men va fan gör du?!”', '”Polisen! Han tar min ' + c.T.name + '!”']) + ' The driver calls the police.');
     addStar(); spawnTraffic(player);
   } else if (!c.owned) {
@@ -902,7 +920,7 @@ function frame(now) {
     collide(player, 0.5);
     if (!inside) for (const c of cars) { const dx = player.x - c.x, dz = player.z - c.z, d = Math.hypot(dx, dz); if (d < 1.6 && d > 0.01) { player.x += dx / d * (1.6 - d); player.z += dz / d * (1.6 - d); } }
     const sw = Math.sin(player.phase) * 0.75; player.mesh.legs[0].rotation.x = sw; player.mesh.legs[1].rotation.x = -sw;
-    player.mesh.position.set(player.x, hAt(player.x, player.z) - (wet ? 0.95 : 0), player.z); player.mesh.rotation.y = -player.h;
+    player.mesh.position.set(player.x, groundAt(player.x, player.z) - (wet ? 0.95 : 0), player.z); player.mesh.rotation.y = -player.h;
   }
   const T = inCar ? pcar : player;
   for (const c of cars) if (c.mode === 'ai') updateTraffic(c, dt, T);
@@ -920,7 +938,7 @@ function frame(now) {
     if (p.ttl <= 0) { scene.remove(p); peds.splice(i, 1); } }
 
   // camera
-  let dist, ty = hAt(T.x, T.z);
+  let dist, ty = groundAt(T.x, T.z);
   if (!started) { camYaw = wrap(camYaw + dt * 0.07); dist = 46; camPitch = 0.42; }
   else if (inCar) { lookIdle += dt; if (lookIdle > 1.2 && dragId === null) lookOff *= Math.pow(0.02, dt);
     camYaw += wrap(pcar.h + lookOff - camYaw) * Math.min(1, dt * 4.5); dist = 10 + Math.abs(pcar.v) * 0.09; }
