@@ -11,7 +11,11 @@ Closes #
 
 ## How it was tested
 
-<!-- What you ran or played, on which device, and what you didn't test (e.g. "not played on a phone"). Attach screenshots if visuals changed. -->
+<!-- What you ran or played, on which device, and what you didn't test (e.g. "not played on a phone"). -->
+
+## Pics or it didn't happen
+
+<!-- Screenshots or a short clip of the change in the game or map. Remove this section if nothing visible changed. -->
 
 ## Checklist
 

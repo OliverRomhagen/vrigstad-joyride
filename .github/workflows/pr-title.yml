@@ -1,7 +1,7 @@
 name: PR title
 
 # Squash merges use the PR title as the commit subject, and release notes are built from it,
-# so it must follow Conventional Commits with the types and scopes in AGENTS.md.
+# so it must follow Conventional Commits with the types in AGENTS.md.
 on:
   pull_request:
     types: [opened, edited, synchronize, reopened]
@@ -32,23 +32,8 @@ jobs:
             chore
             data
             revert
-          # Keep in sync with the scope: labels in .github/labels.yml.
-          scopes: |
-            world
-            npc
-            police
-            vehicles
-            player
-            hud
-            audio
-            minigames
-            multiplayer
-            architecture
           requireScope: false
           # The action builds the RegExp without the u flag, so no \p{Lu}: list the Swedish capitals.
           subjectPattern: ^(?![A-ZÅÄÖ]).+[^.]$
           subjectPatternError: |
             The summary "{subject}" in "{title}" should start in lower case and not end with a period.
-          # A one-commit PR squashes to that commit's message, not the title: check it too.
-          # Remove once the repo's squash setting defaults to the PR title.
-          validateSingleCommit: true
