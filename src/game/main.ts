@@ -1,7 +1,12 @@
 // @ts-nocheck
 // Moved as-is from the single-file prototype (#44); it gets types as it is split into modules.
-// THREE is the r128 global from the CDN script in the page, until #47 moves it to npm.
+import * as THREE from 'three';
 import D from '../../data/vrigstad.json';
+
+// Keep the colour and light maths of three r128, which the look was tuned with: colours are used as written, and light
+// intensities are scaled by π because r155 dropped the legacy light units (a 0.62 light then equals 0.62 * π now).
+THREE.ColorManagement.enabled = false;
+const LEGACY_LIGHT = Math.PI;
 
 (function () {
 'use strict';
@@ -35,19 +40,19 @@ catch (err) { $('fail').hidden = false; $('ui').hidden = true; $('intro').hidden
 const coarse = matchMedia('(pointer: coarse)').matches;
 renderer.setPixelRatio(Math.min(devicePixelRatio || 1, coarse ? 1.5 : 2));
 renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.shadowMap.type = THREE.PCFShadowMap;
 // filmic tone mapping on an sRGB pipeline: colours below are written in sRGB and converted to linear with col()
-renderer.outputEncoding = THREE.sRGBEncoding;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1;
 const col = c => new THREE.Color(c).convertSRGBToLinear();
-// three r128 applies fog after output encoding, so the fog, clear and sky colours stay in sRGB
+// three applies fog after the output colour space conversion, so the fog, clear and sky colours stay in sRGB
 const HORIZON = 0xd6e4e6, FOG_PER_M = 0.0007;   // FogExp2 density: about 40% haze at 1 km
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(HORIZON);
 scene.fog = new THREE.FogExp2(HORIZON, FOG_PER_M);
 const camera = new THREE.PerspectiveCamera(58, 1, 0.8, 4200);
-scene.add(new THREE.HemisphereLight(0xffffff, col(0x9aa58a), 0.62));
-const sun = new THREE.DirectionalLight(col(0xfff4dd), 0.95);
+scene.add(new THREE.HemisphereLight(0xffffff, col(0x9aa58a), 0.62 * LEGACY_LIGHT));
+const sun = new THREE.DirectionalLight(col(0xfff4dd), 0.95 * LEGACY_LIGHT);
 const SUN_DIR = new THREE.Vector3(-0.55, 0.75, 0.37).normalize();
 // sky: a gradient dome that follows the camera and fades into the fog at the horizon
 const dome = new THREE.Mesh(new THREE.SphereGeometry(3000, 32, 16), new THREE.ShaderMaterial({
@@ -112,7 +117,7 @@ const polyArea = p => { let a = 0; for (let i = 0, j = p.length - 2; i < p.lengt
   ctx.shadowBlur = 0; ctx.shadowColor = 'transparent';
 })();
 const texture = new THREE.CanvasTexture(tex2d);
-texture.anisotropy = renderer.capabilities.getMaxAnisotropy(); texture.encoding = THREE.sRGBEncoding;
+texture.anisotropy = renderer.capabilities.getMaxAnisotropy(); texture.colorSpace = THREE.SRGBColorSpace;
 
 // ---------- terrain ----------
 (function () {
@@ -165,7 +170,7 @@ const R = D.r.map(r => { const p = []; for (let i = 0; i < r.p.length; i += 2) p
   let ns = 11; const nr = () => (ns = ns * 48271 % 2147483647) / 2147483647;
   x.fillStyle = '#f7f7f7'; x.fillRect(0, 0, 256, 256); x.globalAlpha = 0.7;
   for (const c of ['#ffffff', '#cdcdcd', '#dedede']) { x.fillStyle = c; for (let i = 0; i < 1600; i++) x.fillRect(nr() * 256, nr() * 256, 1, 1); }
-  const speck = new THREE.CanvasTexture(cv); speck.wrapS = speck.wrapT = THREE.RepeatWrapping; speck.anisotropy = renderer.capabilities.getMaxAnisotropy(); speck.encoding = THREE.sRGBEncoding;
+  const speck = new THREE.CanvasTexture(cv); speck.wrapS = speck.wrapT = THREE.RepeatWrapping; speck.anisotropy = renderer.capabilities.getMaxAnisotropy(); speck.colorSpace = THREE.SRGBColorSpace;
   bufs.forEach((b, i) => { if (!b.length) return;
     const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(b, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uvs[i], 2)); g.computeVertexNormals();
     const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ color: col(cols[i]), map: i < 6 ? speck : null, side: THREE.DoubleSide, polygonOffset: true,
@@ -230,7 +235,7 @@ const winTex = (function () {
   x.fillStyle = '#f1efe8'; x.fillRect(u(0.8), y(2.15), u(1), y(0.9) - y(2.15));                    // frame: 1.0 x 1.25 m, sill 0.9 m up
   x.fillStyle = '#26323a'; x.fillRect(u(0.88), y(2.07), u(0.84), y(0.98) - y(2.07));
   x.fillStyle = '#f1efe8'; x.fillRect(u(1.265), y(2.07), u(0.07), y(0.98) - y(2.07)); x.fillRect(u(0.88), y(1.75), u(0.84), y(1.68) - y(1.75));   // cross bars
-  const t = new THREE.CanvasTexture(cv); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.encoding = THREE.sRGBEncoding; t.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  const t = new THREE.CanvasTexture(cv); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = renderer.capabilities.getMaxAnisotropy();
   t.generateMipmaps = false; t.minFilter = THREE.LinearFilter; return t;   // mips average the mostly transparent tile below alphaTest, so windows would vanish at a distance
 })();
 (function () {
@@ -333,12 +338,10 @@ function collide(o, r) {
   ];
   const BIRCH_SHARE = 0.3, m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), v = new THREE.Vector3(), s = new THREE.Vector3(), c = new THREE.Color();
   const N = spots.length / 3, kind = i => hash(spots[i * 3], spots[i * 3 + 1], 1) < BIRCH_SHARE ? 1 : 0;
-  // one InstancedMesh per kind and cell, placed at the cell centre, so the main and shadow passes cull whole cells (r128 culls by geometry bounds, not instances)
+  // one InstancedMesh per kind and cell, placed at the cell centre, so the main and shadow passes cull whole cells (three bounds an InstancedMesh by all its instances)
   const TREE_CELL_M = 400, cellOf = v => Math.floor((v + HALF) / TREE_CELL_M), cellMid = k => k * TREE_CELL_M + TREE_CELL_M / 2 - HALF;
   KINDS.forEach((kd, ki) => {
     const cells = new Map(); for (let i = 0; i < N; i++) if (kind(i) === ki) { const k = cellOf(spots[i * 3]) + ',' + cellOf(spots[i * 3 + 1]); let l = cells.get(k); if (!l) cells.set(k, l = []); l.push(i); }
-    const bound = new THREE.Sphere(new THREE.Vector3(0, 0, 0), TREE_CELL_M * 0.71 + 60);   // cell half-diagonal, plus tree size and the terrain's height range
-    kd.crown.boundingSphere = bound; kd.trunk.boundingSphere = bound;
     const crownMat = new THREE.MeshLambertMaterial({ color: 0xffffff }), trunkMat = new THREE.MeshLambertMaterial({ color: col(kd.bark), side: THREE.DoubleSide });
     const lo = col(kd.leaf[0]), hiC = col(kd.leaf[1]);
     for (const [k, idx] of cells) { const [ci, cj] = k.split(',').map(Number), ox = cellMid(ci), oz = cellMid(cj), oy = hAt(ox, oz);

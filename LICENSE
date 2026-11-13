@@ -10,7 +10,7 @@ prior written permission from the copyright holder.
 
 Third-party components keep their own licenses:
 
-- three.js (MIT License), loaded from cdnjs at runtime.
+- three.js (MIT License), bundled into index.html and map.html.
 - Map data © OpenStreetMap contributors, licensed under the Open Database
   License (ODbL) 1.0: https://opendatacommons.org/licenses/odbl/
   Any redistribution of the extracted OpenStreetMap data must follow the
