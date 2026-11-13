@@ -1,0 +1,6 @@
+# Generated files: GitHub collapses them in review diffs and leaves them out of language stats.
+# index.html and map.html are built by tools/build.py (until #45 stops committing them);
+# data/vrigstad.json is built by tools/process.py.
+index.html linguist-generated=true
+map.html linguist-generated=true
+data/vrigstad.json linguist-generated=true
