@@ -217,7 +217,7 @@ const ROAD_W = [9, 7.5, 5.5, 3.5, 2.6, 1.5];
   ctx.globalAlpha = 0.45;
   for (const c of ['#86a866', '#b0c88e', '#7c9d5c', '#c3cf98']) { ctx.fillStyle = c; for (let i = 0; i < 40000; i++) ctx.fillRect(nr() * CW, nr() * CW, 1 + nr() * 1.5, 1 + nr() * 1.5); }
   ctx.globalAlpha = 1;
-  ctx.strokeStyle = 'rgba(172,199,138,.55)'; ctx.lineWidth = 9 * K; ctx.beginPath(); for (const b of D.b) if (!b.k) trace(b.p, true); ctx.stroke();   // mown lawns around houses
+  ctx.strokeStyle = 'rgba(172,199,138,.55)'; ctx.lineWidth = 9 * K; ctx.beginPath(); for (const b of D.b) if (b.k !== 1) trace(b.p, true); ctx.stroke();   // mown lawns around houses (not the church)
   ctx.strokeStyle = '#4f8fb8';
   for (const w of D.ww) { ctx.lineWidth = (w.k === 0 ? 6 : 2) * K; ctx.beginPath(); trace(w.p); ctx.stroke(); }
   ctx.fillStyle = '#4f8fb8';
@@ -283,9 +283,10 @@ const R = D.r.map(r => { const p = []; for (let i = 0; i < r.p.length; i += 2) p
   for (const r of R) { ribbon(bufs[r.c], uvs[r.c], r.p, ROAD_W[r.c], 0.25 - r.c * 0.03); if (r.c < 2) ribbon(bufs[6], uvs[6], r.p, 0.2, 0.3); }
   const cols = [0x4c4f52, 0x55585b, 0x606365, 0x74746d, 0xa08c6c, 0xbcae92, 0xe9e7da];
   const cv = document.createElement('canvas'); cv.width = cv.height = 256; const x = cv.getContext('2d');
-  x.fillStyle = '#ededed'; x.fillRect(0, 0, 256, 256); x.globalAlpha = 0.7;
-  for (const c of ['#ffffff', '#c4c4c4', '#d6d6d6']) { x.fillStyle = c; for (let i = 0; i < 1600; i++) x.fillRect(Math.random() * 256, Math.random() * 256, 1, 1); }
-  const speck = new THREE.CanvasTexture(cv); speck.wrapS = speck.wrapT = THREE.RepeatWrapping; speck.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  let ns = 11; const nr = () => (ns = ns * 48271 % 2147483647) / 2147483647;
+  x.fillStyle = '#f7f7f7'; x.fillRect(0, 0, 256, 256); x.globalAlpha = 0.7;
+  for (const c of ['#ffffff', '#cdcdcd', '#dedede']) { x.fillStyle = c; for (let i = 0; i < 1600; i++) x.fillRect(nr() * 256, nr() * 256, 1, 1); }
+  const speck = new THREE.CanvasTexture(cv); speck.wrapS = speck.wrapT = THREE.RepeatWrapping; speck.anisotropy = renderer.capabilities.getMaxAnisotropy(); speck.encoding = THREE.sRGBEncoding;
   bufs.forEach((b, i) => { if (!b.length) return;
     const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(b, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uvs[i], 2)); g.computeVertexNormals();
     const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ color: col(cols[i]), map: i < 6 ? speck : null, side: THREE.DoubleSide, polygonOffset: true,
@@ -337,7 +338,7 @@ function roofParts(contour, g, top) {
 }
 const BC = 40, bGrid = new Map(), bPolys = [];
 // house details: windows (a texture on a skin just outside the walls), white corner boards and eave boards, a dark plinth, and a chimney on gabled roofs
-const WIN_W = 2.6, STOREY = 2.8, HOUSE_M2 = [40, 1500];   // window spacing and storey height (m); footprints in this range (m²) count as homes and shops
+const WIN_W = 2.6, STOREY = 2.8, HOUSE_MIN_M2 = 40, HOUSE_MAX_M2 = 1500;   // window spacing and storey height (m); footprints in this range count as homes and shops
 const winTex = (function () {
   const cv = document.createElement('canvas'); cv.width = cv.height = 128; const x = cv.getContext('2d'), u = v => v / WIN_W * 128, y = v => 128 - v / STOREY * 128;
   x.fillStyle = '#f1efe8'; x.fillRect(u(0.8), y(2.15), u(1), y(0.9) - y(2.15));                    // frame: 1.0 x 1.25 m, sill 0.9 m up
@@ -372,7 +373,7 @@ const winTex = (function () {
     for (const h of sides) for (const f of THREE.ShapeUtils.triangulateShape(h, [])) for (const i of f) { pos.push(h[i].x, yAt(h[i]), h[i].y); cols.push(c2.r, c2.g, c2.b); }
     if (b.s) { let cx = 0, cz = 0; for (const v of contour) { cx += v.x / n; cz += v.y / n; }   // spire
       for (let i = 0; i < n; i++) { const a = contour[i], d = contour[(i + 1) % n]; pos.push(a.x, top, a.y, d.x, top, d.y, cx, top + b.s, cz); for (let k = 0; k < 3; k++) cols.push(c2.r, c2.g, c2.b); } }
-    if (!b.k && area >= HOUSE_M2[0] && area <= HOUSE_M2[1]) {
+    if (b.k !== 1 && area >= HOUSE_MIN_M2 && area <= HOUSE_MAX_M2) {   // not the church and its tower, not sheds or barns
       const yb = hi + 0.2, yt = top - 0.25, rows = Math.max(1, Math.round((yt - yb) / STOREY));
       for (let i = 0; i < m; i++) {
         const a = ring[i], d = ring[(i + 1) % m], ex = d.x - a.x, ez = d.y - a.y, len = Math.hypot(ex, ez); if (len < 0.4) continue;
@@ -385,7 +386,7 @@ const winTex = (function () {
           const fx = s > 0 ? v.x - p.x : p.x - v.x, fz = s > 0 ? v.y - p.y : p.y - v.y, fl = Math.hypot(fx, fz) || 1;
           if (Math.abs((fx * uz - fz * ux) / fl) < 0.3) continue;
           const k = Math.min(0.18, len / 2), cx = v.x + ox * 0.07, cz = v.y + oz * 0.07;
-          quad(tp, cx, cz, cx + ux * k * s, cz + uz * k * s, base, yAt(v) - 0.2, base, yAt(v) - 0.2); for (let j = 0; j < 6; j++) tc.push(WHITE.r, WHITE.g, WHITE.b);
+          trim(WHITE, cx, cz, cx + ux * k * s, cz + uz * k * s, base, yAt(v) - 0.2, base, yAt(v) - 0.2);
         }
       }
       if (b.g) { const [ax, az, bx, bz, w] = b.g, cx = ax + (bx - ax) * 0.3, cz = az + (bz - az) * 0.3, ry = top + Math.min(w * 0.7, 5);
@@ -473,7 +474,8 @@ function mergeGeo(parts) {
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
   if (cs.length) g.setAttribute('color', new THREE.Float32BufferAttribute(cs, 3)); return g;
 }
-const boxGeo = parts => mergeGeo(parts.map(p => [new THREE.BoxGeometry(p[0], p[1], p[2]).translate(p[3], p[4], p[5]), p[6]]));   // [sx, sy, sz, x, y, z, colour]
+const boxPart = p => [new THREE.BoxGeometry(p[0], p[1], p[2]).translate(p[3], p[4], p[5]), p[6]];   // [sx, sy, sz, x, y, z, colour]
+const boxGeo = parts => mergeGeo(parts.map(boxPart));
 // a side profile (z, y; the front is -z) extruded across the car, with rounded edges
 function extrude(pts, width, bevel) {
   const s = new THREE.Shape(); s.moveTo(pts[0][0], pts[0][1]); for (const p of pts.slice(1)) s.lineTo(p[0], p[1]);
@@ -481,26 +483,19 @@ function extrude(pts, width, bevel) {
   return g.rotateY(-Math.PI / 2).translate(depth / 2, 0, 0);
 }
 const paintMat = new THREE.MeshLambertMaterial({ vertexColors: true });
-const carMat = new THREE.MeshPhongMaterial({ vertexColors: true, shininess: 60, specular: 0x262626 });   // glossy paint and glass
+const carMat = new THREE.MeshPhongMaterial({ vertexColors: true, shininess: 60, specular: col(0x555555) });   // glossy paint and glass
 const GLASS = '#26323a', TYRE = '#1c1c1c';
-const wheels = (x, z1, z2) => [[0.26, 0.64, 0.64, -x, 0.32, z1, TYRE], [0.26, 0.64, 0.64, x, 0.32, z1, TYRE], [0.26, 0.64, 0.64, -x, 0.32, z2, TYRE], [0.26, 0.64, 0.64, x, 0.32, z2, TYRE]];
 const lamps = z => [[0.34, 0.16, 0.06, -0.6, 0.72, -z, '#fff6c8'], [0.34, 0.16, 0.06, 0.6, 0.72, -z, '#fff6c8'], [0.34, 0.16, 0.06, -0.6, 0.72, z, '#c8261c'], [0.34, 0.16, 0.06, 0.6, 0.72, z, '#c8261c']];
 const TYPES = {
-  volvo: { name: 'Volvo 240', max: 38, acc: 7, off: 0.5, cols: ['#27406b', '#7a2530', '#c9bd9c', '#e6e4dc', '#2f5a41', '#8a8f93'],
-    parts: c => [...wheels(0.8, -1.5, 1.45), [1.74, 0.62, 4.8, 0, 0.66, 0, c], [1.56, 0.52, 3.0, 0, 1.22, 0.6, GLASS], [1.6, 0.07, 3.04, 0, 1.5, 0.6, c], ...lamps(2.41)] },
-  saab: { name: 'Saab 900', max: 42, acc: 8.5, off: 0.5, cols: ['#1d1d1f', '#8c1c1c', '#3d5a80', '#d8d4c8', '#55606a'],
-    parts: c => [...wheels(0.8, -1.45, 1.35), [1.7, 0.58, 4.6, 0, 0.62, 0, c], [1.5, 0.5, 2.1, 0, 1.14, 0.25, GLASS], [1.54, 0.07, 1.9, 0, 1.41, 0.2, c], [1.6, 0.22, 0.7, 0, 0.98, 1.75, c], ...lamps(2.31)] },
-  epa: { name: 'EPA-traktor', max: 8.33, acc: 4, off: 0.7, cols: ['#c8372d', '#2a2a2c', '#e8a020', '#3f6b8a'],
-    parts: c => [...wheels(0.8, -1.5, 1.4), [1.74, 0.6, 4.7, 0, 0.66, 0, c], [1.56, 0.55, 1.5, 0, 1.22, -0.35, GLASS], [1.6, 0.07, 1.54, 0, 1.52, -0.35, c],
-      [1.74, 0.3, 0.08, 0, 1.1, 2.3, c], [0.08, 0.3, 1.8, -0.83, 1.1, 1.4, c], [0.08, 0.3, 1.8, 0.83, 1.1, 1.4, c], [0.5, 0.44, 0.05, 0, 1.2, 2.37, '#ff7a1a'], ...lamps(2.36)] },
+  volvo: { name: 'Volvo 240', max: 38, acc: 7, off: 0.5, cols: ['#27406b', '#7a2530', '#c9bd9c', '#e6e4dc', '#2f5a41', '#8a8f93'] },
+  saab: { name: 'Saab 900', max: 42, acc: 8.5, off: 0.5, cols: ['#1d1d1f', '#8c1c1c', '#3d5a80', '#d8d4c8', '#55606a'] },
+  epa: { name: 'EPA-traktor', max: 8.33, acc: 4, off: 0.7, cols: ['#c8372d', '#2a2a2c', '#e8a020', '#3f6b8a'] },
   traktor: { name: 'Traktor', max: 11, acc: 3.5, off: 1, cols: ['#2f7a3a', '#b5302a', '#2a5fa0'],
     parts: c => [[0.5, 1.6, 1.6, -0.95, 0.8, 0.9, TYRE], [0.5, 1.6, 1.6, 0.95, 0.8, 0.9, TYRE], [0.32, 0.9, 0.9, -0.75, 0.45, -1.5, TYRE], [0.32, 0.9, 0.9, 0.75, 0.45, -1.5, TYRE],
       [0.95, 0.75, 2.5, 0, 1.15, -0.9, c], [1.35, 1.25, 1.4, 0, 2.0, 0.75, GLASS], [1.45, 0.1, 1.5, 0, 2.67, 0.75, c], [0.12, 0.7, 0.12, 0.3, 1.85, -1.6, '#333']] },
-  polis: { name: 'Polisbil', max: 35, acc: 9, off: 0.6, cols: ['#f1f1ee'],
-    parts: c => [...wheels(0.8, -1.5, 1.45), [1.74, 0.62, 4.8, 0, 0.66, 0, c], [1.56, 0.52, 3.0, 0, 1.22, 0.6, GLASS], [1.6, 0.07, 3.04, 0, 1.5, 0.6, c],
-      [1.78, 0.2, 3.2, 0, 0.7, 0.2, '#1f4fa3'], [1.79, 0.08, 3.2, 0, 0.56, 0.2, '#f2d21f'], ...lamps(2.41)] }
+  polis: { name: 'Polisbil', max: 35, acc: 9, off: 0.6, cols: ['#f1f1ee'] }
 };
-// rounded bodies for the cars: same silhouettes as the boxes above, bevelled, with round wheels and big black bumpers (the tractor keeps its boxes)
+// car bodies: a bevelled side profile, round wheels and big black bumpers; the tractor stays a box model (TYPES.traktor.parts)
 const VOLVO_BODY = [[-2.4, 0.36], [2.4, 0.36], [2.4, 0.98], [-0.9, 0.98], [-2.4, 0.9]];
 const PROFILES = {
   volvo: { body: VOLVO_BODY, glass: [[-0.9, 0.97], [2.1, 0.97], [1.95, 1.48], [-0.35, 1.48]], roof: [[-0.35, 1.47], [1.95, 1.47], [1.93, 1.54], [-0.33, 1.54]],
@@ -517,8 +512,8 @@ function softCar(t, c) {
   const P = PROFILES[t]; if (!P) return boxGeo(TYPES[t].parts(c));
   const parts = [[extrude(P.body, P.w, 0.07), c], [extrude(P.glass, P.gw, 0.05), GLASS], [extrude(P.roof, P.gw + 0.04, 0.03), c]];
   for (const x of [-0.8, 0.8]) for (const z of P.wz) parts.push([tyreGeo.clone().translate(x, 0.32, z), TYRE], [hubGeo.clone().translate(x, 0.32, z), '#a3a39e']);
-  for (const z of [-1, 1]) parts.push([new THREE.BoxGeometry(P.w + 0.1, 0.17, 0.18).translate(0, 0.5, z * (P.len / 2 + 0.05)), '#2b2b2b']);
-  for (const p of [...lamps(P.len / 2 + 0.07), ...(P.extra ? P.extra(c) : [])]) parts.push([new THREE.BoxGeometry(p[0], p[1], p[2]).translate(p[3], p[4], p[5]), p[6]]);
+  for (const z of [-1, 1]) parts.push(boxPart([P.w + 0.1, 0.17, 0.18, 0, 0.5, z * (P.len / 2 + 0.05), '#2b2b2b']));
+  for (const p of [...lamps(P.len / 2 + 0.07), ...(P.extra ? P.extra(c) : [])]) parts.push(boxPart(p));
   return mergeGeo(parts);
 }
 const geoCache = {};
