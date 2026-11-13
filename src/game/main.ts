@@ -3,6 +3,7 @@
 import * as THREE from 'three';
 import D from '../../data/vrigstad.json';
 import { LEGACY_LIGHT } from '../world/three-legacy';
+import { createPhotographicGrades } from './render/photographic-grades';
 
 (function () {
 'use strict';
@@ -863,8 +864,9 @@ function updatePolice(c, dt, T, tv) {
 }
 
 // ---------- main loop ----------
+const sceneFinish=createPhotographicGrades(renderer,scene,camera);
 function resize() { const w = canvas.clientWidth, h = canvas.clientHeight; if (!w || !h) return;
-  renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); }
+  renderer.setSize(w, h, false); sceneFinish.resize(); camera.aspect = w / h; camera.updateProjectionMatrix(); }
 addEventListener('resize', resize); if (window.ResizeObserver) new ResizeObserver(resize).observe(canvas);
 let last = performance.now();
 function frame(now) {
@@ -933,12 +935,12 @@ function frame(now) {
     else pr.hidden = true;
     $('speed').hidden = !inCar; if (inCar) { $('kmh').textContent = Math.round(Math.abs(pcar.v) * 3.6); $('carname').textContent = pcar.T.name; } }
   drawMini(T);
-  renderer.render(scene, camera);
+  sceneFinish.render();
 }
 $('go').addEventListener('click', () => { started = true; $('intro').hidden = true; camYaw = 0.6; camPitch = 0.34; canvas.focus();
   toast('Find a car and press E to take it. Occupied cars always get you a wanted star.', 5); });
 resize(); requestAnimationFrame(frame);
 
 // ---------- test hook: read-only state for the smoke tests (tests/e2e), so they do not have to read pixels ----------
-window.__joyride = { state: () => { const n = nearestCar(); return { started, x: player.x, z: player.z, inCar, car: pcar ? pcar.type : null, near: n ? n.mode : null, stars, cats: cats.length, treats }; } };
+window.__joyride = { state: () => { const n = nearestCar(); return { started, x: player.x, z: player.z, inCar, car: pcar ? pcar.type : null, near: n ? n.mode : null, stars, cats: cats.length, treats, visual:sceneFinish.state() }; } };
 })();
