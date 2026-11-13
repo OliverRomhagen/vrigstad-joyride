@@ -1,6 +1,7 @@
 name: Labels
 
 # Syncs .github/labels.yml to the repo's labels on merge; on a PR it only reports what would change.
+# It never deletes a label: that stays a deliberate `gh label delete`.
 on:
   push:
     branches: [main]
@@ -23,3 +24,4 @@ jobs:
         with:
           yaml-file: .github/labels.yml
           dry-run: ${{ github.event_name == 'pull_request' }}
+          skip-delete: true

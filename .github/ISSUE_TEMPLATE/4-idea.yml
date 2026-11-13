@@ -1,3 +1,4 @@
+# The number in each form's file name sets its place on the "New issue" page; this quick form comes last.
 name: Quick idea
 description: Jot an idea down in a few seconds, from a phone if need be. It gets fleshed out afterwards.
 body:

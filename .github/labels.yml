@@ -1,5 +1,5 @@
 # Every label in the repo. Change labels here, by PR; .github/workflows/labels.yml syncs this file to GitHub on merge,
-# and a label that is not in this file is deleted. Issue types (Bug, Feature, Task) are not labels.
+# but never deletes one (delete it here and with `gh label delete`). Issue types (Bug, Feature, Task) are not labels.
 
 - name: "prio:high"
   color: "b60205"
