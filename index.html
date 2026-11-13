@@ -205,6 +205,7 @@ const ctx = tex2d.getContext('2d');
 const P = v => (v + HALF) * K;
 function trace(p, close) { ctx.moveTo(P(p[0]), P(p[1])); for (let i = 2; i < p.length; i += 2) ctx.lineTo(P(p[i]), P(p[i + 1])); if (close) ctx.closePath(); }
 const ROAD_W = [9, 7.5, 5.5, 3.5, 2.6, 1.5];
+const roadLift = c => 0.25 - c * 0.03;   // m above the terrain each road class is drawn at; cars on it sit this high too
 (function paint() {
   const land = ['#a6c083', '#d9cf8b', '#b9b4a8', '#8fc072', '#93b77d', '#6f9a5e', '#7cc163'];
   ctx.lineCap = 'round'; ctx.lineJoin = 'round';
@@ -280,7 +281,7 @@ const R = D.r.map(r => { const p = []; for (let i = 0; i < r.p.length; i += 2) p
       pl = l; pr = r; pv = v;
     }
   }
-  for (const r of R) { ribbon(bufs[r.c], uvs[r.c], r.p, ROAD_W[r.c], 0.25 - r.c * 0.03); if (r.c < 2) ribbon(bufs[6], uvs[6], r.p, 0.2, 0.3); }
+  for (const r of R) { ribbon(bufs[r.c], uvs[r.c], r.p, ROAD_W[r.c], roadLift(r.c)); if (r.c < 2) ribbon(bufs[6], uvs[6], r.p, 0.2, 0.3); }
   const cols = [0x4c4f52, 0x55585b, 0x606365, 0x74746d, 0xa08c6c, 0xbcae92, 0xe9e7da];
   const cv = document.createElement('canvas'); cv.width = cv.height = 256; const x = cv.getContext('2d');
   let ns = 11; const nr = () => (ns = ns * 48271 % 2147483647) / 2147483647;
@@ -490,12 +491,10 @@ const TYPES = {
   volvo: { name: 'Volvo 240', max: 38, acc: 7, off: 0.5, cols: ['#27406b', '#7a2530', '#c9bd9c', '#e6e4dc', '#2f5a41', '#8a8f93'] },
   saab: { name: 'Saab 900', max: 42, acc: 8.5, off: 0.5, cols: ['#1d1d1f', '#8c1c1c', '#3d5a80', '#d8d4c8', '#55606a'] },
   epa: { name: 'EPA-traktor', max: 8.33, acc: 4, off: 0.7, cols: ['#c8372d', '#2a2a2c', '#e8a020', '#3f6b8a'] },
-  traktor: { name: 'Traktor', max: 11, acc: 3.5, off: 1, cols: ['#2f7a3a', '#b5302a', '#2a5fa0'],
-    parts: c => [[0.5, 1.6, 1.6, -0.95, 0.8, 0.9, TYRE], [0.5, 1.6, 1.6, 0.95, 0.8, 0.9, TYRE], [0.32, 0.9, 0.9, -0.75, 0.45, -1.5, TYRE], [0.32, 0.9, 0.9, 0.75, 0.45, -1.5, TYRE],
-      [0.95, 0.75, 2.5, 0, 1.15, -0.9, c], [1.35, 1.25, 1.4, 0, 2.0, 0.75, GLASS], [1.45, 0.1, 1.5, 0, 2.67, 0.75, c], [0.12, 0.7, 0.12, 0.3, 1.85, -1.6, '#333']] },
+  traktor: { name: 'Traktor', max: 11, acc: 3.5, off: 1, cols: ['#2f7a3a', '#b5302a', '#2a5fa0'] },
   polis: { name: 'Polisbil', max: 35, acc: 9, off: 0.6, cols: ['#f1f1ee'] }
 };
-// car bodies: a bevelled side profile, round wheels and big black bumpers; the tractor stays a box model (TYPES.traktor.parts)
+// car bodies: a bevelled side profile, round wheels and big black bumpers
 const VOLVO_BODY = [[-2.4, 0.36], [2.4, 0.36], [2.4, 0.98], [-0.9, 0.98], [-2.4, 0.9]];
 const PROFILES = {
   volvo: { body: VOLVO_BODY, glass: [[-0.9, 0.97], [2.1, 0.97], [1.95, 1.48], [-0.35, 1.48]], roof: [[-0.35, 1.47], [1.95, 1.47], [1.93, 1.54], [-0.33, 1.54]],
@@ -508,8 +507,21 @@ const PROFILES = {
 };
 PROFILES.polis = Object.assign({}, PROFILES.volvo, { extra: () => [[1.78, 0.2, 3.2, 0, 0.7, 0.2, '#1f4fa3'], [1.79, 0.08, 3.2, 0, 0.56, 0.2, '#f2d21f']] });
 const tyreGeo = new THREE.CylinderGeometry(0.32, 0.32, 0.24, 16).rotateZ(Math.PI / 2), hubGeo = new THREE.CylinderGeometry(0.17, 0.17, 0.26, 10).rotateZ(Math.PI / 2);
+// tractor: big rear wheels, small front wheels, a sloped bonnet and a glass cab (same size as the old box model)
+function softTractor(c) {
+  const parts = [[extrude([[-2.15, 0.78], [0.35, 0.78], [0.35, 1.52], [-1.85, 1.52], [-2.15, 1.3]], 0.95, 0.08), c],
+    [extrude([[0.05, 1.38], [1.45, 1.38], [1.45, 2.62], [0.25, 2.62], [0.05, 2.3]], 1.35, 0.05), GLASS],
+    [extrude([[-0.02, 2.6], [1.52, 2.6], [1.52, 2.72], [-0.02, 2.72]], 1.45, 0.04), c],
+    [new THREE.CylinderGeometry(0.06, 0.06, 0.7, 8).translate(0.3, 1.85, -1.6), '#333']];
+  for (const x of [-1, 1]) {
+    parts.push([new THREE.CylinderGeometry(0.8, 0.8, 0.5, 20).rotateZ(Math.PI / 2).translate(x * 0.95, 0.8, 0.9), TYRE], [new THREE.CylinderGeometry(0.42, 0.42, 0.52, 12).rotateZ(Math.PI / 2).translate(x * 0.95, 0.8, 0.9), c],
+      [new THREE.CylinderGeometry(0.45, 0.45, 0.32, 16).rotateZ(Math.PI / 2).translate(x * 0.75, 0.45, -1.5), TYRE], [new THREE.CylinderGeometry(0.22, 0.22, 0.34, 10).rotateZ(Math.PI / 2).translate(x * 0.75, 0.45, -1.5), c]);
+  }
+  return mergeGeo(parts);
+}
 function softCar(t, c) {
-  const P = PROFILES[t]; if (!P) return boxGeo(TYPES[t].parts(c));
+  if (t === 'traktor') return softTractor(c);
+  const P = PROFILES[t];
   const parts = [[extrude(P.body, P.w, 0.07), c], [extrude(P.glass, P.gw, 0.05), GLASS], [extrude(P.roof, P.gw + 0.04, 0.03), c]];
   for (const x of [-0.8, 0.8]) for (const z of P.wz) parts.push([tyreGeo.clone().translate(x, 0.32, z), TYRE], [hubGeo.clone().translate(x, 0.32, z), '#a3a39e']);
   for (const z of [-1, 1]) parts.push(boxPart([P.w + 0.1, 0.17, 0.18, 0, 0.5, z * (P.len / 2 + 0.05), '#2b2b2b']));
@@ -537,7 +549,8 @@ function placeCar(c) {
   const n = normalAt(c.x, c.z);
   _f.set(Math.sin(c.h), 0, -Math.cos(c.h)); _f.addScaledVector(n, -_f.dot(n)).normalize(); _r.crossVectors(_f, n);
   _m.makeBasis(_r, n, _f.negate()); c.mesh.quaternion.setFromRotationMatrix(_m);
-  c.mesh.position.set(c.x, hAt(c.x, c.z) - (c.wet ? 0.55 : 0), c.z);
+  const r = nearestRoad(c.x, c.z);
+  c.mesh.position.set(c.x, hAt(c.x, c.z) + (r.d < 0 ? roadLift(R[r.ri].c) : 0) - (c.wet ? 0.55 : 0), c.z);
 }
 function addCar(type, x, z, h, mode) {
   const T = TYPES[type], mesh = new THREE.Mesh(carGeo(type, pick(T.cols)), carMat); mesh.castShadow = true; blob(mesh, 2.8, 5.8);
