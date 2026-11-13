@@ -38,7 +38,7 @@ body { background: var(--sky); color: var(--ink); font-family: var(--body); font
 #stars b { color: var(--gold); font-weight: 400; }
 #stars.evading b { animation: blink .6s steps(2) infinite; }
 @keyframes blink { 50% { opacity: .25; } }
-#count, #triss { padding: 4px 10px; font: 500 13px var(--body); font-variant-numeric: tabular-nums; }
+#count, #triss, #treats { padding: 4px 10px; font: 500 13px var(--body); font-variant-numeric: tabular-nums; }
 
 #bl { grid-area: bl; align-self: end; }
 #joy { width: 124px; height: 124px; border-radius: 50%; background: var(--hud); position: relative; pointer-events: auto; touch-action: none; }
@@ -55,9 +55,14 @@ body { background: var(--sky); color: var(--ink); font-family: var(--body); font
 
 #prompt { position: absolute; left: 50%; bottom: calc(22px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); padding: 7px 14px;
   font: 600 18px var(--display); letter-spacing: .03em; white-space: nowrap; }
-#prompt kbd { display: inline-block; min-width: 22px; text-align: center; background: var(--ink); color: #161c1a; border-radius: 3px; padding: 0 5px; margin-right: 6px; font: 700 15px var(--display); }
+#prompt kbd, #kmenu kbd { display: inline-block; min-width: 22px; text-align: center; background: var(--ink); color: #161c1a; border-radius: 3px; padding: 0 5px; margin-right: 6px; font: 700 15px var(--display); }
+#kmenu { position: absolute; left: 50%; bottom: calc(22px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); min-width: 230px; padding: 10px 12px 12px; pointer-events: auto; }
+#kmenu p { margin: 0 0 4px; font: 600 17px var(--display); letter-spacing: .03em; color: var(--gold); }
+#kmenu button { display: block; width: 100%; margin-top: 6px; padding: 6px 10px; border: 0; border-radius: 3px; background: rgba(244, 241, 230, .08); color: var(--ink);
+  font: 600 17px var(--display); letter-spacing: .03em; text-align: left; cursor: pointer; }
+#kmenu button:hover, #kmenu button:focus-visible { background: var(--gold); color: #1a1a14; outline: none; }
 #toast { position: absolute; left: 50%; top: 22%; transform: translateX(-50%); padding: 8px 16px; max-width: min(86vw, 520px); text-align: center;
-  font: 500 15px var(--body); transition: opacity .3s; }
+  font: 500 15px var(--body); white-space: pre-line; transition: opacity .3s; }
 #toast.win { background: var(--gold); color: #1a1a14; font-weight: 600; }
 #hide { position: absolute; left: 50%; top: 12%; transform: translateX(-50%); padding: 6px 16px 8px; text-align: center; white-space: nowrap;
   font: 600 14px var(--display); letter-spacing: .06em; text-transform: uppercase; color: var(--gold); }
@@ -83,6 +88,7 @@ body { background: var(--sky); color: var(--ink); font-family: var(--body); font
 #card .fine { font-size: 11px; color: var(--dim); margin-top: 12px; }
 #card .fine a { color: inherit; }
 #fail { position: absolute; inset: 0; display: grid; place-items: center; padding: 24px; text-align: center; font-size: 15px; color: #16201c; }
+@media (pointer: coarse) { #kmenu { bottom: calc(160px + env(safe-area-inset-bottom, 0px)); } }   /* above the joystick and the Use button */
 @media (max-width: 560px) { #mini { width: 108px; height: 108px; } #sign { font-size: 15px; } #speed b { font-size: 30px; } }
 @media (prefers-reduced-motion: reduce) { #stars.evading b { animation: none; } }
 </style>
@@ -92,7 +98,7 @@ body { background: var(--sky); color: var(--ink); font-family: var(--body); font
   <div id="fail" hidden>This game needs WebGL, which this browser or view does not provide.</div>
   <div id="ui">
     <div id="tl"><canvas id="mini" width="296" height="296" aria-label="Minimap"></canvas><div id="sign"><span id="street">Torget</span><small id="near"></small></div></div>
-    <div id="tr"><div id="stars" class="plate" aria-label="Wanted level"></div><div id="count" class="plate">Cars stolen: 0</div><div id="triss" class="plate" hidden></div></div>
+    <div id="tr"><div id="stars" class="plate" aria-label="Wanted level"></div><div id="count" class="plate">Cars stolen: 0</div><div id="triss" class="plate" hidden></div><div id="treats" class="plate" hidden></div></div>
     <div id="bl"><div id="joy" hidden><div id="knob"></div></div></div>
     <div id="br">
       <div id="speed" class="plate" hidden><em id="carname"></em><b id="kmh">0</b><span>km/h</span></div>
@@ -100,6 +106,7 @@ body { background: var(--sky); color: var(--ink); font-family: var(--body); font
     </div>
   </div>
   <div id="prompt" class="plate" hidden></div>
+  <div id="kmenu" class="plate" hidden><p>”Va ska dä va?”</p><button type="button" data-k="triss"><kbd>1</kbd>Trisslott</button><button type="button" data-k="treats"><kbd>2</kbd>Kattgodis (3 st)</button><button type="button" data-k="no"><kbd>Esc</kbd>Nä tack</button></div>
   <div id="toast" class="plate" hidden></div>
   <div id="hide" class="plate" hidden></div>
   <div id="big" hidden><div><h2>Gripen!</h2><p>Busted. The police drop you off at Torget.</p></div></div>
@@ -131,9 +138,10 @@ const S = D.size, HALF = S / 2, N = D.n, E = D.elev;
 const minE = Math.min.apply(null, E);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const wrap = a => { while (a > Math.PI) a -= 2 * Math.PI; while (a < -Math.PI) a += 2 * Math.PI; return a; };
-let seed = 57355;
-const rnd = () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed);
+// seeded streams (mulberry32): rnd() drives the world and gameplay; side systems get their own stream so they don't shift its rolls
+const makeRnd = seed => () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed);
   t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+const rnd = makeRnd(57355);
 const pick = a => a[Math.floor(rnd() * a.length)];
 
 // ---------- terrain height (matches the mesh triangles exactly) ----------
@@ -710,6 +718,87 @@ function updateNpcs(T, dt) {
   for (const n of npcs) updateNpc(n, dt);
 }
 
+// ---------- cats: lounge by the house walls, wander a little, bolt from cars and running feet ----------
+const CAT_MAX = coarse ? 8 : 14, CAT_NEAR = 150, CAT_FAR = 210;   // count around the player; spawn / despawn radius (m)
+const CAT_WALK = 0.7, CAT_RUN = 6.5, CAT_PET_M = 1.6;               // m/s, m/s, reach to pet (m)
+const CAT_SCARE_CAR_M = 12, CAT_SCARE_RUN_M = 5;                    // a moving car / sprinting player closer than this sends it running
+// [coat, ears and paws, chest and muzzle (optional)]
+const CAT_COLS = [['#d9822b', '#f0e0c8'], ['#1e1e20', '#1e1e20'], ['#7d7f84', '#e8e4dc'], ['#ece9e2', '#ece9e2'], ['#8a6a48', '#3f3226'], ['#1e1e20', '#ece9e2', '#ece9e2']];
+const CAT_PET_OK = 0.5, CAT_PET_TREAT_OK = 0.75;   // chance a pet goes well, without / with a treat
+const CAT_SCRATCH_S = 5, CAT_PET_S = 3;            // after a scratch / a good pet the cat can't be petted for this long (s), so E can't be spammed for better odds
+const TREAT_BAG = 3, TREAT_MAX = 9;                                  // treats per bag from the kiosk; how many fit in your pockets
+// \n puts each speaker on their own line in the toast: the cat first, then the player
+const CAT_PET = ['”Mjau.”\n”Ja du ä la en go kisse, du.”', '”Prrrrr…”\n”Hör på’n, han spinner som en EPA-traktor!”', '”Kiss kiss kiss… nämen kom hit då, lilla vän.”',
+  '”Där ja, bakom örona. Dä gillar du, va?”'];
+const CAT_SCRATCH = ['Dä kommer svida ett tag.', 'Dä kommer synas i mårra.', 'Din lilla skitkatt!'].map(t => '”AJAJAJ! Kattafan rev mä! ' + t + '”');
+const CAT_BOLT = ['”Nä men vart ska du? Kom tebaks!”', '”Mjäu!”\n”Jaha, där sprang du. Dä va la dä då.”', '”Du behöver inte springa iväg! Ja ä la inte farli, din lilla fjant!”'];
+let treats = 0;
+const cats = [], catRnd = makeRnd(9094), catPick = a => a[Math.floor(catRnd() * a.length)];
+const catGeo = c => geoCache['cat' + c] || (geoCache['cat' + c] = boxGeo([[0.2, 0.17, 0.42, 0, 0.2, 0, c[0]], [0.17, 0.15, 0.15, 0, 0.31, -0.25, c[0]],
+  [0.05, 0.06, 0.03, -0.05, 0.41, -0.26, c[1]], [0.05, 0.06, 0.03, 0.05, 0.41, -0.26, c[1]], [0.03, 0.03, 0.01, -0.04, 0.33, -0.33, '#c8d24a'], [0.03, 0.03, 0.01, 0.04, 0.33, -0.33, '#c8d24a'],
+  [0.05, 0.13, 0.05, -0.07, 0.06, -0.15, c[1]], [0.05, 0.13, 0.05, 0.07, 0.06, -0.15, c[1]], [0.05, 0.13, 0.05, -0.07, 0.06, 0.15, c[1]], [0.05, 0.13, 0.05, 0.07, 0.06, 0.15, c[1]],
+  [0.04, 0.3, 0.04, 0, 0.4, 0.22, c[0]], ...(c[2] ? [[0.14, 0.12, 0.02, 0, 0.21, -0.215, c[2]], [0.09, 0.05, 0.01, 0, 0.27, -0.33, c[2]]] : [])]));
+// a spot just outside a random wall of a house in the cell around (x, z)
+function spawnCat(T, minD) {
+  for (let t = 0; t < 10; t++) {
+    const ang = catRnd() * Math.PI * 2, dist = minD + catRnd() * (CAT_NEAR - minD), l = bGrid.get(Math.floor((T.x + Math.sin(ang) * dist) / BC) + ',' + Math.floor((T.z + Math.cos(ang) * dist) / BC));
+    if (!l) continue;
+    const p = bPolys[catPick(l)].p, i = Math.floor(catRnd() * p.length / 2) * 2, j = (i + 2) % p.length, ex = p[j] - p[i], ez = p[j + 1] - p[i + 1], len = Math.hypot(ex, ez); if (len < 2) continue;
+    const s = catRnd(), mx = p[i] + ex * s, mz = p[i + 1] + ez * s, out = 0.6 + catRnd() * 1.4; let nx = ez / len, nz = -ex / len;
+    if (inPoly(p, mx + nx * 0.3, mz + nz * 0.3)) { nx = -nx; nz = -nz; }
+    const o = { x: mx + nx * out, z: mz + nz * out }; collide(o, 0.3);
+    if (Math.abs(o.x) > HALF - 10 || Math.abs(o.z) > HALF - 10 || inWater(o.x, o.z) || Math.hypot(o.x - T.x, o.z - T.z) < minD) continue;
+    const mesh = new THREE.Mesh(catGeo(catPick(CAT_COLS)), paintMat); mesh.castShadow = true; mesh.rotation.order = 'YXZ'; mesh.scale.setScalar(1.1 + catRnd() * 0.25); blob(mesh, 0.32, 0.55);
+    const k = { x: o.x, z: o.z, h: Math.atan2(nx, -nz), want: 0, state: 'sit', t: 3 + catRnd() * 15, nope: 0, phase: 0, mesh }; k.want = k.h;
+    scene.add(mesh); cats.push(k); return;
+  }
+}
+function updateCat(k, dt) {
+  let fx = 0, fz = 0;
+  for (const c of cars) if (Math.abs(c.v) > 2) { const dx = k.x - c.x, dz = k.z - c.z, d = Math.hypot(dx, dz); if (d < CAT_SCARE_CAR_M && d > 0.01) { fx += dx / d; fz += dz / d; } }
+  if (!inCar && !inside && (joy.on ? player.speed > 7.5 : keys.run && player.speed > 6)) {   // the stick passes 6 m/s on a normal push, so only a full push counts
+    const dx = k.x - player.x, dz = k.z - player.z, d = Math.hypot(dx, dz); if (d < CAT_SCARE_RUN_M && d > 0.01) { fx += dx / d; fz += dz / d; } }
+  if (fx || fz) { k.state = 'flee'; k.t = 1.5 + catRnd(); k.want = Math.atan2(fx, -fz); }
+  k.t -= dt; if (k.nope > 0) k.nope -= dt;
+  if (k.t <= 0) { if (k.state === 'sit') { k.state = 'walk'; k.t = 2 + catRnd() * 4; k.want = catRnd() * Math.PI * 2; } else { k.state = 'sit'; k.t = 4 + catRnd() * 16; } }
+  const sp = k.state === 'flee' ? CAT_RUN : k.state === 'walk' ? CAT_WALK : 0;
+  k.h = wrap(k.h + wrap(k.want - k.h) * Math.min(1, dt * (sp > 1 ? 10 : 3)));
+  if (sp) { const nx = k.x + Math.sin(k.h) * sp * dt, nz = k.z - Math.cos(k.h) * sp * dt;
+    if (inWater(nx, nz)) k.want = wrap(k.h + Math.PI); else { k.x = clamp(nx, -HALF + 2, HALF - 2); k.z = clamp(nz, -HALF + 2, HALF - 2); }
+    if (collide(k, 0.25) && k.state === 'walk') k.want = wrap(k.h + (catRnd() < 0.5 ? 1.6 : -1.6));
+    k.phase += sp * dt * 9; }
+  k.mesh.position.set(k.x, groundAt(k.x, k.z) + (sp ? Math.abs(Math.sin(k.phase)) * 0.03 : 0), k.z); k.mesh.rotation.y = -k.h;
+  k.mesh.rotation.x += ((k.state === 'sit' ? 0.3 : 0) - k.mesh.rotation.x) * Math.min(1, dt * 4);   // sitting: front up, rear down
+}
+let catT = 0, catX = 1e9, catZ = 1e9;
+function updateCats(T, dt) {
+  catT -= dt;
+  if (catT <= 0) { catT = 0.5;
+    const jump = Math.hypot(T.x - catX, T.z - catZ) > 120; catX = T.x; catZ = T.z;
+    for (let i = cats.length - 1; i >= 0; i--) if (Math.hypot(cats[i].x - T.x, cats[i].z - T.z) > CAT_FAR) { scene.remove(cats[i].mesh); cats.splice(i, 1); }
+    for (let i = 0; i < (jump ? 30 : 2) && cats.length < CAT_MAX; i++) spawnCat(T, jump ? 4 : 80);
+  }
+  for (const k of cats) updateCat(k, dt);
+}
+// E goes to the closer of a cat and a place, so a cat sitting by the kiosk or a safehouse door can still be petted
+function catFirst(kt, pl) { return !!kt && (!pl || kmenu.hidden && Math.hypot(kt.x - player.x, kt.z - player.z) < Math.hypot(pl.x - player.x, pl.z - player.z)); }
+function nearCat() { if (inCar || inside) return null; let best = null, bd = CAT_PET_M;
+  for (const k of cats) { const d = Math.hypot(k.x - player.x, k.z - player.z); if (d < bd && k.state !== 'flee' && k.nope <= 0) { bd = d; best = k; } } return best; }
+// a treat goes into the cat whatever happens next
+function petCat(k) {
+  const treat = treats > 0, r = catRnd(), pre = treat ? '”Här, en godisbit.”\n' : '';
+  if (treat) { treats--; drawTreats(); }
+  k.want = Math.atan2(player.x - k.x, -(player.z - k.z));
+  if (r < (treat ? CAT_PET_TREAT_OK : CAT_PET_OK)) { k.state = 'sit'; k.t = 6 + catRnd() * 6; k.nope = CAT_PET_S; toast(pre + catPick(CAT_PET), 3); }
+  else if (catRnd() < 0.5) { k.state = 'sit'; k.t = 3 + catRnd() * 4; k.nope = CAT_SCRATCH_S; toast(pre + catPick(CAT_SCRATCH), 3.5); }
+  else { k.state = 'flee'; k.t = 2 + catRnd(); k.want = Math.atan2(k.x - player.x, -(k.z - player.z)); toast(pre + catPick(CAT_BOLT), 3); }
+}
+function buyTreats() {
+  if (treats >= TREAT_MAX) { toast('”Nämen, du har ju fickera fulla redan!”', 2.5); return; }
+  treats = Math.min(TREAT_MAX, treats + TREAT_BAG); drawTreats(); toast('”En påse kattgodis, varsågo. Kattera ä tôcka i dä.”', 4);
+}
+function drawTreats() { const el = $('treats'); el.hidden = false; el.textContent = 'Cat treats: ' + treats; }
+
 // ---------- player ----------
 const HOME = { x: -8.9, z: 30.1 };
 const player = { x: HOME.x, z: HOME.z, h: 0, speed: 0, phase: 0, mesh: personParts('#f2c230', '#2b3a55') };
@@ -755,6 +844,11 @@ function addPlace(kind, name, x, z, color) {
   bPolys.push({ p: [x - 1.5, z - 1.1, x + 1.5, z - 1.1, x + 1.5, z + 1.1, x - 1.5, z + 1.1], x0: x - 1.5, x1: x + 1.5, z0: z - 1.1, z1: z + 1.1 }); l.push(bi);
   addPlace('kiosk', 'Kiosken', x, z + 2.3, 0xf2c230);
 })();
+// one lucka, several things to buy: E opens a small menu (1 / 2 / Esc, or tap), walking away closes it
+const kmenu = $('kmenu');
+function closeKiosk() { kmenu.hidden = true; }
+function kioskPick(k) { closeKiosk(); if (k === 'triss') scratch(); else if (k === 'treats') buyTreats(); }
+kmenu.addEventListener('click', e => { const b = e.target.closest('button'); if (b) { kioskPick(b.dataset.k); canvas.focus(); } });
 function nearPlace() { if (inCar) return null; for (const p of places) if (Math.hypot(p.x - player.x, p.z - player.z) < 2.2) return p; return null; }
 function enterHouse(p) {
   if (police.some(c => Math.hypot(c.x - p.x, c.z - p.z) < SAFE_SEEN)) { toast('The police can see you. Get further ahead of them before you go inside.', 3); return; }
@@ -788,6 +882,8 @@ let camYaw = 0.6, camPitch = 0.34, lookOff = 0, lookIdle = 9;
 const keys = {}, joy = { x: 0, y: 0, on: false };
 const KEYMAP = { KeyW: 'up', ArrowUp: 'up', KeyS: 'down', ArrowDown: 'down', KeyA: 'left', ArrowLeft: 'left', KeyD: 'right', ArrowRight: 'right', Space: 'brake', ShiftLeft: 'run', ShiftRight: 'run' };
 addEventListener('keydown', e => { if (!started) return; const k = KEYMAP[e.code];
+  if (!kmenu.hidden && /^(Digit|Numpad)[12]$|^Escape$/.test(e.code)) { kioskPick(e.code === 'Escape' ? 'no' : e.code.endsWith('1') ? 'triss' : 'treats'); return; }
+  if (kmenu.contains(e.target)) return;                       // Enter / Space on a focused menu button: let the button's own click handle it
   if (k) { keys[k] = true; e.preventDefault(); } else if ((e.code === 'KeyE' || e.code === 'KeyF' || e.code === 'Enter') && !e.repeat) action(); else if (e.code === 'KeyR') respawn(); });
 addEventListener('keyup', e => { const k = KEYMAP[e.code]; if (k) keys[k] = false; });
 addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
@@ -853,8 +949,9 @@ function nearestCar() { let best = null, bd = 4.4;
 function action() {
   if (!started || bigT > 0) return;
   if (inside) { leaveHouse(); return; }
-  const pl = nearPlace();
-  if (pl) { if (pl.kind === 'safe') enterHouse(pl); else scratch(); return; }
+  const pl = nearPlace(), kt = nearCat();
+  if (catFirst(kt, pl)) { petCat(kt); return; }
+  if (pl) { if (pl.kind === 'safe') enterHouse(pl); else kmenu.hidden = !kmenu.hidden; return; }
   if (inCar) {
     if (Math.abs(pcar.v) > 3) { toast('Slow down before you get out.', 2); return; }
     player.x = pcar.x - Math.cos(pcar.h) * 2; player.z = pcar.z - Math.sin(pcar.h) * 2; player.h = pcar.h; collide(player, 0.5);
@@ -925,6 +1022,7 @@ function frame(now) {
   const T = inCar ? pcar : player;
   for (const c of cars) if (c.mode === 'ai') updateTraffic(c, dt, T);
   updateNpcs(T, dt);
+  updateCats(T, dt);
   while (police.length < stars) spawnPolice();
   if (stars > 0) {
     let md = 1e9; for (const p of police) md = Math.min(md, updatePolice(p, dt, T, player.speed));
@@ -952,11 +1050,13 @@ function frame(now) {
   // HUD
   if (toastT > 0) { toastT -= dt; if (toastT <= 0.3) $('toast').style.opacity = 0; if (toastT <= 0) $('toast').hidden = true; }
   signT -= dt; if (signT <= 0) { signT = 0.25; updateSign(T);
-    const pr = $('prompt'), pl = started && !inside ? nearPlace() : null, c = started && !inCar && !inside ? nearestCar() : null;
+    const pr = $('prompt'), pl = started && !inside ? nearPlace() : null, kt = started ? nearCat() : null, c = started && !inCar && !inside ? nearestCar() : null;
     $('hide').hidden = !inside;
+    if (!kmenu.hidden && (!pl || pl.kind !== 'kiosk')) closeKiosk();
     if (inside) { $('hide').innerHTML = stars ? 'Lying low<b>' + Math.floor(Math.ceil(Math.max(0, hideT)) / 60) + ':' + String(Math.ceil(Math.max(0, hideT)) % 60).padStart(2, '0') + '</b>' : 'Safehouse · ' + inside.name;
       pr.hidden = false; pr.innerHTML = '<kbd>E</kbd>Go outside'; }
-    else if (pl) { pr.hidden = false; pr.innerHTML = '<kbd>E</kbd>' + (pl.kind === 'safe' ? 'Go inside the safehouse' : 'Skrapa en trisslott'); }
+    else if (catFirst(kt, pl)) { pr.hidden = false; pr.innerHTML = '<kbd>E</kbd>Pet the cat' + (treats ? ' (offer a treat)' : ''); }
+    else if (pl) { pr.hidden = !kmenu.hidden; pr.innerHTML = '<kbd>E</kbd>' + (pl.kind === 'safe' ? 'Go inside the safehouse' : 'Handla i kiosken'); }
     else if (inCar && !coarse) { pr.hidden = Math.abs(pcar.v) > 3; pr.innerHTML = '<kbd>E</kbd>Get out'; }
     else if (c) { pr.hidden = false; pr.innerHTML = '<kbd>E</kbd>' + (c.owned ? 'Get in the ' : 'Steal the ') + c.T.name; }
     else pr.hidden = true;
@@ -969,6 +1069,6 @@ $('go').addEventListener('click', () => { started = true; $('intro').hidden = tr
 resize(); requestAnimationFrame(frame);
 
 // ---------- test hook: read-only state for the smoke tests (tests/e2e), so they do not have to read pixels ----------
-window.__joyride = { state: () => { const n = nearestCar(); return { started, x: player.x, z: player.z, inCar, car: pcar ? pcar.type : null, near: n ? n.mode : null, stars }; } };
+window.__joyride = { state: () => { const n = nearestCar(); return { started, x: player.x, z: player.z, inCar, car: pcar ? pcar.type : null, near: n ? n.mode : null, stars, cats: cats.length, treats }; } };
 })();
 </script>

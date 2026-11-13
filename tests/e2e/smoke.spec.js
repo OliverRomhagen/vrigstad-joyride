@@ -82,6 +82,34 @@ test.describe('game (index.html)', () => {
     await page.screenshot({ path: testInfo.outputPath('game-in-volvo.png') });
     expect(errors).toEqual([]);
   });
+
+  test('cats are around, and the kiosk sells cat treats from its menu', async ({ page }, testInfo) => {
+    const errors = watchErrors(page);
+    await page.goto('/index.html');
+    await page.locator('#go').click();
+    await expect.poll(async () => (await state(page)).cats).toBeGreaterThan(0);   // Torget is built-up, so cats spawn at once
+    expect(await state(page)).toMatchObject({ treats: 0 });
+
+    // With the camera as Start leaves it, the kiosk lucka is about 4.6 m to the player's left.
+    await page.keyboard.down('KeyA');
+    await expect.poll(async () => page.locator('#prompt').textContent(), { intervals: [50] }).toBe('EHandla i kiosken');
+    await page.keyboard.up('KeyA');
+
+    await page.keyboard.press('KeyE');
+    await expect(page.locator('#kmenu')).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath('game-kiosk-menu.png') });
+    await page.keyboard.press('Digit2');
+    await expect(page.locator('#kmenu')).toBeHidden();
+    await expect(page.locator('#treats')).toHaveText('Cat treats: 3');
+    expect(await state(page)).toMatchObject({ treats: 3 });
+
+    await page.keyboard.press('KeyE');
+    await expect(page.locator('#kmenu')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#kmenu')).toBeHidden();
+    expect(await state(page)).toMatchObject({ treats: 3 });
+    expect(errors).toEqual([]);
+  });
 });
 
 test.describe('map (map.html)', () => {
