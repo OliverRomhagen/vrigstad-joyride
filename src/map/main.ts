@@ -3,11 +3,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import D from '../../data/vrigstad.json';
-
-// Keep the colour and light maths of three r128, which the look was tuned with: colours are used as written, the
-// output is not sRGB-encoded, and light intensities are scaled by π because r155 dropped the legacy light units.
-THREE.ColorManagement.enabled = false;
-const LEGACY_LIGHT = Math.PI;
+import { LEGACY_LIGHT } from '../world/three-legacy';
 
 (function () {
 'use strict';
@@ -45,7 +41,7 @@ let renderer;
 try { renderer = new THREE.WebGLRenderer({ canvas, antialias: true }); }
 catch (err) { document.getElementById('fail').hidden = false; document.getElementById('ui').hidden = true; return; }
 renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
-renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
+renderer.outputColorSpace = THREE.LinearSRGBColorSpace;   // as in r128: the map's look was tuned without sRGB output encoding
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFShadowMap;
 renderer.shadowMap.autoUpdate = false;

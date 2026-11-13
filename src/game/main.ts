@@ -2,11 +2,7 @@
 // Moved as-is from the single-file prototype (#44); it gets types as it is split into modules.
 import * as THREE from 'three';
 import D from '../../data/vrigstad.json';
-
-// Keep the colour and light maths of three r128, which the look was tuned with: colours are used as written, and light
-// intensities are scaled by π because r155 dropped the legacy light units (a 0.62 light then equals 0.62 * π now).
-THREE.ColorManagement.enabled = false;
-const LEGACY_LIGHT = Math.PI;
+import { LEGACY_LIGHT } from '../world/three-legacy';
 
 (function () {
 'use strict';
@@ -338,19 +334,19 @@ function collide(o, r) {
   ];
   const BIRCH_SHARE = 0.3, m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), v = new THREE.Vector3(), s = new THREE.Vector3(), c = new THREE.Color();
   const N = spots.length / 3, kind = i => hash(spots[i * 3], spots[i * 3 + 1], 1) < BIRCH_SHARE ? 1 : 0;
-  // one InstancedMesh per kind and cell, placed at the cell centre, so the main and shadow passes cull whole cells (three bounds an InstancedMesh by all its instances)
-  const TREE_CELL_M = 400, cellOf = v => Math.floor((v + HALF) / TREE_CELL_M), cellMid = k => k * TREE_CELL_M + TREE_CELL_M / 2 - HALF;
+  // one InstancedMesh per kind and cell, so the main and shadow passes cull whole cells (three bounds an InstancedMesh by its instances)
+  const TREE_CELL_M = 400, cellOf = v => Math.floor((v + HALF) / TREE_CELL_M);
   KINDS.forEach((kd, ki) => {
     const cells = new Map(); for (let i = 0; i < N; i++) if (kind(i) === ki) { const k = cellOf(spots[i * 3]) + ',' + cellOf(spots[i * 3 + 1]); let l = cells.get(k); if (!l) cells.set(k, l = []); l.push(i); }
     const crownMat = new THREE.MeshLambertMaterial({ color: 0xffffff }), trunkMat = new THREE.MeshLambertMaterial({ color: col(kd.bark), side: THREE.DoubleSide });
     const lo = col(kd.leaf[0]), hiC = col(kd.leaf[1]);
-    for (const [k, idx] of cells) { const [ci, cj] = k.split(',').map(Number), ox = cellMid(ci), oz = cellMid(cj), oy = hAt(ox, oz);
+    for (const idx of cells.values()) {
       const crown = new THREE.InstancedMesh(kd.crown, crownMat, idx.length), trunk = new THREE.InstancedMesh(kd.trunk, trunkMat, idx.length);
       idx.forEach((i, j) => { const x = spots[i * 3], z = spots[i * 3 + 1], sc = spots[i * 3 + 2];
         e.set((hash(x, z, 2) - 0.5) * 0.1, hash(x, z, 3) * 6.283, (hash(x, z, 4) - 0.5) * 0.1); q.setFromEuler(e);
-        m4.compose(v.set(x - ox, hAt(x, z) - 0.3 - oy, z - oz), q, s.set(sc, sc * (0.85 + hash(x, z, 5) * 0.3), sc));
+        m4.compose(v.set(x, hAt(x, z) - 0.3, z), q, s.set(sc, sc * (0.85 + hash(x, z, 5) * 0.3), sc));
         crown.setMatrixAt(j, m4); trunk.setMatrixAt(j, m4); crown.setColorAt(j, c.copy(lo).lerp(hiC, hash(x, z, 6))); });
-      for (const m of [crown, trunk]) { m.position.set(ox, oy, oz); m.castShadow = true; scene.add(m); } }
+      for (const m of [crown, trunk]) { m.castShadow = true; scene.add(m); } }
   });
   // bake a soft shadow under every tree into the ground texture (the minimap shows them too)
   ctx.globalAlpha = 0.5;
