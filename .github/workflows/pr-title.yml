@@ -31,6 +31,7 @@ jobs:
             style
             chore
             data
+            revert
           # Keep in sync with the scope: labels in .github/labels.yml.
           scopes: |
             world
@@ -43,8 +44,10 @@ jobs:
             minigames
             architecture
           requireScope: false
-          subjectPattern: ^(?![A-Z]).+[^.]$
+          # The action builds the RegExp without the u flag, so no \p{Lu}: list the Swedish capitals.
+          subjectPattern: ^(?![A-ZÅÄÖ]).+[^.]$
           subjectPatternError: |
             The summary "{subject}" in "{title}" should start in lower case and not end with a period.
           # A one-commit PR squashes to that commit's message, not the title: check it too.
+          # Remove once the repo's squash setting defaults to the PR title.
           validateSingleCommit: true

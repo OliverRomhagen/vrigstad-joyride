@@ -46,13 +46,13 @@ Every commit message **and every PR title** follows [Conventional Commits](https
 <type>(<optional scope>): <imperative summary, lower case, no period>
 ```
 
-- Types: `feat` (new gameplay or feature), `fix`, `perf`, `refactor` (no behaviour change), `docs`, `test`, `build` (Vite, npm, `tools/build.py`), `ci`, `style` (formatting only), `chore`, and `data` for changes to `data/` or the map pipeline.
+- Types: `feat` (new gameplay or feature), `fix`, `perf`, `refactor` (no behaviour change), `docs`, `test`, `build` (Vite, npm, `tools/build.py`), `ci`, `style` (formatting only), `chore`, `data` for changes to `data/` or the map pipeline, and `revert`.
 - Scopes are optional and name the area. They are the same list as the `scope:` labels (see Tickets): `world`, `npc`, `police`, `vehicles`, `player`, `hud`, `audio`, `minigames`, `architecture`.
 - Examples: `feat(police): add roadblocks at three stars`, `fix(hud): keep street sign inside safe area on iPhone`, `refactor(world): share terrain code between game and map`, `data: refresh OSM extract`.
 - Summary under ~70 characters. Add a body for the *why* when it isn't obvious.
 - Release notes are generated from PR titles (see "Releases" in the README), and the type sets the version bump: `feat` → minor, `fix` / `perf` → patch.
 - Merge PRs with **squash**. The PR title should become the commit subject, so it must follow the same format. (This needs the repo's squash setting to use the PR title; until the owner changes that, check the squash commit title when merging.)
-- The `PR title` check (`.github/workflows/pr-title.yml`) enforces the types, the scopes and the lower-case summary with no period. A PR with a single commit squashes to that commit's message, so the check validates it too. The summary length isn't checked.
+- The `PR title` check (`.github/workflows/pr-title.yml`) enforces the types, the scopes and the lower-case summary with no period. Until the squash setting uses the PR title, a PR with a single commit squashes to that commit's message, so the check validates it too. The summary length isn't checked. A summary can't start with a capital, so rephrase one that would start with a place name (`fix(world): fill Slättsjön to the shore`, not `fix(world): Slättsjön fills to the shore`), and retitle a GitHub "Revert" PR as `revert: …`.
 
 ### Tickets
 

@@ -1,6 +1,7 @@
 <!-- Title: Conventional Commits, e.g. `feat(police): add roadblocks at three stars`. A check enforces it. -->
 
 Closes #
+<!-- or "Part of #" if it doesn't fully close the issue -->
 
 ## What changed
 
