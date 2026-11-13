@@ -145,9 +145,10 @@ const S = D.size, HALF = S / 2, N = D.n, E = D.elev;
 const minE = Math.min.apply(null, E);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const wrap = a => { while (a > Math.PI) a -= 2 * Math.PI; while (a < -Math.PI) a += 2 * Math.PI; return a; };
-let seed = 57355;
-const rnd = () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed);
+// seeded streams (mulberry32): rnd() drives the world and gameplay; side systems get their own stream so they don't shift its rolls
+const makeRnd = seed => () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed);
   t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+const rnd = makeRnd(57355);
 const pick = a => a[Math.floor(rnd() * a.length)];
 
 // ---------- terrain height (matches the mesh triangles exactly) ----------
@@ -738,7 +739,7 @@ const CAT_PET = ['”Mjau.”\n”Ja du ä la en go kisse, du.”', '”Prrrrr�
 const CAT_SCRATCH = ['Dä kommer svida ett tag.', 'Dä kommer synas i mårra.', 'Din lilla skitkatt!'].map(t => '”AJAJAJ! Kattafan rev mä! ' + t + '”');
 const CAT_BOLT = ['”Nä men vart ska du? Kom tebaks!”', '”Mjäu!”\n”Jaha, där sprang du. Dä va la dä då.”', '”Du behöver inte springa iväg! Ja ä la inte farli, din lilla fjant!”'];
 let treats = 0;
-const cats = [];
+const cats = [], catRnd = makeRnd(9094), catPick = a => a[Math.floor(catRnd() * a.length)];
 const catGeo = c => geoCache['cat' + c] || (geoCache['cat' + c] = boxGeo([[0.2, 0.17, 0.42, 0, 0.2, 0, c[0]], [0.17, 0.15, 0.15, 0, 0.31, -0.25, c[0]],
   [0.05, 0.06, 0.03, -0.05, 0.41, -0.26, c[1]], [0.05, 0.06, 0.03, 0.05, 0.41, -0.26, c[1]], [0.03, 0.03, 0.01, -0.04, 0.33, -0.33, '#c8d24a'], [0.03, 0.03, 0.01, 0.04, 0.33, -0.33, '#c8d24a'],
   [0.05, 0.13, 0.05, -0.07, 0.06, -0.15, c[1]], [0.05, 0.13, 0.05, 0.07, 0.06, -0.15, c[1]], [0.05, 0.13, 0.05, -0.07, 0.06, 0.15, c[1]], [0.05, 0.13, 0.05, 0.07, 0.06, 0.15, c[1]],
@@ -746,15 +747,15 @@ const catGeo = c => geoCache['cat' + c] || (geoCache['cat' + c] = boxGeo([[0.2, 
 // a spot just outside a random wall of a house in the cell around (x, z)
 function spawnCat(T, minD) {
   for (let t = 0; t < 10; t++) {
-    const ang = rnd() * Math.PI * 2, dist = minD + rnd() * (CAT_NEAR - minD), l = bGrid.get(Math.floor((T.x + Math.sin(ang) * dist) / BC) + ',' + Math.floor((T.z + Math.cos(ang) * dist) / BC));
+    const ang = catRnd() * Math.PI * 2, dist = minD + catRnd() * (CAT_NEAR - minD), l = bGrid.get(Math.floor((T.x + Math.sin(ang) * dist) / BC) + ',' + Math.floor((T.z + Math.cos(ang) * dist) / BC));
     if (!l) continue;
-    const p = bPolys[pick(l)].p, i = Math.floor(rnd() * p.length / 2) * 2, j = (i + 2) % p.length, ex = p[j] - p[i], ez = p[j + 1] - p[i + 1], len = Math.hypot(ex, ez); if (len < 2) continue;
-    const s = rnd(), mx = p[i] + ex * s, mz = p[i + 1] + ez * s, out = 0.6 + rnd() * 1.4; let nx = ez / len, nz = -ex / len;
+    const p = bPolys[catPick(l)].p, i = Math.floor(catRnd() * p.length / 2) * 2, j = (i + 2) % p.length, ex = p[j] - p[i], ez = p[j + 1] - p[i + 1], len = Math.hypot(ex, ez); if (len < 2) continue;
+    const s = catRnd(), mx = p[i] + ex * s, mz = p[i + 1] + ez * s, out = 0.6 + catRnd() * 1.4; let nx = ez / len, nz = -ex / len;
     if (inPoly(p, mx + nx * 0.3, mz + nz * 0.3)) { nx = -nx; nz = -nz; }
     const o = { x: mx + nx * out, z: mz + nz * out }; collide(o, 0.3);
     if (Math.abs(o.x) > HALF - 10 || Math.abs(o.z) > HALF - 10 || inWater(o.x, o.z) || Math.hypot(o.x - T.x, o.z - T.z) < minD) continue;
-    const mesh = new THREE.Mesh(catGeo(pick(CAT_COLS)), paintMat); mesh.castShadow = true; mesh.rotation.order = 'YXZ'; mesh.scale.setScalar(1.1 + rnd() * 0.25);
-    const k = { x: o.x, z: o.z, h: Math.atan2(nx, -nz), want: 0, state: 'sit', t: 3 + rnd() * 15, nope: 0, phase: 0, mesh }; k.want = k.h;
+    const mesh = new THREE.Mesh(catGeo(catPick(CAT_COLS)), paintMat); mesh.castShadow = true; mesh.rotation.order = 'YXZ'; mesh.scale.setScalar(1.1 + catRnd() * 0.25);
+    const k = { x: o.x, z: o.z, h: Math.atan2(nx, -nz), want: 0, state: 'sit', t: 3 + catRnd() * 15, nope: 0, phase: 0, mesh }; k.want = k.h;
     scene.add(mesh); cats.push(k); return;
   }
 }
@@ -762,14 +763,14 @@ function updateCat(k, dt) {
   let fx = 0, fz = 0;
   for (const c of cars) if (Math.abs(c.v) > 2) { const dx = k.x - c.x, dz = k.z - c.z, d = Math.hypot(dx, dz); if (d < CAT_SCARE_CAR_M && d > 0.01) { fx += dx / d; fz += dz / d; } }
   if (!inCar && !inside && player.speed > 6) { const dx = k.x - player.x, dz = k.z - player.z, d = Math.hypot(dx, dz); if (d < CAT_SCARE_RUN_M && d > 0.01) { fx += dx / d; fz += dz / d; } }
-  if (fx || fz) { k.state = 'flee'; k.t = 1.5 + rnd(); k.want = Math.atan2(fx, -fz); }
+  if (fx || fz) { k.state = 'flee'; k.t = 1.5 + catRnd(); k.want = Math.atan2(fx, -fz); }
   k.t -= dt; if (k.nope > 0) k.nope -= dt;
-  if (k.t <= 0) { if (k.state === 'sit') { k.state = 'walk'; k.t = 2 + rnd() * 4; k.want = rnd() * Math.PI * 2; } else { k.state = 'sit'; k.t = 4 + rnd() * 16; } }
+  if (k.t <= 0) { if (k.state === 'sit') { k.state = 'walk'; k.t = 2 + catRnd() * 4; k.want = catRnd() * Math.PI * 2; } else { k.state = 'sit'; k.t = 4 + catRnd() * 16; } }
   const sp = k.state === 'flee' ? CAT_RUN : k.state === 'walk' ? CAT_WALK : 0;
   k.h = wrap(k.h + wrap(k.want - k.h) * Math.min(1, dt * (sp > 1 ? 10 : 3)));
   if (sp) { const nx = k.x + Math.sin(k.h) * sp * dt, nz = k.z - Math.cos(k.h) * sp * dt;
     if (inWater(nx, nz)) k.want = wrap(k.h + Math.PI); else { k.x = clamp(nx, -HALF + 2, HALF - 2); k.z = clamp(nz, -HALF + 2, HALF - 2); }
-    if (collide(k, 0.25) && k.state === 'walk') k.want = wrap(k.h + (rnd() < 0.5 ? 1.6 : -1.6));
+    if (collide(k, 0.25) && k.state === 'walk') k.want = wrap(k.h + (catRnd() < 0.5 ? 1.6 : -1.6));
     k.phase += sp * dt * 9; }
   k.mesh.position.set(k.x, hAt(k.x, k.z) + (sp ? Math.abs(Math.sin(k.phase)) * 0.03 : 0), k.z); k.mesh.rotation.y = -k.h;
   k.mesh.rotation.x += ((k.state === 'sit' ? 0.3 : 0) - k.mesh.rotation.x) * Math.min(1, dt * 4);   // sitting: front up, rear down
@@ -788,12 +789,12 @@ function nearCat() { if (inCar || inside) return null; let best = null, bd = CAT
   for (const k of cats) { const d = Math.hypot(k.x - player.x, k.z - player.z); if (d < bd && k.state !== 'flee' && k.nope <= 0) { bd = d; best = k; } } return best; }
 // a treat goes into the cat whatever happens next
 function petCat(k) {
-  const treat = treats > 0, r = rnd(), pre = treat ? '”Här, en godisbit.”\n' : '';
+  const treat = treats > 0, r = catRnd(), pre = treat ? '”Här, en godisbit.”\n' : '';
   if (treat) { treats--; drawTreats(); }
   k.want = Math.atan2(player.x - k.x, -(player.z - k.z));
-  if (r < (treat ? CAT_PET_TREAT_OK : CAT_PET_OK)) { k.state = 'sit'; k.t = 6 + rnd() * 6; toast(pre + pick(CAT_PET), 3); }
-  else if (rnd() < 0.5) { k.state = 'sit'; k.t = 3 + rnd() * 4; k.nope = CAT_SCRATCH_S; toast(pre + pick(CAT_SCRATCH), 3.5); }
-  else { k.state = 'flee'; k.t = 2 + rnd(); k.want = Math.atan2(k.x - player.x, -(k.z - player.z)); toast(pre + pick(CAT_BOLT), 3); }
+  if (r < (treat ? CAT_PET_TREAT_OK : CAT_PET_OK)) { k.state = 'sit'; k.t = 6 + catRnd() * 6; toast(pre + catPick(CAT_PET), 3); }
+  else if (catRnd() < 0.5) { k.state = 'sit'; k.t = 3 + catRnd() * 4; k.nope = CAT_SCRATCH_S; toast(pre + catPick(CAT_SCRATCH), 3.5); }
+  else { k.state = 'flee'; k.t = 2 + catRnd(); k.want = Math.atan2(k.x - player.x, -(k.z - player.z)); toast(pre + catPick(CAT_BOLT), 3); }
 }
 function buyTreats() {
   if (treats >= TREAT_MAX) { toast('”Nämen, du har ju fickera fulla redan!”', 2.5); return; }
@@ -1070,7 +1071,7 @@ $('go').addEventListener('click', () => { started = true; $('intro').hidden = tr
 resize(); requestAnimationFrame(frame);
 
 // ---------- test hook: read-only state for the smoke tests (tests/e2e), so they do not have to read pixels ----------
-window.__joyride = { state: () => { const n = nearestCar(); return { started, x: player.x, z: player.z, inCar, car: pcar ? pcar.type : null, near: n ? n.mode : null, stars }; } };
+window.__joyride = { state: () => { const n = nearestCar(); return { started, x: player.x, z: player.z, inCar, car: pcar ? pcar.type : null, near: n ? n.mode : null, stars, cats: cats.length, treats }; } };
 })();
 </script>
 </body>
