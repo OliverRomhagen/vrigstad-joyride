@@ -520,33 +520,14 @@ const geoCache = {};
 const carGeo = (t, c) => geoCache[t + c] || (geoCache[t + c] = softCar(t, c));
 const BAR_BLUE = col(0x2f6bff), BAR_RED = col(0xff3b30);
 const barMat = new THREE.MeshBasicMaterial({ color: BAR_BLUE.clone() }), barGeo = new THREE.BoxGeometry(1.1, 0.16, 0.3);
-// people: a rounded body in one mesh, with arms and legs on hip and shoulder pivots so they can swing (the front is -z)
-const SKIN = '#e2b796', SHOE = '#2a2522';
-const PERSON = {
-  torso: new THREE.CylinderGeometry(0.2, 0.16, 0.56, 12).scale(1, 1, 0.62).translate(0, 1.13, 0),
-  shoulders: new THREE.SphereGeometry(0.2, 12, 6).scale(1.3, 0.45, 0.65).translate(0, 1.41, 0),
-  hips: new THREE.SphereGeometry(0.17, 10, 6).scale(1.05, 0.55, 0.7).translate(0, 0.84, 0),
-  neck: new THREE.CylinderGeometry(0.055, 0.06, 0.12, 8).translate(0, 1.5, 0),
-  head: new THREE.SphereGeometry(0.135, 14, 10).scale(1, 1.12, 1).translate(0, 1.66, 0),
-  hair: new THREE.SphereGeometry(0.145, 14, 8, 0, Math.PI * 2, 0, Math.PI * 0.55).scale(1, 1.12, 1).rotateX(0.35).translate(0, 1.672, 0.012),   // tilted back so the face shows
-  arm: new THREE.CylinderGeometry(0.06, 0.05, 0.56, 8).translate(0, -0.29, 0), hand: new THREE.SphereGeometry(0.055, 8, 6).translate(0, -0.6, 0),
-  leg: new THREE.CylinderGeometry(0.085, 0.065, 0.76, 8).translate(0, -0.38, 0), shoe: new THREE.SphereGeometry(0.08, 8, 6).scale(1.1, 0.7, 1.9).translate(0, -0.8, -0.04)
-};
 function personParts(shirt, pants, hair) {
   hair = hair || '#5a4632';
-  const P = PERSON, k = shirt + pants + hair;
-  const body = geoCache[k] || (geoCache[k] = mergeGeo([[P.torso, shirt], [P.shoulders, shirt], [P.hips, pants], [P.neck, SKIN], [P.head, SKIN], [P.hair, hair]]));
-  const arm = geoCache['a' + shirt] || (geoCache['a' + shirt] = mergeGeo([[P.arm, shirt], [P.hand, SKIN]]));
-  const leg = geoCache['l' + pants] || (geoCache['l' + pants] = mergeGeo([[P.leg, pants], [P.shoe, SHOE]]));
-  const g = new THREE.Group(), b = new THREE.Mesh(body, paintMat); b.castShadow = true; g.add(b);
-  const limb = (parent, geo, x, y) => { const m = new THREE.Mesh(geo, paintMat); m.position.set(x, y, 0); m.castShadow = true; parent.add(m); return m; };
-  g.legs = [limb(g, leg, -0.095, 0.84), limb(g, leg, 0.095, 0.84)]; g.arms = [limb(b, arm, -0.25, 1.4), limb(b, arm, 0.25, 1.4)]; g.body = b;
-  blob(g, 0.9, 0.9); return g;
-}
-// walk cycle: legs swing, arms swing against them, and the body bobs a little on each step
-function swing(g, phase, amp) {
-  const s = Math.sin(phase) * amp; g.legs[0].rotation.x = s; g.legs[1].rotation.x = -s; g.arms[0].rotation.x = -s * 0.8; g.arms[1].rotation.x = s * 0.8;
-  g.body.position.y = Math.abs(Math.cos(phase)) * 0.03 * Math.min(1, amp * 2);
+  const body = geoCache[shirt + hair] || (geoCache[shirt + hair] = boxGeo([[0.5, 0.65, 0.28, 0, 1.13, 0, shirt], [0.14, 0.6, 0.16, -0.33, 1.12, 0, shirt], [0.14, 0.6, 0.16, 0.33, 1.12, 0, shirt],
+    [0.27, 0.27, 0.27, 0, 1.62, 0, '#e2b796'], [0.29, 0.1, 0.29, 0, 1.78, 0, hair]]));
+  const leg = geoCache[pants] || (geoCache[pants] = boxGeo([[0.19, 0.8, 0.21, 0, -0.4, 0, pants]]));
+  const g = new THREE.Group(), b = new THREE.Mesh(body, paintMat), l = new THREE.Mesh(leg, paintMat), r = new THREE.Mesh(leg, paintMat);
+  l.position.set(-0.13, 0.8, 0); r.position.set(0.13, 0.8, 0); b.castShadow = l.castShadow = r.castShadow = true;
+  g.add(b, l, r); g.legs = [l, r]; blob(g, 0.9, 0.9); return g;
 }
 
 // ---------- cars ----------
@@ -689,7 +670,7 @@ function updateNpc(n, dt) {
   // walking: face the way along the path; standing around: glance at the player when they come close
   const ph = Math.hypot(player.x - n.x, player.z - n.z), want = n.idle > 0 ? (ph < 8 ? Math.atan2(player.x - n.x, -(player.z - n.z)) : n.h) : Math.atan2(dx, -dz);
   n.h = n.first ? want : wrap(n.h + wrap(want - n.h) * Math.min(1, dt * 5)); n.first = false;
-  swing(n.mesh, n.phase, 0.6);
+  const sw = Math.sin(n.phase) * 0.6; n.mesh.legs[0].rotation.x = sw; n.mesh.legs[1].rotation.x = -sw;
   n.mesh.position.set(n.x, hAt(n.x, n.z), n.z); n.mesh.rotation.y = -n.h;
 }
 // keep a crowd around the player that matches how busy the area is; refill everything after a teleport
@@ -915,7 +896,7 @@ function frame(now) {
     } else { player.speed = 0; player.phase *= 0.8; }
     collide(player, 0.5);
     if (!inside) for (const c of cars) { const dx = player.x - c.x, dz = player.z - c.z, d = Math.hypot(dx, dz); if (d < 1.6 && d > 0.01) { player.x += dx / d * (1.6 - d); player.z += dz / d * (1.6 - d); } }
-    swing(player.mesh, player.phase, 0.75);
+    const sw = Math.sin(player.phase) * 0.75; player.mesh.legs[0].rotation.x = sw; player.mesh.legs[1].rotation.x = -sw;
     player.mesh.position.set(player.x, hAt(player.x, player.z) - (wet ? 0.95 : 0), player.z); player.mesh.rotation.y = -player.h;
   }
   const T = inCar ? pcar : player;
