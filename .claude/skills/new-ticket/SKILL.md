@@ -17,8 +17,7 @@ The rules are the **Tickets** section of `AGENTS.md`. Read it first and follow i
 4. **Show the draft and wait.** Print the title, labels, Type, links and body, and ask for a yes or for changes. Create nothing before the person confirms.
 5. **Create and link:**
    ```
-   gh issue create --repo OliverRomhagen/vrigstad-joyride --type <Type> --label <prio> --label <scope> --title "<title>" --body-file <file>
+   gh issue create --repo OliverRomhagen/vrigstad-joyride --type <Type> --label <prio> --label <scope> [--parent <parent>] --title "<title>" --body-file <file>
    gh issue edit <n> --repo OliverRomhagen/vrigstad-joyride --add-blocked-by <m>        # if any
-   gh issue edit <parent> --repo OliverRomhagen/vrigstad-joyride --add-sub-issue <n>    # if any
    ```
    Then reply with the new issue's link.
