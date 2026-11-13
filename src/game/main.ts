@@ -3,6 +3,9 @@
 import * as THREE from 'three';
 import D from '../../data/vrigstad.json';
 import { LEGACY_LIGHT } from '../world/three-legacy';
+import {createDaylightController} from './render/daylight';
+import {createStreetLighting} from './render/street-lighting';
+import {installVisualLab} from './render/visual-lab';
 
 (function () {
 'use strict';
@@ -47,17 +50,29 @@ const scene = new THREE.Scene();
 scene.background = new THREE.Color(HORIZON);
 scene.fog = new THREE.FogExp2(HORIZON, FOG_PER_M);
 const camera = new THREE.PerspectiveCamera(58, 1, 0.8, 4200);
-scene.add(new THREE.HemisphereLight(0xffffff, col(0x9aa58a), 0.62 * LEGACY_LIGHT));
+const hemi=new THREE.HemisphereLight(0xffffff,col(0x9aa58a),.62*LEGACY_LIGHT);scene.add(hemi);
 const sun = new THREE.DirectionalLight(col(0xfff4dd), 0.95 * LEGACY_LIGHT);
 const SUN_DIR = new THREE.Vector3(-0.55, 0.75, 0.37).normalize();
 // sky: a gradient dome that follows the camera and fades into the fog at the horizon
 const dome = new THREE.Mesh(new THREE.SphereGeometry(3000, 32, 16), new THREE.ShaderMaterial({
   side: THREE.BackSide, depthWrite: false, fog: false,
-  uniforms: { top: { value: new THREE.Color(0x5f97c9) }, hor: { value: new THREE.Color(HORIZON) }, sunC: { value: new THREE.Color(0xfff1d0) }, sunDir: { value: SUN_DIR } },
+  uniforms: { top: { value: new THREE.Color(0x5f97c9) }, hor: { value: new THREE.Color(HORIZON) }, sunC: { value: new THREE.Color(0xfff1d0) }, sunDir: { value: SUN_DIR }, daylight:{value:0}, skyBrightness:{value:1}, coverage:{value:0},cloudTime:{value:0},glare:{value:1},warm:{value:0} },
   vertexShader: 'varying vec3 vDir; void main() { vDir = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
   fragmentShader: `uniform vec3 top, hor, sunC, sunDir; varying vec3 vDir;
+    uniform float daylight,skyBrightness,coverage,cloudTime,glare,warm;
+    float hash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
+    float noise(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);return mix(mix(hash(i),hash(i+vec2(1.,0.)),f.x),mix(hash(i+vec2(0.,1.)),hash(i+vec2(1.,1.)),f.x),f.y);}
     void main() { vec3 d = normalize(vDir); vec3 c = mix(hor, top, pow(max(d.y, 0.0), 0.55)); float s = max(dot(d, sunDir), 0.0);
-      gl_FragColor = vec4(c + sunC * (pow(s, 48.0) * 0.6 + pow(s, 6.0) * 0.12), 1.0); }` }));
+      if(daylight<.5){gl_FragColor=vec4(c+sunC*(pow(s,48.)*.6+pow(s,6.)*.12),1.);return;}
+      vec2 p=d.xz/max(.18,d.y+.23)*1.7+vec2(cloudTime,0.);
+      float layer=.62*noise(p)+.27*noise(p*2.3)+.11*noise(p*4.9);
+      float cloud=smoothstep(.59-coverage*.26,.77-coverage*.15,layer)*smoothstep(-.08,.19,d.y)*step(.01,coverage);
+      c=mix(c,mix(vec3(.55,.59,.64),vec3(.94,.94,.91),smoothstep(0.,.6,d.y)),cloud*.85);
+      c*=skyBrightness;
+      float visible=step(.0,sunDir.y);
+      float disc=smoothstep(.99965,.99994,s)*visible;
+      float halo=pow(s,85.)*(.17+.35*warm)*glare*visible;
+      gl_FragColor=vec4(c+sunC*(disc*.78+halo)*(1.-cloud*.85),1.); }` }));
 dome.renderOrder = -1; scene.add(dome);
 // soft round shadow under cars, people and trees, so nothing looks pasted onto the ground
 const blobTex = (function () { const cv = document.createElement('canvas'); cv.width = cv.height = 64; const x = cv.getContext('2d'), g = x.createRadialGradient(32, 32, 0, 32, 32, 32);
@@ -70,6 +85,7 @@ sun.shadow.mapSize.set(2048, 2048);
 Object.assign(sun.shadow.camera, { left: -110, right: 110, top: 110, bottom: -110, near: 50, far: 800 });
 sun.shadow.bias = -0.0006; sun.shadow.normalBias = 0.05;
 scene.add(sun, sun.target);
+const daylight=createDaylightController({sun,hemi,renderer,scene,dome,SUN_DIR,col});
 
 // ---------- ground texture (also feeds the minimap) ----------
 const CW = (coarse || renderer.capabilities.maxTextureSize < 4096) ? 2048 : 4096, K = CW / S;
@@ -353,6 +369,8 @@ function collide(o, r) {
   for (let i = 0; i < N; i++) { const r = 3.4 * spots[i * 3 + 2] * K; ctx.drawImage(blobTex, P(spots[i * 3]) - r, P(spots[i * 3 + 1]) - r, r * 2, r * 2); }
   ctx.globalAlpha = 1; texture.needsUpdate = true;
 })();
+
+const streetLighting=createStreetLighting({scene,camera,roads:R,widths:ROAD_W,height:hAt,coarse,blocked:(x,z)=>inWater(x,z)||bPolys.some(p=>x>p.x0-3&&x<p.x1+3&&z>p.z0-3&&z<p.z1+3)});
 
 // ---------- low-poly models ----------
 // one geometry from [geometry, sRGB colour] parts; the colour attribute is left out when the parts have no colour
@@ -917,6 +935,7 @@ function frame(now) {
   camera.lookAt(T.x, ty + 1.5, T.z);
   sun.target.position.set(T.x, ty, T.z); sun.position.copy(sun.target.position).addScaledVector(SUN_DIR, 400);
   dome.position.copy(camera.position);
+  daylight.update(dt);streetLighting.update(dt,daylight.getHour(),daylight.getSolarElevation());
 
   // HUD
   if (toastT > 0) { toastT -= dt; if (toastT <= 0.3) $('toast').style.opacity = 0; if (toastT <= 0) $('toast').hidden = true; }
@@ -937,8 +956,9 @@ function frame(now) {
 }
 $('go').addEventListener('click', () => { started = true; $('intro').hidden = true; camYaw = 0.6; camPitch = 0.34; canvas.focus();
   toast('Find a car and press E to take it. Occupied cars always get you a wanted star.', 5); });
+installVisualLab(daylight,streetLighting,keys,joy);
 resize(); requestAnimationFrame(frame);
 
 // ---------- test hook: read-only state for the smoke tests (tests/e2e), so they do not have to read pixels ----------
-window.__joyride = { state: () => { const n = nearestCar(); return { started, x: player.x, z: player.z, inCar, car: pcar ? pcar.type : null, near: n ? n.mode : null, stars, cats: cats.length, treats }; } };
+window.__joyride = { state: () => { const n = nearestCar(); return { started, x: player.x, z: player.z, inCar, car: pcar ? pcar.type : null, near: n ? n.mode : null, stars, cats: cats.length, treats, daylight:daylight.state(),streetlights:streetLighting.stats() }; } };
 })();
