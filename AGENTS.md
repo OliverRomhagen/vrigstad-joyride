@@ -58,7 +58,7 @@ GitHub issues are the backlog: every bug, idea and piece of work is one issue.
 - **Write** the outcome in the title ("Police lose you after 18 s out of sight", not "police fix"). The body says the problem, the proposal and when it's done; the issue forms in `.github/ISSUE_TEMPLATE/` ask for exactly that.
 - **Type** every issue in GitHub's Type field, not with a label: `Bug`, `Feature` (new gameplay or content) or `Task` (tech, tooling, docs, or improving an existing feature). The forms set it; from the CLI, `gh issue create --type Feature`. A PR has no type field: its Conventional Commits title is its type.
 - **Label** every issue when you file it, and every PR when you open it:
-  - **A priority**, on issues: `prio:high`, `prio:mid` or `prio:low`. Use `status:future` for options to decide on later. Whoever files an issue picks the priority they think fits; the maintainers change it when they rank differently.
+  - **A priority**, on issues: `prio:high`, `prio:mid` or `prio:low`. Use `status:future` for options to decide on later. A collaborator who files an issue picks the priority they think fits; for issues from people who can't set labels, triage adds it. The maintainers change it when they rank differently.
   - **At most one scope**, if one fits: `scope:world`, `npc`, `police`, `vehicles`, `player`, `hud`, `audio`, `minigames`, `architecture` (`gh label list` says what each covers). If two fit, the issue is probably two issues.
 - Create a new `scope:<area>` label only when several issues need it, with a one-line description, and add it to the commit scopes above in the same PR. Don't create one-off labels for a single issue or PR.
 - **Link** issues by what the link means:
