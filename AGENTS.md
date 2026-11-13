@@ -94,7 +94,7 @@ GitHub issues are the backlog: every bug, idea and piece of work is one issue.
 2. **Simulation doesn't know about rendering.** Gameplay state and rules are plain data and functions: no three.js, no DOM. Rendering reads sim state; it never changes it.
 3. **Input becomes intents.** Gameplay reads `throttle / steer / brake / action`, never key codes or touch events.
 4. **UI is DOM over the canvas.** The HUD and menus are HTML/CSS (Svelte after [#51](https://github.com/OliverRomhagen/vrigstad-joyride/issues/51)). They read from a store and send intents; they never reach into game objects.
-5. **Deterministic where it matters.** Use the seeded `rnd()`, not `Math.random()`, in anything gameplay-related, so tests and future replays and multiplayer work. Adding `rnd()` calls changes every later random value, so world generation will shift; that's expected. (Known exception: the trisslott odds still use `Math.random()`.)
+5. **Deterministic where it matters.** Use the seeded `rnd()`, not `Math.random()`, in anything gameplay-related, so tests and future replays and multiplayer work. Adding `rnd()` calls changes every later random value, so world generation will shift; that's expected. A self-contained side system that rolls every frame (such as the cats) gets its own stream from `makeRnd(seed)`, so it doesn't shift the rolls of everything else. (Known exception: the trisslott odds still use `Math.random()`.)
 
 Until the migration reaches a given rule, don't make the existing code worse in that direction (for example, don't add more three.js calls inside gameplay rules).
 
