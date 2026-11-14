@@ -5,6 +5,7 @@ import { viteSingleFile } from 'vite-plugin-singlefile';
 // the committed builds that GitHub Pages serves until #45. Each page builds to one self-contained file.
 export default defineConfig({
   root: 'src',
-  build: { outDir: '../dist' },
+  // keep @license comments, so the bundled three.js keeps the MIT notice its licence asks for
+  build: { outDir: '../dist', rolldownOptions: { output: { comments: { legal: true } } } },
   plugins: [viteSingleFile()],
 });

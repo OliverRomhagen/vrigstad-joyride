@@ -18,7 +18,7 @@ The teaser and poster are rendered from the game itself by the scripts in `tools
 
 ## Play
 
-Open `index.html` in a browser. It needs WebGL and an internet connection the first time (three.js and the fonts load from a CDN).
+Open `index.html` in a browser. It needs WebGL. The fonts load from a CDN, so offline it falls back to system fonts.
 
 | Action | Keyboard | Phone |
 |---|---|---|
