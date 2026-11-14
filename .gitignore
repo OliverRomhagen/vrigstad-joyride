@@ -6,3 +6,4 @@ tools/trailer/.work/
 node_modules/
 test-results/
 playwright-report/
+dist/

@@ -9,11 +9,11 @@ tools/fetch.sh ──► data/raw/ (osm.json, tile.png)
                        │
 tools/process.py ──────┴──► data/vrigstad.json
                                    │
-tools/build.py ── inlines it at /*DATA*/ ──► index.html  (from src/game.html)
-                                         └─► map.html    (from src/map.html)
+Vite (tools/build.mjs) ── imports it ──► index.html  (from src/index.html + src/game/main.ts)
+                                      └─► map.html    (from src/map.html + src/map/main.ts)
 ```
 
-- Each page is one HTML file: CSS, DOM, and one big script IIFE.
+- Each page is one HTML file (CSS and DOM) and one big script, moved as-is into `main.ts` with `// @ts-nocheck`. Each builds to a single self-contained file (#44).
 - three.js r128 is loaded from a CDN as the global `THREE`.
 - The game keeps all state in module-level variables (`cars`, `player`, `stars`, `inCar`, ...) and runs one `requestAnimationFrame` loop that mixes input, simulation, rendering and HUD updates.
 - The map and the game each have their own copy of the terrain, buildings and trees code.

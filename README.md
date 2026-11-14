@@ -14,7 +14,7 @@ A small open-world driving game set in the real village of Vrigstad, Sweden (57.
   <img src="media/poster.png" width="360" alt="Poster: a red Volvo 240 ahead of the police under the line “Nothing ever happens here”, with the title Vrigstad Joyride">
 </p>
 
-The teaser and poster are rendered from the game itself by the scripts in `tools/trailer/` (`npm install`, then `npm run trailer` and `npm run poster`; needs Node and Chrome).
+The teaser and poster are rendered from the game itself by the scripts in `tools/trailer/` (`npm install` in the repo root and in `tools/trailer/`, then `npm run trailer` and `npm run poster`; needs Node and Chrome).
 
 ## Play
 
@@ -40,22 +40,24 @@ The kiosk on Torget sells trisslotter. One in a thousand wins, and the more losi
 Contributors (human or agent): read [AGENTS.md](AGENTS.md) for conventions, including how tickets are filed, labelled and linked, and [ARCHITECTURE.md](ARCHITECTURE.md) for the structure and where it's heading.
 
 ```
-src/game.html      game source (HTML, CSS, JS) with a /*DATA*/ placeholder
-src/map.html       3D map source, same placeholder
+src/index.html     the game page (HTML, CSS); its code is src/game/main.ts
+src/map.html       the 3D map page; its code is src/map/main.ts
 data/raw/          OpenStreetMap extract (osm.json) and one elevation tile (tile.png)
 data/vrigstad.json processed data: buildings, roads, water, land use, 25 m elevation grid
 tools/fetch.sh     re-downloads data/raw from the Overpass API and Mapzen terrain tiles
 tools/process.py   projects and clips the raw data into data/vrigstad.json
-tools/build.py     runs process.py and writes index.html and map.html
+tools/build.mjs    builds both pages with Vite into dist/, each as one self-contained file, and copies them to index.html and map.html
 ```
 
-Rebuild after changing anything in `src/`:
+It needs Node. Work on it with a dev server, and rebuild after changing anything in `src/`:
 
 ```sh
-python3 tools/build.py
+npm install
+npm run dev      # http://localhost:5173/ is the game, /map.html the map
+npm run build
 ```
 
-Refresh the map data first with `tools/fetch.sh` if you want the latest OpenStreetMap edits. Only the Python standard library is needed.
+Refresh the map data with `tools/fetch.sh` and then `npm run data` if you want the latest OpenStreetMap edits, and then `npm run build`: the data is built into the pages. That part only needs the Python standard library.
 
 ## Tests
 
