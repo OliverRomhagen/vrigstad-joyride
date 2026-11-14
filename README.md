@@ -14,7 +14,7 @@ A small open-world driving game set in the real village of Vrigstad, Sweden (57.
   <img src="media/poster.png" width="360" alt="Poster: a red Volvo 240 ahead of the police under the line “Nothing ever happens here”, with the title Vrigstad Joyride">
 </p>
 
-The teaser and poster are rendered from the game itself by the scripts in `tools/trailer/` (`npm install`, then `npm run trailer` and `npm run poster`; needs Node and Chrome).
+The teaser and poster are rendered from the game itself by the scripts in `tools/trailer/` (`npm install` in the repo root and in `tools/trailer/`, then `npm run trailer` and `npm run poster`; needs Node and Chrome).
 
 ## Play
 
@@ -57,7 +57,7 @@ npm run dev      # http://localhost:5173/ is the game, /map.html the map
 npm run build
 ```
 
-Refresh the map data with `tools/fetch.sh` and then `npm run data` if you want the latest OpenStreetMap edits. That part only needs the Python standard library.
+Refresh the map data with `tools/fetch.sh` and then `npm run data` if you want the latest OpenStreetMap edits, and then `npm run build`: the data is built into the pages. That part only needs the Python standard library.
 
 ## Tests
 

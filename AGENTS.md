@@ -13,9 +13,10 @@ npm install                 # once
 npm run dev                 # dev server with hot reload: the game at http://localhost:5173/, the map at /map.html
 npm run check               # typecheck; run before every commit (lint and unit tests join it in #46 and #52)
 npm run build               # production build into dist/, copied to index.html and map.html in the repo root
+npm run preview             # serve the built dist/ locally
 npx playwright install chromium   # once, for the smoke tests
 npm run test:e2e            # Playwright smoke tests against the built index.html and map.html; build first
-npm run data                # rebuild data/vrigstad.json from data/raw/ (Python standard library only)
+npm run data                # rebuild data/vrigstad.json from data/raw/ (Python standard library only); run npm run build after, the data is built into the pages
 tools/fetch.sh              # re-download OSM + elevation (rarely needed; hits public APIs)
 ```
 
@@ -74,7 +75,7 @@ GitHub issues are the backlog: every bug, idea and piece of work is one issue.
 
 - **Match the surrounding code.** Same naming, comment density and idiom as the file you're in.
 - Current single-file code is dense: 2-space indent, single quotes, semicolons, short local names for hot math (`x`, `z`, `h`, `v`, `dt`), sections marked `// ---------- name ----------`. Keep that style inside `src/game/main.ts` and `src/map/main.ts` until they are split up.
-- New TypeScript code (after #44): formatted by Biome, so don't hand-format. Prefer clear names over the dense style, small modules with one responsibility, named exports, no default exports, `strict` types, no `any` without a comment saying why.
+- New TypeScript code: formatted by Biome (after #46), so don't hand-format. Prefer clear names over the dense style, small modules with one responsibility, named exports, no default exports, `strict` types, no `any` without a comment saying why.
 - Comments explain *why* and non-obvious units or conventions, not what the next line does.
 - No new runtime dependency without saying why in the PR. Dev dependencies (tooling, tests) are fine.
 - Gameplay numbers (speeds, radii, timers) go in named constants near the top of their module, with units in the name or a comment (`EVADE_DIST_M = 170`).
