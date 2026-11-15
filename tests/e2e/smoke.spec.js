@@ -83,6 +83,34 @@ test.describe('game (index.html)', () => {
     expect(errors).toEqual([]);
   });
 
+  test('Space and steering at speed drifts the car, and letting go after a long slide boosts', async ({ page }, testInfo) => {
+    const errors = watchErrors(page);
+    await page.goto('/index.html');
+    await page.locator('#go').click();
+    await page.keyboard.down('KeyD');                             // into the parked Volvo, as in the test above
+    await expect.poll(async () => (await state(page)).near, { intervals: [50] }).not.toBeNull();
+    await page.keyboard.up('KeyD');
+    await expect.poll(async () => (await state(page)).near).toBe('parked');
+    await page.keyboard.press('KeyE');
+    await expect.poll(async () => (await state(page)).inCar).toBe(true);
+
+    await page.keyboard.down('KeyW');
+    await expect.poll(async () => (await state(page)).speed, { intervals: [50] }).toBeGreaterThan(9);
+    await page.keyboard.down('KeyD');
+    await page.keyboard.down('Space');
+    await expect.poll(async () => (await state(page)).drift, { intervals: [50] }).toBe(1);
+    // past the first spark colour (1 s of sliding, in game time: headless frames are slow), unless a wall ends the slide first
+    await expect.poll(async () => { const q = await state(page); return q.charge > 1.05 || !q.drift; }, { intervals: [100], timeout: 20000 }).toBe(true);
+    const held = await state(page);
+    await page.screenshot({ path: testInfo.outputPath('game-drift.png') });
+    await page.keyboard.up('Space');
+    await page.keyboard.up('KeyD');
+    await page.keyboard.up('KeyW');
+    await expect.poll(async () => (await state(page)).drift, { intervals: [20] }).toBe(0);
+    if (held.drift) expect((await state(page)).boost).toBeGreaterThan(0);   // a wall can end the slide early, and the turbo with it
+    expect(errors).toEqual([]);
+  });
+
   test('cats are around, and the kiosk sells cat treats from its menu', async ({ page }, testInfo) => {
     const errors = watchErrors(page);
     await page.goto('/index.html');
