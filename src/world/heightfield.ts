@@ -76,6 +76,16 @@ export class Heightfield {
     return ((h - this.minDm) / 10) * this.exaggeration;
   }
 
+  /**
+   * Height of the elevation sample in column `i` (from the west) and row `j` (from the north): the value `heightAt`
+   * interpolates from there, worked out the same way, so a mesh built on the samples matches the lookup.
+   */
+  sampleHeight(i: number, j: number) {
+    const h = this.elev[j * this.samples + i];
+    if (this.interpolation === 'bilinear') return (h / 10 - this.minElevationM) * this.exaggeration;
+    return ((h - this.minDm) / 10) * this.exaggeration;
+  }
+
   /** The terrain's up vector at (x, z), written into `out`. Normalised as three's Vector3.normalize does. */
   normalAt<T extends Vec3Like>(x: number, z: number, out: T): T {
     const nx = this.heightAt(x - NORMAL_STEP_M, z) - this.heightAt(x + NORMAL_STEP_M, z);

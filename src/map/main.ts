@@ -5,9 +5,11 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import D from '../../data/vrigstad.json';
 import { ROAD_WIDTH_M as ROAD_W } from '../world/data';
 import { Heightfield } from '../world/heightfield';
-import { pointInPolygon as inPoly } from '../world/polygon';
+import { BuildingShellsByMaterial } from '../world/mesh/building-shells';
+import { TerrainMesh } from '../world/mesh/terrain';
 import { makeRnd } from '../world/random';
 import { LEGACY_LIGHT } from '../world/three-legacy';
+import { treeSpots } from '../world/trees';
 
 (function () {
 'use strict';
@@ -151,83 +153,21 @@ function paint(pal) {
 }
 
 // ---- terrain mesh with a solid base ----
-const terrainMat = new THREE.MeshLambertMaterial({ map: texture });
-(function () {
-  const pos = new Float32Array(N * N * 3), uv = new Float32Array(N * N * 2), idx = [];
-  for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
-    const k = j * N + i, x = -HALF + S * i / (N - 1), z = -HALF + S * j / (N - 1);
-    pos[k * 3] = x; pos[k * 3 + 1] = (D.elev[k] / 10 - minE) * EX; pos[k * 3 + 2] = z;
-    uv[k * 2] = i / (N - 1); uv[k * 2 + 1] = 1 - j / (N - 1);
-    if (i < N - 1 && j < N - 1) idx.push(k, k + N, k + 1, k + 1, k + N, k + N + 1);
-  }
-  const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-  g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
-  g.setIndex(idx); g.computeVertexNormals();
-  const m = new THREE.Mesh(g, terrainMat); m.receiveShadow = true; scene.add(m);
-})();
-const earthMat = new THREE.MeshLambertMaterial({ side: THREE.DoubleSide });
-(function () {
-  const v = [], BASE = -45;
-  const edge = (fx) => { for (let i = 0; i < N - 1; i++) {
-    const a = fx(i), b = fx(i + 1);
-    v.push(a[0], a[1], a[2], b[0], b[1], b[2], b[0], BASE, b[2], a[0], a[1], a[2], b[0], BASE, b[2], a[0], BASE, a[2]); } };
-  const c = i => -HALF + S * i / (N - 1);
-  edge(i => [c(i), hAt(c(i), HALF), HALF]); edge(i => [c(i), hAt(c(i), -HALF), -HALF]);
-  edge(i => [HALF, hAt(HALF, c(i)), c(i)]); edge(i => [-HALF, hAt(-HALF, c(i)), c(i)]);
-  const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.Float32BufferAttribute(v, 3)); g.computeVertexNormals();
-  scene.add(new THREE.Mesh(g, earthMat));
-})();
+const terrainMat = new THREE.MeshLambertMaterial({ map: texture }), earthMat = new THREE.MeshLambertMaterial({ side: THREE.DoubleSide });
+const terrain = new TerrainMesh(D, heightfield, { skirtDepthM: 45, material: terrainMat, skirtMaterial: earthMat });
+scene.add(terrain.surface, terrain.skirt);
 
 // ---- buildings ----
-// walls and roof halves of an outline; a pitched roof (g = ridge over the bounding rectangle) is cut to the outline, which gets a corner wherever it crosses the ridge
-// (a copy of the game's roofParts until the shared world module, #48)
-function roofParts(contour, g, top) {
-  if (!g) return { ring: contour, yAt: () => top, sides: [contour] };
-  const [ax, az, bx, bz, w] = g, l = Math.hypot(bx - ax, bz - az), nx = (az - bz) / l, nz = (bx - ax) / l, rise = Math.min(w * 0.7, 5);
-  const off = v => (v.x - ax) * nx + (v.y - az) * nz, yAt = v => top + rise * Math.max(0, 1 - Math.abs(off(v)) / w), ring = [], o = [];
-  contour.forEach((a, i) => { const d = contour[(i + 1) % contour.length], oa = off(a), od = off(d), t = oa / (oa - od); ring.push(a); o.push(oa);
-    if (oa * od < 0) { ring.push(new THREE.Vector2(a.x + (d.x - a.x) * t, a.y + (d.y - a.y) * t)); o.push(0); } });
-  return { ring, yAt, sides: [1, -1].map(s => ring.filter((v, i) => s * o[i] >= 0)).filter(h => h.length > 2) };
-}
+// one mesh per material, so a theme change only recolours them
 const mats = { wall: new THREE.MeshLambertMaterial({ side: THREE.DoubleSide }), roof: new THREE.MeshLambertMaterial({ side: THREE.DoubleSide }),
   lmWall: new THREE.MeshLambertMaterial({ side: THREE.DoubleSide }), lmRoof: new THREE.MeshLambertMaterial({ side: THREE.DoubleSide }) };
-(function () {
-  const buf = { wall: [], roof: [], lmWall: [], lmRoof: [] };
-  for (const b of D.b) {
-    const n = b.p.length / 2, contour = [];
-    let lo = Infinity, hi = -Infinity;
-    for (let i = 0; i < n; i++) { const x = b.p[i * 2], z = b.p[i * 2 + 1], h = hAt(x, z);
-      contour.push(new THREE.Vector2(x, z)); if (h < lo) lo = h; if (h > hi) hi = h; }
-    const base = lo - 1, top = hi + b.h, W = buf[b.k ? 'lmWall' : 'wall'], R = buf[b.k ? 'lmRoof' : 'roof'];
-    const { ring, yAt, sides } = roofParts(contour, b.g, top), m = ring.length;
-    for (let i = 0; i < m; i++) { const a = ring[i], c = ring[(i + 1) % m], ta = yAt(a), tc = yAt(c);
-      W.push(a.x, base, a.y, c.x, base, c.y, c.x, tc, c.y, a.x, base, a.y, c.x, tc, c.y, a.x, ta, a.y); }
-    for (const h of sides) for (const f of THREE.ShapeUtils.triangulateShape(h, []))
-      for (const i of f) R.push(h[i].x, yAt(h[i]), h[i].y);
-    if (b.s) { let cx = 0, cz = 0; for (const v of contour) { cx += v.x / n; cz += v.y / n; }   // spire
-      for (let i = 0; i < n; i++) { const a = contour[i], c = contour[(i + 1) % n]; R.push(a.x, top, a.y, c.x, top, c.y, cx, top + b.s, cz); } }
-  }
-  for (const k in buf) {
-    const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.Float32BufferAttribute(buf[k], 3)); g.computeVertexNormals();
-    const m = new THREE.Mesh(g, mats[k]); m.castShadow = true; m.receiveShadow = true; scene.add(m);
-  }
-})();
+const HOUSE = { walls: 'wall', roof: 'roof' }, LANDMARK = { walls: 'lmWall', roof: 'lmRoof' };   // landmarks: the church and the inn
+scene.add(...new BuildingShellsByMaterial(D, heightfield, { materials: mats, materialsFor: b => b.k ? LANDMARK : HOUSE }).meshes);
 
 // ---- trees in mapped woodland ----
 const treeMat = new THREE.MeshLambertMaterial();
 (function () {
-  const rnd = makeRnd(57355);
-  const spots = [];
-  for (const l of D.l) {
-    if (l.k !== 5) continue;
-    let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
-    for (let i = 0; i < l.p.length; i += 2) { x0 = Math.min(x0, l.p[i]); x1 = Math.max(x1, l.p[i]); z0 = Math.min(z0, l.p[i + 1]); z1 = Math.max(z1, l.p[i + 1]); }
-    const tries = Math.round((x1 - x0) * (z1 - z0) / 95);
-    for (let t = 0; t < tries; t++) { const x = x0 + rnd() * (x1 - x0), z = z0 + rnd() * (z1 - z0); if (inPoly(l.p, x, z)) spots.push(x, z, 0.7 + rnd() * 0.7); }
-  }
+  const spots = treeSpots(D, makeRnd(57355), { squareMetresPerTry: 95, minScale: 0.7, scaleSpread: 0.7 });
   const geo = new THREE.ConeGeometry(3.4, 13, 6); geo.translate(0, 6.5, 0);
   const mesh = new THREE.InstancedMesh(geo, treeMat, spots.length / 3), m4 = new THREE.Matrix4();
   for (let i = 0; i < spots.length / 3; i++) { const s = spots[i * 3 + 2];

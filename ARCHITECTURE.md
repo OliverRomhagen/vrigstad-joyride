@@ -16,7 +16,7 @@ Vite (tools/build.mjs) ── imports it ──► index.html  (from src/index.h
 - Each page is one HTML file (CSS and DOM) and one big script, moved as-is into `main.ts` with `// @ts-nocheck`. Each builds to a single self-contained file (#44).
 - three.js is imported from npm (`three`, `three/addons/...`) and bundled into each page (#47). Both pages keep the colour and light maths of r128, which the look was tuned with: `ColorManagement` is off and light intensities are scaled by π (`LEGACY_LIGHT`), both in `src/world/three-legacy.ts`, which both pages import. Moving to managed colour and retuning is #150.
 - The game keeps all state in module-level variables (`cars`, `player`, `stars`, `inCar`, ...) and runs one `requestAnimationFrame` loop that mixes input, simulation, rendering and HUD updates.
-- `src/world/` (#48) holds the world's data and queries, with no three.js: the data's types and class codes, the height lookup and the seeded random stream, which both pages use, and the roads, water and building footprints with their spatial queries (`nearestRoad`, `groundAt`, `inWater`, `collide`), which only the game uses so far. The terrain, building and tree meshes are still built by each page.
+- `src/world/` (#48) holds the world's data and queries, with no three.js outside `mesh/` and `three-legacy.ts`: the data's types and class codes, the height lookup, the seeded random stream, building shapes and tree spots, which both pages use, and the roads, water and building footprints with their spatial queries (`nearestRoad`, `groundAt`, `inWater`, `collide`), which only the game uses so far. `src/world/mesh/` builds the terrain, the building shells and the game's road ribbons from them. Each page keeps its own look: its ground texture, colours, house details and tree models.
 
 This was the right shape for a prototype. It stops scaling once several people add features at the same time, which is happening now.
 
@@ -27,18 +27,19 @@ pipeline (Python, unchanged) ──► data/vrigstad.json (imported, so it's inl
                                         │
 src/
   world/      shared: heightfield, terrain, roads, buildings, water, trees,
-              spatial queries (nearestRoad, inWater, collide); each page
-              paints its own ground texture, in its own style
+              spatial queries (nearestRoad, inWater, collide)
   game/
     sim/      pure TS game state + rules: player, vehicles, traffic, police,
               wanted level, pedestrians. step(state, input, dt). No three.js, no DOM.
-    render/   three.js scene; syncs meshes from sim state each frame
+    render/   three.js scene and the game's ground texture; syncs meshes
+              from sim state each frame
     input/    keyboard, touch, gamepad ──► Input intents
     audio/    reacts to sim events
     loop.ts   fixed-timestep sim, interpolated render
     store.svelte.ts   HUD state the UI reads
   ui/         Svelte components: HUD, intro, menus, touch controls
-  map/        map page: world/ + orbit camera + Svelte legend
+  map/        map page: world/ + its own ground texture + orbit camera
+              + Svelte legend
 tests/
   unit/       Vitest, against world/ and game/sim/
   e2e/        Playwright smoke tests against the built pages
@@ -90,6 +91,7 @@ Short records so settled questions stay settled. Add one when you make a choice 
 - **Supersedes #23's npm-free approach.** The module split in #23 still applies; the concatenating Python build doesn't. The project chose to grow, and types, tests and a UI layer need a bundler.
 - **Still ships as one `index.html`, for now.** `vite-plugin-singlefile` inlines everything per page, so the game stays a single self-contained file. Switch to normal multi-file output when models and audio make caching worth it (see #44).
 - **Modes are state machines.** Player, wanted level, police AI and app flow become explicit typed state machines in `sim/`, hand-rolled first, with XState only if quests need more (#63).
+- **World meshes are returned, never added to a scene.** Each `src/world/mesh/` builder is a class that hands back its `Object3D`s and frees what it made in `dispose()`; the page adds them. So the game keeps `scene.add(...)`, and the map can mount the same objects in Threlte (#118). Each page passes its look (materials, colours, details) as options and callbacks.
 - **HUD stays DOM; in-world UI uses canvas textures.** HTML-in-canvas (#56) replaces the canvas textures once browsers support it.
 - **No physics engine yet.** Collisions are hand-rolled. Rapier is the candidate when crashes (#40) need more (#54).
 - **No ECS yet.** Plain arrays per system; revisit with miniplex when entity kinds multiply (#55).

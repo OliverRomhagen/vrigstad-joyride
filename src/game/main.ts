@@ -6,17 +6,20 @@ import { BUILDING_CELL_M as BC, BuildingIndex } from '../world/buildings';
 import { ROAD_WIDTH_M as ROAD_W } from '../world/data';
 import { Heightfield } from '../world/heightfield';
 import { clamp } from '../world/math';
+import { PaintedBuildingShells } from '../world/mesh/building-shells';
+import { RoadRibbons } from '../world/mesh/road-ribbons';
+import { TerrainMesh } from '../world/mesh/terrain';
 import { pointInPolygon as inPoly, polygonArea as polyArea, segmentDistance as segDist } from '../world/polygon';
 import { makeRnd } from '../world/random';
-import { nodeKey, ROAD_CELL_M as RC, RoadNetwork, roadLiftM as roadLift } from '../world/roads';
+import { nodeKey, ROAD_CELL_M as RC, RoadNetwork } from '../world/roads';
 import { LEGACY_LIGHT } from '../world/three-legacy';
+import { treeSpots } from '../world/trees';
 import { Water } from '../world/water';
 
 (function () {
 'use strict';
 const $ = id => document.getElementById(id);
-const S = D.size, HALF = S / 2, N = D.n, E = D.elev;
-const minE = Math.min.apply(null, E);
+const S = D.size, HALF = S / 2;
 const wrap = a => { while (a > Math.PI) a -= 2 * Math.PI; while (a < -Math.PI) a += 2 * Math.PI; return a; };
 // seeded streams: rnd() drives the world and gameplay; side systems get their own stream so they don't shift its rolls
 const rnd = makeRnd(57355);
@@ -113,78 +116,21 @@ const texture = new THREE.CanvasTexture(tex2d);
 texture.anisotropy = renderer.capabilities.getMaxAnisotropy(); texture.colorSpace = THREE.SRGBColorSpace;
 
 // ---------- terrain ----------
-(function () {
-  const pos = new Float32Array(N * N * 3), uv = new Float32Array(N * N * 2), idx = [];
-  for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
-    const k = j * N + i;
-    pos[k * 3] = -HALF + S * i / (N - 1); pos[k * 3 + 1] = (E[k] - minE) / 10; pos[k * 3 + 2] = -HALF + S * j / (N - 1);
-    uv[k * 2] = i / (N - 1); uv[k * 2 + 1] = 1 - j / (N - 1);
-    if (i < N - 1 && j < N - 1) idx.push(k, k + N, k + 1, k + 1, k + N, k + N + 1);
-  }
-  const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
-  g.setIndex(idx); g.computeVertexNormals();
-  const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ map: texture })); m.receiveShadow = true; scene.add(m);
-  const far = new THREE.Mesh(new THREE.PlaneGeometry(14000, 14000), new THREE.MeshLambertMaterial({ color: col(0x6f9a5e) }));
-  far.rotation.x = -Math.PI / 2; far.position.y = -1.5; scene.add(far);
-  const v = [], c = i => -HALF + S * i / (N - 1);
-  const edge = fx => { for (let i = 0; i < N - 1; i++) { const a = fx(i), b = fx(i + 1);
-    v.push(a[0], a[1], a[2], b[0], b[1], b[2], b[0], -1.5, b[2], a[0], a[1], a[2], b[0], -1.5, b[2], a[0], -1.5, a[2]); } };
-  edge(i => [c(i), hAt(c(i), HALF), HALF]); edge(i => [c(i), hAt(c(i), -HALF), -HALF]);
-  edge(i => [HALF, hAt(HALF, c(i)), c(i)]); edge(i => [-HALF, hAt(-HALF, c(i)), c(i)]);
-  const sg = new THREE.BufferGeometry(); sg.setAttribute('position', new THREE.Float32BufferAttribute(v, 3)); sg.computeVertexNormals();
-  scene.add(new THREE.Mesh(sg, new THREE.MeshLambertMaterial({ color: col(0x6f8a58), side: THREE.DoubleSide })));
-})();
+const terrain = new TerrainMesh(D, heightfield, { skirtDepthM: 1.5, material: new THREE.MeshLambertMaterial({ map: texture }),
+  skirtMaterial: new THREE.MeshLambertMaterial({ color: col(0x6f8a58), side: THREE.DoubleSide }) });
+const far = new THREE.Mesh(new THREE.PlaneGeometry(14000, 14000), new THREE.MeshLambertMaterial({ color: col(0x6f9a5e) }));
+far.rotation.x = -Math.PI / 2; far.position.y = -1.5;
+scene.add(terrain.surface, far, terrain.skirt);
 
 // ---------- roads: crisp ribbons on the terrain + lookup grid + junction graph ----------
 const roads = new RoadNetwork(D, heightfield), { lines: R, grid: roadGrid, junctions: nodes, driveable } = roads;
 const nearestRoad = roads.nearestRoad.bind(roads), groundAt = roads.groundAt.bind(roads);
-(function () {
-  const bufs = [[], [], [], [], [], [], []], uvs = [[], [], [], [], [], [], []];
-  function ribbon(out, uo, pts, w, lift) {   // uv: one 4 m tile of speckle across and along the road
-    const q = [pts[0]];
-    for (let i = 1; i < pts.length; i++) { const a = pts[i - 1], b = pts[i], n = Math.max(1, Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]) / 6));
-      for (let s = 1; s <= n; s++) q.push([a[0] + (b[0] - a[0]) * s / n, a[1] + (b[1] - a[1]) * s / n]); }
-    let pl, pr, v = 0, pv = 0; const u = w / 4;
-    for (let i = 0; i < q.length; i++) {
-      const a = q[Math.max(0, i - 1)], b = q[Math.min(q.length - 1, i + 1)];
-      let dx = b[0] - a[0], dz = b[1] - a[1]; const L = Math.hypot(dx, dz) || 1; dx /= L; dz /= L;
-      const nx = -dz * w / 2, nz = dx * w / 2;
-      const l = [q[i][0] - nx, 0, q[i][1] - nz], r = [q[i][0] + nx, 0, q[i][1] + nz];
-      l[1] = hAt(l[0], l[2]) + lift; r[1] = hAt(r[0], r[2]) + lift;
-      if (i > 0) { v += Math.hypot(q[i][0] - q[i - 1][0], q[i][1] - q[i - 1][1]) / 4;
-        out.push(pl[0], pl[1], pl[2], l[0], l[1], l[2], r[0], r[1], r[2], pl[0], pl[1], pl[2], r[0], r[1], r[2], pr[0], pr[1], pr[2]);
-        uo.push(0, pv, 0, v, u, v, 0, pv, u, v, u, pv); }
-      pl = l; pr = r; pv = v;
-    }
-  }
-  for (const r of R) { ribbon(bufs[r.c], uvs[r.c], r.p, ROAD_W[r.c], roadLift(r.c)); if (r.c < 2) ribbon(bufs[6], uvs[6], r.p, 0.2, 0.3); }
-  const cols = [0x4c4f52, 0x55585b, 0x606365, 0x74746d, 0xa08c6c, 0xbcae92, 0xe9e7da];
-  const cv = document.createElement('canvas'); cv.width = cv.height = 256; const x = cv.getContext('2d');
-  let ns = 11; const nr = () => (ns = ns * 48271 % 2147483647) / 2147483647;
-  x.fillStyle = '#f7f7f7'; x.fillRect(0, 0, 256, 256); x.globalAlpha = 0.7;
-  for (const c of ['#ffffff', '#cdcdcd', '#dedede']) { x.fillStyle = c; for (let i = 0; i < 1600; i++) x.fillRect(nr() * 256, nr() * 256, 1, 1); }
-  const speck = new THREE.CanvasTexture(cv); speck.wrapS = speck.wrapT = THREE.RepeatWrapping; speck.anisotropy = renderer.capabilities.getMaxAnisotropy(); speck.colorSpace = THREE.SRGBColorSpace;
-  bufs.forEach((b, i) => { if (!b.length) return;
-    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(b, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uvs[i], 2)); g.computeVertexNormals();
-    const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ color: col(cols[i]), map: i < 6 ? speck : null, side: THREE.DoubleSide, polygonOffset: true,
-      polygonOffsetFactor: -2, polygonOffsetUnits: -4 * (i === 6 ? 8 : 6 - i) }));
-    m.receiveShadow = true; m.renderOrder = i === 6 ? 8 : 6 - i; scene.add(m); });
-})();
+scene.add(...new RoadRibbons(roads, heightfield, { anisotropy: renderer.capabilities.getMaxAnisotropy() }).meshes);
 
 // ---------- water ----------
 const water = new Water(D, roads), inWater = water.inWater.bind(water);
 
 // ---------- buildings (painted in Swedish house colours) + collision grid ----------
-// walls and roof halves of an outline; a pitched roof (g = ridge over the bounding rectangle) is cut to the outline, which gets a corner wherever it crosses the ridge
-function roofParts(contour, g, top) {
-  if (!g) return { ring: contour, yAt: () => top, sides: [contour] };
-  const [ax, az, bx, bz, w] = g, l = Math.hypot(bx - ax, bz - az), nx = (az - bz) / l, nz = (bx - ax) / l, rise = Math.min(w * 0.7, 5);
-  const off = v => (v.x - ax) * nx + (v.y - az) * nz, yAt = v => top + rise * Math.max(0, 1 - Math.abs(off(v)) / w), ring = [], o = [];
-  contour.forEach((a, i) => { const d = contour[(i + 1) % contour.length], oa = off(a), od = off(d), t = oa / (oa - od); ring.push(a); o.push(oa);
-    if (oa * od < 0) { ring.push(new THREE.Vector2(a.x + (d.x - a.x) * t, a.y + (d.y - a.y) * t)); o.push(0); } });
-  return { ring, yAt, sides: [1, -1].map(s => ring.filter((v, i) => s * o[i] >= 0)).filter(h => h.length > 2) };
-}
 const buildings = new BuildingIndex(D), { footprints: bPolys, grid: bGrid } = buildings;
 const addFootprint = buildings.addFootprint.bind(buildings), collide = buildings.collide.bind(buildings);
 // house details: windows (a texture on a skin just outside the walls), white corner boards and eave boards, a dark plinth, and a chimney on gabled roofs
@@ -198,54 +144,44 @@ const winTex = (function () {
   t.generateMipmaps = false; t.minFilter = THREE.LinearFilter; return t;   // mips average the mostly transparent tile below alphaTest, so windows would vanish at a distance
 })();
 (function () {
-  const pos = [], cols = [], c = new THREE.Color(), c2 = new THREE.Color(), c3 = new THREE.Color();
+  const c = new THREE.Color(), c2 = new THREE.Color(), c3 = new THREE.Color(), paint = { wall: c, wallFoot: c3, roof: c2 };
   const wp = [], wu = [], tp = [], tc = [], WHITE = col('#f1efe8'), PLINTH = col('#5b5d5b');
   const house = ['#9c3a2c', '#9c3a2c', '#a8452f', '#e8e2d2', '#e8e2d2', '#d9b65a', '#cfc8b8', '#8d9a8f'], big = ['#c9c5bb', '#b8b3a6', '#d6d0c0', '#a7aeb0'];
   // a vertical quad from (x1, z1) to (x2, z2), bottom and top heights at each end
   const quad = (out, x1, z1, x2, z2, b1, t1, b2, t2) => out.push(x1, b1, z1, x2, b2, z2, x2, t2, z2, x1, b1, z1, x2, t2, z2, x1, t1, z1);
   const trim = (k, ...q) => { quad(tp, ...q); for (let i = 0; i < 6; i++) tc.push(k.r, k.g, k.b); };
-  const box = (x, z, y0, y1, s, k) => { const h = s / 2, P = [[x - h, z - h], [x + h, z - h], [x + h, z + h], [x - h, z + h]];
+  const box = (out, x, z, y0, y1, s, k) => { const h = s / 2, P = [[x - h, z - h], [x + h, z - h], [x + h, z + h], [x - h, z + h]], pos = out.positions;
     for (let i = 0; i < 4; i++) { const a = P[i], d = P[(i + 1) % 4]; quad(pos, a[0], a[1], d[0], d[1], y0, y1, y0, y1); }
     pos.push(x - h, y1, z - h, x + h, y1, z + h, x + h, y1, z - h, x - h, y1, z - h, x - h, y1, z + h, x + h, y1, z + h);
-    for (let i = 0; i < 30; i++) cols.push(k.r, k.g, k.b); };
-  D.b.forEach(b => {
-    const n = b.p.length / 2, contour = []; let lo = 1e9, hi = -1e9, area = 0;
-    for (let i = 0; i < n; i++) { const x = b.p[i * 2], z = b.p[i * 2 + 1], h = hAt(x, z), j = (i + 1) % n;
-      contour.push(new THREE.Vector2(x, z)); lo = Math.min(lo, h); hi = Math.max(hi, h); area += x * b.p[j * 2 + 1] - b.p[j * 2] * z; }
-    const wind = Math.sign(area); area = Math.abs(area) / 2;   // wind: +1 or -1 with the outline's winding, to find the outside of each wall
+    for (let i = 0; i < 30; i++) out.colours.push(k.r, k.g, k.b); };
+  // the colours roll rnd() once or twice per house, in data order, before any tree spot
+  const colours = ({ building: b, area }) => {
     c.set(b.k === 2 ? '#9c3a2c' : b.k ? '#efece3' : area > 450 ? pick(big) : pick(house)).convertSRGBToLinear();
     c2.set(b.k === 2 ? '#a8573f' : b.k ? '#3f4447' : rnd() < 0.35 ? '#4d4a48' : '#a8573f').convertSRGBToLinear();
     c3.copy(c).multiplyScalar(0.62);   // walls darken towards the ground
-    const base = lo - 1, top = hi + b.h, { ring, yAt, sides } = roofParts(contour, b.g, top), m = ring.length;
-    for (let i = 0; i < m; i++) { const a = ring[i], d = ring[(i + 1) % m], ta = yAt(a), td = yAt(d);
-      pos.push(a.x, base, a.y, d.x, base, d.y, d.x, td, d.y, a.x, base, a.y, d.x, td, d.y, a.x, ta, a.y);
-      for (const k of [c3, c3, c, c3, c, c]) cols.push(k.r, k.g, k.b); }
-    for (const h of sides) for (const f of THREE.ShapeUtils.triangulateShape(h, [])) for (const i of f) { pos.push(h[i].x, yAt(h[i]), h[i].y); cols.push(c2.r, c2.g, c2.b); }
-    if (b.s) { let cx = 0, cz = 0; for (const v of contour) { cx += v.x / n; cz += v.y / n; }   // spire
-      for (let i = 0; i < n; i++) { const a = contour[i], d = contour[(i + 1) % n]; pos.push(a.x, top, a.y, d.x, top, d.y, cx, top + b.s, cz); for (let k = 0; k < 3; k++) cols.push(c2.r, c2.g, c2.b); } }
-    if (b.k !== 1 && area >= HOUSE_MIN_M2 && area <= HOUSE_MAX_M2) {   // not the church and its tower, not sheds or barns
-      const yb = hi + 0.2, yt = top - 0.25, rows = Math.max(1, Math.round((yt - yb) / STOREY));
-      for (let i = 0; i < m; i++) {
-        const a = ring[i], d = ring[(i + 1) % m], ex = d.x - a.x, ez = d.y - a.y, len = Math.hypot(ex, ez); if (len < 0.4) continue;
-        const ux = ex / len, uz = ez / len, ox = wind * uz, oz = -wind * ux, o = (k, s) => [a.x + ox * k - ux * s, a.y + oz * k - uz * s, d.x + ox * k + ux * s, d.y + oz * k + uz * s];
-        const nwin = Math.round(len / WIN_W);   // whole windows only: the tile stretches a little to fit the wall
-        if (len >= 1.6 && nwin > 0) { quad(wp, ...o(0.04, 0), yb, yt, yb, yt); wu.push(0, 0, nwin, 0, nwin, rows, 0, 0, nwin, rows, 0, rows); }
-        trim(PLINTH, ...o(0.05, 0.05), base, hi + 0.45, base, hi + 0.45);
-        trim(WHITE, ...o(0.06, 0.06), yAt(a) - 0.22, yAt(a) + 0.02, yAt(d) - 0.22, yAt(d) + 0.02);
-        for (const [v, p, s] of [[a, ring[(i + m - 1) % m], 1], [d, ring[(i + 2) % m], -1]]) {   // corner boards where the outline turns
-          const fx = s > 0 ? v.x - p.x : p.x - v.x, fz = s > 0 ? v.y - p.y : p.y - v.y, fl = Math.hypot(fx, fz) || 1;
-          if (Math.abs((fx * uz - fz * ux) / fl) < 0.3) continue;
-          const k = Math.min(0.18, len / 2), cx = v.x + ox * 0.07, cz = v.y + oz * 0.07;
-          trim(WHITE, cx, cz, cx + ux * k * s, cz + uz * k * s, base, yAt(v) - 0.2, base, yAt(v) - 0.2);
-        }
+    return paint;
+  };
+  const details = ({ building: b, ring, yAt, base, top, hi, area, winding: wind }, out) => {
+    if (b.k === 1 || area < HOUSE_MIN_M2 || area > HOUSE_MAX_M2) return;   // not the church and its tower, not sheds or barns
+    const m = ring.length, yb = hi + 0.2, yt = top - 0.25, rows = Math.max(1, Math.round((yt - yb) / STOREY));
+    for (let i = 0; i < m; i++) {
+      const a = ring[i], d = ring[(i + 1) % m], ex = d.x - a.x, ez = d.z - a.z, len = Math.hypot(ex, ez); if (len < 0.4) continue;
+      const ux = ex / len, uz = ez / len, ox = wind * uz, oz = -wind * ux, o = (k, s) => [a.x + ox * k - ux * s, a.z + oz * k - uz * s, d.x + ox * k + ux * s, d.z + oz * k + uz * s];
+      const nwin = Math.round(len / WIN_W);   // whole windows only: the tile stretches a little to fit the wall
+      if (len >= 1.6 && nwin > 0) { quad(wp, ...o(0.04, 0), yb, yt, yb, yt); wu.push(0, 0, nwin, 0, nwin, rows, 0, 0, nwin, rows, 0, rows); }
+      trim(PLINTH, ...o(0.05, 0.05), base, hi + 0.45, base, hi + 0.45);
+      trim(WHITE, ...o(0.06, 0.06), yAt(a) - 0.22, yAt(a) + 0.02, yAt(d) - 0.22, yAt(d) + 0.02);
+      for (const [v, p, s] of [[a, ring[(i + m - 1) % m], 1], [d, ring[(i + 2) % m], -1]]) {   // corner boards where the outline turns
+        const fx = s > 0 ? v.x - p.x : p.x - v.x, fz = s > 0 ? v.z - p.z : p.z - v.z, fl = Math.hypot(fx, fz) || 1;
+        if (Math.abs((fx * uz - fz * ux) / fl) < 0.3) continue;
+        const k = Math.min(0.18, len / 2), cx = v.x + ox * 0.07, cz = v.z + oz * 0.07;
+        trim(WHITE, cx, cz, cx + ux * k * s, cz + uz * k * s, base, yAt(v) - 0.2, base, yAt(v) - 0.2);
       }
-      if (b.g) { const [ax, az, bx, bz, w] = b.g, cx = ax + (bx - ax) * 0.3, cz = az + (bz - az) * 0.3, ry = yAt({ x: cx, y: cz });
-        if (inPoly(b.p, cx, cz)) box(cx, cz, ry - 0.6, ry + 0.9, 0.6, hAt(cx, cz) * 7 % 1 < 0.5 ? col('#8a3b2d') : col('#d8d2c4')); }
     }
-  });
-  const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3)); g.computeVertexNormals();
-  const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide })); m.castShadow = true; m.receiveShadow = true; scene.add(m);
+    if (b.g) { const [ax, az, bx, bz] = b.g, cx = ax + (bx - ax) * 0.3, cz = az + (bz - az) * 0.3, ry = yAt({ x: cx, z: cz });   // chimney, in the shell's buffers
+      if (inPoly(b.p, cx, cz)) box(out, cx, cz, ry - 0.6, ry + 0.9, 0.6, hAt(cx, cz) * 7 % 1 < 0.5 ? col('#8a3b2d') : col('#d8d2c4')); }
+  };
+  scene.add(new PaintedBuildingShells(D, heightfield, { material: new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }), colours, extra: details }).mesh);
   // window skin first, trim after: one mesh, two materials
   const sg = new THREE.BufferGeometry(), nw = wp.length / 3, nt = tp.length / 3, sc = new Float32Array((nw + nt) * 3).fill(1);
   sc.set(tc, nw * 3);
@@ -258,12 +194,7 @@ const winTex = (function () {
 
 // ---------- trees: spruces and birches, each with its own shade, size and lean ----------
 (function () {
-  const spots = [];
-  for (const l of D.l) { if (l.k !== 5) continue;
-    let x0 = 1e9, x1 = -1e9, z0 = 1e9, z1 = -1e9;
-    for (let i = 0; i < l.p.length; i += 2) { x0 = Math.min(x0, l.p[i]); x1 = Math.max(x1, l.p[i]); z0 = Math.min(z0, l.p[i + 1]); z1 = Math.max(z1, l.p[i + 1]); }
-    for (let t = Math.round((x1 - x0) * (z1 - z0) / 110); t > 0; t--) { const x = x0 + rnd() * (x1 - x0), z = z0 + rnd() * (z1 - z0);
-      if (inPoly(l.p, x, z) && nearestRoad(x, z).d > 2.5) spots.push(x, z, 0.7 + rnd() * 0.8); } }
+  const spots = treeSpots(D, rnd, { squareMetresPerTry: 110, minScale: 0.7, scaleSpread: 0.8, roads, roadClearanceM: 2.5 });
   // variety comes from a hash of the position, so the trees don't consume rnd() and shift the rest of the world
   const hash = (x, z, k) => { const v = Math.sin(x * 12.9898 + z * 78.233 + k * 37.719) * 43758.5453; return v - Math.floor(v); };
   const cone = (r, h, y) => new THREE.ConeGeometry(r, h, 7, 1, true).translate(0, y + h / 2, 0);

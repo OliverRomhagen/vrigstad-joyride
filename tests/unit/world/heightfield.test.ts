@@ -73,3 +73,28 @@ describe('normalAt', () => {
     expect(field.normalAt(0, 0, out)).toBe(out);
   });
 });
+
+describe('sampleHeight', () => {
+  // heights where the two interpolations' sums round differently in the last bit, as real data does
+  const UNEVEN = [1001, 1234, 1587, 1102, 1999, 1313, 1050, 1234, 1587];
+
+  it('matches heightAt exactly at the samples, for both interpolations', () => {
+    for (const interpolation of ['triangle', 'bilinear'] as const) {
+      const field = new Heightfield(makeWorld({ elev: UNEVEN }), { exaggeration: 2, interpolation });
+      for (let j = 0; j < 2; j++) for (let i = 0; i < 2; i++) expect(field.sampleHeight(i, j)).toBe(field.heightAt(-50 + 50 * i, -50 + 50 * j));
+    }
+  });
+
+  it('works out each interpolation its own way, so the map keeps its vertices', () => {
+    const triangle = new Heightfield(makeWorld({ elev: UNEVEN }));
+    const bilinear = new Heightfield(makeWorld({ elev: UNEVEN }), { interpolation: 'bilinear' });
+    expect(triangle.sampleHeight(1, 0)).toBe((1234 - 1001) / 10);
+    expect(bilinear.sampleHeight(1, 0)).toBe(1234 / 10 - 1001 / 10);
+    expect(triangle.sampleHeight(1, 0)).not.toBe(bilinear.sampleHeight(1, 0));
+  });
+
+  it('reads the last row and column', () => {
+    const field = new Heightfield(makeWorld({ elev: EAST_SLOPE }));
+    expect(field.sampleHeight(2, 2)).toBeCloseTo(2);
+  });
+});
