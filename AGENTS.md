@@ -11,7 +11,8 @@ A browser open-world driving game set in the real village of Vrigstad, Sweden, b
 ```sh
 npm install                 # once
 npm run dev                 # dev server with hot reload: the game at http://localhost:5173/, the map at /map.html
-npm run check               # typecheck; run before every commit (lint and unit tests join it in #46 and #52)
+npm run check               # typecheck; run before every commit, with npm test (lint joins them in #46)
+npm test                    # unit tests (Vitest), once
 npm run build               # production build into dist/, copied to index.html and map.html in the repo root
 npm run preview             # serve the built dist/ locally
 npx playwright install chromium   # once, for the smoke tests
@@ -96,10 +97,10 @@ Until the migration reaches a given rule, don't make the existing code worse in 
 ## Tests
 
 - **Smoke tests** (Playwright, [#43](https://github.com/OliverRomhagen/vrigstad-joyride/issues/43)): the pages load without console errors, Start works, the player can move and get into a car. Every PR keeps them green. When you add a major feature, add one smoke step for it.
-- **Unit tests** (Vitest, [#52](https://github.com/OliverRomhagen/vrigstad-joyride/issues/52)): game rules and pure helpers such as height lookup, driving model, wanted level, police AI and spatial queries. Write them for new gameplay rules; use the seeded RNG for deterministic scenarios.
+- **Unit tests** (Vitest, [#52](https://github.com/OliverRomhagen/vrigstad-joyride/issues/52)): game rules and pure helpers such as height lookup, driving model, wanted level, police AI and spatial queries. Write them for new gameplay rules; use the seeded RNG for deterministic scenarios. They live in `tests/unit/`, mirroring `src/`, and run in CI on every PR (`.github/workflows/unit.yml`). Build test worlds small and by hand (`tests/unit/world/fixture.ts`), not from `data/vrigstad.json`, so each expected value can be worked out.
 - **No pixel-diff tests.** Headless WebGL output varies. Assert on state exposed through the test hook instead, and attach screenshots to the PR when visuals change.
 - The smoke tests live in `tests/e2e/` and run in CI on every PR (`.github/workflows/e2e.yml`), which also fails if the committed `index.html` / `map.html` are stale and uploads screenshots of both pages as the `e2e-screenshots` artifact. They read game state from `window.__joyride.state()` (defined at the end of `src/game/main.ts`); add a field there when a new smoke step needs one, and keep the hook read-only.
-- Until the unit-test tooling exists, also test gameplay changes in a browser and describe what you did in the PR.
+- Most gameplay still lives in `src/game/main.ts`, out of the unit tests' reach until #49 splits it: test changes there in a browser too, and describe what you did in the PR.
 
 ## Data and coordinates
 
