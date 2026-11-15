@@ -9,7 +9,7 @@ export default defineConfig({
   timeout: 120_000,                 // headless WebGL (SwiftShader in CI) renders only a few frames a second
   expect: { timeout: 30_000 },
   forbidOnly: !!process.env.CI,
-  retries: process.env.CI ? 1 : 0,  // three.js and the fonts load from CDNs; do not fail a PR on one network blip
+  retries: process.env.CI ? 1 : 0,  // the fonts load from a CDN; do not fail a PR on one network blip
   reporter: process.env.CI ? [['github'], ['list']] : 'list',
   use: { baseURL: `http://127.0.0.1:${PORT}`, viewport: { width: 1280, height: 720 }, trace: 'retain-on-failure',
     // Software WebGL everywhere, so a local run takes the same render path as CI (which has no GPU).

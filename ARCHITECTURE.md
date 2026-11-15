@@ -9,12 +9,12 @@ tools/fetch.sh ──► data/raw/ (osm.json, tile.png)
                        │
 tools/process.py ──────┴──► data/vrigstad.json
                                    │
-tools/build.py ── inlines it at /*DATA*/ ──► index.html  (from src/game.html)
-                                         └─► map.html    (from src/map.html)
+Vite (tools/build.mjs) ── imports it ──► index.html  (from src/index.html + src/game/main.ts)
+                                      └─► map.html    (from src/map.html + src/map/main.ts)
 ```
 
-- Each page is one HTML file: CSS, DOM, and one big script IIFE.
-- three.js r128 is loaded from a CDN as the global `THREE`.
+- Each page is one HTML file (CSS and DOM) and one big script, moved as-is into `main.ts` with `// @ts-nocheck`. Each builds to a single self-contained file (#44).
+- three.js is imported from npm (`three`, `three/addons/...`) and bundled into each page (#47). Both pages keep the colour and light maths of r128, which the look was tuned with: `ColorManagement` is off and light intensities are scaled by π (`LEGACY_LIGHT`), both in `src/world/three-legacy.ts`, which both pages import. Moving to managed colour and retuning is #150.
 - The game keeps all state in module-level variables (`cars`, `player`, `stars`, `inCar`, ...) and runs one `requestAnimationFrame` loop that mixes input, simulation, rendering and HUD updates.
 - The map and the game each have their own copy of the terrain, buildings and trees code.
 
