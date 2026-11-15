@@ -9,38 +9,40 @@ export interface Footprint extends Bounds {
 export const BUILDING_CELL_M = 40;
 
 /** Building footprints, a grid over them, and collision against them. */
-export function createBuildings(data: WorldData) {
-  const footprints: Footprint[] = [];
+export class BuildingIndex {
+  readonly footprints: Footprint[] = [];
   /** each cell lists the indices of the footprints whose bounding box touches it */
-  const grid = new Map<string, number[]>();
+  readonly grid = new Map<string, number[]>();
+
+  constructor(data: WorldData) {
+    for (const b of data.b) this.addFootprint(b.p);
+  }
 
   /** Adds an outline that things collide with; returns its index in `footprints`. */
-  function addFootprint(p: number[]) {
+  addFootprint(p: number[]) {
     const { x0, x1, z0, z1 } = polygonBounds(p);
-    const index = footprints.length;
-    footprints.push({ p, x0, x1, z0, z1 });
+    const index = this.footprints.length;
+    this.footprints.push({ p, x0, x1, z0, z1 });
     for (let x = Math.floor(x0 / BUILDING_CELL_M); x <= Math.floor(x1 / BUILDING_CELL_M); x++) {
       for (let z = Math.floor(z0 / BUILDING_CELL_M); z <= Math.floor(z1 / BUILDING_CELL_M); z++) {
         const k = x + ',' + z;
-        let list = grid.get(k);
-        if (!list) grid.set(k, (list = []));
+        let list = this.grid.get(k);
+        if (!list) this.grid.set(k, (list = []));
         list.push(index);
       }
     }
     return index;
   }
 
-  for (const b of data.b) addFootprint(b.p);
-
   /** Pushes the circle `o` (radius r, m) out of any footprint it overlaps. True on contact. */
-  function collide(o: { x: number; z: number }, r: number) {
+  collide(o: { x: number; z: number }, r: number) {
     let hit = false;
     for (let gx = Math.floor((o.x - r) / BUILDING_CELL_M); gx <= Math.floor((o.x + r) / BUILDING_CELL_M); gx++) {
       for (let gz = Math.floor((o.z - r) / BUILDING_CELL_M); gz <= Math.floor((o.z + r) / BUILDING_CELL_M); gz++) {
-        const list = grid.get(gx + ',' + gz);
+        const list = this.grid.get(gx + ',' + gz);
         if (!list) continue;
         for (const bi of list) {
-          const b = footprints[bi];
+          const b = this.footprints[bi];
           if (o.x < b.x0 - r || o.x > b.x1 + r || o.z < b.z0 - r || o.z > b.z1 + r) continue;
           const p = b.p;
           let best = 1e9;
@@ -76,6 +78,4 @@ export function createBuildings(data: WorldData) {
     }
     return hit;
   }
-
-  return { footprints, grid, addFootprint, collide };
 }

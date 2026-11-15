@@ -2,15 +2,15 @@
 // Moved as-is from the single-file prototype (#44); it gets types as it is split into modules.
 import * as THREE from 'three';
 import D from '../../data/vrigstad.json';
-import { BUILDING_CELL_M as BC, createBuildings } from '../world/buildings';
+import { BUILDING_CELL_M as BC, BuildingIndex } from '../world/buildings';
 import { ROAD_WIDTH_M as ROAD_W } from '../world/data';
-import { createHeightfield } from '../world/heightfield';
+import { Heightfield } from '../world/heightfield';
 import { clamp } from '../world/math';
 import { pointInPolygon as inPoly, polygonArea as polyArea, segmentDistance as segDist } from '../world/polygon';
 import { makeRnd } from '../world/random';
-import { createRoads, ROAD_CELL_M as RC, roadLiftM as roadLift } from '../world/roads';
+import { nodeKey, ROAD_CELL_M as RC, RoadNetwork, roadLiftM as roadLift } from '../world/roads';
 import { LEGACY_LIGHT } from '../world/three-legacy';
-import { createWater } from '../world/water';
+import { Water } from '../world/water';
 
 (function () {
 'use strict';
@@ -23,7 +23,8 @@ const rnd = makeRnd(57355);
 const pick = a => a[Math.floor(rnd() * a.length)];
 
 // ---------- terrain height (matches the mesh triangles exactly) ----------
-const heightfield = createHeightfield(D), hAt = heightfield.heightAt;
+// the world's queries are bound once, so the code below calls them as plain functions
+const heightfield = new Heightfield(D), hAt = heightfield.heightAt.bind(heightfield);
 const _n = new THREE.Vector3();
 const normalAt = (x, z) => heightfield.normalAt(x, z, _n);
 
@@ -136,7 +137,8 @@ texture.anisotropy = renderer.capabilities.getMaxAnisotropy(); texture.colorSpac
 })();
 
 // ---------- roads: crisp ribbons on the terrain + lookup grid + junction graph ----------
-const { roads: R, grid: roadGrid, nearestRoad, groundAt, nodeKey, junctions: nodes, driveable } = createRoads(D, hAt);
+const roads = new RoadNetwork(D, heightfield), { lines: R, grid: roadGrid, junctions: nodes, driveable } = roads;
+const nearestRoad = roads.nearestRoad.bind(roads), groundAt = roads.groundAt.bind(roads);
 (function () {
   const bufs = [[], [], [], [], [], [], []], uvs = [[], [], [], [], [], [], []];
   function ribbon(out, uo, pts, w, lift) {   // uv: one 4 m tile of speckle across and along the road
@@ -171,7 +173,7 @@ const { roads: R, grid: roadGrid, nearestRoad, groundAt, nodeKey, junctions: nod
 })();
 
 // ---------- water ----------
-const { inWater } = createWater(D, nearestRoad);
+const water = new Water(D, roads), inWater = water.inWater.bind(water);
 
 // ---------- buildings (painted in Swedish house colours) + collision grid ----------
 // walls and roof halves of an outline; a pitched roof (g = ridge over the bounding rectangle) is cut to the outline, which gets a corner wherever it crosses the ridge
@@ -183,7 +185,8 @@ function roofParts(contour, g, top) {
     if (oa * od < 0) { ring.push(new THREE.Vector2(a.x + (d.x - a.x) * t, a.y + (d.y - a.y) * t)); o.push(0); } });
   return { ring, yAt, sides: [1, -1].map(s => ring.filter((v, i) => s * o[i] >= 0)).filter(h => h.length > 2) };
 }
-const { footprints: bPolys, grid: bGrid, addFootprint, collide } = createBuildings(D);
+const buildings = new BuildingIndex(D), { footprints: bPolys, grid: bGrid } = buildings;
+const addFootprint = buildings.addFootprint.bind(buildings), collide = buildings.collide.bind(buildings);
 // house details: windows (a texture on a skin just outside the walls), white corner boards and eave boards, a dark plinth, and a chimney on gabled roofs
 const WIN_W = 2.6, STOREY = 2.8;   // window spacing and storey height (m)
 const winTex = (function () {

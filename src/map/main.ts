@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import D from '../../data/vrigstad.json';
 import { ROAD_WIDTH_M as ROAD_W } from '../world/data';
-import { createHeightfield } from '../world/heightfield';
+import { Heightfield } from '../world/heightfield';
 import { pointInPolygon as inPoly } from '../world/polygon';
 import { makeRnd } from '../world/random';
 import { LEGACY_LIGHT } from '../world/three-legacy';
@@ -12,7 +12,7 @@ import { LEGACY_LIGHT } from '../world/three-legacy';
 (function () {
 'use strict';
 const S = D.size, HALF = S / 2, N = D.n, EX = 2;
-const heightfield = createHeightfield(D, { exaggeration: EX, interpolation: 'bilinear' }), hAt = heightfield.heightAt;
+const heightfield = new Heightfield(D, { exaggeration: EX, interpolation: 'bilinear' }), hAt = heightfield.heightAt.bind(heightfield);
 const minE = heightfield.minElevationM, maxE = heightfield.maxElevationM;
 document.getElementById('relief').textContent = Math.round(minE) + '–' + Math.round(maxE) + ' m above sea level';
 

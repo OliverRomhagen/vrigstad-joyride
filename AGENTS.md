@@ -79,6 +79,12 @@ GitHub issues are the backlog: every bug, idea and piece of work is one issue.
 - **Match the surrounding code.** Same naming, comment density and idiom as the file you're in.
 - Current single-file code is dense: 2-space indent, single quotes, semicolons, short local names for hot math (`x`, `z`, `h`, `v`, `dt`), sections marked `// ---------- name ----------`. Keep that style inside `src/game/main.ts` and `src/map/main.ts` until they are split up.
 - New TypeScript code: formatted by Biome (after #46), so don't hand-format. Prefer clear names over the dense style, small modules with one responsibility, named exports, no default exports, `strict` types, no `any` without a comment saying why.
+- Classes, data or functions, by what the thing is:
+  - **A class** for something built once and then queried, or that holds state or resources with a lifecycle: a world index (`Heightfield`, `RoadNetwork`, `BuildingIndex`), a controller, an object that owns meshes and disposes them, a Svelte store with `$state` fields. Depend on the narrow part you use (`Pick<Heightfield, 'heightAt'>`), so a test can pass a stub.
+  - **Plain data** for simulation state (#49): it has to be copied to a worker or over the network, snapshotted for replays and compared in tests. No methods on entities.
+  - **Functions** for pure helpers (`pointInPolygon`).
+
+  A method passed around as a function loses `this`: call it on its object, or `bind` it once.
 - Comments explain *why* and non-obvious units or conventions, not what the next line does.
 - No new runtime dependency without saying why in the PR. Dev dependencies (tooling, tests) are fine.
 - Gameplay numbers (speeds, radii, timers) go in named constants near the top of their module, with units in the name or a comment (`EVADE_DIST_M = 170`).
