@@ -24,11 +24,11 @@ Live site: https://oliverromhagen.github.io/vrigstad-joyride/ (GitHub Pages, fro
 
 ## Workflow
 
-- Work on a branch and open a PR; don't push to `main`. For work on an issue, start the branch with `gh issue develop <n> --checkout`: GitHub then links the branch, and the PR made from it, to the issue.
+- Work on a branch and open a PR; don't push to `main`. For work on an issue, start the branch with `gh issue develop <n> --checkout`: GitHub then links the branch, and the PR made from it, to the issue. For work that only does part of an issue, make the branch yourself (see **Link** below).
 - Keep a PR to one concern. Don't mix a refactor with a feature, and don't reformat code you aren't otherwise changing.
 - Reference the issue in the PR (`Closes #12`, or `Part of #12` if it doesn't fully close it). Say in the PR what is *not* done.
-- PRs that build on each other are a stack. Prefer `gh stack` (`gh extension install github/gh-stack`): `gh stack init` or `add` builds the stack, `gh stack submit` pushes it and opens the PRs, and `gh stack sync` rebases what's left after a lower PR merges. Merge from the bottom up. When a PR outside the stack targets one of its branches, merge one PR at a time, never the whole stack at once: merged together, the stack's branches are deleted together, and GitHub closes that PR instead of moving it to `main`. After a squash merge it still holds the stack's old commits, so its author rebases it onto `main` (`git rebase --onto origin/main <the stack's old head>`).
-- Until [#45](https://github.com/OliverRomhagen/vrigstad-joyride/issues/45) lands, the built `index.html` and `map.html` are committed. Rebuild them in the same commit as the `src/` change, and never edit them by hand.
+- PRs that build on each other are a stack. Prefer `gh stack` (`gh extension install github/gh-stack`): `gh stack init` or `add` builds the stack, `gh stack submit` pushes it and opens the PRs, and `gh stack sync` rebases what's left after a lower PR merges or a lower branch is rebased: until then the PRs above it still hold its old commits, and their diffs repeat them. Merge from the bottom up. When a PR outside the stack targets one of its branches, merge one PR at a time, never the whole stack at once: merged together, the stack's branches are deleted together, and GitHub closes that PR instead of moving it to `main`. After a squash merge it still holds the stack's old commits, so its author rebases it onto `main` (`git rebase --onto origin/main <the old tip of the branch it targeted>`).
+- Until [#45](https://github.com/OliverRomhagen/vrigstad-joyride/issues/45) lands, the built `index.html` and `map.html` are committed. Rebuild them with `npm run build` in the same commit as the `src/` change, and never edit them by hand.
 - Big structural moves conflict with every open feature branch. Check open PRs first, and coordinate rather than rebasing someone else's work.
 
 ### Commits and PR titles: Conventional Commits
@@ -66,9 +66,9 @@ GitHub issues are the backlog: every bug, idea and piece of work is one issue.
 
 ### Several agents at once
 
-- One branch (and worktree) per agent and task. Bring your branch up to date with `main` before opening a PR and again before merging. In a stack, run `gh stack sync` whenever a lower branch is rebased: until then the PRs above it still hold its old commits, and their diffs repeat them.
-- Until #44 splits the code, every feature edits `src/game.html`, so expect conflicts. Keep changes in their own section of the file where you can.
-- On a conflict in `index.html` or `map.html`, never merge the built files by hand: resolve `src/` only, then rerun `python3 tools/build.py`.
+- One branch (and worktree) per agent and task. Bring your branch up to date with `main` before opening a PR and again before merging.
+- Until #44 splits the code, every feature edits `src/game/main.ts`, so expect conflicts. Keep changes in their own section of the file where you can.
+- On a conflict in `index.html` or `map.html`, never merge the built files by hand: resolve `src/` only, then rerun `npm run build`.
 - Say how you tested in the PR, and be honest about what wasn't tested ("not played by hand on a phone").
 
 ## Code style
