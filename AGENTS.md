@@ -4,7 +4,7 @@ Instructions for AI coding agents (and a quick start for humans) working on Vrig
 
 ## The project in one paragraph
 
-A browser open-world driving game set in the real village of Vrigstad, Sweden, built from OpenStreetMap data and elevation tiles, plus a 3D map of the same area. Rendering is three.js. The codebase is in transition from a single-file prototype to a modular Vite + TypeScript app; the plan is tracked in [#61](https://github.com/OliverRomhagen/vrigstad-joyride/issues/61). The build is Vite ([#44](https://github.com/OliverRomhagen/vrigstad-joyride/issues/44)), but the code is not split yet: the game is still one file, `src/game/main.ts`, and the map another, `src/map/main.ts`.
+A browser open-world driving game set in the real village of Vrigstad, Sweden, built from OpenStreetMap data and elevation tiles, plus a 3D map of the same area. Rendering is three.js. The codebase is in transition from a single-file prototype to a modular Vite + TypeScript app; the plan is tracked in [#61](https://github.com/OliverRomhagen/vrigstad-joyride/issues/61). The build is Vite ([#44](https://github.com/OliverRomhagen/vrigstad-joyride/issues/44)), but the code is only starting to split: the game is still mostly one file, `src/game/main.ts`, and the map another, `src/map/main.ts`, both reading the world's data and queries from `src/world/` ([#48](https://github.com/OliverRomhagen/vrigstad-joyride/issues/48)).
 
 ## Commands
 

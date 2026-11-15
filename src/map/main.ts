@@ -3,12 +3,17 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import D from '../../data/vrigstad.json';
+import { ROAD_WIDTH_M as ROAD_W } from '../world/data';
+import { createHeightfield } from '../world/heightfield';
+import { pointInPolygon as inPoly } from '../world/polygon';
+import { makeRnd } from '../world/random';
 import { LEGACY_LIGHT } from '../world/three-legacy';
 
 (function () {
 'use strict';
 const S = D.size, HALF = S / 2, N = D.n, EX = 2;
-const minE = Math.min.apply(null, D.elev) / 10, maxE = Math.max.apply(null, D.elev) / 10;
+const heightfield = createHeightfield(D, { exaggeration: EX, interpolation: 'bilinear' }), hAt = heightfield.heightAt;
+const minE = heightfield.minElevationM, maxE = heightfield.maxElevationM;
 document.getElementById('relief').textContent = Math.round(minE) + '–' + Math.round(maxE) + ' m above sea level';
 
 const PAL = {
@@ -25,15 +30,6 @@ const PAL = {
 };
 const isDark = () => { const t = document.documentElement.dataset.theme;
   return t ? t === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches; };
-
-// ---- terrain height ----
-function hAt(x, z) {
-  let u = (x + HALF) / S * (N - 1), v = (z + HALF) / S * (N - 1);
-  u = Math.min(Math.max(u, 0), N - 1.0001); v = Math.min(Math.max(v, 0), N - 1.0001);
-  const i = Math.floor(u), j = Math.floor(v), fu = u - i, fv = v - j, e = D.elev, k = j * N + i;
-  const h = e[k] * (1 - fu) * (1 - fv) + e[k + 1] * fu * (1 - fv) + e[k + N] * (1 - fu) * fv + e[k + N + 1] * fu * fv;
-  return (h / 10 - minE) * EX;
-}
 
 // ---- renderer ----
 const canvas = document.getElementById('gl');
@@ -98,7 +94,6 @@ function contours(step) {
   }
   ctx.stroke();
 }
-const ROAD_W = [9, 7.5, 5.5, 3.5];
 function streetNames(pal) {
   const best = {};
   for (const r of D.r) {
@@ -224,13 +219,7 @@ const mats = { wall: new THREE.MeshLambertMaterial({ side: THREE.DoubleSide }), 
 // ---- trees in mapped woodland ----
 const treeMat = new THREE.MeshLambertMaterial();
 (function () {
-  let seed = 57355;
-  const rnd = () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed);
-    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
-  const inPoly = (p, x, z) => { let c = false;
-    for (let i = 0, j = p.length - 2; i < p.length; j = i, i += 2)
-      if ((p[i + 1] > z) !== (p[j + 1] > z) && x < (p[j] - p[i]) * (z - p[i + 1]) / (p[j + 1] - p[i + 1]) + p[i]) c = !c;
-    return c; };
+  const rnd = makeRnd(57355);
   const spots = [];
   for (const l of D.l) {
     if (l.k !== 5) continue;

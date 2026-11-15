@@ -1,0 +1,27 @@
+// Geometry on flat [x, z, x, z, ...] arrays, in metres.
+import { clamp } from './math';
+
+/** Even-odd test: true when (x, z) is inside the polygon. */
+export function pointInPolygon(p: number[], x: number, z: number) {
+  let inside = false;
+  for (let i = 0, j = p.length - 2; i < p.length; j = i, i += 2) {
+    if (p[i + 1] > z !== p[j + 1] > z && x < ((p[j] - p[i]) * (z - p[i + 1])) / (p[j + 1] - p[i + 1]) + p[i]) inside = !inside;
+  }
+  return inside;
+}
+
+/** Distance from (x, z) to the segment from (ax, az) to (bx, bz). */
+export function segmentDistance(x: number, z: number, ax: number, az: number, bx: number, bz: number) {
+  const dx = bx - ax;
+  const dz = bz - az;
+  const lengthSq = dx * dx + dz * dz;
+  const t = lengthSq ? clamp(((x - ax) * dx + (z - az) * dz) / lengthSq, 0, 1) : 0;
+  return Math.hypot(x - ax - dx * t, z - az - dz * t);
+}
+
+/** Area of the polygon (m²), whichever way it winds. */
+export function polygonArea(p: number[]) {
+  let twice = 0;
+  for (let i = 0, j = p.length - 2; i < p.length; j = i, i += 2) twice += p[j] * p[i + 1] - p[i] * p[j + 1];
+  return Math.abs(twice / 2);
+}

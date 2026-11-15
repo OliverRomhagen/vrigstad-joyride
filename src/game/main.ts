@@ -2,31 +2,30 @@
 // Moved as-is from the single-file prototype (#44); it gets types as it is split into modules.
 import * as THREE from 'three';
 import D from '../../data/vrigstad.json';
+import { BUILDING_CELL_M as BC, createBuildings } from '../world/buildings';
+import { ROAD_WIDTH_M as ROAD_W } from '../world/data';
+import { createHeightfield } from '../world/heightfield';
+import { clamp } from '../world/math';
+import { pointInPolygon as inPoly, polygonArea as polyArea, segmentDistance as segDist } from '../world/polygon';
+import { makeRnd } from '../world/random';
+import { createRoads, ROAD_CELL_M as RC, roadLiftM as roadLift } from '../world/roads';
 import { LEGACY_LIGHT } from '../world/three-legacy';
+import { createWater } from '../world/water';
 
 (function () {
 'use strict';
 const $ = id => document.getElementById(id);
 const S = D.size, HALF = S / 2, N = D.n, E = D.elev;
 const minE = Math.min.apply(null, E);
-const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const wrap = a => { while (a > Math.PI) a -= 2 * Math.PI; while (a < -Math.PI) a += 2 * Math.PI; return a; };
-// seeded streams (mulberry32): rnd() drives the world and gameplay; side systems get their own stream so they don't shift its rolls
-const makeRnd = seed => () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed);
-  t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+// seeded streams: rnd() drives the world and gameplay; side systems get their own stream so they don't shift its rolls
 const rnd = makeRnd(57355);
 const pick = a => a[Math.floor(rnd() * a.length)];
 
 // ---------- terrain height (matches the mesh triangles exactly) ----------
-function hAt(x, z) {
-  const u = clamp((x + HALF) / S * (N - 1), 0, N - 1.0001), v = clamp((z + HALF) / S * (N - 1), 0, N - 1.0001);
-  const i = Math.floor(u), j = Math.floor(v), fu = u - i, fv = v - j, k = j * N + i;
-  const a = E[k], b = E[k + 1], d = E[k + N], c = E[k + N + 1];
-  const h = fu + fv <= 1 ? a + (b - a) * fu + (d - a) * fv : c + (d - c) * (1 - fu) + (b - c) * (1 - fv);
-  return (h - minE) / 10;
-}
+const heightfield = createHeightfield(D), hAt = heightfield.heightAt;
 const _n = new THREE.Vector3();
-function normalAt(x, z) { return _n.set(hAt(x - 1.5, z) - hAt(x + 1.5, z), 3, hAt(x, z - 1.5) - hAt(x, z + 1.5)).normalize(); }
+const normalAt = (x, z) => heightfield.normalAt(x, z, _n);
 
 // ---------- renderer ----------
 const canvas = $('gl');
@@ -77,10 +76,7 @@ const tex2d = document.createElement('canvas'); tex2d.width = tex2d.height = CW;
 const ctx = tex2d.getContext('2d');
 const P = v => (v + HALF) * K;
 function trace(p, close) { ctx.moveTo(P(p[0]), P(p[1])); for (let i = 2; i < p.length; i += 2) ctx.lineTo(P(p[i]), P(p[i + 1])); if (close) ctx.closePath(); }
-const ROAD_W = [9, 7.5, 5.5, 3.5, 2.6, 1.5];
-const roadLift = c => 0.25 - c * 0.03;   // m above the terrain each road class is drawn at; groundAt() puts people and cars on top of it
 const HOUSE_MIN_M2 = 40, HOUSE_MAX_M2 = 1500;   // footprints in this range count as homes and shops
-const polyArea = p => { let a = 0; for (let i = 0, j = p.length - 2; i < p.length; j = i, i += 2) a += p[j] * p[i + 1] - p[i] * p[j + 1]; return Math.abs(a / 2); };
 (function paint() {
   const land = ['#a6c083', '#d9cf8b', '#b9b4a8', '#8fc072', '#93b77d', '#6f9a5e', '#7cc163'];
   ctx.lineCap = 'round'; ctx.lineJoin = 'round';
@@ -140,7 +136,7 @@ texture.anisotropy = renderer.capabilities.getMaxAnisotropy(); texture.colorSpac
 })();
 
 // ---------- roads: crisp ribbons on the terrain + lookup grid + junction graph ----------
-const R = D.r.map(r => { const p = []; for (let i = 0; i < r.p.length; i += 2) p.push([r.p[i], r.p[i + 1]]); return { p, c: r.c, n: r.n }; });
+const { roads: R, grid: roadGrid, nearestRoad, groundAt, nodeKey, junctions: nodes, driveable } = createRoads(D, hAt);
 (function () {
   const bufs = [[], [], [], [], [], [], []], uvs = [[], [], [], [], [], [], []];
   function ribbon(out, uo, pts, w, lift) {   // uv: one 4 m tile of speckle across and along the road
@@ -173,45 +169,9 @@ const R = D.r.map(r => { const p = []; for (let i = 0; i < r.p.length; i += 2) p
       polygonOffsetFactor: -2, polygonOffsetUnits: -4 * (i === 6 ? 8 : 6 - i) }));
     m.receiveShadow = true; m.renderOrder = i === 6 ? 8 : 6 - i; scene.add(m); });
 })();
-const RC = 50, roadGrid = new Map();
-R.forEach((r, ri) => { for (let i = 1; i < r.p.length; i++) { const a = r.p[i - 1], b = r.p[i];
-  const x0 = Math.floor((Math.min(a[0], b[0]) - 14) / RC), x1 = Math.floor((Math.max(a[0], b[0]) + 14) / RC);
-  const z0 = Math.floor((Math.min(a[1], b[1]) - 14) / RC), z1 = Math.floor((Math.max(a[1], b[1]) + 14) / RC);
-  for (let x = x0; x <= x1; x++) for (let z = z0; z <= z1; z++) { const k = x + ',' + z; let l = roadGrid.get(k); if (!l) roadGrid.set(k, l = []); l.push(a[0], a[1], b[0], b[1], ri); } } });
-function segDist(x, z, ax, az, bx, bz) { const dx = bx - ax, dz = bz - az, L = dx * dx + dz * dz;
-  const t = L ? clamp(((x - ax) * dx + (z - az) * dz) / L, 0, 1) : 0; return Math.hypot(x - ax - dx * t, z - az - dz * t); }
-const near = { d: 1e9, ri: -1 };
-function nearestRoad(x, z) {
-  near.d = 1e9; near.ri = -1;
-  const l = roadGrid.get(Math.floor(x / RC) + ',' + Math.floor(z / RC));
-  if (l) for (let i = 0; i < l.length; i += 5) { const d = segDist(x, z, l[i], l[i + 1], l[i + 2], l[i + 3]) - ROAD_W[R[l[i + 4]].c] / 2; if (d < near.d) { near.d = d; near.ri = l[i + 4]; } }
-  return near;                                   // d = distance to the road's edge (negative when on it)
-}
-// terrain plus the highest road ribbon at (x, z), eased out over the metre past its edge so nothing snaps at the kerb
-function groundAt(x, z) { let lift = 0;
-  const l = roadGrid.get(Math.floor(x / RC) + ',' + Math.floor(z / RC));
-  if (l) for (let i = 0; i < l.length; i += 5) { const c = R[l[i + 4]].c, d = segDist(x, z, l[i], l[i + 1], l[i + 2], l[i + 3]) - ROAD_W[c] / 2;
-    if (d < 1) lift = Math.max(lift, roadLift(c) * Math.min(1, 1 - d)); }
-  return hAt(x, z) + lift;
-}
-const nodeKey = p => Math.round(p[0] * 2) + ',' + Math.round(p[1] * 2), nodes = new Map(), driveable = [];
-R.forEach((r, ri) => { if (r.c > 2 || r.p.length < 2) return; driveable.push(ri);
-  r.p.forEach((p, vi) => { const k = nodeKey(p); let l = nodes.get(k); if (!l) nodes.set(k, l = []); l.push(ri, vi); }); });
 
 // ---------- water ----------
-const lakes = D.w.map(rings => { let x0 = 1e9, x1 = -1e9, z0 = 1e9, z1 = -1e9;
-  for (const r of rings) for (let i = 0; i < r.length; i += 2) { x0 = Math.min(x0, r[i]); x1 = Math.max(x1, r[i]); z0 = Math.min(z0, r[i + 1]); z1 = Math.max(z1, r[i + 1]); }
-  return { rings, x0, x1, z0, z1 }; });
-function inPoly(p, x, z) { let c = false;
-  for (let i = 0, j = p.length - 2; i < p.length; j = i, i += 2)
-    if ((p[i + 1] > z) !== (p[j + 1] > z) && x < (p[j] - p[i]) * (z - p[i + 1]) / (p[j + 1] - p[i + 1]) + p[i]) c = !c;
-  return c; }
-function inWater(x, z) {
-  if (nearestRoad(x, z).d < 1) return false;     // bridges
-  for (const l of lakes) if (x >= l.x0 && x <= l.x1 && z >= l.z0 && z <= l.z1) { let c = false; for (const r of l.rings) if (inPoly(r, x, z)) c = !c; if (c) return true; }
-  for (const w of D.ww) if (w.k === 0) for (let i = 2; i < w.p.length; i += 2) if (segDist(x, z, w.p[i - 2], w.p[i - 1], w.p[i], w.p[i + 1]) < 2.6) return true;
-  return false;
-}
+const { inWater } = createWater(D, nearestRoad);
 
 // ---------- buildings (painted in Swedish house colours) + collision grid ----------
 // walls and roof halves of an outline; a pitched roof (g = ridge over the bounding rectangle) is cut to the outline, which gets a corner wherever it crosses the ridge
@@ -223,7 +183,7 @@ function roofParts(contour, g, top) {
     if (oa * od < 0) { ring.push(new THREE.Vector2(a.x + (d.x - a.x) * t, a.y + (d.y - a.y) * t)); o.push(0); } });
   return { ring, yAt, sides: [1, -1].map(s => ring.filter((v, i) => s * o[i] >= 0)).filter(h => h.length > 2) };
 }
-const BC = 40, bGrid = new Map(), bPolys = [];
+const { footprints: bPolys, grid: bGrid, addFootprint, collide } = createBuildings(D);
 // house details: windows (a texture on a skin just outside the walls), white corner boards and eave boards, a dark plinth, and a chimney on gabled roofs
 const WIN_W = 2.6, STOREY = 2.8;   // window spacing and storey height (m)
 const winTex = (function () {
@@ -245,11 +205,10 @@ const winTex = (function () {
     for (let i = 0; i < 4; i++) { const a = P[i], d = P[(i + 1) % 4]; quad(pos, a[0], a[1], d[0], d[1], y0, y1, y0, y1); }
     pos.push(x - h, y1, z - h, x + h, y1, z + h, x + h, y1, z - h, x - h, y1, z - h, x - h, y1, z + h, x + h, y1, z + h);
     for (let i = 0; i < 30; i++) cols.push(k.r, k.g, k.b); };
-  D.b.forEach((b, bi) => {
-    const n = b.p.length / 2, contour = []; let lo = 1e9, hi = -1e9, x0 = 1e9, x1 = -1e9, z0 = 1e9, z1 = -1e9, area = 0;
+  D.b.forEach(b => {
+    const n = b.p.length / 2, contour = []; let lo = 1e9, hi = -1e9, area = 0;
     for (let i = 0; i < n; i++) { const x = b.p[i * 2], z = b.p[i * 2 + 1], h = hAt(x, z), j = (i + 1) % n;
-      contour.push(new THREE.Vector2(x, z)); lo = Math.min(lo, h); hi = Math.max(hi, h);
-      x0 = Math.min(x0, x); x1 = Math.max(x1, x); z0 = Math.min(z0, z); z1 = Math.max(z1, z); area += x * b.p[j * 2 + 1] - b.p[j * 2] * z; }
+      contour.push(new THREE.Vector2(x, z)); lo = Math.min(lo, h); hi = Math.max(hi, h); area += x * b.p[j * 2 + 1] - b.p[j * 2] * z; }
     const wind = Math.sign(area); area = Math.abs(area) / 2;   // wind: +1 or -1 with the outline's winding, to find the outside of each wall
     c.set(b.k === 2 ? '#9c3a2c' : b.k ? '#efece3' : area > 450 ? pick(big) : pick(house)).convertSRGBToLinear();
     c2.set(b.k === 2 ? '#a8573f' : b.k ? '#3f4447' : rnd() < 0.35 ? '#4d4a48' : '#a8573f').convertSRGBToLinear();
@@ -280,9 +239,6 @@ const winTex = (function () {
       if (b.g) { const [ax, az, bx, bz, w] = b.g, cx = ax + (bx - ax) * 0.3, cz = az + (bz - az) * 0.3, ry = yAt({ x: cx, y: cz });
         if (inPoly(b.p, cx, cz)) box(cx, cz, ry - 0.6, ry + 0.9, 0.6, hAt(cx, cz) * 7 % 1 < 0.5 ? col('#8a3b2d') : col('#d8d2c4')); }
     }
-    bPolys.push({ p: b.p, x0, x1, z0, z1 });
-    for (let x = Math.floor(x0 / BC); x <= Math.floor(x1 / BC); x++) for (let z = Math.floor(z0 / BC); z <= Math.floor(z1 / BC); z++) {
-      const k = x + ',' + z; let l = bGrid.get(k); if (!l) bGrid.set(k, l = []); l.push(bi); }
   });
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3)); g.computeVertexNormals();
@@ -296,23 +252,6 @@ const winTex = (function () {
     new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -2 })]);
   skin.receiveShadow = true; scene.add(skin);
 })();
-// push a circle out of any building it overlaps; returns true on contact
-function collide(o, r) {
-  let hit = false;
-  for (let gx = Math.floor((o.x - r) / BC); gx <= Math.floor((o.x + r) / BC); gx++) for (let gz = Math.floor((o.z - r) / BC); gz <= Math.floor((o.z + r) / BC); gz++) {
-    const l = bGrid.get(gx + ',' + gz); if (!l) continue;
-    for (const bi of l) { const b = bPolys[bi]; if (o.x < b.x0 - r || o.x > b.x1 + r || o.z < b.z0 - r || o.z > b.z1 + r) continue;
-      const p = b.p; let best = 1e9, qx = 0, qz = 0;
-      for (let i = 0, j = p.length - 2; i < p.length; j = i, i += 2) { const dx = p[i] - p[j], dz = p[i + 1] - p[j + 1], L = dx * dx + dz * dz;
-        const t = L ? clamp(((o.x - p[j]) * dx + (o.z - p[j + 1]) * dz) / L, 0, 1) : 0, cx = p[j] + dx * t, cz = p[j + 1] + dz * t, d = Math.hypot(o.x - cx, o.z - cz);
-        if (d < best) { best = d; qx = cx; qz = cz; } }
-      const inside = inPoly(p, o.x, o.z);
-      if (!inside && best >= r) continue;
-      let nx = o.x - qx, nz = o.z - qz; const L = Math.hypot(nx, nz) || 1; nx /= L; nz /= L;
-      if (inside) { nx = -nx; nz = -nz; }
-      o.x = qx + nx * r; o.z = qz + nz * r; hit = true; } }
-  return hit;
-}
 
 // ---------- trees: spruces and birches, each with its own shade, size and lean ----------
 (function () {
@@ -711,8 +650,7 @@ function addPlace(kind, name, x, z, color) {
   const m = new THREE.Mesh(boxGeo([[3, 2.3, 2.2, 0, 1.15, 0, W], [3.5, 0.18, 3, 0, 2.39, 0.25, RED], [1.9, 0.9, 0.06, 0, 1.55, 1.1, GLASS], [2.2, 0.1, 0.5, 0, 1.05, 1.3, '#7a4a3c'],
     [2.4, 0.5, 0.1, 0, 2.75, 1.2, '#f2c230'], [0.5, 2.3, 0.04, -1.25, 1.15, 1.1, RED], [0.5, 2.3, 0.04, 1.25, 1.15, 1.1, RED]]), paintMat);
   m.position.set(x, y, z); m.castShadow = true; scene.add(m);
-  const bi = bPolys.length, k = Math.floor(x / BC) + ',' + Math.floor(z / BC); let l = bGrid.get(k); if (!l) bGrid.set(k, l = []);
-  bPolys.push({ p: [x - 1.5, z - 1.1, x + 1.5, z - 1.1, x + 1.5, z + 1.1, x - 1.5, z + 1.1], x0: x - 1.5, x1: x + 1.5, z0: z - 1.1, z1: z + 1.1 }); l.push(bi);
+  addFootprint([x - 1.5, z - 1.1, x + 1.5, z - 1.1, x + 1.5, z + 1.1, x - 1.5, z + 1.1]);
   addPlace('kiosk', 'Kiosken', x, z + 2.3, 0xf2c230);
 })();
 // one lucka, several things to buy: E opens a small menu (1 / 2 / Esc, or tap), walking away closes it
