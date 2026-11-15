@@ -65,7 +65,7 @@ GitHub issues are the backlog: every bug, idea and piece of work is one issue.
 - **Labels live in `.github/labels.yml`.** Add or rename one there, in a PR: the PR shows what would change, and the merge applies it. Rename with `from_name: <old name>` on the entry, or a new label is created and the old one stays on its issues. The sync never deletes a label: to delete one, remove it from the file and run `gh label delete`. A label made in GitHub's settings or with `gh label create` isn't in the file; add it there. Add a new `scope:<area>` only when several issues need it, with a one-line description, and add it to the commit scopes above in the same PR. Don't create one-off labels for a single issue or PR.
 - **Link** issues by what the link means:
   - `#12` in text is a mention: it shows in #12's timeline and nowhere else. Use it for "related" and "see also".
-  - `Closes #12` in a PR description links the PR to the issue and closes it when the PR merges.
+  - `Closes #12` in a PR description links the PR to the issue and closes it when the PR merges. A branch made with `gh issue develop 12` does the same, even when the description says `Part of #12`: for work that only does part of an issue, make the branch yourself.
   - A tracking issue holds its parts as **sub-issues** (`gh issue edit 61 --add-sub-issue 43,44`). An issue has at most one parent.
   - When an issue can't start before another is done, mark it **blocked by** that one (`gh issue edit 44 --add-blocked-by 43`). "Easier after" or "should come first" stays in the body as a mention.
 - When you split an issue, the new issues mention the old one, and the old one is closed or becomes their parent.
@@ -73,7 +73,7 @@ GitHub issues are the backlog: every bug, idea and piece of work is one issue.
 
 ### Several agents at once
 
-- One branch (and worktree) per agent and task. Bring your branch up to date with `main` before opening a PR and again before merging.
+- One branch (and worktree) per agent and task. Bring your branch up to date with `main` before opening a PR and again before merging. In a stack, run `gh stack sync` whenever a lower branch is rebased: until then the PRs above it still hold its old commits, and their diffs repeat them.
 - Until #44 splits the code, every feature edits `src/game.html`, so expect conflicts. Keep changes in their own section of the file where you can.
 - On a conflict in `index.html` or `map.html`, never merge the built files by hand: resolve `src/` only, then rerun `python3 tools/build.py`.
 - Say how you tested in the PR, and be honest about what wasn't tested ("not played by hand on a phone").
