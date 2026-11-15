@@ -1,136 +1,9 @@
-<title>Vrigstad Joyride</title>
-<meta name="claude:viewport-fit-sides" content="cover">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@600;700&display=swap">
-<style>
-/* Layout: the game view fills the screen; HUD pieces sit in the corners (minimap + street sign, wanted level, speed, touch controls). Single daylight look by choice. */
-:root {
-  --sky: #bcd7e6;
-  --hud: rgba(16, 22, 20, .74);
-  --ink: #f4f1e6;
-  --dim: rgba(244, 241, 230, .55);
-  --sign: #1f5fa8;              /* Swedish street-sign blue */
-  --gold: #f2c230;
-  --alarm: #e5412d;
-  --display: "Barlow Condensed", "Arial Narrow", "Helvetica Neue", Arial, sans-serif;
-  --body: "Barlow", "Helvetica Neue", Arial, sans-serif;
-  color-scheme: dark;
-}
-html, body { height: 100%; }
-body { background: var(--sky); color: var(--ink); font-family: var(--body); font-size: 14px; line-height: 1.4; overflow: hidden;
-  -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
-#stage { position: relative; height: 100%; overflow: hidden; }
-#gl { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; outline: none; }
-#ui { position: absolute; inset: 0; pointer-events: none; display: grid; gap: 10px;
-  grid-template: "tl tr" auto ". ." 1fr "bl br" auto / minmax(0, 1fr) auto;
-  padding-block: 14px;
-  padding-left: max(16px, env(safe-area-inset-left, 0px));
-  padding-right: max(16px, env(safe-area-inset-right, 0px)); }
-.plate { background: var(--hud); border-radius: 4px; color: var(--ink); }
+// @ts-nocheck
+// Moved as-is from the single-file prototype (#44); it gets types as it is split into modules.
+import * as THREE from 'three';
+import D from '../../data/vrigstad.json';
+import { LEGACY_LIGHT } from '../world/three-legacy';
 
-#tl { grid-area: tl; display: flex; flex-direction: column; gap: 8px; align-items: flex-start; min-width: 0; }
-#mini { width: 148px; height: 148px; border-radius: 50%; border: 3px solid var(--hud); background: #6f9a5e; display: block; }
-#sign { background: var(--sign); color: #fff; border: 2px solid #fff; border-radius: 4px; padding: 3px 10px 4px; max-width: 100%;
-  font-family: var(--display); font-weight: 600; font-size: 18px; letter-spacing: .02em; line-height: 1.15; box-shadow: 0 1px 4px rgba(0, 0, 0, .35); }
-#sign small { display: block; font: 500 11px var(--body); opacity: .85; letter-spacing: 0; }
-
-#tr { grid-area: tr; display: flex; flex-direction: column; gap: 6px; align-items: flex-end; }
-#stars { padding: 2px 10px 4px; font-size: 26px; line-height: 1; letter-spacing: 3px; color: var(--dim); }
-#stars b { color: var(--gold); font-weight: 400; }
-#stars.evading b { animation: blink .6s steps(2) infinite; }
-@keyframes blink { 50% { opacity: .25; } }
-#count, #triss, #treats { padding: 4px 10px; font: 500 13px var(--body); font-variant-numeric: tabular-nums; }
-
-#bl { grid-area: bl; align-self: end; }
-#joy { width: 124px; height: 124px; border-radius: 50%; background: var(--hud); position: relative; pointer-events: auto; touch-action: none; }
-#knob { position: absolute; left: 50%; top: 50%; width: 52px; height: 52px; margin: -26px 0 0 -26px; border-radius: 50%; background: var(--ink); opacity: .85; }
-#br { grid-area: br; align-self: end; display: flex; flex-direction: column; gap: 10px; align-items: flex-end; }
-#speed { padding: 4px 12px 6px; text-align: right; }
-#speed b { font: 700 40px/1 var(--display); font-variant-numeric: tabular-nums; }
-#speed span { font: 500 12px var(--body); color: var(--dim); margin-left: 4px; }
-#speed em { display: block; font: 600 14px var(--display); font-style: normal; letter-spacing: .06em; text-transform: uppercase; color: var(--gold); }
-#pad { display: flex; gap: 10px; pointer-events: auto; }
-#pad button { width: 68px; height: 68px; border-radius: 50%; border: 2px solid var(--ink); background: var(--hud); color: var(--ink);
-  font: 600 15px var(--display); letter-spacing: .04em; text-transform: uppercase; touch-action: none; }
-#pad button:active { background: var(--gold); color: #1a1a14; }
-
-#prompt { position: absolute; left: 50%; bottom: calc(22px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); padding: 7px 14px;
-  font: 600 18px var(--display); letter-spacing: .03em; white-space: nowrap; }
-#prompt kbd, #kmenu kbd { display: inline-block; min-width: 22px; text-align: center; background: var(--ink); color: #161c1a; border-radius: 3px; padding: 0 5px; margin-right: 6px; font: 700 15px var(--display); }
-#kmenu { position: absolute; left: 50%; bottom: calc(22px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); min-width: 230px; padding: 10px 12px 12px; pointer-events: auto; }
-#kmenu p { margin: 0 0 4px; font: 600 17px var(--display); letter-spacing: .03em; color: var(--gold); }
-#kmenu button { display: block; width: 100%; margin-top: 6px; padding: 6px 10px; border: 0; border-radius: 3px; background: rgba(244, 241, 230, .08); color: var(--ink);
-  font: 600 17px var(--display); letter-spacing: .03em; text-align: left; cursor: pointer; }
-#kmenu button:hover, #kmenu button:focus-visible { background: var(--gold); color: #1a1a14; outline: none; }
-#toast { position: absolute; left: 50%; top: 22%; transform: translateX(-50%); padding: 8px 16px; max-width: min(86vw, 520px); text-align: center;
-  font: 500 15px var(--body); white-space: pre-line; transition: opacity .3s; }
-#toast.win { background: var(--gold); color: #1a1a14; font-weight: 600; }
-#hide { position: absolute; left: 50%; top: 12%; transform: translateX(-50%); padding: 6px 16px 8px; text-align: center; white-space: nowrap;
-  font: 600 14px var(--display); letter-spacing: .06em; text-transform: uppercase; color: var(--gold); }
-#hide b { display: block; font: 700 34px/1 var(--display); letter-spacing: .02em; color: var(--ink); font-variant-numeric: tabular-nums; }
-#big { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; background: rgba(120, 20, 12, .45); }
-#big h2 { margin: 0; font: 700 clamp(56px, 16vw, 140px)/.95 var(--display); letter-spacing: .02em; color: #fff; text-shadow: 0 4px 0 var(--alarm); }
-#big p { margin: 6px 0 0; font: 500 16px var(--body); }
-
-#intro { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: auto; overflow: auto;
-  background: linear-gradient(to top, rgba(12, 18, 16, .82), rgba(12, 18, 16, .25));
-  padding: 20px max(16px, env(safe-area-inset-right, 0px)) 20px max(16px, env(safe-area-inset-left, 0px)); }
-#card { width: min(100%, 460px); padding: 22px 24px 24px; background: var(--hud); border-radius: 6px; border-top: 6px solid var(--gold); }
-#card h1 { margin: 0; font: 700 clamp(44px, 12vw, 68px)/.9 var(--display); text-transform: uppercase; letter-spacing: .01em; text-wrap: balance; }
-#card h1 span { color: var(--gold); }
-#card p { margin: 10px 0 0; }
-#card dl { margin: 14px 0 0; display: grid; grid-template-columns: auto 1fr; gap: 5px 14px; font-size: 13px; }
-#card dt { font: 600 13px var(--display); letter-spacing: .06em; text-transform: uppercase; color: var(--gold); white-space: nowrap; }
-#card dd { margin: 0; }
-#go { margin-top: 18px; width: 100%; padding: 12px; border: 0; border-radius: 4px; background: var(--gold); color: #1a1a14; cursor: pointer;
-  font: 700 22px var(--display); letter-spacing: .06em; text-transform: uppercase; }
-#go:hover { filter: brightness(1.08); }
-#go:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
-#card .fine { font-size: 11px; color: var(--dim); margin-top: 12px; }
-#card .fine a { color: inherit; }
-#fail { position: absolute; inset: 0; display: grid; place-items: center; padding: 24px; text-align: center; font-size: 15px; color: #16201c; }
-@media (pointer: coarse) { #kmenu { bottom: calc(160px + env(safe-area-inset-bottom, 0px)); } }   /* above the joystick and the Use button */
-@media (max-width: 560px) { #mini { width: 108px; height: 108px; } #sign { font-size: 15px; } #speed b { font-size: 30px; } }
-@media (prefers-reduced-motion: reduce) { #stars.evading b { animation: none; } }
-</style>
-
-<div id="stage">
-  <canvas id="gl" tabindex="0" aria-label="Game view: Vrigstad at street level"></canvas>
-  <div id="fail" hidden>This game needs WebGL, which this browser or view does not provide.</div>
-  <div id="ui">
-    <div id="tl"><canvas id="mini" width="296" height="296" aria-label="Minimap"></canvas><div id="sign"><span id="street">Torget</span><small id="near"></small></div></div>
-    <div id="tr"><div id="stars" class="plate" aria-label="Wanted level"></div><div id="count" class="plate">Cars stolen: 0</div><div id="triss" class="plate" hidden></div><div id="treats" class="plate" hidden></div></div>
-    <div id="bl"><div id="joy" hidden><div id="knob"></div></div></div>
-    <div id="br">
-      <div id="speed" class="plate" hidden><em id="carname"></em><b id="kmh">0</b><span>km/h</span></div>
-      <div id="pad" hidden><button type="button" id="p-brake">Brake</button><button type="button" id="p-act">Use</button></div>
-    </div>
-  </div>
-  <div id="prompt" class="plate" hidden></div>
-  <div id="kmenu" class="plate" hidden><p>”Va ska dä va?”</p><button type="button" data-k="triss"><kbd>1</kbd>Trisslott</button><button type="button" data-k="treats"><kbd>2</kbd>Kattgodis (3 st)</button><button type="button" data-k="no"><kbd>Esc</kbd>Nä tack</button></div>
-  <div id="toast" class="plate" hidden></div>
-  <div id="hide" class="plate" hidden></div>
-  <div id="big" hidden><div><h2>Gripen!</h2><p>Busted. The police drop you off at Torget.</p></div></div>
-  <div id="intro">
-    <div id="card">
-      <h1>Vrigstad <span>Joyride</span></h1>
-      <p>The whole village at street level: 881 buildings and every street from the real map. Walk around, borrow a Volvo 240 without asking, and try not to get caught.</p>
-      <dl>
-        <dt>Move / drive</dt><dd>W A S D or arrow keys. On a phone, the left stick.</dd>
-        <dt>Steal / get out</dt><dd>E (or the Use button)</dd>
-        <dt>Sprint / brake</dt><dd>Shift on foot, Space in a car</dd>
-        <dt>Look around</dt><dd>Drag the view</dd>
-        <dt>Lie low</dt><dd>Go inside a safehouse (green house on the minimap) for a minute</dd>
-        <dt>Back to Torget</dt><dd>R</dd>
-      </dl>
-      <button type="button" id="go">Start</button>
-      <p class="fine">Map data © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors. Elevation: Mapzen terrain tiles.</p>
-    </div>
-  </div>
-</div>
-
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<script>
-const D = /*DATA*/;
 (function () {
 'use strict';
 const $ = id => document.getElementById(id);
@@ -163,19 +36,19 @@ catch (err) { $('fail').hidden = false; $('ui').hidden = true; $('intro').hidden
 const coarse = matchMedia('(pointer: coarse)').matches;
 renderer.setPixelRatio(Math.min(devicePixelRatio || 1, coarse ? 1.5 : 2));
 renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.shadowMap.type = THREE.PCFShadowMap;
 // filmic tone mapping on an sRGB pipeline: colours below are written in sRGB and converted to linear with col()
-renderer.outputEncoding = THREE.sRGBEncoding;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1;
 const col = c => new THREE.Color(c).convertSRGBToLinear();
-// three r128 applies fog after output encoding, so the fog, clear and sky colours stay in sRGB
+// three applies fog after the output colour space conversion, so the fog, clear and sky colours stay in sRGB
 const HORIZON = 0xd6e4e6, FOG_PER_M = 0.0007;   // FogExp2 density: about 40% haze at 1 km
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(HORIZON);
 scene.fog = new THREE.FogExp2(HORIZON, FOG_PER_M);
 const camera = new THREE.PerspectiveCamera(58, 1, 0.8, 4200);
-scene.add(new THREE.HemisphereLight(0xffffff, col(0x9aa58a), 0.62));
-const sun = new THREE.DirectionalLight(col(0xfff4dd), 0.95);
+scene.add(new THREE.HemisphereLight(0xffffff, col(0x9aa58a), 0.62 * LEGACY_LIGHT));
+const sun = new THREE.DirectionalLight(col(0xfff4dd), 0.95 * LEGACY_LIGHT);
 const SUN_DIR = new THREE.Vector3(-0.55, 0.75, 0.37).normalize();
 // sky: a gradient dome that follows the camera and fades into the fog at the horizon
 const dome = new THREE.Mesh(new THREE.SphereGeometry(3000, 32, 16), new THREE.ShaderMaterial({
@@ -240,7 +113,7 @@ const polyArea = p => { let a = 0; for (let i = 0, j = p.length - 2; i < p.lengt
   ctx.shadowBlur = 0; ctx.shadowColor = 'transparent';
 })();
 const texture = new THREE.CanvasTexture(tex2d);
-texture.anisotropy = renderer.capabilities.getMaxAnisotropy(); texture.encoding = THREE.sRGBEncoding;
+texture.anisotropy = renderer.capabilities.getMaxAnisotropy(); texture.colorSpace = THREE.SRGBColorSpace;
 
 // ---------- terrain ----------
 (function () {
@@ -293,7 +166,7 @@ const R = D.r.map(r => { const p = []; for (let i = 0; i < r.p.length; i += 2) p
   let ns = 11; const nr = () => (ns = ns * 48271 % 2147483647) / 2147483647;
   x.fillStyle = '#f7f7f7'; x.fillRect(0, 0, 256, 256); x.globalAlpha = 0.7;
   for (const c of ['#ffffff', '#cdcdcd', '#dedede']) { x.fillStyle = c; for (let i = 0; i < 1600; i++) x.fillRect(nr() * 256, nr() * 256, 1, 1); }
-  const speck = new THREE.CanvasTexture(cv); speck.wrapS = speck.wrapT = THREE.RepeatWrapping; speck.anisotropy = renderer.capabilities.getMaxAnisotropy(); speck.encoding = THREE.sRGBEncoding;
+  const speck = new THREE.CanvasTexture(cv); speck.wrapS = speck.wrapT = THREE.RepeatWrapping; speck.anisotropy = renderer.capabilities.getMaxAnisotropy(); speck.colorSpace = THREE.SRGBColorSpace;
   bufs.forEach((b, i) => { if (!b.length) return;
     const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(b, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uvs[i], 2)); g.computeVertexNormals();
     const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ color: col(cols[i]), map: i < 6 ? speck : null, side: THREE.DoubleSide, polygonOffset: true,
@@ -358,7 +231,7 @@ const winTex = (function () {
   x.fillStyle = '#f1efe8'; x.fillRect(u(0.8), y(2.15), u(1), y(0.9) - y(2.15));                    // frame: 1.0 x 1.25 m, sill 0.9 m up
   x.fillStyle = '#26323a'; x.fillRect(u(0.88), y(2.07), u(0.84), y(0.98) - y(2.07));
   x.fillStyle = '#f1efe8'; x.fillRect(u(1.265), y(2.07), u(0.07), y(0.98) - y(2.07)); x.fillRect(u(0.88), y(1.75), u(0.84), y(1.68) - y(1.75));   // cross bars
-  const t = new THREE.CanvasTexture(cv); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.encoding = THREE.sRGBEncoding; t.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  const t = new THREE.CanvasTexture(cv); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = renderer.capabilities.getMaxAnisotropy();
   t.generateMipmaps = false; t.minFilter = THREE.LinearFilter; return t;   // mips average the mostly transparent tile below alphaTest, so windows would vanish at a distance
 })();
 (function () {
@@ -461,21 +334,19 @@ function collide(o, r) {
   ];
   const BIRCH_SHARE = 0.3, m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), v = new THREE.Vector3(), s = new THREE.Vector3(), c = new THREE.Color();
   const N = spots.length / 3, kind = i => hash(spots[i * 3], spots[i * 3 + 1], 1) < BIRCH_SHARE ? 1 : 0;
-  // one InstancedMesh per kind and cell, placed at the cell centre, so the main and shadow passes cull whole cells (r128 culls by geometry bounds, not instances)
-  const TREE_CELL_M = 400, cellOf = v => Math.floor((v + HALF) / TREE_CELL_M), cellMid = k => k * TREE_CELL_M + TREE_CELL_M / 2 - HALF;
+  // one InstancedMesh per kind and cell, so the main and shadow passes cull whole cells (three bounds an InstancedMesh by its instances)
+  const TREE_CELL_M = 400, cellOf = v => Math.floor((v + HALF) / TREE_CELL_M);
   KINDS.forEach((kd, ki) => {
     const cells = new Map(); for (let i = 0; i < N; i++) if (kind(i) === ki) { const k = cellOf(spots[i * 3]) + ',' + cellOf(spots[i * 3 + 1]); let l = cells.get(k); if (!l) cells.set(k, l = []); l.push(i); }
-    const bound = new THREE.Sphere(new THREE.Vector3(0, 0, 0), TREE_CELL_M * 0.71 + 60);   // cell half-diagonal, plus tree size and the terrain's height range
-    kd.crown.boundingSphere = bound; kd.trunk.boundingSphere = bound;
     const crownMat = new THREE.MeshLambertMaterial({ color: 0xffffff }), trunkMat = new THREE.MeshLambertMaterial({ color: col(kd.bark), side: THREE.DoubleSide });
     const lo = col(kd.leaf[0]), hiC = col(kd.leaf[1]);
-    for (const [k, idx] of cells) { const [ci, cj] = k.split(',').map(Number), ox = cellMid(ci), oz = cellMid(cj), oy = hAt(ox, oz);
+    for (const idx of cells.values()) {
       const crown = new THREE.InstancedMesh(kd.crown, crownMat, idx.length), trunk = new THREE.InstancedMesh(kd.trunk, trunkMat, idx.length);
       idx.forEach((i, j) => { const x = spots[i * 3], z = spots[i * 3 + 1], sc = spots[i * 3 + 2];
         e.set((hash(x, z, 2) - 0.5) * 0.1, hash(x, z, 3) * 6.283, (hash(x, z, 4) - 0.5) * 0.1); q.setFromEuler(e);
-        m4.compose(v.set(x - ox, hAt(x, z) - 0.3 - oy, z - oz), q, s.set(sc, sc * (0.85 + hash(x, z, 5) * 0.3), sc));
+        m4.compose(v.set(x, hAt(x, z) - 0.3, z), q, s.set(sc, sc * (0.85 + hash(x, z, 5) * 0.3), sc));
         crown.setMatrixAt(j, m4); trunk.setMatrixAt(j, m4); crown.setColorAt(j, c.copy(lo).lerp(hiC, hash(x, z, 6))); });
-      for (const m of [crown, trunk]) { m.position.set(ox, oy, oz); m.castShadow = true; scene.add(m); } }
+      for (const m of [crown, trunk]) { m.castShadow = true; scene.add(m); } }
   });
   // bake a soft shadow under every tree into the ground texture (the minimap shows them too)
   ctx.globalAlpha = 0.5;
@@ -1071,4 +942,3 @@ resize(); requestAnimationFrame(frame);
 // ---------- test hook: read-only state for the smoke tests (tests/e2e), so they do not have to read pixels ----------
 window.__joyride = { state: () => { const n = nearestCar(); return { started, x: player.x, z: player.z, inCar, car: pcar ? pcar.type : null, near: n ? n.mode : null, stars, cats: cats.length, treats }; } };
 })();
-</script>
