@@ -2,8 +2,8 @@
 
 A small open-world driving game set in the real village of Vrigstad, Sweden (57.3555° N, 14.4756° E), plus the 3D map it grew out of. Everything runs in the browser from a single HTML file.
 
-- **`index.html`** is the game. Walk around, steal a Volvo 240, a Saab 900, an EPA-traktor or a tractor, and outrun the police.
-- **`map.html`** is an interactive 3D terrain model of the same 2.2 × 2.2 km area.
+- **The game** (`src/index.html`): walk around, steal a Volvo 240, a Saab 900, an EPA-traktor or a tractor, and outrun the police.
+- **The map** (`src/map.html`) is an interactive 3D terrain model of the same 2.2 × 2.2 km area.
 
 <p align="center">
   <a href="https://oliverromhagen.github.io/vrigstad-joyride/media/teaser.mp4"><img src="media/teaser.gif" width="640" alt="Teaser trailer: the village from the air, a red Volvo 240 chased by three police cars, an EPA-traktor at 30 km/h, and the title card"></a><br>
@@ -18,7 +18,7 @@ The teaser and poster are rendered from the game itself by the scripts in `tools
 
 ## Play
 
-Open `index.html` in a browser. It needs WebGL. The fonts load from a CDN, so offline it falls back to system fonts.
+Play it at https://oliverromhagen.github.io/vrigstad-joyride/, or run `npm install && npm run build` and open `dist/index.html`. It needs WebGL. The fonts load from a CDN, so offline it falls back to system fonts.
 
 | Action | Keyboard | Phone |
 |---|---|---|
@@ -46,7 +46,7 @@ data/raw/          OpenStreetMap extract (osm.json) and one elevation tile (tile
 data/vrigstad.json processed data: buildings, roads, water, land use, 25 m elevation grid
 tools/fetch.sh     re-downloads data/raw from the Overpass API and Mapzen terrain tiles
 tools/process.py   projects and clips the raw data into data/vrigstad.json
-tools/build.mjs    builds both pages with Vite into dist/, each as one self-contained file, and copies them to index.html and map.html
+tools/build.mjs    builds both pages with Vite into dist/, each as one self-contained file
 ```
 
 It needs Node. Work on it with a dev server, and rebuild after changing anything in `src/`:

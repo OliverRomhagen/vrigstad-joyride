@@ -1,8 +1,8 @@
 import { defineConfig } from 'vite';
 import { viteSingleFile } from 'vite-plugin-singlefile';
 
-// The pages live in src/ (index.html is the game, map.html the map), because the repo root still holds
-// the committed builds that GitHub Pages serves until #45. Each page builds to one self-contained file.
+// The pages live in src/ (index.html is the game, map.html the map). Each page builds to one self-contained file in dist/,
+// which CI deploys to GitHub Pages (.github/workflows/pages.yml).
 export default defineConfig({
   root: 'src',
   // keep @license comments, so the bundled three.js keeps the MIT notice its licence asks for

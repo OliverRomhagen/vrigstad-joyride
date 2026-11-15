@@ -12,15 +12,15 @@ A browser open-world driving game set in the real village of Vrigstad, Sweden, b
 npm install                 # once
 npm run dev                 # dev server with hot reload: the game at http://localhost:5173/, the map at /map.html
 npm run check               # typecheck; run before every commit (lint and unit tests join it in #46 and #52)
-npm run build               # production build into dist/, copied to index.html and map.html in the repo root
+npm run build               # production build into dist/ (index.html, map.html)
 npm run preview             # serve the built dist/ locally
 npx playwright install chromium   # once, for the smoke tests
-npm run test:e2e            # Playwright smoke tests against the built index.html and map.html; build first
+npm run test:e2e            # Playwright smoke tests against the built pages in dist/; build first
 npm run data                # rebuild data/vrigstad.json from data/raw/ (Python standard library only); run npm run build after, the data is built into the pages
 tools/fetch.sh              # re-download OSM + elevation (rarely needed; hits public APIs)
 ```
 
-Live site: https://oliverromhagen.github.io/vrigstad-joyride/ (GitHub Pages, from the built pages committed on `main`, until [#45](https://github.com/OliverRomhagen/vrigstad-joyride/issues/45)).
+Live site: https://oliverromhagen.github.io/vrigstad-joyride/ (GitHub Pages, from the `gh-pages` branch, which `.github/workflows/pages.yml` builds and deploys on every push to `main`).
 
 ## Workflow
 
@@ -29,7 +29,6 @@ Live site: https://oliverromhagen.github.io/vrigstad-joyride/ (GitHub Pages, fro
 - Keep a PR to one concern. Don't mix a refactor with a feature, and don't reformat code you aren't otherwise changing.
 - Reference the issue in the PR (`Closes #12`, or `Part of #12` if it doesn't fully close it). Say in the PR what is *not* done. The PR template (`.github/pull_request_template.md`) asks for that. When a PR is opened, `.github/workflows/pr-triage.yml` assigns it to its author when they have write access, and comments while the description references no issue.
 - PRs that build on each other are a stack. Prefer `gh stack` (`gh extension install github/gh-stack`): `gh stack init` or `add` builds the stack, `gh stack submit` pushes it and opens the PRs, and `gh stack sync` rebases what's left after a lower PR merges or a lower branch is rebased: until then the PRs above it still hold its old commits, and their diffs repeat them. Merge from the bottom up. When a PR outside the stack targets one of its branches, merge one PR at a time, never the whole stack at once: merged together, the stack's branches are deleted together, and GitHub closes that PR instead of moving it to `main`. After a squash merge it still holds the stack's old commits, so its author rebases it onto `main` (`git rebase --onto origin/main <the old tip of the branch it targeted>`).
-- Until [#45](https://github.com/OliverRomhagen/vrigstad-joyride/issues/45) lands, the built `index.html` and `map.html` are committed. Rebuild them with `npm run build` in the same commit as the `src/` change, and never edit them by hand.
 - Big structural moves conflict with every open feature branch. Check open PRs first, and coordinate rather than rebasing someone else's work.
 
 ### Commits and PR titles: Conventional Commits
@@ -70,7 +69,6 @@ GitHub issues are the backlog: every bug, idea and piece of work is one issue.
 
 - One branch (and worktree) per agent and task. Bring your branch up to date with `main` before opening a PR and again before merging.
 - Until #44 splits the code, every feature edits `src/game/main.ts`, so expect conflicts. Keep changes in their own section of the file where you can.
-- On a conflict in `index.html` or `map.html`, never merge the built files by hand: resolve `src/` only, then rerun `npm run build`.
 - Say how you tested in the PR, and be honest about what wasn't tested ("not played by hand on a phone").
 
 ## Code style
@@ -98,7 +96,7 @@ Until the migration reaches a given rule, don't make the existing code worse in 
 - **Smoke tests** (Playwright, [#43](https://github.com/OliverRomhagen/vrigstad-joyride/issues/43)): the pages load without console errors, Start works, the player can move and get into a car. Every PR keeps them green. When you add a major feature, add one smoke step for it.
 - **Unit tests** (Vitest, [#52](https://github.com/OliverRomhagen/vrigstad-joyride/issues/52)): game rules and pure helpers such as height lookup, driving model, wanted level, police AI and spatial queries. Write them for new gameplay rules; use the seeded RNG for deterministic scenarios.
 - **No pixel-diff tests.** Headless WebGL output varies. Assert on state exposed through the test hook instead, and attach screenshots to the PR when visuals change.
-- The smoke tests live in `tests/e2e/` and run in CI on every PR (`.github/workflows/e2e.yml`), which also fails if the committed `index.html` / `map.html` are stale and uploads screenshots of both pages as the `e2e-screenshots` artifact. They read game state from `window.__joyride.state()` (defined at the end of `src/game/main.ts`); add a field there when a new smoke step needs one, and keep the hook read-only.
+- The smoke tests live in `tests/e2e/` and run in CI on every PR (`.github/workflows/e2e.yml`), which also fails if the committed `data/vrigstad.json` is stale and uploads screenshots of both pages as the `e2e-screenshots` artifact. They read game state from `window.__joyride.state()` (defined at the end of `src/game/main.ts`); add a field there when a new smoke step needs one, and keep the hook read-only.
 - Until the unit-test tooling exists, also test gameplay changes in a browser and describe what you did in the PR.
 
 ## Data and coordinates
