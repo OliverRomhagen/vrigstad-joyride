@@ -311,7 +311,10 @@ for e in d['elements']:
 assert sum('s' in b for b in buildings) == 1, f'church way {CHURCH_WAY} missing from osm.json'
 out = {'size': S, 'n': N, 'elev': elev_flat, 'b': buildings, 'r': roads, 'w': water, 'ww': waterways, 'l': land,
        'labels': [{'t': k, 'x': v[0], 'z': v[1], 'k': v[2]} for k, v in labels.items()]}
-json.dump(out, open(out_path, 'w'), ensure_ascii=False, separators=(',', ':'))
+# Label order is draw priority on the map: these first, the rest as found.
+order = ['Vrigstad Kyrka', 'Torget', 'Vrigstad Värdshus', 'Slättsjön', 'Lundholmssjön', 'Vrigstadsån']
+out['labels'].sort(key=lambda l: order.index(l['t']) if l['t'] in order else 99)
+json.dump(out, open(out_path, 'w', encoding='utf-8'), ensure_ascii=False, separators=(',', ':'))
 print('elev m', min(elev_flat) / 10, max(elev_flat) / 10)
 print('buildings', len(buildings), 'roads', len(roads), 'water', len(water), 'waterways', len(waterways), 'land', len(land))
 import collections

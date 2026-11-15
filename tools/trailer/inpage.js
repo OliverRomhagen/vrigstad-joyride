@@ -95,7 +95,7 @@
 
   // ----- staging -----
   // a car of a given type and paint colour (the game picks colours at random, so keep trying)
-  X.makeCar = (type, hex, x, z, h) => { const want = new THREE.Color(hex);
+  X.makeCar = (type, hex, x, z, h) => { const want = new G.THREE.Color(hex).convertSRGBToLinear();   // vertex colours are linear (see mergeGeo)
     for (let t = 0; t < 80; t++) { const c = G.addCar(type, x, z, h, 'parked'), col = c.mesh.geometry.attributes.color.array, k = 144 * 3;
       if (Math.abs(col[k] - want.r) + Math.abs(col[k + 1] - want.g) + Math.abs(col[k + 2] - want.b) < 0.02) return c; G.removeCar(c); }
     return G.addCar(type, x, z, h, 'parked'); };
