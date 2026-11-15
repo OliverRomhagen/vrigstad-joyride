@@ -726,7 +726,9 @@ function addPlace(kind, name, x, z, color) {
 })();
 // one lucka, several things to buy: E opens a small menu (1 / 2 / Esc, or tap), walking away closes it
 const kmenu = $('kmenu');
-function closeKiosk() { kmenu.hidden = true; }
+let relock = false;                                             // the kiosk menu needs the cursor: free it while the menu is open, and take it back after
+function openKiosk() { kmenu.hidden = false; relock = locked(); if (relock) document.exitPointerLock(); }
+function closeKiosk() { kmenu.hidden = true; if (relock) { relock = false; lockMouse(); } }
 function kioskPick(k) { closeKiosk(); if (k === 'triss') scratch(); else if (k === 'treats') buyTreats(); }
 kmenu.addEventListener('click', e => { const b = e.target.closest('button'); if (b) { kioskPick(b.dataset.k); canvas.focus(); } });
 function nearPlace() { if (inCar) return null; for (const p of places) if (Math.hypot(p.x - player.x, p.z - player.z) < 2.2) return p; return null; }
@@ -767,10 +769,17 @@ addEventListener('keydown', e => { if (!started) return; const k = KEYMAP[e.code
   if (k) { keys[k] = true; e.preventDefault(); } else if ((e.code === 'KeyE' || e.code === 'KeyF' || e.code === 'Enter') && !e.repeat) action(); else if (e.code === 'KeyR') respawn(); });
 addEventListener('keyup', e => { const k = KEYMAP[e.code]; if (k) keys[k] = false; });
 addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
+// mouse look: a click on the game locks the pointer, and the mouse then turns the camera with no button held. Esc frees the cursor.
+// Touch, and a mouse in a browser that refuses the lock, turn the camera by dragging.
+const LOCK_K = 0.4;   // a locked mouse turns this much less per pixel than a drag: it travels much further
+const locked = () => document.pointerLockElement === canvas;
+function lockMouse() { if (locked() || !canvas.requestPointerLock) return; try { const p = canvas.requestPointerLock(); if (p && p.catch) p.catch(() => {}); } catch (err) {} }
+document.addEventListener('pointerlockchange', () => { if (!locked() && started && kmenu.hidden) toast('Click the game to look around with the mouse again.', 3); });
 let dragId = null, lx = 0, ly = 0;
-canvas.addEventListener('pointerdown', e => { dragId = e.pointerId; lx = e.clientX; ly = e.clientY; try { canvas.setPointerCapture(e.pointerId); } catch (err) {} });
-canvas.addEventListener('pointermove', e => { if (e.pointerId !== dragId) return;
-  const dx = e.clientX - lx, dy = e.clientY - ly; lx = e.clientX; ly = e.clientY;
+canvas.addEventListener('pointerdown', e => { dragId = e.pointerId; lx = e.clientX; ly = e.clientY; try { canvas.setPointerCapture(e.pointerId); } catch (err) {}
+  if (started && e.pointerType === 'mouse') lockMouse(); });
+canvas.addEventListener('pointermove', e => { const lk = locked(); if (!lk && e.pointerId !== dragId) return;
+  const dx = lk ? e.movementX * LOCK_K : e.clientX - lx, dy = lk ? e.movementY * LOCK_K : e.clientY - ly; lx = e.clientX; ly = e.clientY;
   if (inCar) { lookOff = wrap(lookOff + dx * 0.006); lookIdle = 0; } else camYaw = wrap(camYaw + dx * 0.006);
   camPitch = clamp(camPitch + dy * 0.004, 0.06, 1.25); });
 const endDrag = e => { if (e.pointerId === dragId) dragId = null; };
@@ -831,7 +840,7 @@ function action() {
   if (inside) { leaveHouse(); return; }
   const pl = nearPlace(), kt = nearCat();
   if (catFirst(kt, pl)) { petCat(kt); return; }
-  if (pl) { if (pl.kind === 'safe') enterHouse(pl); else kmenu.hidden = !kmenu.hidden; return; }
+  if (pl) { if (pl.kind === 'safe') enterHouse(pl); else if (kmenu.hidden) openKiosk(); else closeKiosk(); return; }
   if (inCar) {
     if (Math.abs(pcar.v) > 3) { toast('Slow down before you get out.', 2); return; }
     player.x = pcar.x - Math.cos(pcar.h) * 2; player.z = pcar.z - Math.sin(pcar.h) * 2; player.h = pcar.h; collide(player, 0.5);
@@ -945,10 +954,10 @@ function frame(now) {
   drawMini(T);
   renderer.render(scene, camera);
 }
-$('go').addEventListener('click', () => { started = true; $('intro').hidden = true; camYaw = 0.6; camPitch = 0.34; canvas.focus();
+$('go').addEventListener('click', () => { started = true; $('intro').hidden = true; camYaw = 0.6; camPitch = 0.34; canvas.focus(); if (!coarse) lockMouse();
   toast('Find a car and press E to take it. Occupied cars always get you a wanted star.', 5); });
 resize(); requestAnimationFrame(frame);
 
 // ---------- test hook: read-only state for the smoke tests (tests/e2e), so they do not have to read pixels ----------
-window.__joyride = { state: () => { const n = nearestCar(); return { started, x: player.x, z: player.z, inCar, car: pcar ? pcar.type : null, near: n ? n.mode : null, speed: pcar ? pcar.v : 0, drift: pcar ? pcar.drift : 0, boost: pcar ? pcar.boost : 0, charge: pcar ? pcar.charge : 0, loose: pcar ? pcar.loose : 0, flickDir: pcar ? pcar.flickDir : 0, stars, cats: cats.length, treats }; } };
+window.__joyride = { state: () => { const n = nearestCar(); return { started, x: player.x, z: player.z, yaw: camYaw, inCar, car: pcar ? pcar.type : null, near: n ? n.mode : null, speed: pcar ? pcar.v : 0, drift: pcar ? pcar.drift : 0, boost: pcar ? pcar.boost : 0, charge: pcar ? pcar.charge : 0, loose: pcar ? pcar.loose : 0, flickDir: pcar ? pcar.flickDir : 0, stars, cats: cats.length, treats }; } };
 })();

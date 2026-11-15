@@ -136,6 +136,21 @@ test.describe('game (index.html)', () => {
     expect(errors).toEqual([]);
   });
 
+  test('dragging the view turns the camera', async ({ page }) => {
+    // The headless browser refuses the pointer lock, so this covers the drag that touch and such browsers fall back to.
+    const errors = watchErrors(page);
+    await page.goto('/index.html');
+    await page.locator('#go').click();
+    const { yaw } = await state(page);
+
+    await page.mouse.move(300, 300);
+    await page.mouse.down();
+    await page.mouse.move(400, 300, { steps: 5 });
+    await page.mouse.up();
+    await expect.poll(async () => (await state(page)).yaw).toBeGreaterThan(yaw);
+    expect(errors).toEqual([]);
+  });
+
   test('cats are around, and the kiosk sells cat treats from its menu', async ({ page }, testInfo) => {
     const errors = watchErrors(page);
     await page.goto('/index.html');
