@@ -1,0 +1,6 @@
+# Generated files: GitHub collapses them in review diffs and leaves them out of language stats.
+# index.html and map.html at the root are built from src/ by the build in AGENTS.md's Commands (until #45 stops committing them);
+# data/vrigstad.json is built by tools/process.py.
+/index.html linguist-generated=true
+/map.html linguist-generated=true
+data/vrigstad.json linguist-generated=true

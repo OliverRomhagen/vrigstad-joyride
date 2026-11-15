@@ -1,0 +1,39 @@
+name: PR title
+
+# Squash merges use the PR title as the commit subject, and release notes are built from it,
+# so it must follow Conventional Commits with the types in AGENTS.md.
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  pull-requests: read
+
+jobs:
+  lint:
+    name: Conventional Commits title
+    runs-on: ubuntu-latest
+    steps:
+      - uses: amannn/action-semantic-pull-request@48f256284bd46cdaab1048c3721360e808335d50 # v6.1.1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          # Keep in sync with "Commits and PR titles" in AGENTS.md.
+          types: |
+            feat
+            fix
+            perf
+            refactor
+            docs
+            test
+            build
+            ci
+            style
+            chore
+            data
+            revert
+          requireScope: false
+          # The action builds the RegExp without the u flag, so no \p{Lu}: list the Swedish capitals.
+          subjectPattern: ^(?![A-ZÅÄÖ]).+[^.]$
+          subjectPatternError: |
+            The summary "{subject}" in "{title}" should start in lower case and not end with a period.
