@@ -24,7 +24,8 @@ Play it at https://oliverromhagen.github.io/vrigstad-joyride/, or run `npm insta
 |---|---|---|
 | Move / drive | W A S D or arrows | Left stick |
 | Steal / get out | E | Use button |
-| Sprint / brake | Shift / Space | Stick sprints on foot / Brake button |
+| Sprint | Shift | Stick sprints on foot |
+| Jump on foot / brake in a car | Space | Jump button, which becomes Brake in a car |
 | Look around | Move the mouse (click the game to lock it, Esc frees the cursor) | Drag the view |
 | Back to Torget | R | |
 | Go inside a safehouse / scratch a trisslott | E | Use button |

@@ -156,6 +156,19 @@ test.describe('game (index.html)', () => {
     expect(errors).toEqual([]);
   });
 
+  test('Space makes the player jump and land again', async ({ page }) => {
+    const errors = watchErrors(page);
+    await page.goto('/index.html');
+    await page.locator('#go').click();
+    expect(await state(page)).toMatchObject({ y: 0 });
+
+    await page.keyboard.down('Space');
+    await expect.poll(async () => (await state(page)).y, { intervals: [30] }).toBeGreaterThan(0.2);
+    await page.keyboard.up('Space');
+    await expect.poll(async () => (await state(page)).y).toBe(0);
+    expect(errors).toEqual([]);
+  });
+
   test('cats are around, and the kiosk sells cat treats from its menu', async ({ page }, testInfo) => {
     const errors = watchErrors(page);
     await page.goto('/index.html');
