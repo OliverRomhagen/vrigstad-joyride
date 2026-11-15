@@ -1,0 +1,100 @@
+name: PR triage
+
+# Assigns a new PR to its author, gives it a scope label and notes when it references no issue.
+# pull_request_target, so it can write to PRs from forks too: it never checks out or runs the PR's code,
+# and reads the PR's text from the event file, never through ${{ }} in the script.
+on:
+  pull_request_target:
+    types: [opened, reopened, edited]
+
+permissions:
+  issues: read
+  pull-requests: write
+
+concurrency:
+  group: pr-triage-${{ github.event.pull_request.number }}
+
+jobs:
+  triage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - run: |
+          set -euo pipefail
+          event() { jq -r "$1" "$GITHUB_EVENT_PATH"; }
+          action=$(event .action)
+          number=$(event .pull_request.number)
+          title=$(event .pull_request.title)
+          old_title=$(event '.changes.title.from // ""')
+          branch=$(event .pull_request.head.ref)
+          is_bot=$([ "$(event .pull_request.user.type)" = Bot ] && echo true || echo false)
+          # A reference inside an HTML comment, such as a template's placeholder, doesn't count.
+          body=$(event '.pull_request.body // ""' | perl -0pe 's/<!--.*?-->//gs')
+          marker='<!-- pr-triage:issue -->'
+
+          # The API leaves out a login that can't be assigned: an author without write access stays unassigned.
+          if [ "$action" = opened ] && [ "$is_bot" = false ] && [ "$(event '.pull_request.assignees | length')" = 0 ]; then
+            gh api -X POST "repos/$GH_REPO/issues/$number/assignees" -f "assignees[]=$(event .pull_request.user.login)" --silent
+          fi
+
+          # The forms GitHub links: `Closes #12`, `Fixes: #12`, `Closes owner/repo#12`, or the issue's URL.
+          refs() {
+            grep -oiE "\b($1):?[[:space:]]+(${GH_REPO}#|https://github\.com/${GH_REPO}/issues/|#)[0-9]+" <<<"$body" |
+              grep -oE '[0-9]+$' | head -1 || true
+          }
+          closing=$(refs 'close[sd]?|fix(e[sd])?|resolve[sd]?')
+          referenced=${closing:-$(refs 'part of')}
+          elsewhere=$(grep -ciE '\b(close[sd]?|fix(e[sd])?|resolve[sd]?|part of):?[[:space:]]+([[:alnum:]_.-]+/[[:alnum:]_.-]+#|https://github\.com/[^[:space:]]+/issues/)[0-9]+' <<<"$body" || true)
+
+          # The issue the PR is for: the reference, else the number a `gh issue develop` branch starts with.
+          issue=${referenced:-$(grep -oE '^[0-9]+' <<<"$branch" || true)}
+          if [ -n "$issue" ] && [ "$(gh api "repos/$GH_REPO/issues/$issue" --jq '.pull_request == null' 2>/dev/null)" != true ]; then
+            issue=
+          fi
+
+          # At most one scope: the title's, else the issue's when it has exactly one. A label set by hand stays;
+          # one the old title set follows the new title's scope.
+          title_scope() {
+            local s
+            s=$(sed -nE 's/^[a-z]+\(([a-z]+)\)!?: .*/\1/p' <<<"$1")
+            if [ -n "$s" ] && gh api "repos/$GH_REPO/labels/scope:$s" --silent 2>/dev/null; then echo "$s"; fi
+          }
+          scope=$(title_scope "$title")
+          if [ -z "$scope" ] && [ -n "$issue" ]; then
+            scope=$(gh api "repos/$GH_REPO/issues/$issue" \
+              --jq '[.labels[].name | select(startswith("scope:"))] | if length == 1 then .[0] | ltrimstr("scope:") else "" end')
+          fi
+          # The event's labels are as of the event; a queued run reads them fresh.
+          current=$(gh api "repos/$GH_REPO/issues/$number" --jq '[.labels[].name | select(startswith("scope:"))] | join(" ")')
+          if [ -z "$current" ]; then
+            [ -z "$scope" ] || gh api -X POST "repos/$GH_REPO/issues/$number/labels" -f "labels[]=scope:$scope" --silent
+          elif [ -n "$old_title" ]; then
+            old=$(title_scope "$old_title")
+            new=$(title_scope "$title")
+            if [ -n "$old" ] && [ -n "$new" ] && [ "$old" != "$new" ] && [ "$current" = "scope:$old" ]; then
+              gh api -X DELETE "repos/$GH_REPO/issues/$number/labels/scope:$old" --silent
+              gh api -X POST "repos/$GH_REPO/issues/$number/labels" -f "labels[]=scope:$new" --silent
+            fi
+          fi
+
+          # One comment while the body references no issue, removed once it does.
+          [ "$is_bot" = false ] || exit 0
+          comment=$(gh api --paginate "repos/$GH_REPO/issues/$number/comments" \
+            --jq ".[] | select(.user.login == \"github-actions[bot]\" and (.body | startswith(\"$marker\"))) | .id" | head -1 || true)
+          if [ -n "$referenced" ] || [ "$elsewhere" != 0 ]; then
+            [ -z "$comment" ] || gh api -X DELETE "repos/$GH_REPO/issues/comments/$comment" --silent
+            exit 0
+          fi
+          if [ -n "$issue" ]; then
+            note="This branch is for #$issue, but the description doesn't reference it. Add \`Closes #$issue\`, or \`Part of #$issue\` if this PR doesn't finish it."
+          else
+            note="The description references no issue. If this PR is for one, add \`Closes #<n>\`, or \`Part of #<n>\` if it doesn't finish it."
+          fi
+          if [ -n "$comment" ]; then
+            gh api -X PATCH "repos/$GH_REPO/issues/comments/$comment" -f "body=$marker"$'\n'"$note" --silent
+          else
+            gh api -X POST "repos/$GH_REPO/issues/$number/comments" -f "body=$marker"$'\n'"$note" --silent
+          fi
