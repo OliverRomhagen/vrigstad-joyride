@@ -1,0 +1,42 @@
+name: Preview
+
+# Deploys a playable build of a PR to pr-preview/pr-<number>/ on gh-pages and comments the link on the PR.
+# Only feat PRs get one automatically; any other PR gets one when it has the `preview` label.
+# The preview is removed when the PR is closed or merged. PRs from forks can't write to gh-pages, so they get none.
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, labeled, edited, closed]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: preview-${{ github.event.number }}
+  cancel-in-progress: false
+
+jobs:
+  preview:
+    # labeled and edited only count when they add the label or change the title
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository
+      && (startsWith(github.event.pull_request.title, 'feat') || contains(github.event.pull_request.labels.*.name, 'preview'))
+      && (github.event.action != 'labeled' || github.event.label.name == 'preview')
+      && (github.event.action != 'edited' || github.event.changes.title)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: github.event.action != 'closed'
+        with:
+          node-version: lts/*
+          cache: npm
+      - if: github.event.action != 'closed'
+        run: npm ci && npm run build
+      - uses: rossjrw/pr-preview-action@873417d2df72380da1f3978378fb58560bcde976 # v1.8.2
+        with:
+          source-dir: dist
+          action: ${{ github.event.action == 'closed' && 'remove' || 'deploy' }}
+          wait-for-pages-deployment: true
