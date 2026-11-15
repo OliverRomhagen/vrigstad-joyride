@@ -20,5 +20,5 @@ Closes #
 ## Checklist
 
 - [ ] One concern; no unrelated refactors or reformatting
-- [ ] If `src/` or `data/` changed: rebuilt `index.html` and `map.html` with `python3 tools/build.py` in the same commit
+- [ ] If `src/` or `data/` changed: rebuilt `index.html` and `map.html` in the same commit (the build command is in AGENTS.md's Commands)
 - [ ] Labelled with a scope, if one fits
