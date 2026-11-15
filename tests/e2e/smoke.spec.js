@@ -26,6 +26,11 @@ async function expectWebGL(page) {
 const state = page => page.evaluate(() => window.__joyride.state());
 
 test.describe('game (index.html)', () => {
+  // Start and clicks on the game ask for the pointer lock. Headless Chromium grants it on Linux (CI) but not on macOS, and once
+  // locked, Playwright's mouse moves arrive as erratic movementX and turn the camera, so walk-relative steps miss their target.
+  // Take the lock away, so every run uses the drag fallback that touch and lock-refusing browsers get.
+  test.beforeEach(async ({ page }) => { await page.addInitScript(() => { HTMLCanvasElement.prototype.requestPointerLock = undefined; }); });
+
   test('loads with no console errors and a WebGL canvas', async ({ page }, testInfo) => {
     const errors = watchErrors(page);
     await page.goto('/index.html');
@@ -137,7 +142,7 @@ test.describe('game (index.html)', () => {
   });
 
   test('dragging the view turns the camera', async ({ page }) => {
-    // The headless browser refuses the pointer lock, so this covers the drag that touch and such browsers fall back to.
+    // The pointer lock is taken away (see beforeEach), so this covers the drag that touch and lock-refusing browsers fall back to.
     const errors = watchErrors(page);
     await page.goto('/index.html');
     await page.locator('#go').click();
