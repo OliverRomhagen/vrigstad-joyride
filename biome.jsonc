@@ -1,0 +1,17 @@
+{
+  "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
+  "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
+  "files": {
+    // The pages (src/*.html and the two single-file scripts) keep their dense hand-formatted style until #49 splits them (AGENTS.md, Code style);
+    // formatting them now would conflict with every open feature branch. tools/trailer is its own package.
+    "includes": ["**", "!**/*.md", "!src/*.html", "!src/game/main.ts", "!src/map/main.ts", "!data", "!tools/trailer"]
+  },
+  "formatter": { "indentStyle": "space", "indentWidth": 2, "lineWidth": 120 },
+  "javascript": { "formatter": { "quoteStyle": "single", "arrowParentheses": "asNeeded" } },
+  "linter": {
+    "rules": {
+      // `if (!list) map.set(k, (list = []))` is the idiom for grouping into a Map here.
+      "suspicious": { "noAssignInExpressions": "off" }
+    }
+  }
+}
