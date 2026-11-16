@@ -187,10 +187,12 @@ test.describe('game (index.html)', () => {
   });
 
   test('a tap between two frames still jumps', async ({ page }) => {
+    const errors = watchErrors(page);
     await page.goto('/index.html');
     await page.locator('#go').click();
     await keysNow(page, [['keydown', 'Space'], ['keyup', 'Space']]);
     await expect.poll(async () => (await state(page)).y, { intervals: [30] }).toBeGreaterThan(0.2);
+    expect(errors).toEqual([]);
   });
 
   test('Space held from braking does not jump on getting out', async ({ page }) => {
@@ -219,6 +221,7 @@ test.describe('game (index.html)', () => {
   });
 
   test('R in the middle of a jump puts the player on the ground at Torget', async ({ page }) => {
+    const errors = watchErrors(page);
     await page.goto('/index.html');
     await page.locator('#go').click();
     await page.keyboard.press('Space');
@@ -227,6 +230,7 @@ test.describe('game (index.html)', () => {
     expect(await state(page)).toMatchObject({ y: 0 });
     await frames(page, 5);
     expect(await state(page)).toMatchObject({ y: 0 });
+    expect(errors).toEqual([]);
   });
 
   test('cats are around, and the kiosk sells cat treats from its menu', async ({ page }, testInfo) => {
