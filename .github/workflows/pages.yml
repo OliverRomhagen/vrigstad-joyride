@@ -1,0 +1,40 @@
+name: Pages
+
+# Builds main and deploys it to the root of the gh-pages branch, which GitHub Pages serves.
+# PR previews live in pr-preview/ on the same branch (see preview.yml), so the deploy leaves that folder alone.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages-main
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    # workflow_dispatch can run from any branch; only main may replace the live site
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: lts/*
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      # media/ holds the teaser the README links to on the live site; .nojekyll serves the files as they are
+      - run: mkdir site && cp dist/*.html site/ && cp -r media site/ && touch site/.nojekyll
+      - uses: JamesIves/github-pages-deploy-action@fa24774553152dd7873cd16ebd8d959b010c5445 # v4.9.0
+        with:
+          folder: site
+          branch: gh-pages
+          clean-exclude: pr-preview
+          # The default force push would drop a preview pushed to gh-pages since the checkout; rebase onto it instead
+          force: false

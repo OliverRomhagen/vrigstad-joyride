@@ -1,0 +1,68 @@
+name: Preview
+
+# Deploys a playable build of a PR to pr-preview/pr-<number>/ on gh-pages and comments the link on the PR.
+# An open PR gets one when its title has the Conventional Commits type feat, or when it has the `preview` label.
+# The preview is removed as soon as the PR no longer qualifies: closed or merged, label removed, or retitled.
+# PRs from forks can't write to gh-pages, so they get none.
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, labeled, unlabeled, edited, closed]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: preview-${{ github.event.number }}
+  cancel-in-progress: false
+
+jobs:
+  preview:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      # Compares what the PR should have now with what gh-pages has, rather than trusting the event: labeled, edited and
+      # unlabeled also arrive for closed PRs, and a removal only runs when there is a preview to remove (the action
+      # comments "Preview removed" even when it removed nothing).
+      - id: decide
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event.action }}
+          STATE: ${{ github.event.pull_request.state }}
+          TITLE: ${{ github.event.pull_request.title }}
+          LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+          DIR: pr-preview/pr-${{ github.event.number }}
+        run: |
+          wants=false
+          if [[ $STATE == open ]] && { [[ $TITLE =~ ^feat(\(.*\))?!?: ]] || jq -e 'index("preview")' <<<"$LABELS" >/dev/null; }; then
+            wants=true
+          fi
+          # Only a 404 means no preview; any other failure stops here, or a closed PR would orphan its preview
+          exists=true
+          if ! out=$(gh api "repos/$GITHUB_REPOSITORY/contents/$DIR?ref=gh-pages" --silent 2>&1); then
+            if [[ $out == *"HTTP 404"* ]]; then exists=false; else echo "$out"; exit 1; fi
+          fi
+          action=none
+          if $wants && { [[ $EVENT =~ ^(opened|reopened|synchronize)$ ]] || ! $exists; }; then action=deploy
+          elif ! $wants && $exists; then action=remove
+          fi
+          echo "wants=$wants exists=$exists -> $action"
+          echo "action=$action" >> "$GITHUB_OUTPUT"
+      - if: steps.decide.outputs.action != 'none'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - if: steps.decide.outputs.action == 'deploy'
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: lts/*
+          cache: npm
+      - if: steps.decide.outputs.action == 'deploy'
+        run: npm ci && npm run build
+      # No wait-for-pages-deployment: it needs pages: read, and it times out until Pages serves gh-pages.
+      # The link then works a minute or so after the comment.
+      - if: steps.decide.outputs.action != 'none'
+        uses: rossjrw/pr-preview-action@873417d2df72380da1f3978378fb58560bcde976 # v1.8.2
+        with:
+          source-dir: dist
+          action: ${{ steps.decide.outputs.action }}

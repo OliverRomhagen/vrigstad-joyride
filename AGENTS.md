@@ -24,10 +24,11 @@ Live site: https://oliverromhagen.github.io/vrigstad-joyride/ (GitHub Pages, fro
 
 ## Workflow
 
-- Work on a branch and open a PR; don't push to `main`. For work on an issue, start the branch with `gh issue develop <n> --checkout`: GitHub then links the branch, and the PR made from it, to the issue.
+- Work on a branch and open a PR; don't push to `main`. For work on an issue, start the branch with `gh issue develop <n> --checkout`: GitHub then links the branch, and the PR made from it, to the issue. For work that only does part of an issue, make the branch yourself (see **Link** below).
+- A `feat` PR gets a playable preview link commented on it; add the `preview` label to get one for any other PR (see "Preview links" in the README).
 - Keep a PR to one concern. Don't mix a refactor with a feature, and don't reformat code you aren't otherwise changing.
-- Reference the issue in the PR (`Closes #12`, or `Part of #12` if it doesn't fully close it). Say in the PR what is *not* done.
-- PRs that build on each other are a stack. Prefer `gh stack` (`gh extension install github/gh-stack`): `gh stack init` or `add` builds the stack, `gh stack submit` pushes it and opens the PRs, and `gh stack sync` rebases what's left after a lower PR merges. Merge from the bottom up.
+- Reference the issue in the PR (`Closes #12`, or `Part of #12` if it doesn't fully close it). Say in the PR what is *not* done. The PR template (`.github/pull_request_template.md`) asks for that. When a PR is opened, `.github/workflows/pr-triage.yml` assigns it to its author when they have write access, and comments while the description references no issue.
+- PRs that build on each other are a stack. Prefer `gh stack` (`gh extension install github/gh-stack`): `gh stack init` or `add` builds the stack, `gh stack submit` pushes it and opens the PRs, and `gh stack sync` rebases what's left after a lower PR merges or a lower branch is rebased: until then the PRs above it still hold its old commits, and their diffs repeat them. Merge from the bottom up. When a PR outside the stack targets one of its branches, merge one PR at a time, never the whole stack at once: merged together, the stack's branches are deleted together, and GitHub closes that PR instead of moving it to `main`. After a squash merge it still holds the stack's old commits, so its author rebases it onto `main` (`git rebase --onto origin/main <the old tip of the branch it targeted>`).
 - Until [#45](https://github.com/OliverRomhagen/vrigstad-joyride/issues/45) lands, the built `index.html` and `map.html` are committed. Rebuild them with `npm run build` in the same commit as the `src/` change, and never edit them by hand.
 - Big structural moves conflict with every open feature branch. Check open PRs first, and coordinate rather than rebasing someone else's work.
 
@@ -39,12 +40,13 @@ Every commit message **and every PR title** follows [Conventional Commits](https
 <type>(<optional scope>): <imperative summary, lower case, no period>
 ```
 
-- Types: `feat` (new gameplay or feature), `fix`, `perf`, `refactor` (no behaviour change), `docs`, `test`, `build` (Vite, npm, `tools/build.mjs`), `ci`, `style` (formatting only), `chore`, and `data` for changes to `data/` or the map pipeline.
+- Types: `feat` (new gameplay or feature), `fix`, `perf`, `refactor` (no behaviour change), `docs`, `test`, `build` (Vite, npm, `tools/build.mjs`), `ci`, `style` (formatting only), `chore`, `data` for changes to `data/` or the map pipeline, and `revert`.
 - Scopes are optional and name the area. They are the same list as the `scope:` labels (see Tickets): `world`, `npc`, `police`, `vehicles`, `player`, `hud`, `audio`, `minigames`, `multiplayer`, `architecture`.
 - Examples: `feat(police): add roadblocks at three stars`, `fix(hud): keep street sign inside safe area on iPhone`, `refactor(world): share terrain code between game and map`, `data: refresh OSM extract`.
 - Summary under ~70 characters. Add a body for the *why* when it isn't obvious.
 - Release notes are generated from PR titles (see "Releases" in the README), and the type sets the version bump: `feat` → minor, `fix` / `perf` → patch.
-- Merge PRs with **squash**. The PR title should become the commit subject, so it must follow the same format. (This needs the repo's squash setting to use the PR title; until the owner changes that, check the squash commit title when merging.)
+- Merge PRs with **squash**. The PR title becomes the commit subject, so it must follow the same format.
+- The `PR title` check (`.github/workflows/pr-title.yml`) enforces the types and the lower-case summary with no period. The summary length isn't checked. A summary can't start with a capital, so rephrase one that would start with a place name (`fix(world): fill Slättsjön to the shore`, not `fix(world): Slättsjön fills to the shore`), and retitle a GitHub "Revert" PR as `revert: …`.
 
 ### Tickets
 
@@ -54,11 +56,11 @@ GitHub issues are the backlog: every bug, idea and piece of work is one issue.
 - **Type** every issue in GitHub's Type field, not with a label: `Bug`, `Feature` (new gameplay or content) or `Task` (tech, tooling, docs, or improving an existing feature). The forms set it; from the CLI, `gh issue create --type Feature`. A PR has no type field: its Conventional Commits title is its type.
 - **Label** every issue when you file it, and every PR when you open it:
   - **A priority**, on issues: `prio:high`, `prio:mid` or `prio:low`. Use `status:future` for options to decide on later. A collaborator who files an issue picks the priority they think fits; for issues from people who can't set labels, triage adds it. The maintainers change it when they rank differently.
-  - **At most one scope**, if one fits: `scope:world`, `npc`, `police`, `vehicles`, `player`, `hud`, `audio`, `minigames`, `multiplayer`, `architecture` (`.github/labels.yml` says what each covers). If two fit, the issue is probably two issues.
+  - **At most one scope**, if one fits: `scope:world`, `npc`, `police`, `vehicles`, `player`, `hud`, `audio`, `minigames`, `multiplayer`, `architecture` (`.github/labels.yml` says what each covers). If two fit, the issue is probably two issues. When a PR is opened, the same workflow adds its scope from the title (`feat(world): …` gives `scope:world`), else from the referenced issue when that has one scope. A retitle changes it while it is still the scope the old title gave; a scope set or removed by hand stays.
 - **Labels live in `.github/labels.yml`.** Add or rename one there, in a PR: the PR shows what would change, and the merge applies it. Rename with `from_name: <old name>` on the entry, or a new label is created and the old one stays on its issues. The sync never deletes a label: to delete one, remove it from the file and run `gh label delete`. A label made in GitHub's settings or with `gh label create` isn't in the file; add it there. Add a new `scope:<area>` only when several issues need it, with a one-line description, and add it to the commit scopes above in the same PR. Don't create one-off labels for a single issue or PR.
 - **Link** issues by what the link means:
   - `#12` in text is a mention: it shows in #12's timeline and nowhere else. Use it for "related" and "see also".
-  - `Closes #12` in a PR description links the PR to the issue and closes it when the PR merges.
+  - `Closes #12` in a PR description links the PR to the issue and closes it when the PR merges. A branch made with `gh issue develop 12` does the same, even when the description says `Part of #12`: for work that only does part of an issue, make the branch yourself.
   - A tracking issue holds its parts as **sub-issues** (`gh issue edit 61 --add-sub-issue 43,44`). An issue has at most one parent.
   - When an issue can't start before another is done, mark it **blocked by** that one (`gh issue edit 44 --add-blocked-by 43`). "Easier after" or "should come first" stays in the body as a mention.
 - When you split an issue, the new issues mention the old one, and the old one is closed or becomes their parent.
