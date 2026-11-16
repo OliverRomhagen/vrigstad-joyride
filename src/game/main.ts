@@ -529,8 +529,9 @@ function drive(c, thr, steer, brake, dt, canDrift) {
   else if (thr > 0) c.v += (c.v < 0 ? 20 : c.T.acc * (1 - 0.6 * Math.max(0, c.v) / c.T.max)) * thr * dt;
   else if (thr < 0) c.v += (c.v > 0.5 ? 20 : c.T.acc * 0.6) * thr * dt;
   else c.v -= Math.sign(c.v) * Math.min(Math.abs(c.v), (road ? 2 : 5) * dt);
-  if (c.boost > 0) { c.boost -= dt; c.v += TURBO_ACC * dt; }
+  if (c.boost > 0) { c.boost -= dt; if (c.wet) c.boost = 0; }   // water puts the turbo out
   const max = (c.wet ? 2.5 : c.T.max * (road ? 1 : c.T.off)) * (c.boost > 0 ? TURBO_TOP : 1);
+  if (c.boost > 0 && c.v < max) c.v = Math.min(max, c.v + TURBO_ACC * dt);   // only up to the limit, so it never cancels the overspeed braking below
   if (c.v > max) c.v = Math.max(max, c.v - 14 * dt);
   if (c.v < -7) c.v = -7;
   const s = c.drift ? c.drift * (0.6 + 0.4 * steer * c.drift) : steer;   // in a drift the nose always swings the drift's way; steering tightens or widens it
@@ -544,7 +545,7 @@ function drive(c, thr, steer, brake, dt, canDrift) {
   else { c.vh = c.h; c.slip = 0; }
   c.x += Math.sin(c.vh) * c.v * dt; c.z -= Math.cos(c.vh) * c.v * dt;
   c.x = clamp(c.x, -HALF + 4, HALF - 4); c.z = clamp(c.z, -HALF + 4, HALF - 4);
-  if (collide(c, 1.5)) { c.v *= Math.pow(0.02, dt); c.drift = c.loose = 0; }     // a wall ends the slide, and the turbo with it
+  if (collide(c, 1.5)) { c.v *= Math.pow(0.02, dt); c.drift = c.loose = c.boost = 0; }     // a wall ends the slide, and the turbo with it (charged or firing)
   for (const o of cars) { if (o === c) continue; const dx = c.x - o.x, dz = c.z - o.z, d = Math.hypot(dx, dz);
     if (d < 2.7 && d > 0.01) { const push = 2.7 - d; c.x += dx / d * push; c.z += dz / d * push;
       if (Math.abs(c.v) > 6 && c === pcar && o.mode === 'police' && ramCool <= 0) { ramCool = 6; addStar('Ramming a police car. That will not help.'); }
@@ -586,7 +587,7 @@ function updateDriftFx(c) {
   }
   flame.visible = !!c && c.boost > 0;
   if (flame.visible) { const x = c.x - fx * (back + 0.95), z = c.z - fz * (back + 0.95);
-    flame.position.set(x, groundAt(x, z) + 0.45, z); flame.rotation.set(0, -c.h + Math.PI, 0); flame.scale.set(1, 1, 0.7 + fxRnd() * 0.8); }
+    flame.position.set(x, groundAt(x, z) + 0.45, z); flame.rotation.set(0, -c.h, 0); flame.scale.set(1, 1, 0.7 + fxRnd() * 0.8); }   // the cone's tip is local +Z, which -h turns to the car's rear
 }
 
 // ---------- pedestrians: walk the streets and footpaths, now and then stop for a while ----------

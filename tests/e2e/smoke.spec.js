@@ -99,16 +99,16 @@ test.describe('game (index.html)', () => {
     await page.keyboard.down('KeyD');
     await page.keyboard.down('Space');
     await expect.poll(async () => (await state(page)).drift, { intervals: [50] }).toBe(1);
-    // past the first spark colour (1 s of sliding, in game time: headless frames are slow), unless a wall ends the slide first
-    await expect.poll(async () => { const q = await state(page); return q.charge > 1.05 || !q.drift; }, { intervals: [100], timeout: 20000 }).toBe(true);
-    const held = await state(page);
+    // past the first spark colour (1 s of sliding, in game time: headless frames are slow); the slide circles on Torget, clear of walls
+    await expect.poll(async () => { const q = await state(page); expect(q.drift).toBe(1); return q.charge; }, { intervals: [100], timeout: 60_000 }).toBeGreaterThan(1.05);
     await page.screenshot({ path: testInfo.outputPath('game-drift.png') });
     await page.keyboard.up('Space');
     await page.keyboard.up('KeyD');
     await page.keyboard.up('KeyW');
     await expect.poll(async () => (await state(page)).drift, { intervals: [20] }).toBe(0);
-    if (held.drift) { const q = await state(page); expect(q.boost).toBeGreaterThan(0);   // a wall can end the slide early, and the turbo with it
-      expect(q.loose).toBeGreaterThan(0); }   // the rear stays loose for a moment after letting go instead of snapping straight
+    const q = await state(page);
+    expect(q.boost).toBeGreaterThan(0);
+    expect(q.loose).toBeGreaterThan(0);   // the rear stays loose for a moment after letting go instead of snapping straight
     expect(errors).toEqual([]);
   });
 
