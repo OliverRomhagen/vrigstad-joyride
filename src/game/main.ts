@@ -445,7 +445,7 @@ function placeCar(c) {
 function addCar(type, x, z, h, mode) {
   const T = TYPES[type], mesh = new THREE.Mesh(carGeo(type, pick(T.cols)), carMat); mesh.castShadow = true; blob(mesh, 2.8, 5.8);
   if (type === 'polis') { const bar = new THREE.Mesh(barGeo, barMat); bar.position.set(0, 1.62, 0.2); mesh.add(bar); }
-  const c = { type, T, mesh, x, z, h, vh: h, v: 0, slip: 0, drift: 0, charge: 0, boost: 0, mode, wet: false, owned: false, blocked: 0, ghost: 0, stuck: 0, rev: 0, revSteer: 1 };
+  const c = { type, T, mesh, x, z, h, vh: h, v: 0, slip: 0, drift: 0, charge: 0, yr: 0, spin: 0, loose: 0, boost: 0, mode, wet: false, owned: false, blocked: 0, ghost: 0, stuck: 0, rev: 0, revSteer: 1 };
   scene.add(mesh); cars.push(c); placeCar(c); return c;
 }
 function removeCar(c) { scene.remove(c.mesh); const i = cars.indexOf(c); if (i >= 0) cars.splice(i, 1); }
@@ -508,13 +508,14 @@ const GRIP = 12, DRIFT_GRIP = 1.6;             // 1/s: how fast the line of trav
 const DRIFT_YAW = 1.7, DRIFT_MAX_SLIP = 1.0;   // yaw rate multiplier in a drift; rad, the most the nose can point off the line (no spin-outs)
 const DRIFT_DRAG = 2.5, DRIFT_THR = 0.35;      // m/s² lost to sideways scrub; share of normal acceleration the throttle still gives
 const DRIFT_ROLL = 0.08;                       // rad of body lean per rad of slip
+const RECOVER_S = 0.9, SPIN_DECAY = 2.5;       // s for grip to come back after a drift; 1/s fade of the yaw the nose carries out of it (counter-steer to catch it)
 const TURBO_AT = [1, 2.2], TURBO_S = [0.7, 1.3];   // s of sliding for a blue / an orange spark; how long each boost lasts (s)
 const TURBO_ACC = 14, TURBO_TOP = 1.2;         // m/s² of boost; top speed multiplier while boosting
 // shared driving model for the player and the police; only the player passes canDrift
 function drive(c, thr, steer, brake, dt, canDrift) {
   const road = nearestRoad(c.x, c.z).d < 0.6; c.wet = inWater(c.x, c.z);
   if (c.drift) { if (!brake || c.v < DRIFT_KEEP_V || c.wet) { const t = c.charge > TURBO_AT[1] ? 1 : c.charge > TURBO_AT[0] ? 0 : -1;
-      if (!brake && t >= 0) c.boost = TURBO_S[t]; c.drift = 0; } }
+      if (!brake && t >= 0) c.boost = TURBO_S[t]; c.drift = 0; c.loose = RECOVER_S; c.spin = c.yr; } }
   else if (canDrift && brake && c.v > DRIFT_MIN_V && Math.abs(steer) > 0.3 && !c.wet) { c.drift = Math.sign(steer); c.charge = 0; }
   if (c.drift) { c.v += ((thr > 0 ? c.T.acc * DRIFT_THR * thr : 0) - DRIFT_DRAG) * dt; if (Math.abs(c.slip) > 0.25) c.charge += dt; }
   else if (brake) c.v -= Math.sign(c.v) * Math.min(Math.abs(c.v), 26 * dt);
@@ -526,13 +527,16 @@ function drive(c, thr, steer, brake, dt, canDrift) {
   if (c.v > max) c.v = Math.max(max, c.v - 14 * dt);
   if (c.v < -7) c.v = -7;
   const s = c.drift ? c.drift * (0.6 + 0.4 * steer * c.drift) : steer;   // in a drift the nose always swings the drift's way; steering tightens or widens it
-  c.h = wrap(c.h + c.v / 2.7 * Math.tan(s * 0.6 / (1 + Math.abs(c.v) / 11)) * (c.drift ? DRIFT_YAW : 1) * dt);
-  if (canDrift) { c.vh = wrap(c.vh + wrap(c.h - c.vh) * Math.min(1, (c.drift ? DRIFT_GRIP : GRIP) * dt));
+  c.yr = c.v / 2.7 * Math.tan(s * 0.6 / (1 + Math.abs(c.v) / 11)) * (c.drift ? DRIFT_YAW : 1);   // rad/s
+  if (c.loose > 0) { c.loose -= dt; c.spin *= Math.exp(-SPIN_DECAY * dt); } else c.spin = 0;
+  c.h = wrap(c.h + (c.yr + c.spin) * dt);
+  const grip = c.drift ? DRIFT_GRIP : c.loose > 0 ? DRIFT_GRIP + (GRIP - DRIFT_GRIP) * (1 - c.loose / RECOVER_S) ** 2 : GRIP;   // rear grip comes back slowly, so the slide carries on
+  if (canDrift) { c.vh = wrap(c.vh + wrap(c.h - c.vh) * Math.min(1, grip * dt));
     c.slip = clamp(wrap(c.h - c.vh), -DRIFT_MAX_SLIP, DRIFT_MAX_SLIP); c.vh = wrap(c.h - c.slip); }
   else { c.vh = c.h; c.slip = 0; }
   c.x += Math.sin(c.vh) * c.v * dt; c.z -= Math.cos(c.vh) * c.v * dt;
   c.x = clamp(c.x, -HALF + 4, HALF - 4); c.z = clamp(c.z, -HALF + 4, HALF - 4);
-  if (collide(c, 1.5)) { c.v *= Math.pow(0.02, dt); c.drift = 0; }     // a wall ends the slide, and the turbo with it
+  if (collide(c, 1.5)) { c.v *= Math.pow(0.02, dt); c.drift = c.loose = 0; }     // a wall ends the slide, and the turbo with it
   for (const o of cars) { if (o === c) continue; const dx = c.x - o.x, dz = c.z - o.z, d = Math.hypot(dx, dz);
     if (d < 2.7 && d > 0.01) { const push = 2.7 - d; c.x += dx / d * push; c.z += dz / d * push;
       if (Math.abs(c.v) > 6 && c === pcar && o.mode === 'police' && ramCool <= 0) { ramCool = 6; addStar('Ramming a police car. That will not help.'); }
@@ -894,7 +898,7 @@ function action() {
     else toast(c.type === 'epa' ? 'EPA-traktor: legally limited to 30 km/h. Good luck outrunning anyone.' : 'You took the ' + c.T.name + '. Nobody noticed.');
   }
   if (!c.owned) { c.owned = true; stolen++; $('count').textContent = 'Cars stolen: ' + stolen; }
-  c.mode = 'player'; c.vh = c.h; c.slip = c.drift = c.boost = 0; pcar = c; inCar = true; player.mesh.visible = false; lookOff = 0; camYaw = c.h;
+  c.mode = 'player'; c.vh = c.h; c.slip = c.drift = c.boost = c.loose = 0; pcar = c; inCar = true; player.mesh.visible = false; lookOff = 0; camYaw = c.h;
 }
 function addStar(msg) { if (stars < 3) stars++; evade = 0; drawStars(); if (msg) toast(msg); }
 function spawnPolice() {
@@ -996,5 +1000,5 @@ $('go').addEventListener('click', () => { started = true; $('intro').hidden = tr
 resize(); requestAnimationFrame(frame);
 
 // ---------- test hook: read-only state for the smoke tests (tests/e2e), so they do not have to read pixels ----------
-window.__joyride = { state: () => { const n = nearestCar(); return { started, x: player.x, z: player.z, inCar, car: pcar ? pcar.type : null, near: n ? n.mode : null, speed: pcar ? pcar.v : 0, drift: pcar ? pcar.drift : 0, boost: pcar ? pcar.boost : 0, charge: pcar ? pcar.charge : 0, stars, cats: cats.length, treats }; } };
+window.__joyride = { state: () => { const n = nearestCar(); return { started, x: player.x, z: player.z, inCar, car: pcar ? pcar.type : null, near: n ? n.mode : null, speed: pcar ? pcar.v : 0, drift: pcar ? pcar.drift : 0, boost: pcar ? pcar.boost : 0, charge: pcar ? pcar.charge : 0, loose: pcar ? pcar.loose : 0, stars, cats: cats.length, treats }; } };
 })();

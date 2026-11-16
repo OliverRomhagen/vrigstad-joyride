@@ -107,7 +107,8 @@ test.describe('game (index.html)', () => {
     await page.keyboard.up('KeyD');
     await page.keyboard.up('KeyW');
     await expect.poll(async () => (await state(page)).drift, { intervals: [20] }).toBe(0);
-    if (held.drift) expect((await state(page)).boost).toBeGreaterThan(0);   // a wall can end the slide early, and the turbo with it
+    if (held.drift) { const q = await state(page); expect(q.boost).toBeGreaterThan(0);   // a wall can end the slide early, and the turbo with it
+      expect(q.loose).toBeGreaterThan(0); }   // the rear stays loose for a moment after letting go instead of snapping straight
     expect(errors).toEqual([]);
   });
 
