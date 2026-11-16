@@ -43,10 +43,10 @@ Every commit message **and every PR title** follows [Conventional Commits](https
 - Types: `feat` (new gameplay or feature), `fix`, `perf`, `refactor` (no behaviour change), `docs`, `test`, `build` (Vite, npm, `tools/build.mjs`), `ci`, `style` (formatting only), `chore`, `data` for changes to `data/` or the map pipeline, and `revert`.
 - Scopes are optional and name the area. They are the same list as the `scope:` labels (see Tickets): `world`, `npc`, `police`, `vehicles`, `player`, `hud`, `audio`, `minigames`, `multiplayer`, `architecture`.
 - Examples: `feat(police): add roadblocks at three stars`, `fix(hud): keep street sign inside safe area on iPhone`, `refactor(world): share terrain code between game and map`, `data: refresh OSM extract`.
-- Summary under ~70 characters. Add a body for the *why* when it isn't obvious.
+- The whole first line is at most 72 characters, which is where GitHub cuts a commit subject off with "…". For a PR title, count the ` (#123)` that the squash merge adds: a title can use up to 65. Use the room, rather than cutting the summary shorter than it needs to be. Add a body for the *why* when it isn't obvious.
 - Release notes are generated from PR titles (see "Releases" in the README), and the type sets the version bump: `feat` → minor, `fix` / `perf` → patch.
 - Merge PRs with **squash**. The PR title becomes the commit subject, so it must follow the same format.
-- The `PR title` check (`.github/workflows/pr-title.yml`) enforces the types and the lower-case summary with no period. The summary length isn't checked. A summary can't start with a capital, so rephrase one that would start with a place name (`fix(world): fill Slättsjön to the shore`, not `fix(world): Slättsjön fills to the shore`), and retitle a GitHub "Revert" PR as `revert: …`.
+- The `PR title` check (`.github/workflows/pr-title.yml`) enforces the types and the lower-case summary with no period. The length isn't checked. A summary can't start with a capital, so rephrase one that would start with a place name (`fix(world): fill Slättsjön to the shore`, not `fix(world): Slättsjön fills to the shore`), and retitle a GitHub "Revert" PR as `revert: …`.
 
 ### Tickets
 
