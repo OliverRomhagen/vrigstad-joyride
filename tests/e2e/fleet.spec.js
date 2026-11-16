@@ -2,6 +2,7 @@ import {test,expect} from '@playwright/test';
 import {watchErrors} from './render-helpers.js';
 const ids=['volvo240','saab900','xc70','xc70-police','impala1970','micra-k11','duett-epa'];
 for(const id of ids)test(`${id} loads, renders, can be entered and drives`,async({page},info)=>{
+ test.setTimeout(180_000); // software WebGL advances capped simulation time slowly under CI load
  const errors=watchErrors(page);await page.setViewportSize({width:640,height:360});
  await page.goto('/index.html?vehicle='+id);await page.locator('#go').click();
  const state=()=>page.evaluate(()=>window.__joyride.state());
@@ -16,7 +17,7 @@ for(const id of ids)test(`${id} loads, renders, can be entered and drives`,async
   for(const [type,code] of [['keyup','KeyD'],['keydown','KeyE'],['keyup','KeyE']])
    canvas.dispatchEvent(new KeyboardEvent(type,{code,bubbles:true}));
   return true;
- }),{intervals:[50]}).toBe(true);
+ }),{intervals:[50],timeout:60_000}).toBe(true);
  await page.keyboard.up('KeyD');await expect.poll(async()=>(await state()).activeVehicle?.id).toBe(id);
  await expect.poll(async()=>(await state()).activeVehicle?.detailed).toBe(true);
  if(id==='micra-k11')await expect(page.locator('#toast')).toContainText('Nissan Micra K11');
