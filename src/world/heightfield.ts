@@ -27,8 +27,13 @@ export function createHeightfield(data: WorldData, { exaggeration = 1, interpola
   const half = size / 2;
   const n = data.n;
   const elev = data.elev;
-  const minDm = Math.min(...elev);
-  const maxDm = Math.max(...elev);
+  // a loop, not Math.min(...elev): spreading a finer grid would pass the engine's argument limit
+  let minDm = Infinity;
+  let maxDm = -Infinity;
+  for (const h of elev) {
+    if (h < minDm) minDm = h;
+    if (h > maxDm) maxDm = h;
+  }
   const minM = minDm / 10;
 
   function heightAt(x: number, z: number) {

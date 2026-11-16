@@ -1,13 +1,8 @@
 import type { WorldData } from './data';
-import { clamp } from './math';
-import { pointInPolygon } from './polygon';
+import { type Bounds, pointInPolygon, polygonBounds, segmentParam } from './polygon';
 
-export interface Footprint {
+export interface Footprint extends Bounds {
   p: number[];
-  x0: number;
-  x1: number;
-  z0: number;
-  z1: number;
 }
 
 /** side of a collision cell (m) */
@@ -21,16 +16,7 @@ export function createBuildings(data: WorldData) {
 
   /** Adds an outline that things collide with; returns its index in `footprints`. */
   function addFootprint(p: number[]) {
-    let x0 = 1e9;
-    let x1 = -1e9;
-    let z0 = 1e9;
-    let z1 = -1e9;
-    for (let i = 0; i < p.length; i += 2) {
-      x0 = Math.min(x0, p[i]);
-      x1 = Math.max(x1, p[i]);
-      z0 = Math.min(z0, p[i + 1]);
-      z1 = Math.max(z1, p[i + 1]);
-    }
+    const { x0, x1, z0, z1 } = polygonBounds(p);
     const index = footprints.length;
     footprints.push({ p, x0, x1, z0, z1 });
     for (let x = Math.floor(x0 / BUILDING_CELL_M); x <= Math.floor(x1 / BUILDING_CELL_M); x++) {
@@ -61,12 +47,9 @@ export function createBuildings(data: WorldData) {
           let qx = 0;
           let qz = 0;
           for (let i = 0, j = p.length - 2; i < p.length; j = i, i += 2) {
-            const dx = p[i] - p[j];
-            const dz = p[i + 1] - p[j + 1];
-            const lengthSq = dx * dx + dz * dz;
-            const t = lengthSq ? clamp(((o.x - p[j]) * dx + (o.z - p[j + 1]) * dz) / lengthSq, 0, 1) : 0;
-            const cx = p[j] + dx * t;
-            const cz = p[j + 1] + dz * t;
+            const t = segmentParam(o.x, o.z, p[j], p[j + 1], p[i], p[i + 1]);
+            const cx = p[j] + (p[i] - p[j]) * t;
+            const cz = p[j + 1] + (p[i + 1] - p[j + 1]) * t;
             const d = Math.hypot(o.x - cx, o.z - cz);
             if (d < best) {
               best = d;

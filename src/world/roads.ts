@@ -22,8 +22,13 @@ export const ROAD_CELL_M = 50;
 /** how far past a segment's bounding box it is still filed in a cell (m) */
 const CELL_MARGIN_M = 14;
 
+/** how high the primary road's ribbon sits above the terrain (m) */
+const ROAD_LIFT_M = 0.25;
+/** how much lower each smaller class's ribbon sits than the one above it (m) */
+const ROAD_LIFT_STEP_M = 0.03;
+
 /** Height of each road class's ribbon above the terrain (m); groundAt puts people and cars on top of it. */
-export const roadLiftM = (c: RoadClass) => 0.25 - c * 0.03;
+export const roadLiftM = (c: RoadClass) => ROAD_LIFT_M - c * ROAD_LIFT_STEP_M;
 
 const cellKey = (x: number, z: number) => Math.floor(x / ROAD_CELL_M) + ',' + Math.floor(z / ROAD_CELL_M);
 
@@ -56,9 +61,12 @@ export function createRoads(data: WorldData, heightAt: Heightfield['heightAt']) 
     }
   });
 
-  const near: NearestRoad = { d: 1e9, ri: -1 };
-  /** The nearest road within the cell around (x, z). Returns the same object every call: copy what you keep. */
-  function nearestRoad(x: number, z: number) {
+  const shared: NearestRoad = { d: 1e9, ri: -1 };
+  /**
+   * The nearest road within the cell around (x, z), written into `near`. Without one, every call returns the same
+   * object: copy what you keep.
+   */
+  function nearestRoad(x: number, z: number, near = shared) {
     near.d = 1e9;
     near.ri = -1;
     const list = grid.get(cellKey(x, z));

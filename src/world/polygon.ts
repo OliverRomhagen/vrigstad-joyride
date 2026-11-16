@@ -10,13 +10,36 @@ export function pointInPolygon(p: number[], x: number, z: number) {
   return inside;
 }
 
-/** Distance from (x, z) to the segment from (ax, az) to (bx, bz). */
-export function segmentDistance(x: number, z: number, ax: number, az: number, bx: number, bz: number) {
+export interface Bounds {
+  x0: number;
+  x1: number;
+  z0: number;
+  z1: number;
+}
+
+/** Grows `into` to cover the polygon, and returns it; with no `into`, the polygon's own bounding box. */
+export function polygonBounds(p: number[], into: Bounds = { x0: Infinity, x1: -Infinity, z0: Infinity, z1: -Infinity }) {
+  for (let i = 0; i < p.length; i += 2) {
+    into.x0 = Math.min(into.x0, p[i]);
+    into.x1 = Math.max(into.x1, p[i]);
+    into.z0 = Math.min(into.z0, p[i + 1]);
+    into.z1 = Math.max(into.z1, p[i + 1]);
+  }
+  return into;
+}
+
+/** Where along the segment from (ax, az) to (bx, bz) the point nearest (x, z) lies, from 0 at a to 1 at b. */
+export function segmentParam(x: number, z: number, ax: number, az: number, bx: number, bz: number) {
   const dx = bx - ax;
   const dz = bz - az;
   const lengthSq = dx * dx + dz * dz;
-  const t = lengthSq ? clamp(((x - ax) * dx + (z - az) * dz) / lengthSq, 0, 1) : 0;
-  return Math.hypot(x - ax - dx * t, z - az - dz * t);
+  return lengthSq ? clamp(((x - ax) * dx + (z - az) * dz) / lengthSq, 0, 1) : 0;
+}
+
+/** Distance from (x, z) to the segment from (ax, az) to (bx, bz). */
+export function segmentDistance(x: number, z: number, ax: number, az: number, bx: number, bz: number) {
+  const t = segmentParam(x, z, ax, az, bx, bz);
+  return Math.hypot(x - ax - (bx - ax) * t, z - az - (bz - az) * t);
 }
 
 /** Area of the polygon (m²), whichever way it winds. */

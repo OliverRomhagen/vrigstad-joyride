@@ -68,4 +68,4 @@ export const WaterwayKind = { RIVER: 0, STREAM: 1 } as const;
 export type WaterwayKind = (typeof WaterwayKind)[keyof typeof WaterwayKind];
 
 /** carriageway width of each road class (m), indexed by RoadClass */
-export const ROAD_WIDTH_M: readonly number[] = [9, 7.5, 5.5, 3.5, 2.6, 1.5];
+export const ROAD_WIDTH_M = [9, 7.5, 5.5, 3.5, 2.6, 1.5] as const satisfies Record<RoadClass, number>;
