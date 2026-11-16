@@ -1,6 +1,6 @@
 import { defineConfig } from '@playwright/test';
 
-// Smoke tests run against the built pages (index.html, map.html) in the repo root, served the way GitHub Pages serves them.
+// Smoke tests run against the built pages in dist/ (npm run build first), served the way GitHub Pages serves them.
 // Set E2E_PORT per worktree when running several at once, so a run never reuses another worktree's server.
 const PORT = Number(process.env.E2E_PORT) || 8043;
 
@@ -15,7 +15,7 @@ export default defineConfig({
     // Software WebGL everywhere, so a local run takes the same render path as CI (which has no GPU).
     launchOptions: { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] } },
   webServer: {
-    command: `python3 -m http.server ${PORT} --bind 127.0.0.1`,
+    command: `python3 -m http.server ${PORT} --bind 127.0.0.1 --directory dist`,
     url: `http://127.0.0.1:${PORT}/index.html`,
     reuseExistingServer: !process.env.CI,
   },
