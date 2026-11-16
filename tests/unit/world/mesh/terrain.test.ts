@@ -27,7 +27,8 @@ describe('TerrainMesh', () => {
         y += pos.getY(v) / 3;
         z += pos.getZ(v) / 3;
       }
-      expect(field.heightAt(x, z)).toBeCloseTo(y, 4);
+      // to the centimetre: room for Float32 rounding, while a flipped diagonal misses by tens of metres
+      expect(field.heightAt(x, z)).toBeCloseTo(y, 2);
     }
     terrain.dispose();
   });
