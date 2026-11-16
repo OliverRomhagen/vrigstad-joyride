@@ -69,19 +69,16 @@ export interface ShellColours {
   roof: THREE.Color;
 }
 
-/** The buffers of a painted shell mesh: three numbers a vertex in each. */
-export interface ShellBuffers {
-  positions: number[];
-  colours: number[];
-}
+/** Adds one vertex to the painted shell mesh; every three make a triangle. */
+export type EmitVertex = (x: number, y: number, z: number, colour: THREE.Color) => void;
 
 export interface PaintedShellOptions {
   /** a material with `vertexColors` on */
   material: THREE.Material;
   /** called once per building, in `data.b` order, before its shell is built; the colours are read before the next call, so it may reuse them */
   colours: (shape: BuildingShape) => ShellColours;
-  /** called after each building's shell, to add to the same buffers (a chimney) or build details of its own */
-  extra?: (shape: BuildingShape, out: ShellBuffers) => void;
+  /** called after each building's shell, to add triangles to the same mesh (a chimney) or build details of its own */
+  extra?: (shape: BuildingShape, emit: EmitVertex) => void;
 }
 
 /**
@@ -92,17 +89,20 @@ export class PaintedBuildingShells {
   readonly mesh: THREE.Mesh;
 
   constructor(data: WorldData, heightfield: Pick<Heightfield, 'heightAt'>, { material, colours, extra }: PaintedShellOptions) {
-    const out: ShellBuffers = { positions: [], colours: [] };
+    const positions: number[] = [];
+    const vertexColours: number[] = [];
+    const emit: EmitVertex = (x, y, z, c) => {
+      positions.push(x, y, z);
+      vertexColours.push(c.r, c.g, c.b);
+    };
     forEachBuilding(data, heightfield, (shape) => {
       const paint = colours(shape);
       eachShellVertex(shape, (x, y, z, surface) => {
-        const c = surface === 'roof' ? paint.roof : surface === 'wallTop' ? paint.wall : paint.wallFoot;
-        out.positions.push(x, y, z);
-        out.colours.push(c.r, c.g, c.b);
+        emit(x, y, z, surface === 'roof' ? paint.roof : surface === 'wallTop' ? paint.wall : paint.wallFoot);
       });
-      extra?.(shape, out);
+      extra?.(shape, emit);
     });
-    this.mesh = shellMesh(out.positions, material, out.colours);
+    this.mesh = shellMesh(positions, material, vertexColours);
   }
 
   dispose() {
