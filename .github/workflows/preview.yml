@@ -39,8 +39,11 @@ jobs:
           if [[ $STATE == open ]] && { [[ $TITLE =~ ^feat(\(.*\))?!?: ]] || jq -e 'index("preview")' <<<"$LABELS" >/dev/null; }; then
             wants=true
           fi
-          exists=false
-          if gh api "repos/$GITHUB_REPOSITORY/contents/$DIR?ref=gh-pages" --silent 2>/dev/null; then exists=true; fi
+          # Only a 404 means no preview; any other failure stops here, or a closed PR would orphan its preview
+          exists=true
+          if ! out=$(gh api "repos/$GITHUB_REPOSITORY/contents/$DIR?ref=gh-pages" --silent 2>&1); then
+            if [[ $out == *"HTTP 404"* ]]; then exists=false; else echo "$out"; exit 1; fi
+          fi
           action=none
           if $wants && { [[ $EVENT =~ ^(opened|reopened|synchronize)$ ]] || ! $exists; }; then action=deploy
           elif ! $wants && $exists; then action=remove
