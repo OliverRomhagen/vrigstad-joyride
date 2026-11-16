@@ -45,7 +45,8 @@ describe('addFootprint', () => {
 
   it('files an outline in every cell its bounds touch', () => {
     const index = new BuildingIndex(makeWorld());
-    index.addFootprint(square(38, 38, 4));
-    expect([...index.grid.keys()].sort()).toEqual(['0,0', '0,1', '1,0', '1,1']);
+    index.addFootprint(square(38, 38, 4));   // straddles the cell corner at (40, 40)
+    // each circle overlaps one corner of the outline and stays inside a single 40 m cell, so it only finds it through that cell
+    for (const [x, z] of [[37.5, 37.5], [42.5, 37.5], [37.5, 42.5], [42.5, 42.5]]) expect(index.collide({ x, z }, 1)).toBe(true);
   });
 });
