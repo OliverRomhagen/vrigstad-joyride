@@ -1,0 +1,333 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Vrigstad Joyride</title>
+<meta name="description" content="An open-world driving game set in the real village of Vrigstad, Sweden. Borrow a Volvo 240, outrun the police, scratch a trisslott. Free in your browser.">
+<meta property="og:title" content="Vrigstad Joyride: nothing ever happens here">
+<meta property="og:description" content="881 buildings, every real street, one borrowed Volvo 240. Free in your browser.">
+<meta property="og:image" content="https://oliverromhagen.github.io/vrigstad-joyride/media/poster.png">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@600;700&display=swap">
+<style>
+/* Same palette and type as the game HUD and the poster: Swedish street-sign blue, gold, cream ink on a dark road. */
+:root {
+  --ink: #f4f1e6;
+  --dim: rgba(244, 241, 230, .62);
+  --road: #111413;
+  --asphalt: #1b201e;
+  --plate: rgba(16, 22, 20, .74);
+  --line: rgba(244, 241, 230, .14);
+  --sky-top: #34495a;
+  --sky: #8fb0c4;
+  --sign: #1f5fa8;
+  --gold: #f2c230;
+  --alarm: #e5412d;
+  --grass: #9db87a;
+  --display: "Barlow Condensed", "Arial Narrow", "Helvetica Neue", Arial, sans-serif;
+  --body: "Barlow", "Helvetica Neue", Arial, sans-serif;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+body { margin: 0; background: var(--road); color: var(--ink); font: 17px/1.55 var(--body); -webkit-text-size-adjust: 100%; }
+a { color: var(--gold); }
+h1, h2, h3 { font-family: var(--display); font-weight: 700; line-height: 1; margin: 0; text-transform: uppercase; letter-spacing: .01em; }
+h2 { font-size: clamp(40px, 7vw, 72px); }
+h2 em { font-style: normal; color: var(--gold); }
+.kicker { font: 600 14px var(--display); letter-spacing: .32em; text-transform: uppercase; color: var(--gold); margin: 0 0 14px; }
+.lede { color: var(--dim); max-width: 34em; margin: 16px 0 0; }
+.wrap { max-width: 1120px; margin: 0 auto; padding: 0 max(16px, env(safe-area-inset-left, 0px)); }
+section { padding: clamp(64px, 10vw, 120px) 0; }
+[hidden] { display: none !important; }
+
+.btn { display: inline-flex; align-items: center; gap: 10px; padding: 14px 26px 15px; border-radius: 4px; border: 2px solid var(--ink);
+  font: 700 20px/1 var(--display); letter-spacing: .06em; text-transform: uppercase; text-decoration: none; color: var(--ink);
+  background: transparent; cursor: pointer; transition: transform .12s, background .12s, color .12s; }
+.btn:hover { transform: translateY(-2px); }
+.btn:active { transform: translateY(1px); }
+.btn.go { background: var(--gold); border-color: var(--gold); color: #1a1a14; }
+.btn.small { padding: 9px 16px 10px; font-size: 16px; }
+.btn:focus-visible, button:focus-visible, canvas:focus-visible { outline: 3px solid var(--sign); outline-offset: 3px; }
+
+/* ---------- hero ---------- */
+#hero { position: relative; min-height: 100svh; padding: 0; display: grid; overflow: hidden;
+  background: linear-gradient(180deg, var(--sky-top) 0%, var(--sky) 46%, #4b5250 70%, var(--road) 100%); }
+#hero::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(17,20,19,.15) 0%, rgba(17,20,19,0) 35%, rgba(17,20,19,.75) 75%, var(--road) 100%); }
+#hero .wrap { position: relative; z-index: 1; display: flex; flex-direction: column; justify-content: space-between; gap: 24px; width: 100%; padding-block: 24px 40px; }
+nav { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.sign { background: var(--sign); color: #fff; border: 2px solid #fff; border-radius: 4px; padding: 3px 12px 5px; font: 600 20px/1.1 var(--display);
+  box-shadow: 0 1px 4px rgba(0,0,0,.35); text-decoration: none; }
+.sign small { display: block; font: 500 11px var(--body); opacity: .85; }
+nav .links { display: flex; gap: 22px; font: 600 16px var(--display); letter-spacing: .08em; text-transform: uppercase; }
+nav .links a { color: var(--ink); text-decoration: none; text-shadow: 0 1px 6px rgba(0,0,0,.5); }
+nav .links a:hover { color: var(--gold); }
+.tag { text-align: center; text-shadow: 0 2px 16px rgba(0,0,0,.35); }
+.tag h2 { font-size: clamp(32px, min(5.5vw, 7vh), 60px); }
+.title { text-align: center; }
+.title h1 { font-size: clamp(72px, min(18vw, 19vh), 200px); line-height: .86; }
+.title h1 span { display: block; color: var(--gold); }
+.title hr { width: 120px; border: 0; border-top: 6px solid var(--gold); margin: clamp(16px, 3vh, 28px) auto; }
+.facts { font: 700 clamp(15px, 2.2vw, 22px) var(--display); letter-spacing: .1em; text-transform: uppercase; }
+.facts i { color: var(--gold); font-style: normal; padding: 0 .5em; }
+.cta { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; margin-top: clamp(18px, 3vh, 30px); }
+#wanted { display: inline-flex; gap: 4px; margin-top: clamp(14px, 2.5vh, 26px); padding: 4px 12px 6px; background: var(--plate); border-radius: 4px; border: 0; cursor: pointer;
+  font-size: 30px; line-height: 1; color: rgba(244,241,230,.35); }
+#wanted b { font-weight: 400; transition: color .15s, transform .15s; }
+#wanted b.on { color: var(--gold); transform: scale(1.12); }
+.hint { display: block; font: 500 13px var(--body); color: var(--dim); margin-top: 6px; }
+/* Three stars on the hero: the page gets blue lights. */
+body.sirens::before, body.sirens::after { content: ""; position: fixed; top: 0; bottom: 0; width: 26vw; pointer-events: none; z-index: 50; animation: siren .5s steps(2) infinite; }
+body.sirens::before { left: 0; background: linear-gradient(90deg, rgba(31,95,168,.55), transparent); }
+body.sirens::after { right: 0; background: linear-gradient(-90deg, rgba(31,95,168,.55), transparent); animation-delay: .25s; }
+@keyframes siren { 50% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { body.sirens::before, body.sirens::after { animation: none; opacity: .5; } }
+
+/* ---------- teaser ---------- */
+#trailer { padding-top: 24px; }
+.screen { margin-top: 28px; border-radius: 6px; overflow: hidden; border: 3px solid var(--plate); background: #000; aspect-ratio: 16 / 9; }
+.screen video { display: block; width: 100%; height: 100%; }
+
+/* ---------- getaway ---------- */
+#getaway { background: var(--asphalt); }
+.head { display: flex; justify-content: space-between; align-items: end; gap: 24px; flex-wrap: wrap; margin-bottom: 28px; }
+#chase { position: relative; border-radius: 6px; overflow: hidden; background: var(--grass); border: 3px solid var(--plate); }
+#chase canvas { display: block; width: 100%; height: clamp(360px, 60vh, 560px); touch-action: none; cursor: crosshair; }
+.hud { position: absolute; inset: 0; pointer-events: none; display: flex; justify-content: space-between; align-items: flex-start; padding: 12px; gap: 8px; }
+.hud .plate { background: var(--plate); border-radius: 4px; padding: 4px 10px; }
+#cStars { font-size: 24px; line-height: 1; letter-spacing: 3px; color: rgba(244,241,230,.35); padding: 3px 10px 5px; }
+#cStars b { color: var(--gold); font-weight: 400; }
+#cStars.evading b { animation: blink .6s steps(2) infinite; }
+@keyframes blink { 50% { opacity: .25; } }
+#cSpeed { position: absolute; right: 12px; bottom: 12px; text-align: right; padding: 4px 12px 6px; }
+#cSpeed b { font: 700 34px/1 var(--display); font-variant-numeric: tabular-nums; }
+#cSpeed span { font-size: 12px; color: var(--dim); margin-left: 4px; }
+#cTime { font: 600 15px var(--display); letter-spacing: .06em; font-variant-numeric: tabular-nums; margin-top: 6px; text-align: right; }
+.overlay { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; padding: 24px; background: rgba(17,20,19,.62); }
+.overlay h3 { font-size: clamp(44px, 9vw, 96px); }
+.overlay h3.busted { color: var(--alarm); }
+.overlay h3.free { color: var(--gold); }
+.overlay p { margin: 10px auto 20px; max-width: 30em; color: var(--ink); }
+.overlay .row { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+.keys { color: var(--dim); font-size: 14px; margin-top: 12px; }
+kbd { font: 600 13px var(--body); border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 3px; padding: 0 5px; color: var(--ink); }
+
+/* ---------- garage ---------- */
+.cars { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 16px; }
+.car { text-align: left; background: var(--asphalt); border: 2px solid var(--line); border-radius: 6px; padding: 18px 18px 20px; color: var(--ink); cursor: pointer;
+  font: inherit; transition: border-color .15s, transform .15s; }
+.car:hover { transform: translateY(-3px); }
+.car[aria-pressed="true"] { border-color: var(--gold); }
+.car canvas { width: 100%; height: 92px; display: block; margin-bottom: 10px; }
+.car h3 { font-size: 32px; }
+.car .spd { font: 700 22px var(--display); color: var(--gold); margin: 6px 0; font-variant-numeric: tabular-nums; }
+.car .spd small { font: 500 13px var(--body); color: var(--dim); }
+.meter { height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; margin: 2px 0 12px; }
+.meter i { display: block; height: 100%; background: var(--gold); }
+.car p { margin: 0; color: var(--dim); font-size: 15px; }
+.car .pick { display: inline-block; margin-top: 14px; font: 600 14px var(--display); letter-spacing: .1em; text-transform: uppercase; color: var(--dim); }
+.car[aria-pressed="true"] .pick { color: var(--gold); }
+
+/* ---------- kiosk ---------- */
+#kiosk { background: var(--asphalt); }
+.kiosk { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: clamp(28px, 6vw, 72px); align-items: center; }
+@media (max-width: 760px) { .kiosk { grid-template-columns: 1fr; } }
+.ticket { position: relative; max-width: 440px; width: 100%; aspect-ratio: 16 / 10; border-radius: 10px; overflow: hidden; justify-self: center;
+  background: repeating-linear-gradient(135deg, #fff6d6 0 14px, #fdeeb8 14px 28px); color: #1a1a14; box-shadow: 0 10px 30px rgba(0,0,0,.45); }
+.ticket .under { position: absolute; inset: 0; display: grid; place-items: center; padding: 22px 26px; text-align: center; }
+.ticket .under b { display: block; font: 700 clamp(28px, 5vw, 44px)/1 var(--display); text-transform: uppercase; }
+.ticket .under b.win { color: #1d8a3c; }
+.ticket .under q { display: block; font: 600 17px/1.35 var(--body); margin-top: 10px; quotes: "”" "”"; }
+.ticket canvas { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; cursor: grab; }
+.tally { font: 600 16px var(--display); letter-spacing: .08em; text-transform: uppercase; color: var(--dim); margin-top: 18px; }
+.tally b { color: var(--ink); font-variant-numeric: tabular-nums; }
+
+/* ---------- features ---------- */
+.grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 6px; overflow: hidden; margin-top: 40px; }
+.grid div { background: var(--road); padding: 26px 24px 28px; }
+.grid h3 { font-size: 26px; margin-bottom: 8px; }
+.grid h3::before { content: attr(data-n); display: block; font-size: 14px; letter-spacing: .3em; color: var(--gold); margin-bottom: 8px; }
+.grid p { margin: 0; color: var(--dim); font-size: 16px; }
+.stats { display: flex; gap: clamp(24px, 6vw, 72px); flex-wrap: wrap; margin-top: 36px; }
+.stats div { font: 700 clamp(44px, 7vw, 72px)/1 var(--display); font-variant-numeric: tabular-nums; }
+.stats small { display: block; font: 600 14px var(--display); letter-spacing: .2em; text-transform: uppercase; color: var(--dim); margin-top: 6px; }
+
+/* ---------- controls + footer ---------- */
+table { width: 100%; border-collapse: collapse; margin-top: 32px; font-size: 16px; }
+th, td { text-align: left; padding: 12px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font: 600 14px var(--display); letter-spacing: .14em; text-transform: uppercase; color: var(--dim); }
+td:first-child { font-weight: 600; }
+.finale { text-align: center; background: linear-gradient(180deg, var(--road), #2a3330); }
+.finale h2 { font-size: clamp(48px, 10vw, 110px); }
+.finale .cta { margin-top: 36px; }
+footer { padding: 32px 0 calc(32px + env(safe-area-inset-bottom, 0px)); color: var(--dim); font-size: 14px; border-top: 1px solid var(--line); }
+footer .wrap { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+footer a { color: var(--ink); }
+@media (max-width: 900px) { .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 640px) {
+  .grid { grid-template-columns: 1fr; }
+  nav .links { gap: 14px; font-size: 14px; }
+  nav .links .wide { display: none; }
+  th:nth-child(3), td:nth-child(3) { display: none; }
+}
+</style>
+</head>
+<body>
+
+<header id="hero">
+  <div class="wrap">
+    <nav>
+      <a class="sign" href="#top" id="top">Vrigstad Joyride<small>Sävsjö kommun</small></a>
+      <div class="links"><a href="#getaway">Getaway</a><a href="#garage" class="wide">Garage</a><a href="#kiosk" class="wide">Kiosk</a><a href="map.html">3D map</a></div>
+    </nav>
+    <div class="tag">
+      <p class="kicker">Småland, Sweden · 57.3555° N</p>
+      <h2>Nothing ever<br>happens here</h2>
+    </div>
+    <div class="title">
+      <h1>Vrigstad <span>Joyride</span></h1>
+      <hr>
+      <div class="facts"><span id="nB">881</span> buildings<i>·</i>every real street<i>·</i>one borrowed Volvo 240</div>
+      <div class="cta">
+        <a class="btn go" href="index.html">Play free in your browser</a>
+        <a class="btn" href="#getaway">Try a getaway first</a>
+      </div>
+      <button id="wanted" type="button" aria-label="Wanted level, 0 of 3 stars. Click to raise it.">
+        <b>★</b><b>★</b><b>★</b>
+      </button>
+      <span class="hint">Go on. Raise your wanted level.</span>
+    </div>
+  </div>
+</header>
+
+<main>
+<section id="trailer">
+  <div class="wrap">
+    <p class="kicker">The teaser · turn the sound on</p>
+    <h2>Fifty seconds of <em>Småland</em></h2>
+    <div class="screen"><video controls playsinline preload="metadata" src="media/teaser.mp4#t=0.5" aria-label="Teaser trailer: the village from the air, a red Volvo 240 chased by three police cars, an EPA-traktor at 30 km/h, and the title card"></video></div>
+  </div>
+</section>
+
+<section id="getaway">
+  <div class="wrap">
+    <div class="head">
+      <div>
+        <p class="kicker">Getaway · the real map</p>
+        <h2>You just took <em id="gName">a Volvo 240</em></h2>
+        <p class="lede">The owner saw. Stay 170 m clear of every police car for 18 seconds and they give up. Get rammed and you're <i>gripen</i>. This is the real street map of Vrigstad, from OpenStreetMap.</p>
+      </div>
+    </div>
+    <div id="chase">
+      <canvas id="cv" tabindex="0" aria-label="Top-down chase on the map of Vrigstad. Steer with the arrow keys or WASD, or hold the pointer where you want to drive."></canvas>
+      <div class="hud">
+        <div><div class="sign" id="cStreet">Torget<small>Vrigstad</small></div></div>
+        <div><div class="plate" id="cStars"><b></b>☆☆☆</div><div id="cTime">0:00</div></div>
+      </div>
+      <div class="plate" id="cSpeed" style="position:absolute"><b id="cKmh">0</b><span>km/h</span></div>
+      <div class="overlay" id="cStart">
+        <div>
+          <h3>Start the engine</h3>
+          <p>Hold the mouse or your finger where you want to go, or drive with <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> / arrow keys.</p>
+          <div class="row"><button class="btn go" id="cGo" type="button">Drive</button></div>
+        </div>
+      </div>
+      <div class="overlay" id="cEnd" hidden>
+        <div>
+          <h3 id="cEndTitle" class="busted">Gripen!</h3>
+          <p id="cEndText"></p>
+          <div class="row"><button class="btn go" id="cAgain" type="button">Again</button><a class="btn" href="index.html">Play the real thing</a></div>
+        </div>
+      </div>
+    </div>
+    <p class="keys">Off-road is slower, except in a tractor. Pick another car in the garage below.</p>
+  </div>
+</section>
+
+<section id="garage">
+  <div class="wrap">
+    <p class="kicker">The garage · nobody locks their car</p>
+    <h2>Four ways to <em>leave</em></h2>
+    <p class="lede">Every car in the village is yours if you want it. Taking an occupied one always earns a star; a parked one only sometimes.</p>
+    <div class="cars" id="cars" style="margin-top:36px"></div>
+  </div>
+</section>
+
+<section id="kiosk">
+  <div class="wrap kiosk">
+    <div>
+      <p class="kicker">The kiosk on Torget</p>
+      <h2>One in a <em>thousand</em></h2>
+      <p class="lede">The kiosk sells trisslotter. One in a thousand wins. The more losing tickets you scratch in a row, the worse the language gets. Just like in the game, and just like in real life.</p>
+      <p class="tally">Lotter <b id="tN">0</b> · Vinster <b id="tW">0</b></p>
+      <button class="btn small" id="tNew" type="button" hidden>Köp en till</button>
+    </div>
+    <div class="ticket" id="ticket">
+      <div class="under"><div><b id="tHead"></b><q id="tLine"></q></div></div>
+      <canvas id="tCv" aria-label="Scratch card. Drag across it to scratch."></canvas>
+    </div>
+  </div>
+</section>
+
+<section id="features">
+  <div class="wrap">
+    <p class="kicker">What's in it</p>
+    <h2>A whole village, <em>one square kilometre at a time</em></h2>
+    <div class="stats">
+      <div><span id="sB">881</span><small>Buildings</small></div>
+      <div><span id="sS">0</span><small>Named streets</small></div>
+      <div>2.2 km<small>Square of Småland</small></div>
+      <div>0 kr<small>To play</small></div>
+    </div>
+    <div class="grid">
+      <div><h3 data-n="01">The real Vrigstad</h3><p>Every building, road, field and lake comes from OpenStreetMap and real elevation data. Drive past the church, round Slättsjön, up Gästgivaregatan.</p></div>
+      <div><h3 data-n="02">Police with patience</h3><p>Up to three stars, one police car each. Lose them for 18 seconds and they go back to their coffee.</p></div>
+      <div><h3 data-n="03">Safehouses</h3><p>Three green doors around the village. Get inside with no police within 60 m, lie low for a minute, and the stars are gone.</p></div>
+      <div><h3 data-n="04">The EPA-traktor</h3><p>A car legally limited to 30 km/h, a Swedish rural classic. Perfect for getaways, if nobody is chasing you.</p></div>
+      <div><h3 data-n="05">Cats</h3><p>They live around the village. Some let you pet them. Some don't. The kiosk sells treats.</p></div>
+      <div><h3 data-n="06">Plays on your phone</h3><p>No install, no account. Open the link, press Start. A stick and buttons appear on touch screens.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="controls" style="padding-top:0">
+  <div class="wrap">
+    <p class="kicker">Controls</p>
+    <h2>Learn them in <em>ten seconds</em></h2>
+    <table>
+      <thead><tr><th>Action</th><th>Keyboard</th><th>Phone</th></tr></thead>
+      <tbody>
+        <tr><td>Move / drive</td><td><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or arrows</td><td>Left stick</td></tr>
+        <tr><td>Steal / get out</td><td><kbd>E</kbd></td><td>Use button</td></tr>
+        <tr><td>Sprint / brake</td><td><kbd>Shift</kbd> / <kbd>Space</kbd></td><td>Stick / Brake button</td></tr>
+        <tr><td>Look around</td><td>Drag the view</td><td>Drag the view</td></tr>
+        <tr><td>Back to Torget</td><td><kbd>R</kbd></td><td></td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="finale">
+  <div class="wrap">
+    <p class="kicker">Vrigstad is waiting</p>
+    <h2>Something is about<br>to <em>happen here</em></h2>
+    <div class="cta">
+      <a class="btn go" href="index.html">Play now</a>
+      <a class="btn" href="map.html">Explore the 3D map</a>
+      <a class="btn" href="https://github.com/OliverRomhagen/vrigstad-joyride">Source on GitHub</a>
+    </div>
+  </div>
+</section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>Map data © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a> (ODbL). Elevation: Mapzen terrain tiles.</span>
+    <span>Made with love for Vrigstad · <a href="https://github.com/OliverRomhagen/vrigstad-joyride/issues/new/choose">Got an idea?</a></span>
+  </div>
+</footer>
+
+<script type="module" src="./about/main.ts"></script>
+</body>
+</html>

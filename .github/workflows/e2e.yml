@@ -24,7 +24,7 @@ jobs:
       - run: npm run data && git diff --exit-code -- data/vrigstad.json
       - run: npm run build
       # The built pages are not committed (#45): fail if a merge brought one back.
-      - run: test -z "$(git ls-files index.html map.html)"
+      - run: test -z "$(git ls-files index.html map.html about.html)"
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e
       # Screenshots of both pages, plus a trace of any failed test. Not pixel-diffed: headless WebGL output varies.

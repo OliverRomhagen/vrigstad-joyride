@@ -345,3 +345,35 @@ test.describe('map (map.html)', () => {
     expect(errors).toEqual([]);
   });
 });
+
+test.describe('marketing page (about.html)', () => {
+  test('loads with no console errors, starts a getaway and scratches a trisslott', async ({ page }, testInfo) => {
+    const errors = watchErrors(page);
+    // The deploy copies media/ next to the built pages (.github/workflows/pages.yml); dist/ alone doesn't have it.
+    await page.route('**/media/**', route => route.fulfill({ path: new URL(route.request().url()).pathname.slice(1) }));
+    await page.goto('/about.html');
+    await expect(page.locator('a.btn.go').first()).toHaveAttribute('href', 'index.html');
+    await page.screenshot({ path: testInfo.outputPath('about-hero.png') });
+
+    await page.locator('#cGo').click();
+    await expect(page.locator('#cStart')).toBeHidden();
+    await expect(page.locator('#cStars b')).toHaveText('★');         // the getaway starts at one star
+    await page.keyboard.down('KeyW');
+    await expect(page.locator('#cKmh')).not.toHaveText('0');
+    await page.keyboard.up('KeyW');
+    await page.locator('#chase').screenshot({ path: testInfo.outputPath('about-getaway.png') });
+
+    const card = page.locator('#tCv');
+    await card.scrollIntoViewIfNeeded();
+    const box = await card.boundingBox();
+    await page.mouse.move(box.x + 4, box.y + 4);
+    await page.mouse.down();
+    for (let y = 4; y < box.height; y += 16) {   // scratch the whole card, one row at a time
+      await page.mouse.move(box.x + 4, box.y + y);
+      await page.mouse.move(box.x + box.width - 4, box.y + y, { steps: 8 });
+    }
+    await page.mouse.up();
+    await expect(page.locator('#tN')).toHaveText('1');
+    expect(errors).toEqual([]);
+  });
+});
