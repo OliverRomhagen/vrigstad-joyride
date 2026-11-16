@@ -67,7 +67,7 @@ const blobTex = (function () { const cv = document.createElement('canvas'); cv.w
   g.addColorStop(0, 'rgba(0,0,0,.9)'); g.addColorStop(0.5, 'rgba(0,0,0,.45)'); g.addColorStop(1, 'rgba(0,0,0,0)'); x.fillStyle = g; x.fillRect(0, 0, 64, 64); return cv; })();
 const blobMat = new THREE.MeshBasicMaterial({ color: 0x000000, map: new THREE.CanvasTexture(blobTex), transparent: true, opacity: 0.5, depthWrite: false,
   polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -6 }), blobGeo = new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2);
-function blob(parent, w, l) { const m = new THREE.Mesh(blobGeo, blobMat); m.scale.set(w, 1, l); m.position.y = 0.06; m.renderOrder = 3; parent.add(m); }
+function blob(parent, w, l) { const m = new THREE.Mesh(blobGeo, blobMat); m.scale.set(w, 1, l); m.position.y = 0.06; m.renderOrder = 3; parent.add(m); return m; }
 sun.castShadow = true;
 sun.shadow.mapSize.set(2048, 2048);
 Object.assign(sun.shadow.camera, { left: -110, right: 110, top: 110, bottom: -110, near: 50, far: 800 });
@@ -127,7 +127,16 @@ scene.add(terrain.surface, far, terrain.skirt);
 const roads = new RoadNetwork(D, heightfield), { lines: R, grid: roadGrid, junctions: nodes, driveable } = roads;
 const nearestRoad = roads.nearestRoad.bind(roads), groundAt = roads.groundAt.bind(roads);
 const ROAD_COLOURS = [0x4c4f52, 0x55585b, 0x606365, 0x74746d, 0xa08c6c, 0xbcae92] as const, CENTRE_LINE_COLOUR = 0xe9e7da;   // sRGB, by road class
-const roadRibbons = new RoadRibbons(roads, heightfield, { anisotropy: renderer.capabilities.getMaxAnisotropy(), roadColours: ROAD_COLOURS, centreLineColour: CENTRE_LINE_COLOUR });
+const asphalt = (() => {   // a light, speckled tile that the road colours tint, so asphalt and gravel aren't flat
+  const cv = document.createElement('canvas'); cv.width = cv.height = 256;
+  const x = cv.getContext('2d') as CanvasRenderingContext2D;
+  let seed = 11; const next = () => (seed = (seed * 48271) % 2147483647) / 2147483647;   // its own generator, so the look doesn't shift the seeded rnd() sequence
+  x.fillStyle = '#f7f7f7'; x.fillRect(0, 0, 256, 256); x.globalAlpha = 0.7;
+  for (const c of ['#ffffff', '#cdcdcd', '#dedede']) { x.fillStyle = c; for (let i = 0; i < 1600; i++) x.fillRect(next() * 256, next() * 256, 1, 1); }
+  const t = new THREE.CanvasTexture(cv); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = renderer.capabilities.getMaxAnisotropy(); return t;
+})();
+const roadRibbons = new RoadRibbons(roads, heightfield, { asphalt, roadColours: ROAD_COLOURS, centreLineColour: CENTRE_LINE_COLOUR });
 scene.add(...roadRibbons.meshes);
 
 // ---------- water ----------
@@ -299,14 +308,17 @@ const geoCache = {};
 const carGeo = (t, c) => geoCache[t + c] || (geoCache[t + c] = softCar(t, c));
 const BAR_BLUE = col(0x2f6bff), BAR_RED = col(0xff3b30);
 const barMat = new THREE.MeshBasicMaterial({ color: BAR_BLUE.clone() }), barGeo = new THREE.BoxGeometry(1.1, 0.16, 0.3);
-function personParts(shirt, pants, hair) {
+function personParts(shirt, pants, hair, arms) {     // arms: separate meshes that swing from the shoulder (two more draw calls, so only the player has them)
   hair = hair || '#5a4632';
-  const body = geoCache[shirt + hair] || (geoCache[shirt + hair] = boxGeo([[0.5, 0.65, 0.28, 0, 1.13, 0, shirt], [0.14, 0.6, 0.16, -0.33, 1.12, 0, shirt], [0.14, 0.6, 0.16, 0.33, 1.12, 0, shirt],
-    [0.27, 0.27, 0.27, 0, 1.62, 0, '#e2b796'], [0.29, 0.1, 0.29, 0, 1.78, 0, hair]]));
+  const bk = shirt + hair + (arms ? '+arms' : ''), body = geoCache[bk] || (geoCache[bk] = boxGeo([[0.5, 0.65, 0.28, 0, 1.13, 0, shirt], [0.27, 0.27, 0.27, 0, 1.62, 0, '#e2b796'], [0.29, 0.1, 0.29, 0, 1.78, 0, hair]]
+    .concat(arms ? [] : [[0.14, 0.6, 0.16, -0.33, 1.12, 0, shirt], [0.14, 0.6, 0.16, 0.33, 1.12, 0, shirt]])));
   const leg = geoCache[pants] || (geoCache[pants] = boxGeo([[0.19, 0.8, 0.21, 0, -0.4, 0, pants]]));
   const g = new THREE.Group(), b = new THREE.Mesh(body, paintMat), l = new THREE.Mesh(leg, paintMat), r = new THREE.Mesh(leg, paintMat);
   l.position.set(-0.13, 0.8, 0); r.position.set(0.13, 0.8, 0); b.castShadow = l.castShadow = r.castShadow = true;
-  g.add(b, l, r); g.legs = [l, r]; blob(g, 0.9, 0.9); return g;
+  g.add(b, l, r); g.legs = [l, r]; g.blob = blob(g, 0.9, 0.9);
+  if (arms) { const ag = geoCache['arm' + shirt] || (geoCache['arm' + shirt] = boxGeo([[0.14, 0.6, 0.16, 0, -0.3, 0, shirt]]));
+    g.arms = [-0.33, 0.33].map(x => { const a = new THREE.Mesh(ag, paintMat); a.position.set(x, 1.42, 0); a.castShadow = true; g.add(a); return a; }); }
+  return g;
 }
 
 // ---------- cars ----------
@@ -617,8 +629,11 @@ function drawTreats() { const el = $('treats'); el.hidden = false; el.textConten
 
 // ---------- player ----------
 const HOME = { x: -8.9, z: 30.1 };
-const player = { x: HOME.x, z: HOME.z, h: 0, speed: 0, phase: 0, mesh: personParts('#f2c230', '#2b3a55') };
+const JUMP_V = 5.2, GRAVITY = 16;   // m/s up at take-off, m/s² down: a hop about 0.85 m high that lasts 0.65 s
+const player = { x: HOME.x, z: HOME.z, y: 0, vy: 0, h: 0, speed: 0, phase: 0, mesh: personParts('#f2c230', '#2b3a55', null, true) };   // y: metres above the ground
 collide(player, 0.6); scene.add(player.mesh);
+let jumpQ = false;   // set by a fresh Space / Jump press on foot, used up by the next frame: a held key (braking, then getting out) never jumps, a tap between frames isn't lost
+const jumpOk = () => !inCar && !inside && bigT <= 0;   // queue only where a jump can start, so a press inside a safehouse or under Gripen! can't fire as it ends
 (function () { const o = { x: player.x + 7, z: player.z + 3 }; collide(o, 2.6); addCar('volvo', o.x, o.z, 0.6, 'parked'); })();
 let inCar = false, pcar = null, stars = 0, evade = 0, bustT = 0, stolen = 0, ramCool = 0, started = false, bigT = 0;
 let inside = null, hideT = 0, trissT = 0, trissN = 0, trissWon = 0, trissLast = '';
@@ -661,7 +676,9 @@ function addPlace(kind, name, x, z, color) {
 })();
 // one lucka, several things to buy: E opens a small menu (1 / 2 / Esc, or tap), walking away closes it
 const kmenu = $('kmenu');
-function closeKiosk() { kmenu.hidden = true; }
+let relock = false;                                             // the kiosk menu needs the cursor: free it while the menu is open, and take it back after
+function openKiosk() { kmenu.hidden = false; relock = locked(); if (relock) document.exitPointerLock(); }
+function closeKiosk() { kmenu.hidden = true; if (relock) { relock = false; lockMouse(); } }
 function kioskPick(k) { closeKiosk(); if (k === 'triss') scratch(); else if (k === 'treats') buyTreats(); }
 kmenu.addEventListener('click', e => { const b = e.target.closest('button'); if (b) { kioskPick(b.dataset.k); canvas.focus(); } });
 function nearPlace() { if (inCar) return null; for (const p of places) if (Math.hypot(p.x - player.x, p.z - player.z) < 2.2) return p; return null; }
@@ -699,13 +716,25 @@ const KEYMAP = { KeyW: 'up', ArrowUp: 'up', KeyS: 'down', ArrowDown: 'down', Key
 addEventListener('keydown', e => { if (!started) return; const k = KEYMAP[e.code];
   if (!kmenu.hidden && /^(Digit|Numpad)[12]$|^Escape$/.test(e.code)) { kioskPick(e.code === 'Escape' ? 'no' : e.code.endsWith('1') ? 'triss' : 'treats'); return; }
   if (kmenu.contains(e.target)) return;                       // Enter / Space on a focused menu button: let the button's own click handle it
-  if (k) { keys[k] = true; e.preventDefault(); } else if ((e.code === 'KeyE' || e.code === 'KeyF' || e.code === 'Enter') && !e.repeat) action(); else if (e.code === 'KeyR') respawn(); });
+  if (k) { keys[k] = true; e.preventDefault(); if (k === 'brake' && !e.repeat && jumpOk()) jumpQ = true; } else if ((e.code === 'KeyE' || e.code === 'KeyF' || e.code === 'Enter') && !e.repeat) action(); else if (e.code === 'KeyR') respawn(); });
 addEventListener('keyup', e => { const k = KEYMAP[e.code]; if (k) keys[k] = false; });
 addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
+// mouse look: a click on the game locks the pointer, and the mouse then turns the camera with no button held. Esc frees the cursor.
+// Touch, and a mouse in a browser that refuses the lock, turn the camera by dragging.
+const LOCK_K = 0.4;   // a locked mouse turns this much less per pixel than a drag: it travels much further
+const LOCK_MAX_PX = 120;   // per event; some browsers report a huge movementX right after locking, which would spin the camera
+const locked = () => document.pointerLockElement === canvas;
+function lockMouse() { if (locked() || !canvas.requestPointerLock) return; try { const p = canvas.requestPointerLock(); if (p && p.catch) p.catch(() => {}); } catch (err) {} }
+document.addEventListener('pointerlockchange', () => { if (!locked() && started && kmenu.hidden && toastT <= 0) toast('Click the game to look around with the mouse again.', 3); });
 let dragId = null, lx = 0, ly = 0;
-canvas.addEventListener('pointerdown', e => { dragId = e.pointerId; lx = e.clientX; ly = e.clientY; try { canvas.setPointerCapture(e.pointerId); } catch (err) {} });
-canvas.addEventListener('pointermove', e => { if (e.pointerId !== dragId) return;
-  const dx = e.clientX - lx, dy = e.clientY - ly; lx = e.clientX; ly = e.clientY;
+canvas.addEventListener('pointerdown', e => { dragId = e.pointerId; lx = e.clientX; ly = e.clientY; try { canvas.setPointerCapture(e.pointerId); } catch (err) {}
+  if (started && kmenu.hidden && e.pointerType === 'mouse') lockMouse(); });   // the kiosk menu needs the cursor
+// Only the mouse takes the locked path: a finger dragging while the mouse holds the lock keeps drag speed. The locked mouse's
+// clientX is frozen, so it must not touch lx / ly, or the next touch move jumps.
+canvas.addEventListener('pointermove', e => { const lk = locked() && e.pointerType === 'mouse'; if (!lk && e.pointerId !== dragId) return;
+  let dx, dy;
+  if (lk) { dx = clamp(e.movementX, -LOCK_MAX_PX, LOCK_MAX_PX) * LOCK_K; dy = clamp(e.movementY, -LOCK_MAX_PX, LOCK_MAX_PX) * LOCK_K; }
+  else { dx = e.clientX - lx; dy = e.clientY - ly; lx = e.clientX; ly = e.clientY; }
   if (inCar) { lookOff = wrap(lookOff + dx * 0.006); lookIdle = 0; } else camYaw = wrap(camYaw + dx * 0.006);
   camPitch = clamp(camPitch + dy * 0.004, 0.06, 1.25); });
 const endDrag = e => { if (e.pointerId === dragId) dragId = null; };
@@ -720,7 +749,7 @@ const joyEnd = e => { if (e.pointerId !== joyId) return; joyId = null; joy.on = 
 joyEl.addEventListener('pointerup', joyEnd); joyEl.addEventListener('pointercancel', joyEnd);
 const hold = (el, k) => { el.addEventListener('pointerdown', e => { keys[k] = true; e.preventDefault(); });
   for (const t of ['pointerup', 'pointercancel', 'pointerleave']) el.addEventListener(t, () => { keys[k] = false; }); };
-hold($('p-brake'), 'brake');
+hold($('p-brake'), 'brake'); $('p-brake').addEventListener('pointerdown', () => { if (jumpOk()) jumpQ = true; });
 $('p-act').addEventListener('click', () => action());
 function showTouch() { $('joy').hidden = false; $('pad').hidden = false; }
 if (coarse) showTouch(); else addEventListener('touchstart', showTouch, { once: true, passive: true });
@@ -766,11 +795,11 @@ function action() {
   if (inside) { leaveHouse(); return; }
   const pl = nearPlace(), kt = nearCat();
   if (catFirst(kt, pl)) { petCat(kt); return; }
-  if (pl) { if (pl.kind === 'safe') enterHouse(pl); else kmenu.hidden = !kmenu.hidden; return; }
+  if (pl) { if (pl.kind === 'safe') enterHouse(pl); else if (kmenu.hidden) openKiosk(); else closeKiosk(); return; }
   if (inCar) {
     if (Math.abs(pcar.v) > 3) { toast('Slow down before you get out.', 2); return; }
     player.x = pcar.x - Math.cos(pcar.h) * 2; player.z = pcar.z - Math.sin(pcar.h) * 2; player.h = pcar.h; collide(player, 0.5);
-    pcar.mode = 'idle'; pcar.v = pcar.slip = pcar.drift = pcar.boost = 0; placeCar(pcar); pcar = null; inCar = false; player.mesh.visible = true; camYaw = wrap(camYaw + lookOff); lookOff = 0; return;
+    pcar.mode = 'idle'; pcar.v = pcar.slip = pcar.drift = pcar.boost = 0; placeCar(pcar); pcar = null; inCar = false; jumpQ = false; player.mesh.visible = true; camYaw = wrap(camYaw + lookOff); lookOff = 0; return;
   }
   const c = nearestCar(); if (!c) return;
   if (c.mode === 'ai') {
@@ -783,7 +812,7 @@ function action() {
     else toast(c.type === 'epa' ? 'EPA-traktor: legally limited to 30 km/h. Good luck outrunning anyone.' : 'You took the ' + c.T.name + '. Nobody noticed.');
   }
   if (!c.owned) { c.owned = true; stolen++; $('count').textContent = 'Cars stolen: ' + stolen; }
-  c.mode = 'player'; c.vh = c.h; c.slip = c.drift = c.boost = c.loose = 0; pcar = c; inCar = true; player.mesh.visible = false; lookOff = 0; camYaw = c.h;
+  c.mode = 'player'; c.vh = c.h; c.slip = c.drift = c.boost = c.loose = 0; pcar = c; inCar = true; player.y = player.vy = 0; player.mesh.visible = false; lookOff = 0; camYaw = c.h;
 }
 function addStar(msg) { if (stars < 3) stars++; evade = 0; drawStars(); if (msg) toast(msg); }
 function spawnPolice() {
@@ -794,7 +823,7 @@ function spawnPolice() {
 }
 function clearWanted() { stars = 0; evade = 0; bustT = 0; for (const p of police) removeCar(p); police.length = 0; drawStars(); $('stars').classList.remove('evading'); }
 function respawn() { leaveHouse(); if (inCar) { pcar.mode = 'idle'; pcar.v = pcar.slip = pcar.drift = pcar.boost = 0; placeCar(pcar); pcar = null; inCar = false; player.mesh.visible = true; }
-  player.x = HOME.x; player.z = HOME.z; collide(player, 0.6); }
+  player.x = HOME.x; player.z = HOME.z; player.y = player.vy = 0; jumpQ = false; collide(player, 0.6); }
 function busted() { clearWanted(); respawn(); bigT = 3; $('big').hidden = false; }
 function updatePolice(c, dt, T, tv) {
   const dx = T.x - c.x, dz = T.z - c.z, d = Math.hypot(dx, dz), diff = wrap(Math.atan2(dx, -dz) - c.h);
@@ -820,6 +849,7 @@ function frame(now) {
   if (trissT > 0) { trissT -= dt; if (trissT <= 0) trissResult(); }
   for (const p of places) p.gem.rotation.y += dt * 1.6;
 
+  const jump = jumpQ; jumpQ = false;
   if (inCar) { drive(pcar, my, mx, !!keys.brake, dt, true); player.x = pcar.x; player.z = pcar.z; player.h = pcar.h; player.speed = Math.abs(pcar.v); }
   else {
     const mag = Math.min(1, Math.hypot(mx, my)), wet = inWater(player.x, player.z);
@@ -831,8 +861,14 @@ function frame(now) {
     } else { player.speed = 0; player.phase *= 0.8; }
     collide(player, 0.5);
     if (!inside) for (const c of cars) { const dx = player.x - c.x, dz = player.z - c.z, d = Math.hypot(dx, dz); if (d < 1.6 && d > 0.01) { player.x += dx / d * (1.6 - d); player.z += dz / d * (1.6 - d); } }
-    const sw = Math.sin(player.phase) * 0.75; player.mesh.legs[0].rotation.x = sw; player.mesh.legs[1].rotation.x = -sw;
-    player.mesh.position.set(player.x, groundAt(player.x, player.z) - (wet ? 0.95 : 0), player.z); player.mesh.rotation.y = -player.h;
+    const wetNow = inWater(player.x, player.z);                // after this frame's move: take-off and wading depth follow where the player stands now
+    if (player.y === 0 && jump && !wetNow && !inside && bigT <= 0) player.vy = JUMP_V;   // on foot, Space and the touch Brake button jump
+    if (player.y > 0 || player.vy > 0) { player.y += (player.vy - GRAVITY * dt / 2) * dt; player.vy -= GRAVITY * dt; if (player.y <= 0) player.y = player.vy = 0; }   // exact for constant gravity: same hop at any frame rate
+    // walking: arms swing against the legs and the body bobs; in the air: legs apart and both arms up
+    const air = player.y > 0, sw = air ? 0.5 : Math.sin(player.phase) * 0.75, lift = player.y + (air ? 0 : Math.abs(Math.sin(player.phase)) * 0.05), m = player.mesh;
+    m.legs[0].rotation.x = sw; m.legs[1].rotation.x = -sw; m.arms[0].rotation.x = air ? 2.4 : -sw * 0.8; m.arms[1].rotation.x = air ? 2.4 : sw * 0.8;
+    m.blob.position.y = 0.06 - lift;                          // the blob shadow stays on the ground
+    m.position.set(player.x, groundAt(player.x, player.z) - (wetNow ? 0.95 : 0) + lift, player.z); m.rotation.y = -player.h;
   }
   updateDriftFx(inCar ? pcar : null);
   const T = inCar ? pcar : player;
@@ -876,14 +912,16 @@ function frame(now) {
     else if (inCar && !coarse) { pr.hidden = Math.abs(pcar.v) > 3; pr.innerHTML = '<kbd>E</kbd>Get out'; }
     else if (c) { pr.hidden = false; pr.innerHTML = '<kbd>E</kbd>' + (c.owned ? 'Get in the ' : 'Steal the ') + c.T.name; }
     else pr.hidden = true;
+    const bl = inCar ? 'Brake' : 'Jump'; if ($('p-brake').textContent !== bl) $('p-brake').textContent = bl;
     $('speed').hidden = !inCar; if (inCar) { $('kmh').textContent = Math.round(Math.abs(pcar.v) * 3.6); $('carname').textContent = pcar.T.name; } }
   drawMini(T);
   renderer.render(scene, camera);
 }
-$('go').addEventListener('click', () => { started = true; $('intro').hidden = true; camYaw = 0.6; camPitch = 0.34; canvas.focus();
+$('go').addEventListener('click', e => { started = true; $('intro').hidden = true; camYaw = 0.6; camPitch = 0.34; canvas.focus();
+  if (e.pointerType ? e.pointerType === 'mouse' : !coarse) lockMouse();   // by how Start was pressed: a tap on a touchscreen laptop shouldn't lock
   toast('Find a car and press E to take it. Occupied cars always get you a wanted star.', 5); });
 resize(); requestAnimationFrame(frame);
 
 // ---------- test hook: read-only state for the smoke tests (tests/e2e), so they do not have to read pixels ----------
-window.__joyride = { state: () => { const n = nearestCar(); return { started, x: player.x, z: player.z, inCar, car: pcar ? pcar.type : null, near: n ? n.mode : null, speed: pcar ? pcar.v : 0, drift: pcar ? pcar.drift : 0, boost: pcar ? pcar.boost : 0, charge: pcar ? pcar.charge : 0, loose: pcar ? pcar.loose : 0, flickDir: pcar ? pcar.flickDir : 0, stars, cats: cats.length, treats }; } };
+window.__joyride = { state: () => { const n = nearestCar(); return { started, x: player.x, z: player.z, y: player.y, yaw: camYaw, inCar, car: pcar ? pcar.type : null, near: n ? n.mode : null, speed: pcar ? pcar.v : 0, drift: pcar ? pcar.drift : 0, boost: pcar ? pcar.boost : 0, charge: pcar ? pcar.charge : 0, loose: pcar ? pcar.loose : 0, flickDir: pcar ? pcar.flickDir : 0, stars, cats: cats.length, treats }; } };
 })();
