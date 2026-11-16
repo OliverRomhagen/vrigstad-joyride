@@ -18,7 +18,7 @@ export class TerrainMesh {
   readonly skirt: THREE.Mesh;
 
   constructor(
-    heightfield: Pick<Heightfield, 'heightAt' | 'samples' | 'sampleCoord' | 'sampleHeight'>,
+    heightfield: Pick<Heightfield, 'samples' | 'sampleCoord' | 'sampleHeight'>,
     { material, skirtMaterial, skirtDepthM }: TerrainMeshOptions,
   ) {
     const n = heightfield.samples;
@@ -57,10 +57,10 @@ export class TerrainMesh {
         v.push(a[0], a[1], a[2], b[0], b[1], b[2], b[0], bottom, b[2], a[0], a[1], a[2], b[0], bottom, b[2], a[0], bottom, a[2]);
       }
     };
-    edge((i) => [at(i), heightfield.heightAt(at(i), half), half]);
-    edge((i) => [at(i), heightfield.heightAt(at(i), -half), -half]);
-    edge((i) => [half, heightfield.heightAt(half, at(i)), at(i)]);
-    edge((i) => [-half, heightfield.heightAt(-half, at(i)), at(i)]);
+    edge((i) => [at(i), heightfield.sampleHeight(i, n - 1), half]);
+    edge((i) => [at(i), heightfield.sampleHeight(i, 0), -half]);
+    edge((i) => [half, heightfield.sampleHeight(n - 1, i), at(i)]);
+    edge((i) => [-half, heightfield.sampleHeight(0, i), at(i)]);
     const skirt = new THREE.BufferGeometry();
     skirt.setAttribute('position', new THREE.Float32BufferAttribute(v, 3));
     skirt.computeVertexNormals();
