@@ -20,8 +20,11 @@ jobs:
           node-version: lts/*
           cache: npm
       - run: npm ci
-      # The built pages are committed: fail if they are not what src/ and data/ build to.
-      - run: npm run data && npm run build && git diff --exit-code -- index.html map.html data/vrigstad.json
+      # data/vrigstad.json is committed: fail if it is not what tools/process.py makes from data/raw/.
+      - run: npm run data && git diff --exit-code -- data/vrigstad.json
+      - run: npm run build
+      # The built pages are not committed (#45): fail if a merge brought one back.
+      - run: test -z "$(git ls-files index.html map.html)"
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e
       # Screenshots of both pages, plus a trace of any failed test. Not pixel-diffed: headless WebGL output varies.

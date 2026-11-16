@@ -20,5 +20,4 @@ Closes #
 ## Checklist
 
 - [ ] One concern; no unrelated refactors or reformatting
-- [ ] If `src/` or `data/` changed: rebuilt `index.html` and `map.html` in the same commit (the build command is in AGENTS.md's Commands)
 - [ ] Labelled with a scope, if one fits (a scope in the title, or on the linked issue, adds it when the PR is opened)
