@@ -11,6 +11,7 @@ import { makeRnd } from '../world/random';
 import { nodeKey, ROAD_CELL_M as RC, RoadNetwork, roadLiftM as roadLift } from '../world/roads';
 import { LEGACY_LIGHT } from '../world/three-legacy';
 import { Water } from '../world/water';
+import { createCats } from './cats';
 
 (function () {
 'use strict';
@@ -531,81 +532,13 @@ function updateNpcs(T, dt) {
   for (const n of npcs) updateNpc(n, dt);
 }
 
-// ---------- cats: lounge by the house walls, wander a little, bolt from cars and running feet ----------
-const CAT_MAX = coarse ? 8 : 14, CAT_NEAR = 150, CAT_FAR = 210;   // count around the player; spawn / despawn radius (m)
-const CAT_WALK = 0.7, CAT_RUN = 6.5, CAT_PET_M = 1.6;               // m/s, m/s, reach to pet (m)
-const CAT_SCARE_CAR_M = 12, CAT_SCARE_RUN_M = 5;                    // a moving car / sprinting player closer than this sends it running
-// [coat, ears and paws, chest and muzzle (optional)]
-const CAT_COLS = [['#d9822b', '#f0e0c8'], ['#1e1e20', '#1e1e20'], ['#7d7f84', '#e8e4dc'], ['#ece9e2', '#ece9e2'], ['#8a6a48', '#3f3226'], ['#1e1e20', '#ece9e2', '#ece9e2']];
-const CAT_PET_OK = 0.5, CAT_PET_TREAT_OK = 0.75;   // chance a pet goes well, without / with a treat
-const CAT_SCRATCH_S = 5, CAT_PET_S = 3;            // after a scratch / a good pet the cat can't be petted for this long (s), so E can't be spammed for better odds
+// ---------- cats: lounge by the house walls, wander a little, bolt from cars and running feet (src/game/cats.ts) ----------
 const TREAT_BAG = 3, TREAT_MAX = 9;                                  // treats per bag from the kiosk; how many fit in your pockets
-// \n puts each speaker on their own line in the toast: the cat first, then the player
-const CAT_PET = ['”Mjau.”\n”Ja du ä la en go kisse, du.”', '”Prrrrr…”\n”Hör på’n, han spinner som en EPA-traktor!”', '”Kiss kiss kiss… nämen kom hit då, lilla vän.”',
-  '”Där ja, bakom örona. Dä gillar du, va?”'];
-const CAT_SCRATCH = ['Dä kommer svida ett tag.', 'Dä kommer synas i mårra.', 'Din lilla skitkatt!'].map(t => '”AJAJAJ! Kattafan rev mä! ' + t + '”');
-const CAT_BOLT = ['”Nä men vart ska du? Kom tebaks!”', '”Mjäu!”\n”Jaha, där sprang du. Dä va la dä då.”', '”Du behöver inte springa iväg! Ja ä la inte farli, din lilla fjant!”'];
 let treats = 0;
-const cats = [], catRnd = makeRnd(9094), catPick = a => a[Math.floor(catRnd() * a.length)];
-const catGeo = c => geoCache['cat' + c] || (geoCache['cat' + c] = boxGeo([[0.2, 0.17, 0.42, 0, 0.2, 0, c[0]], [0.17, 0.15, 0.15, 0, 0.31, -0.25, c[0]],
-  [0.05, 0.06, 0.03, -0.05, 0.41, -0.26, c[1]], [0.05, 0.06, 0.03, 0.05, 0.41, -0.26, c[1]], [0.03, 0.03, 0.01, -0.04, 0.33, -0.33, '#c8d24a'], [0.03, 0.03, 0.01, 0.04, 0.33, -0.33, '#c8d24a'],
-  [0.05, 0.13, 0.05, -0.07, 0.06, -0.15, c[1]], [0.05, 0.13, 0.05, 0.07, 0.06, -0.15, c[1]], [0.05, 0.13, 0.05, -0.07, 0.06, 0.15, c[1]], [0.05, 0.13, 0.05, 0.07, 0.06, 0.15, c[1]],
-  [0.04, 0.3, 0.04, 0, 0.4, 0.22, c[0]], ...(c[2] ? [[0.14, 0.12, 0.02, 0, 0.21, -0.215, c[2]], [0.09, 0.05, 0.01, 0, 0.27, -0.33, c[2]]] : [])]));
-// a spot just outside a random wall of a house in the cell around (x, z)
-function spawnCat(T, minD) {
-  for (let t = 0; t < 10; t++) {
-    const ang = catRnd() * Math.PI * 2, dist = minD + catRnd() * (CAT_NEAR - minD), l = bGrid.get(Math.floor((T.x + Math.sin(ang) * dist) / BC) + ',' + Math.floor((T.z + Math.cos(ang) * dist) / BC));
-    if (!l) continue;
-    const p = bPolys[catPick(l)].p, i = Math.floor(catRnd() * p.length / 2) * 2, j = (i + 2) % p.length, ex = p[j] - p[i], ez = p[j + 1] - p[i + 1], len = Math.hypot(ex, ez); if (len < 2) continue;
-    const s = catRnd(), mx = p[i] + ex * s, mz = p[i + 1] + ez * s, out = 0.6 + catRnd() * 1.4; let nx = ez / len, nz = -ex / len;
-    if (inPoly(p, mx + nx * 0.3, mz + nz * 0.3)) { nx = -nx; nz = -nz; }
-    const o = { x: mx + nx * out, z: mz + nz * out }; collide(o, 0.3);
-    if (Math.abs(o.x) > HALF - 10 || Math.abs(o.z) > HALF - 10 || inWater(o.x, o.z) || Math.hypot(o.x - T.x, o.z - T.z) < minD) continue;
-    const mesh = new THREE.Mesh(catGeo(catPick(CAT_COLS)), paintMat); mesh.castShadow = true; mesh.rotation.order = 'YXZ'; mesh.scale.setScalar(1.1 + catRnd() * 0.25); blob(mesh, 0.32, 0.55);
-    const k = { x: o.x, z: o.z, h: Math.atan2(nx, -nz), want: 0, state: 'sit', t: 3 + catRnd() * 15, nope: 0, phase: 0, mesh }; k.want = k.h;
-    scene.add(mesh); cats.push(k); return;
-  }
-}
-function updateCat(k, dt) {
-  let fx = 0, fz = 0;
-  for (const c of cars) if (Math.abs(c.v) > 2) { const dx = k.x - c.x, dz = k.z - c.z, d = Math.hypot(dx, dz); if (d < CAT_SCARE_CAR_M && d > 0.01) { fx += dx / d; fz += dz / d; } }
-  if (!inCar && !inside && (joy.on ? player.speed > 7.5 : keys.run && player.speed > 6)) {   // the stick passes 6 m/s on a normal push, so only a full push counts
-    const dx = k.x - player.x, dz = k.z - player.z, d = Math.hypot(dx, dz); if (d < CAT_SCARE_RUN_M && d > 0.01) { fx += dx / d; fz += dz / d; } }
-  if (fx || fz) { k.state = 'flee'; k.t = 1.5 + catRnd(); k.want = Math.atan2(fx, -fz); }
-  k.t -= dt; if (k.nope > 0) k.nope -= dt;
-  if (k.t <= 0) { if (k.state === 'sit') { k.state = 'walk'; k.t = 2 + catRnd() * 4; k.want = catRnd() * Math.PI * 2; } else { k.state = 'sit'; k.t = 4 + catRnd() * 16; } }
-  const sp = k.state === 'flee' ? CAT_RUN : k.state === 'walk' ? CAT_WALK : 0;
-  k.h = wrap(k.h + wrap(k.want - k.h) * Math.min(1, dt * (sp > 1 ? 10 : 3)));
-  if (sp) { const nx = k.x + Math.sin(k.h) * sp * dt, nz = k.z - Math.cos(k.h) * sp * dt;
-    if (inWater(nx, nz)) k.want = wrap(k.h + Math.PI); else { k.x = clamp(nx, -HALF + 2, HALF - 2); k.z = clamp(nz, -HALF + 2, HALF - 2); }
-    if (collide(k, 0.25) && k.state === 'walk') k.want = wrap(k.h + (catRnd() < 0.5 ? 1.6 : -1.6));
-    k.phase += sp * dt * 9; }
-  k.mesh.position.set(k.x, groundAt(k.x, k.z) + (sp ? Math.abs(Math.sin(k.phase)) * 0.03 : 0), k.z); k.mesh.rotation.y = -k.h;
-  k.mesh.rotation.x += ((k.state === 'sit' ? 0.3 : 0) - k.mesh.rotation.x) * Math.min(1, dt * 4);   // sitting: front up, rear down
-}
-let catT = 0, catX = 1e9, catZ = 1e9;
-function updateCats(T, dt) {
-  catT -= dt;
-  if (catT <= 0) { catT = 0.5;
-    const jump = Math.hypot(T.x - catX, T.z - catZ) > 120; catX = T.x; catZ = T.z;
-    for (let i = cats.length - 1; i >= 0; i--) if (Math.hypot(cats[i].x - T.x, cats[i].z - T.z) > CAT_FAR) { scene.remove(cats[i].mesh); cats.splice(i, 1); }
-    for (let i = 0; i < (jump ? 30 : 2) && cats.length < CAT_MAX; i++) spawnCat(T, jump ? 4 : 80);
-  }
-  for (const k of cats) updateCat(k, dt);
-}
-// E goes to the closer of a cat and a place, so a cat sitting by the kiosk or a safehouse door can still be petted
-function catFirst(kt, pl) { return !!kt && (!pl || kmenu.hidden && Math.hypot(kt.x - player.x, kt.z - player.z) < Math.hypot(pl.x - player.x, pl.z - player.z)); }
-function nearCat() { if (inCar || inside) return null; let best = null, bd = CAT_PET_M;
-  for (const k of cats) { const d = Math.hypot(k.x - player.x, k.z - player.z); if (d < bd && k.state !== 'flee' && k.nope <= 0) { bd = d; best = k; } } return best; }
-// a treat goes into the cat whatever happens next
-function petCat(k) {
-  const treat = treats > 0, r = catRnd(), pre = treat ? '”Här, en godisbit.”\n' : '';
-  if (treat) { treats--; drawTreats(); }
-  k.want = Math.atan2(player.x - k.x, -(player.z - k.z));
-  if (r < (treat ? CAT_PET_TREAT_OK : CAT_PET_OK)) { k.state = 'sit'; k.t = 6 + catRnd() * 6; k.nope = CAT_PET_S; toast(pre + catPick(CAT_PET), 3); }
-  else if (catRnd() < 0.5) { k.state = 'sit'; k.t = 3 + catRnd() * 4; k.nope = CAT_SCRATCH_S; toast(pre + catPick(CAT_SCRATCH), 3.5); }
-  else { k.state = 'flee'; k.t = 2 + catRnd(); k.want = Math.atan2(k.x - player.x, -(k.z - player.z)); toast(pre + catPick(CAT_BOLT), 3); }
-}
+// the getters are read when the cats use them, so they can name things declared further down
+const { cats, updateCats, catFirst, nearCat, petCat } = createCats({ scene, buildings, inWater, groundAt, half: HALF, coarse, wrap, geoCache, boxGeo, paintMat, blob, cars, toast,
+  get player() { return player; }, get keys() { return keys; }, get joy() { return joy; }, get kmenu() { return kmenu; }, get inCar() { return inCar; }, get inside() { return inside; },
+  useTreat() { if (treats <= 0) return false; treats--; drawTreats(); return true; } });
 function buyTreats() {
   if (treats >= TREAT_MAX) { toast('”Nämen, du har ju fickera fulla redan!”', 2.5); return; }
   treats = Math.min(TREAT_MAX, treats + TREAT_BAG); drawTreats(); toast('”En påse kattgodis, varsågo. Kattera ä tôcka i dä.”', 4);
