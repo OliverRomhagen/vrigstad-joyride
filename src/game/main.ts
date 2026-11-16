@@ -779,8 +779,12 @@ document.addEventListener('pointerlockchange', () => { if (!locked() && started 
 let dragId = null, lx = 0, ly = 0;
 canvas.addEventListener('pointerdown', e => { dragId = e.pointerId; lx = e.clientX; ly = e.clientY; try { canvas.setPointerCapture(e.pointerId); } catch (err) {}
   if (started && kmenu.hidden && e.pointerType === 'mouse') lockMouse(); });   // the kiosk menu needs the cursor
-canvas.addEventListener('pointermove', e => { const lk = locked(); if (!lk && e.pointerId !== dragId) return;
-  const dx = lk ? clamp(e.movementX, -LOCK_MAX_PX, LOCK_MAX_PX) * LOCK_K : e.clientX - lx, dy = lk ? clamp(e.movementY, -LOCK_MAX_PX, LOCK_MAX_PX) * LOCK_K : e.clientY - ly; lx = e.clientX; ly = e.clientY;
+// Only the mouse takes the locked path: a finger dragging while the mouse holds the lock keeps drag speed. The locked mouse's
+// clientX is frozen, so it must not touch lx / ly, or the next touch move jumps.
+canvas.addEventListener('pointermove', e => { const lk = locked() && e.pointerType === 'mouse'; if (!lk && e.pointerId !== dragId) return;
+  let dx, dy;
+  if (lk) { dx = clamp(e.movementX, -LOCK_MAX_PX, LOCK_MAX_PX) * LOCK_K; dy = clamp(e.movementY, -LOCK_MAX_PX, LOCK_MAX_PX) * LOCK_K; }
+  else { dx = e.clientX - lx; dy = e.clientY - ly; lx = e.clientX; ly = e.clientY; }
   if (inCar) { lookOff = wrap(lookOff + dx * 0.006); lookIdle = 0; } else camYaw = wrap(camYaw + dx * 0.006);
   camPitch = clamp(camPitch + dy * 0.004, 0.06, 1.25); });
 const endDrag = e => { if (e.pointerId === dragId) dragId = null; };

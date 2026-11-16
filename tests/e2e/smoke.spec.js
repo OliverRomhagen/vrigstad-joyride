@@ -185,6 +185,78 @@ test.describe('game (index.html)', () => {
   });
 });
 
+// The real pointer lock is unreliable headless, so these fake it: requestPointerLock / exitPointerLock set a fake
+// pointerLockElement and fire pointerlockchange, and moves are dispatched with exact movementX, so the yaw change is exact.
+test.describe('game with the pointer locked (faked)', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.addInitScript(() => {
+      let el = null;
+      const changed = () => setTimeout(() => document.dispatchEvent(new Event('pointerlockchange')));
+      Object.defineProperty(Document.prototype, 'pointerLockElement', { configurable: true, get: () => el });
+      HTMLCanvasElement.prototype.requestPointerLock = function () { el = this; changed(); return Promise.resolve(); };
+      Document.prototype.exitPointerLock = function () { el = null; changed(); };
+    });
+  });
+
+  const isLocked = page => page.evaluate(() => document.pointerLockElement === document.getElementById('gl'));
+  // Dispatches pointer events on the canvas; returns how much the camera yaw changed.
+  const turn = (page, events) => page.evaluate(evs => {
+    const c = document.getElementById('gl'), y0 = window.__joyride.state().yaw;
+    for (const [type, init] of evs) c.dispatchEvent(new PointerEvent(type, { bubbles: true, isPrimary: true, ...init }));
+    return window.__joyride.state().yaw - y0;
+  }, events);
+
+  test('a mouse Start locks the pointer, and the mouse turns the camera with no button held', async ({ page }) => {
+    const errors = watchErrors(page);
+    await page.goto('/index.html');
+    await page.locator('#go').click();
+    await expect.poll(() => isLocked(page)).toBe(true);
+    const d = await turn(page, [['pointermove', { pointerId: 1, pointerType: 'mouse', movementX: 50 }]]);
+    expect(d).toBeCloseTo(50 * 0.4 * 0.006, 5);                     // LOCK_K and the look rate in src/game/main.ts
+    expect(errors).toEqual([]);
+  });
+
+  test('a touch drag while the mouse holds the lock turns at drag speed', async ({ page }) => {
+    const errors = watchErrors(page);
+    await page.goto('/index.html');
+    await page.locator('#go').click();
+    await expect.poll(() => isLocked(page)).toBe(true);
+    const touch = { pointerId: 7, pointerType: 'touch' };
+    const d = await turn(page, [
+      ['pointerdown', { ...touch, clientX: 300, clientY: 300 }],
+      ['pointermove', { pointerId: 1, pointerType: 'mouse', movementX: 0, clientX: 640, clientY: 360 }],   // a locked mouse move in between
+      ['pointermove', { ...touch, clientX: 400, clientY: 300, movementX: 100 }],
+      ['pointerup', { ...touch, clientX: 400, clientY: 300 }]
+    ]);
+    expect(d).toBeCloseTo(100 * 0.006, 5);
+    expect(await isLocked(page)).toBe(true);
+    expect(errors).toEqual([]);
+  });
+
+  test('the kiosk menu frees the cursor, a click beside it keeps it free, and closing it locks again', async ({ page }) => {
+    const errors = watchErrors(page);
+    await page.goto('/index.html');
+    await page.locator('#go').click();
+    await expect.poll(() => isLocked(page)).toBe(true);
+
+    await page.keyboard.down('KeyA');                                   // the kiosk is to the left, as in the treats test
+    await expect.poll(async () => page.locator('#prompt').textContent(), { intervals: [50] }).toBe('EHandla i kiosken');
+    await page.keyboard.up('KeyA');
+    await page.keyboard.press('KeyE');
+    await expect(page.locator('#kmenu')).toBeVisible();
+    expect(await isLocked(page)).toBe(false);
+
+    await page.mouse.click(20, 300);                                    // on the game, beside the menu
+    await expect(page.locator('#kmenu')).toBeVisible();
+    expect(await isLocked(page)).toBe(false);
+
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#kmenu')).toBeHidden();
+    expect(await isLocked(page)).toBe(true);
+    expect(errors).toEqual([]);
+  });
+});
+
 test.describe('map (map.html)', () => {
   test('loads with no console errors and draws the map', async ({ page }, testInfo) => {
     const errors = watchErrors(page);
