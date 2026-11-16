@@ -30,7 +30,8 @@ export class Water {
 
   /** True over a lake or a river, unless a road crosses there as a bridge. */
   inWater(x: number, z: number) {
-    return this.overWater(x, z) && this.roads.nearestRoad(x, z, this.near).d >= BRIDGE_REACH_M;
+    // the road lookup is one grid cell, the water scan every lake and river segment: most callers are cars on roads
+    return this.roads.nearestRoad(x, z, this.near).d >= BRIDGE_REACH_M && this.overWater(x, z);
   }
 
   private overWater(x: number, z: number) {
