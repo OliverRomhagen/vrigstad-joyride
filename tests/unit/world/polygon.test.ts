@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { pointInPolygon, polygonArea, segmentDistance } from '../../../src/world/polygon';
+import { pointInPolygon, polygonArea, polygonBounds, segmentDistance, segmentParam } from '../../../src/world/polygon';
 import { square } from './fixture';
 
 // an L: a 10 m square with its north-east quarter cut out
@@ -21,6 +21,30 @@ describe('segmentDistance', () => {
 
   it('treats a segment of zero length as a point', () => {
     expect(segmentDistance(3, 4, 0, 0, 0, 0)).toBe(5);
+  });
+});
+
+describe('segmentParam', () => {
+  it('runs from 0 at the start to 1 at the end, clamped past either', () => {
+    expect(segmentParam(5, 3, 0, 0, 10, 0)).toBe(0.5);
+    expect(segmentParam(-4, 0, 0, 0, 10, 0)).toBe(0);
+    expect(segmentParam(13, 4, 0, 0, 10, 0)).toBe(1);
+  });
+
+  it('is 0 on a segment of zero length', () => {
+    expect(segmentParam(3, 4, 0, 0, 0, 0)).toBe(0);
+  });
+});
+
+describe('polygonBounds', () => {
+  it('boxes the outline', () => {
+    expect(polygonBounds(L_SHAPE)).toEqual({ x0: 0, x1: 10, z0: 0, z1: 10 });
+  });
+
+  it('grows the box it is given', () => {
+    const box = polygonBounds(square(0, 0, 4));
+    expect(polygonBounds(square(-2, 6, 1), box)).toBe(box);
+    expect(box).toEqual({ x0: -2, x1: 4, z0: 0, z1: 7 });
   });
 });
 

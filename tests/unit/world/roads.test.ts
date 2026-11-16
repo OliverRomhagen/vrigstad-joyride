@@ -23,6 +23,14 @@ describe('nearestRoad', () => {
   it('returns the same object each call', () => {
     expect(nearestRoad(0, 0)).toBe(nearestRoad(5, 5));
   });
+
+  it('writes into the object it is given, and leaves the shared one alone', () => {
+    const shared = nearestRoad(0, 10);
+    const own = { d: 0, ri: 0 };
+    expect(nearestRoad(0, 60, own)).toBe(own);
+    expect(own).toEqual({ d: 1e9, ri: -1 });
+    expect(shared.ri).toBe(0);
+  });
 });
 
 describe('groundAt', () => {
