@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { pointInPolygon, polygonArea, polygonBounds, segmentDistance, segmentParam } from '../../../src/world/polygon';
+import { pointInPolygon, polygonArea, polygonBounds, segmentDistance, segmentParam, signedPolygonArea } from '../../../src/world/polygon';
 import { square } from './fixture';
 
 // an L: a 10 m square with its north-east quarter cut out
@@ -56,5 +56,15 @@ describe('polygonArea', () => {
     expect(polygonArea(sq)).toBe(16);
     expect(polygonArea(reversed)).toBe(16);
     expect(polygonArea(L_SHAPE)).toBe(75);
+  });
+});
+
+describe('signedPolygonArea', () => {
+  it('changes sign with the winding', () => {
+    const sq = square(0, 0, 4);
+    const reversed: number[] = [];
+    for (let i = sq.length - 2; i >= 0; i -= 2) reversed.push(sq[i], sq[i + 1]);
+    expect(signedPolygonArea(sq)).toBe(16);
+    expect(signedPolygonArea(reversed)).toBe(-16);
   });
 });

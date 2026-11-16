@@ -154,7 +154,8 @@ function paint(pal) {
 
 // ---- terrain mesh with a solid base ----
 const terrainMat = new THREE.MeshLambertMaterial({ map: texture }), earthMat = new THREE.MeshLambertMaterial({ side: THREE.DoubleSide });
-const terrain = new TerrainMesh(D, heightfield, { skirtDepthM: 45, material: terrainMat, skirtMaterial: earthMat });
+const BASE_DEPTH_M = 45;   // how far the solid base reaches below the lowest ground
+const terrain = new TerrainMesh(heightfield, { skirtDepthM: BASE_DEPTH_M, material: terrainMat, skirtMaterial: earthMat });
 scene.add(terrain.surface, terrain.skirt);
 
 // ---- buildings ----
@@ -162,12 +163,14 @@ scene.add(terrain.surface, terrain.skirt);
 const mats = { wall: new THREE.MeshLambertMaterial({ side: THREE.DoubleSide }), roof: new THREE.MeshLambertMaterial({ side: THREE.DoubleSide }),
   lmWall: new THREE.MeshLambertMaterial({ side: THREE.DoubleSide }), lmRoof: new THREE.MeshLambertMaterial({ side: THREE.DoubleSide }) };
 const HOUSE = { walls: 'wall', roof: 'roof' }, LANDMARK = { walls: 'lmWall', roof: 'lmRoof' };   // landmarks: the church and the inn
-scene.add(...new BuildingShellsByMaterial(D, heightfield, { materials: mats, materialsFor: b => b.k ? LANDMARK : HOUSE }).meshes);
+const shells = new BuildingShellsByMaterial(D, heightfield, { materials: mats, materialsFor: b => b.k ? LANDMARK : HOUSE });
+scene.add(...shells.meshes);
 
 // ---- trees in mapped woodland ----
 const treeMat = new THREE.MeshLambertMaterial();
+const TREE_M2_PER_TRY = 95;   // one try at a tree per this much of a wood's bounding box
 (function () {
-  const spots = treeSpots(D, makeRnd(57355), { squareMetresPerTry: 95, minScale: 0.7, scaleSpread: 0.7 });
+  const spots = treeSpots(D, makeRnd(57355), { squareMetresPerTry: TREE_M2_PER_TRY, minScale: 0.7, scaleSpread: 0.7 });
   const geo = new THREE.ConeGeometry(3.4, 13, 6); geo.translate(0, 6.5, 0);
   const mesh = new THREE.InstancedMesh(geo, treeMat, spots.length / 3), m4 = new THREE.Matrix4();
   for (let i = 0; i < spots.length / 3; i++) { const s = spots[i * 3 + 2];

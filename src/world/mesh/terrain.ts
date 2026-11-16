@@ -1,6 +1,5 @@
 import '../three-legacy';
 import * as THREE from 'three';
-import type { WorldData } from '../data';
 import type { Heightfield } from '../heightfield';
 
 export interface TerrainMeshOptions {
@@ -18,11 +17,13 @@ export class TerrainMesh {
   readonly surface: THREE.Mesh;
   readonly skirt: THREE.Mesh;
 
-  constructor(data: WorldData, heightfield: Pick<Heightfield, 'heightAt' | 'sampleHeight'>, { material, skirtMaterial, skirtDepthM }: TerrainMeshOptions) {
-    const size = data.size;
-    const half = size / 2;
-    const n = data.n;
-    const at = (i: number) => -half + (size * i) / (n - 1);
+  constructor(
+    heightfield: Pick<Heightfield, 'heightAt' | 'samples' | 'sampleCoord' | 'sampleHeight'>,
+    { material, skirtMaterial, skirtDepthM }: TerrainMeshOptions,
+  ) {
+    const n = heightfield.samples;
+    const at = (i: number) => heightfield.sampleCoord(i);
+    const half = at(n - 1);
 
     const pos = new Float32Array(n * n * 3);
     const uv = new Float32Array(n * n * 2);

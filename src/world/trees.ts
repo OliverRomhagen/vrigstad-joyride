@@ -1,5 +1,5 @@
 import { LandUse, type WorldData } from './data';
-import { pointInPolygon } from './polygon';
+import { pointInPolygon, polygonBounds } from './polygon';
 import type { Rnd } from './random';
 import type { RoadNetwork } from './roads';
 
@@ -23,16 +23,7 @@ export function treeSpots(data: WorldData, rnd: Rnd, { squareMetresPerTry, minSc
   for (const wood of data.l) {
     if (wood.k !== LandUse.FOREST) continue;
     const p = wood.p;
-    let x0 = 1e9;
-    let x1 = -1e9;
-    let z0 = 1e9;
-    let z1 = -1e9;
-    for (let i = 0; i < p.length; i += 2) {
-      x0 = Math.min(x0, p[i]);
-      x1 = Math.max(x1, p[i]);
-      z0 = Math.min(z0, p[i + 1]);
-      z1 = Math.max(z1, p[i + 1]);
-    }
+    const { x0, x1, z0, z1 } = polygonBounds(p);
     // divide by the area per try, not multiply by a density, which can round to a different count
     for (let t = Math.round(((x1 - x0) * (z1 - z0)) / squareMetresPerTry); t > 0; t--) {
       const x = x0 + rnd() * (x1 - x0);

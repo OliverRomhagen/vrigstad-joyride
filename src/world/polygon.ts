@@ -42,9 +42,14 @@ export function segmentDistance(x: number, z: number, ax: number, az: number, bx
   return Math.hypot(x - ax - (bx - ax) * t, z - az - (bz - az) * t);
 }
 
-/** Area of the polygon (m²), whichever way it winds. */
-export function polygonArea(p: number[]) {
+/** Area of the polygon (m²), positive or negative with the way it winds. */
+export function signedPolygonArea(p: number[]) {
   let twice = 0;
   for (let i = 0, j = p.length - 2; i < p.length; j = i, i += 2) twice += p[j] * p[i + 1] - p[i] * p[j + 1];
-  return Math.abs(twice / 2);
+  return twice / 2;
+}
+
+/** Area of the polygon (m²), whichever way it winds. */
+export function polygonArea(p: number[]) {
+  return Math.abs(signedPolygonArea(p));
 }
