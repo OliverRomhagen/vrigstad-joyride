@@ -509,6 +509,7 @@ const DRIFT_YAW = 1.7, DRIFT_MAX_SLIP = 1.0;   // yaw rate multiplier in a drift
 const DRIFT_DRAG = 2.5, DRIFT_THR = 0.35;      // m/s² lost to sideways scrub; share of normal acceleration the throttle still gives
 const DRIFT_ROLL = 0.08;                       // rad of body lean per rad of slip
 const RECOVER_S = 0.9, SPIN_DECAY = 2.5;       // s for grip to come back after a drift; 1/s fade of the yaw the nose carries out of it (counter-steer to catch it)
+const CATCH = 0.8;                             // share of the grip that swings the nose back to the path, not the path to the nose, at full opposite lock
 const TURBO_AT = [1, 2.2], TURBO_S = [0.7, 1.3];   // s of sliding for a blue / an orange spark; how long each boost lasts (s)
 const TURBO_ACC = 14, TURBO_TOP = 1.2;         // m/s² of boost; top speed multiplier while boosting
 // shared driving model for the player and the police; only the player passes canDrift
@@ -531,7 +532,8 @@ function drive(c, thr, steer, brake, dt, canDrift) {
   if (c.loose > 0) { c.loose -= dt; c.spin *= Math.exp(-SPIN_DECAY * dt); } else c.spin = 0;
   c.h = wrap(c.h + (c.yr + c.spin) * dt);
   const grip = c.drift ? DRIFT_GRIP : c.loose > 0 ? DRIFT_GRIP + (GRIP - DRIFT_GRIP) * (1 - c.loose / RECOVER_S) ** 2 : GRIP;   // rear grip comes back slowly, so the slide carries on
-  if (canDrift) { c.vh = wrap(c.vh + wrap(c.h - c.vh) * Math.min(1, grip * dt));
+  if (canDrift) { const fix = wrap(c.h - c.vh) * Math.min(1, grip * dt), k = c.loose > 0 ? CATCH * Math.max(0, -steer * Math.sign(c.slip)) : 0;
+    c.h = wrap(c.h - fix * k); c.vh = wrap(c.vh + fix * (1 - k));   // counter-steer catches the slide: the car straightens along its line instead of carving on
     c.slip = clamp(wrap(c.h - c.vh), -DRIFT_MAX_SLIP, DRIFT_MAX_SLIP); c.vh = wrap(c.h - c.slip); }
   else { c.vh = c.h; c.slip = 0; }
   c.x += Math.sin(c.vh) * c.v * dt; c.z -= Math.cos(c.vh) * c.v * dt;
