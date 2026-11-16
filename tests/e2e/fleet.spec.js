@@ -8,8 +8,16 @@ for(const id of ids)test(`${id} loads, renders, can be entered and drives`,async
  await expect.poll(async()=>(await state()).vehicle?.status).toBe('loaded');
  await expect.poll(async()=>(await state()).vehicle.detailed).toBe(true);
  expect((await state()).vehicle.wheels).toHaveLength(4);
- await page.keyboard.down('KeyD');await expect.poll(async()=>(await state()).nearSelectedVehicle,{intervals:[50]}).toBe(true);await page.keyboard.up('KeyD');
- await page.keyboard.press('KeyE');await expect.poll(async()=>(await state()).activeVehicle?.id).toBe(id);
+ await page.keyboard.down('KeyD');
+ // Stop and enter in the same browser task: another frame can change the nearest car.
+ await expect.poll(()=>page.evaluate(()=>{
+  if(!window.__joyride.state().nearSelectedVehicle)return false;
+  const canvas=document.querySelector('#gl');
+  for(const [type,code] of [['keyup','KeyD'],['keydown','KeyE'],['keyup','KeyE']])
+   canvas.dispatchEvent(new KeyboardEvent(type,{code,bubbles:true}));
+  return true;
+ }),{intervals:[50]}).toBe(true);
+ await page.keyboard.up('KeyD');await expect.poll(async()=>(await state()).activeVehicle?.id).toBe(id);
  await expect.poll(async()=>(await state()).activeVehicle?.detailed).toBe(true);
  if(id==='micra-k11')await expect(page.locator('#toast')).toContainText('Nissan Micra K11');
  if(id==='impala1970')await expect(page.locator('#toast')).toContainText('Chevrolet Impala 1970 hardtop');
