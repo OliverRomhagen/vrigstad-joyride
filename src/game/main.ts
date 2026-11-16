@@ -335,7 +335,7 @@ function placeCar(c) {
   _f.set(Math.sin(c.h), 0, -Math.cos(c.h)); _f.addScaledVector(n, -_f.dot(n)).normalize(); _r.crossVectors(_f, n);
   _m.makeBasis(_r, n, _f.negate()); c.mesh.quaternion.setFromRotationMatrix(_m);
   c.mesh.position.set(c.x, groundAt(c.x, c.z) - (c.wet ? 0.55 : 0), c.z);
-  if (c.slip) c.mesh.rotateZ(c.slip * DRIFT_ROLL);
+  if (c.slip) c.mesh.rotateZ(c.slip * DRIFT_ROLL);           // lean out of the slide
   vehicleVisuals.sync(c);
 }
 function addCar(type, x, z, h, mode, assetId = DEFAULT_VEHICLES[type]) {

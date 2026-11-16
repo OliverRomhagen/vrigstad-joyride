@@ -98,18 +98,18 @@ export class VehicleVisuals {
     view.color = color;
     if (!view.root) return;
     const body = view.root.getObjectByName(BODY_NODE);
+    const recolor = (material: THREE.MeshStandardMaterial) => {
+      const m = view.materials.has(material) ? material : material.clone();
+      m.color.set(color).convertSRGBToLinear();
+      view.materials.add(m);
+      return m;
+    };
     body?.traverse((node) => {
       if (
         !(node instanceof THREE.Mesh) ||
         (node !== body && !node.name.startsWith(BODY_NODE + '_'))
       )
         return;
-      const recolor = (material: THREE.MeshStandardMaterial) => {
-        const m = view.materials.has(material) ? material : material.clone();
-        m.color.set(color).convertSRGBToLinear();
-        view.materials.add(m);
-        return m;
-      };
       node.material = Array.isArray(node.material)
         ? node.material.map(recolor)
         : recolor(node.material);
