@@ -11,7 +11,7 @@ import { makeRnd } from '../world/random';
 import { nodeKey, ROAD_CELL_M as RC, RoadNetwork, roadLiftM as roadLift } from '../world/roads';
 import { LEGACY_LIGHT } from '../world/three-legacy';
 import { Water } from '../world/water';
-import { createCats } from './cats';
+import { CatColony } from './cats';
 
 (function () {
 'use strict';
@@ -536,9 +536,10 @@ function updateNpcs(T, dt) {
 const TREAT_BAG = 3, TREAT_MAX = 9;                                  // treats per bag from the kiosk; how many fit in your pockets
 let treats = 0;
 // the getters are read when the cats use them, so they can name things declared further down
-const { cats, updateCats, catFirst, nearCat, petCat } = createCats({ scene, buildings, inWater, groundAt, half: HALF, coarse, wrap, geoCache, boxGeo, paintMat, blob, cars, toast,
+const colony = new CatColony({ scene, buildings, inWater, groundAt, half: HALF, coarse, wrap, geoCache, boxGeo, paintMat, blob, cars, toast,
   get player() { return player; }, get keys() { return keys; }, get joy() { return joy; }, get kmenu() { return kmenu; }, get inCar() { return inCar; }, get inside() { return inside; },
   useTreat() { if (treats <= 0) return false; treats--; drawTreats(); return true; } });
+const { cats } = colony, updateCats = colony.update.bind(colony), catFirst = colony.catFirst.bind(colony), nearCat = colony.nearest.bind(colony), petCat = colony.pet.bind(colony);
 function buyTreats() {
   if (treats >= TREAT_MAX) { toast('”Nämen, du har ju fickera fulla redan!”', 2.5); return; }
   treats = Math.min(TREAT_MAX, treats + TREAT_BAG); drawTreats(); toast('”En påse kattgodis, varsågo. Kattera ä tôcka i dä.”', 4);
