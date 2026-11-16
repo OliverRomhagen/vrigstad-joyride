@@ -24,6 +24,24 @@ async function expectWebGL(page) {
 }
 
 const state = page => page.evaluate(() => window.__joyride.state());
+// Resolves after n rendered frames, so a test can let the game loop run a known number of times.
+const frames = (page, n) => page.evaluate(n => new Promise(r => { const f = () => (--n ? requestAnimationFrame(f) : r()); requestAnimationFrame(f); }), n);
+// Key events dispatched in one evaluate land between two frames, so the loop never sees the state in between.
+const keysNow = (page, events) => page.evaluate(events => { for (const [type, code] of events) document.body.dispatchEvent(new KeyboardEvent(type, { code, bubbles: true })); }, events);
+
+// From Start, walks to the parked Volvo next to Torget and gets in.
+async function getInVolvo(page) {
+  // With the camera as Start leaves it, the parked Volvo is about 7 m to the player's right.
+  // Release D as soon as any car is in reach, so a slow runner can't walk past it between polls.
+  await page.keyboard.down('KeyD');
+  await expect.poll(async () => (await state(page)).near, { intervals: [50] }).not.toBeNull();
+  await page.keyboard.up('KeyD');
+  // The parked Volvo, not AI traffic passing through Torget (that would be a carjack and a star).
+  await expect.poll(async () => (await state(page)).near).toBe('parked');
+  await expect(page.locator('#prompt')).toHaveText('ESteal the Volvo 240');
+  await page.keyboard.press('KeyE');
+  await expect.poll(async () => (await state(page)).inCar).toBe(true);
+}
 
 test.describe('game (index.html)', () => {
   // Start and clicks on the game ask for the pointer lock. Headless Chromium grants it on Linux (CI) but not on macOS, and once
@@ -71,16 +89,7 @@ test.describe('game (index.html)', () => {
     await page.keyboard.up('KeyW');
     await page.keyboard.press('KeyR');                            // back to the spawn point at Torget
 
-    // With the camera as Start leaves it, the parked Volvo is about 7 m to the player's right.
-    // Release D as soon as any car is in reach, so a slow runner can't walk past it between polls.
-    await page.keyboard.down('KeyD');
-    await expect.poll(async () => (await state(page)).near, { intervals: [50] }).not.toBeNull();
-    await page.keyboard.up('KeyD');
-    // The parked Volvo, not AI traffic passing through Torget (that would be a carjack and a star).
-    await expect.poll(async () => (await state(page)).near).toBe('parked');
-    await expect(page.locator('#prompt')).toHaveText('ESteal the Volvo 240');
-    await page.keyboard.press('KeyE');
-
+    await getInVolvo(page);
     await expect(page.locator('#speed')).toBeVisible();
     await expect(page.locator('#carname')).toHaveText('Volvo 240');
     expect(await state(page)).toMatchObject({ inCar: true, car: 'volvo', stars: 0 });
@@ -166,7 +175,58 @@ test.describe('game (index.html)', () => {
     await expect.poll(async () => (await state(page)).y, { intervals: [30] }).toBeGreaterThan(0.2);
     await page.keyboard.up('Space');
     await expect.poll(async () => (await state(page)).y).toBe(0);
+
+    await frames(page, 30);                                       // held through a whole hop: one jump per press, no re-hop
+    await page.keyboard.down('Space');
+    await expect.poll(async () => (await state(page)).y, { intervals: [30] }).toBeGreaterThan(0.2);
+    await expect.poll(async () => (await state(page)).y).toBe(0);
+    await frames(page, 10);
+    expect(await state(page)).toMatchObject({ y: 0 });
+    await page.keyboard.up('Space');
     expect(errors).toEqual([]);
+  });
+
+  test('a tap between two frames still jumps', async ({ page }) => {
+    await page.goto('/index.html');
+    await page.locator('#go').click();
+    await keysNow(page, [['keydown', 'Space'], ['keyup', 'Space']]);
+    await expect.poll(async () => (await state(page)).y, { intervals: [30] }).toBeGreaterThan(0.2);
+  });
+
+  test('Space held from braking does not jump on getting out', async ({ page }) => {
+    const errors = watchErrors(page);
+    await page.goto('/index.html');
+    await page.locator('#go').click();
+    await getInVolvo(page);
+
+    // Space held for a few car frames, then E.
+    await keysNow(page, [['keydown', 'Space']]);
+    await frames(page, 3);
+    await keysNow(page, [['keydown', 'KeyE'], ['keyup', 'KeyE']]);
+    await frames(page, 10);
+    expect(await state(page)).toMatchObject({ inCar: false, y: 0 });
+    await keysNow(page, [['keyup', 'Space']]);
+
+    // Space and E between the same two frames.
+    await page.keyboard.press('KeyE');
+    await expect.poll(async () => (await state(page)).inCar).toBe(true);
+    await frames(page, 3);                                        // a few car frames with Space up
+    await keysNow(page, [['keydown', 'Space'], ['keydown', 'KeyE'], ['keyup', 'KeyE']]);
+    await frames(page, 10);
+    expect(await state(page)).toMatchObject({ inCar: false, y: 0 });
+    await keysNow(page, [['keyup', 'Space']]);
+    expect(errors).toEqual([]);
+  });
+
+  test('R in the middle of a jump puts the player on the ground at Torget', async ({ page }) => {
+    await page.goto('/index.html');
+    await page.locator('#go').click();
+    await page.keyboard.press('Space');
+    await expect.poll(async () => (await state(page)).y, { intervals: [30] }).toBeGreaterThan(0.2);
+    await page.keyboard.press('KeyR');
+    expect(await state(page)).toMatchObject({ y: 0 });
+    await frames(page, 5);
+    expect(await state(page)).toMatchObject({ y: 0 });
   });
 
   test('cats are around, and the kiosk sells cat treats from its menu', async ({ page }, testInfo) => {
