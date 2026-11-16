@@ -688,6 +688,7 @@ const HOME = { x: -8.9, z: 30.1 };
 const JUMP_V = 5.2, GRAVITY = 16;   // m/s up at take-off, m/s² down: a hop about 0.85 m high that lasts 0.65 s
 const player = { x: HOME.x, z: HOME.z, y: 0, vy: 0, h: 0, speed: 0, phase: 0, mesh: personParts('#f2c230', '#2b3a55', null, true) };   // y: metres above the ground
 collide(player, 0.6); scene.add(player.mesh);
+let jumpHeld = false;   // a jump needs a fresh press, so Space still held from braking doesn't jump on getting out
 (function () { const o = { x: player.x + 7, z: player.z + 3 }; collide(o, 2.6); addCar('volvo', o.x, o.z, 0.6, 'parked'); })();
 let inCar = false, pcar = null, stars = 0, evade = 0, bustT = 0, stolen = 0, ramCool = 0, started = false, bigT = 0;
 let inside = null, hideT = 0, trissT = 0, trissN = 0, trissWon = 0, trissLast = '';
@@ -903,6 +904,7 @@ function frame(now) {
   if (trissT > 0) { trissT -= dt; if (trissT <= 0) trissResult(); }
   for (const p of places) p.gem.rotation.y += dt * 1.6;
 
+  const jump = keys.brake && !jumpHeld; jumpHeld = !!keys.brake;
   if (inCar) { drive(pcar, my, mx, !!keys.brake, dt, true); player.x = pcar.x; player.z = pcar.z; player.h = pcar.h; player.speed = Math.abs(pcar.v); }
   else {
     const mag = Math.min(1, Math.hypot(mx, my)), wet = inWater(player.x, player.z);
@@ -914,8 +916,8 @@ function frame(now) {
     } else { player.speed = 0; player.phase *= 0.8; }
     collide(player, 0.5);
     if (!inside) for (const c of cars) { const dx = player.x - c.x, dz = player.z - c.z, d = Math.hypot(dx, dz); if (d < 1.6 && d > 0.01) { player.x += dx / d * (1.6 - d); player.z += dz / d * (1.6 - d); } }
-    if (player.y === 0 && keys.brake && !wet && !inside && bigT <= 0) player.vy = JUMP_V;      // on foot, Space and the touch Brake button jump
-    if (player.y > 0 || player.vy > 0) { player.y += player.vy * dt; player.vy -= GRAVITY * dt; if (player.y <= 0) player.y = player.vy = 0; }
+    if (player.y === 0 && jump && !wet && !inside && bigT <= 0) player.vy = JUMP_V;      // on foot, Space and the touch Brake button jump
+    if (player.y > 0 || player.vy > 0) { player.y += (player.vy - GRAVITY * dt / 2) * dt; player.vy -= GRAVITY * dt; if (player.y <= 0) player.y = player.vy = 0; }   // exact for constant gravity: same hop at any frame rate
     // walking: arms swing against the legs and the body bobs; in the air: legs apart and both arms up
     const air = player.y > 0, sw = air ? 0.5 : Math.sin(player.phase) * 0.75, lift = player.y + (air ? 0 : Math.abs(Math.sin(player.phase)) * 0.05), m = player.mesh;
     m.legs[0].rotation.x = sw; m.legs[1].rotation.x = -sw; m.arms[0].rotation.x = air ? 2.4 : -sw * 0.8; m.arms[1].rotation.x = air ? 2.4 : sw * 0.8;
@@ -964,7 +966,7 @@ function frame(now) {
     else if (inCar && !coarse) { pr.hidden = Math.abs(pcar.v) > 3; pr.innerHTML = '<kbd>E</kbd>Get out'; }
     else if (c) { pr.hidden = false; pr.innerHTML = '<kbd>E</kbd>' + (c.owned ? 'Get in the ' : 'Steal the ') + c.T.name; }
     else pr.hidden = true;
-    $('p-brake').textContent = inCar ? 'Brake' : 'Jump';
+    const bl = inCar ? 'Brake' : 'Jump'; if ($('p-brake').textContent !== bl) $('p-brake').textContent = bl;
     $('speed').hidden = !inCar; if (inCar) { $('kmh').textContent = Math.round(Math.abs(pcar.v) * 3.6); $('carname').textContent = pcar.T.name; } }
   drawMini(T);
   renderer.render(scene, camera);
