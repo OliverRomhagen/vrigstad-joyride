@@ -1,0 +1,30 @@
+Vehicle models by Axel Tidehorn, CC BY 4.0
+Copyright (c) 2026 Axel Tidehorn
+https://creativecommons.org/licenses/by/4.0/
+
+Original authored geometry; no manufacturer endorsement is implied.
+No reference photographs or third-party meshes are included.
+The distributed GLBs are unmodified exports from the following sources:
+
+Volvo 240
+https://github.com/AxelTidehorn/vrigstad-joyride/tree/ff6a0f187add7bd9b7ba052f28bd0d67e534c33a/experiments/volvo240/refinement/model.blend
+
+Saab 900 Classic
+https://github.com/AxelTidehorn/vrigstad-joyride/tree/ff6a0f187add7bd9b7ba052f28bd0d67e534c33a/experiments/saab900/build/model.blend
+
+Volvo XC70 P2
+https://github.com/AxelTidehorn/vrigstad-joyride/tree/ff6a0f187add7bd9b7ba052f28bd0d67e534c33a/experiments/xc70p2/build/model.blend
+
+Police XC70 P2
+https://github.com/AxelTidehorn/vrigstad-joyride/tree/ff6a0f187add7bd9b7ba052f28bd0d67e534c33a/experiments/xc70p2/build/model.blend
+
+Chevrolet Impala 1970 hardtop
+https://github.com/AxelTidehorn/vrigstad-joyride/tree/46fa31e9094ab6e1e30f2b542de83383f85fb7c7/experiments/impala1970/build/model.blend
+
+Nissan Micra K11
+https://github.com/AxelTidehorn/vrigstad-joyride/tree/5c84a173f3bbd8206f067ec18594cecdaf5476b5/experiments/micra1995/build/model.blend
+
+Volvo Duett P210 EPA
+https://github.com/AxelTidehorn/vrigstad-joyride/tree/2be04e605ad20f9ffc5dbe097a493bd6a3991e6f/experiments/duettp210/build/model.blend
+
+Retain attribution and the licence link, and indicate changes when redistributing modified versions. Original generator scripts are licensed under MIT; see the repository LICENSE.
