@@ -35,7 +35,8 @@ export function createWater(data: WorldData, nearestRoad: Roads['nearestRoad']) 
 
   /** True over a lake or a river, unless a road crosses there as a bridge. */
   function inWater(x: number, z: number) {
-    return overWater(x, z) && nearestRoad(x, z, near).d >= BRIDGE_REACH_M;
+    // the road lookup is one grid cell, the water scan every lake and river segment: most callers are cars on roads
+    return nearestRoad(x, z, near).d >= BRIDGE_REACH_M && overWater(x, z);
   }
 
   return { inWater };
