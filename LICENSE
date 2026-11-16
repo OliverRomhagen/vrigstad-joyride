@@ -44,3 +44,74 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
+
+Vehicle models (Blender GLB fleet)
+---------------------------------
+Volvo 240, Saab 900 Classic T16, civilian and police XC70 P2, Chevrolet Impala
+1970 hardtop, Nissan Micra K11 and Volvo Duett P210 EPA pickup:
+Copyright (c) 2026 Axel Tidehorn. Licensed under Creative Commons Attribution
+4.0 International (CC BY 4.0): https://creativecommons.org/licenses/by/4.0/
+Sources: docs/vehicle-fleet.md and media/vehicles/NOTICE.txt record the
+immutable source revisions and editable masters for each model.
+The GLBs are original authored geometry; no reference photographs or external
+3D meshes are embedded. The police markings are original stylized artwork.
+No endorsement by Volvo, Saab or the Swedish Police is implied.
+Attribution: "Vehicle models by Axel Tidehorn, CC BY 4.0". Indicate changes
+when distributing modified versions and retain the licence link.
+
+The original vehicle generator scripts by Axel Tidehorn in the source revisions
+listed in docs/vehicle-fleet.md
+(experiments/volvo240, experiments/saab900, experiments/xc70p2 and original
+helpers in tools/vehicle_pipeline) are licensed under the MIT License:
+
+Copyright (c) 2026 Axel Tidehorn
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+This grant excludes upstream game code, external Blender Modeler helpers and
+reference images. External Blender Modeler helpers by calebrisc retain their
+MIT licence: https://github.com/calebrisc/blender-modeler . Reference images
+and manufacturer documents are technical study material only and are not
+redistributed by this fleet contribution. See the source reference registers.
+
+Meshopt decoder (bundled from Three.js)
+---------------------------------------
+Source: https://github.com/zeux/meshoptimizer
+
+MIT License
+
+Copyright (c) 2016-2026 Arseny Kapoulkine
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
