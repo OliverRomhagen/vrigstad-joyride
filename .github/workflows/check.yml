@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   check:
-    # npm run check, the command AGENTS.md asks for before every commit. The Vite build doesn't typecheck.
+    # npm run check, the command AGENTS.md asks for before every commit: the typecheck (the Vite build doesn't typecheck) and the unit tests.
     name: Check (npm run check)
     runs-on: ubuntu-latest
     timeout-minutes: 10
