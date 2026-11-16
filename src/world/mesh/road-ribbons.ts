@@ -5,8 +5,8 @@ import type { Heightfield } from '../heightfield';
 import { type Point, type RoadNetwork, roadLiftM } from '../roads';
 
 export interface RoadRibbonOptions {
-  /** anisotropic filtering for the asphalt texture; the renderer's maximum */
-  anisotropy: number;
+  /** a light tile that the road colours tint, repeating every TILE_M across and along; it stays the caller's */
+  asphalt: THREE.Texture;
   /** sRGB colour of each road class's ribbon, indexed by RoadClass; it tints the asphalt texture */
   roadColours: Readonly<Record<RoadClass, number>>;
   /** sRGB colour of the centre line */
@@ -24,17 +24,16 @@ const TILE_M = 4;
 
 /**
  * The road ribbons drawn over the ground texture: one mesh per road class, plus the centre lines. Adds nothing to a
- * scene. `dispose()` frees everything it made.
+ * scene. `dispose()` frees the geometry and materials it made; the asphalt texture stays the caller's.
  */
 export class RoadRibbons {
   /** in draw order; classes with no roads have no mesh */
   readonly meshes: THREE.Mesh[] = [];
-  private readonly speckle: THREE.CanvasTexture;
 
   constructor(
     roads: Pick<RoadNetwork, 'lines'>,
     heightfield: Pick<Heightfield, 'heightAt'>,
-    { anisotropy, roadColours, centreLineColour }: RoadRibbonOptions,
+    { asphalt, roadColours, centreLineColour }: RoadRibbonOptions,
   ) {
     const positions: number[][] = Array.from({ length: CENTRE_LINE + 1 }, () => []);
     const uvs: number[][] = Array.from({ length: CENTRE_LINE + 1 }, () => []);
@@ -80,8 +79,6 @@ export class RoadRibbons {
       if (r.c < 2) ribbon(positions[CENTRE_LINE], uvs[CENTRE_LINE], r.p, CENTRE_LINE_WIDTH_M, CENTRE_LINE_LIFT_M);
     }
 
-    this.speckle = asphaltSpeckle();
-    this.speckle.anisotropy = anisotropy;
     positions.forEach((p, i) => {
       if (!p.length) return;
       const g = new THREE.BufferGeometry();
@@ -92,7 +89,7 @@ export class RoadRibbons {
       const order = i === CENTRE_LINE ? 8 : 6 - i;
       const material = new THREE.MeshLambertMaterial({
         color: new THREE.Color(i < CENTRE_LINE ? roadColours[i as RoadClass] : centreLineColour).convertSRGBToLinear(),
-        map: i < CENTRE_LINE ? this.speckle : null,
+        map: i < CENTRE_LINE ? asphalt : null,
         side: THREE.DoubleSide,
         polygonOffset: true,
         polygonOffsetFactor: -2,
@@ -110,27 +107,6 @@ export class RoadRibbons {
       mesh.geometry.dispose();
       (mesh.material as THREE.Material).dispose();
     }
-    this.speckle.dispose();
   }
 }
 
-/** A light, speckled tile that the ribbon colours tint, so asphalt and gravel aren't flat. */
-function asphaltSpeckle() {
-  const cv = document.createElement('canvas');
-  cv.width = cv.height = 256;
-  const x = cv.getContext('2d') as CanvasRenderingContext2D;
-  // its own generator, so the look doesn't shift the seeded rnd() sequence
-  let seed = 11;
-  const next = () => (seed = (seed * 48271) % 2147483647) / 2147483647;
-  x.fillStyle = '#f7f7f7';
-  x.fillRect(0, 0, 256, 256);
-  x.globalAlpha = 0.7;
-  for (const c of ['#ffffff', '#cdcdcd', '#dedede']) {
-    x.fillStyle = c;
-    for (let i = 0; i < 1600; i++) x.fillRect(next() * 256, next() * 256, 1, 1);
-  }
-  const texture = new THREE.CanvasTexture(cv);
-  texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
-  texture.colorSpace = THREE.SRGBColorSpace;
-  return texture;
-}
