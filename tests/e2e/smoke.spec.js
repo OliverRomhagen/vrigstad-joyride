@@ -98,6 +98,8 @@ test.describe('game (index.html)', () => {
   });
 
   test('Space and steering at speed drifts the car, and letting go after a long slide boosts', async ({ page }, testInfo) => {
+    test.setTimeout(180_000); // the simulation caps dt while software WebGL advances slowly
+    await page.setViewportSize({ width: 640, height: 360 }); // keep software WebGL affordable with detailed cars
     const errors = watchErrors(page);
     await page.goto('/index.html');
     await page.locator('#go').click();
@@ -109,7 +111,7 @@ test.describe('game (index.html)', () => {
     await expect.poll(async () => (await state(page)).inCar).toBe(true);
 
     await page.keyboard.down('KeyW');
-    await expect.poll(async () => (await state(page)).speed, { intervals: [50] }).toBeGreaterThan(9);
+    await expect.poll(async () => (await state(page)).speed, { intervals: [50], timeout: 60_000 }).toBeGreaterThan(9);
     await page.keyboard.down('KeyD');
     await page.keyboard.down('Space');
     await expect.poll(async () => (await state(page)).drift, { intervals: [50] }).toBe(1);
@@ -127,6 +129,8 @@ test.describe('game (index.html)', () => {
   });
 
   test('flicking the steering left then right at speed breaks the rear loose', async ({ page }) => {
+    test.setTimeout(180_000);
+    await page.setViewportSize({ width: 640, height: 360 });
     const errors = watchErrors(page);
     await page.goto('/index.html');
     await page.locator('#go').click();
@@ -138,7 +142,7 @@ test.describe('game (index.html)', () => {
     await expect.poll(async () => (await state(page)).inCar).toBe(true);
 
     await page.keyboard.down('KeyW');
-    await expect.poll(async () => (await state(page)).speed, { intervals: [50] }).toBeGreaterThan(9);
+    await expect.poll(async () => (await state(page)).speed, { intervals: [50], timeout: 60_000 }).toBeGreaterThan(9);
     expect((await state(page)).loose).toBe(0);
     await page.keyboard.down('KeyA');
     await expect.poll(async () => (await state(page)).flickDir, { intervals: [20] }).toBe(-1);   // a frame has seen the left turn (CI frames are slow)
