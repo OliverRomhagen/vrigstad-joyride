@@ -12,7 +12,7 @@ describe('TerrainMesh', () => {
     const world = makeWorld({ elev: UNEVEN });
     const field = new Heightfield(world, { exaggeration: 2 });
     const material = new THREE.MeshBasicMaterial();
-    const terrain = new TerrainMesh(world, field, { material, skirtMaterial: material, skirtDepthM: 10 });
+    const terrain = new TerrainMesh(field, { material, skirtMaterial: material, skirtDepthM: 10 });
     const pos = terrain.surface.geometry.getAttribute('position');
     const index = terrain.surface.geometry.getIndex();
     if (!index) throw new Error('the terrain is indexed');

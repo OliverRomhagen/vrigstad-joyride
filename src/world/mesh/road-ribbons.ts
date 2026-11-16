@@ -1,18 +1,20 @@
 import '../three-legacy';
 import * as THREE from 'three';
-import { ROAD_WIDTH_M } from '../data';
+import { ROAD_WIDTH_M, type RoadClass } from '../data';
 import type { Heightfield } from '../heightfield';
 import { type Point, type RoadNetwork, roadLiftM } from '../roads';
 
 export interface RoadRibbonOptions {
   /** anisotropic filtering for the asphalt texture; the renderer's maximum */
   anisotropy: number;
+  /** sRGB colour of each road class's ribbon, indexed by RoadClass; it tints the asphalt texture */
+  roadColours: Readonly<Record<RoadClass, number>>;
+  /** sRGB colour of the centre line */
+  centreLineColour: number;
 }
 
-/** sRGB colour of each road class's ribbon, then of the centre line */
-const RIBBON_COLOURS = [0x4c4f52, 0x55585b, 0x606365, 0x74746d, 0xa08c6c, 0xbcae92, 0xe9e7da];
 /** the last ribbon is the centre line, painted on primary and secondary roads */
-const CENTRE_LINE = 6;
+const CENTRE_LINE = ROAD_WIDTH_M.length;
 const CENTRE_LINE_WIDTH_M = 0.2;
 const CENTRE_LINE_LIFT_M = 0.3;
 /** ribbons are cut every this many metres so they follow the terrain (m) */
@@ -29,9 +31,13 @@ export class RoadRibbons {
   readonly meshes: THREE.Mesh[] = [];
   private readonly speckle: THREE.CanvasTexture;
 
-  constructor(roads: Pick<RoadNetwork, 'lines'>, heightfield: Pick<Heightfield, 'heightAt'>, { anisotropy }: RoadRibbonOptions) {
-    const positions: number[][] = RIBBON_COLOURS.map(() => []);
-    const uvs: number[][] = RIBBON_COLOURS.map(() => []);
+  constructor(
+    roads: Pick<RoadNetwork, 'lines'>,
+    heightfield: Pick<Heightfield, 'heightAt'>,
+    { anisotropy, roadColours, centreLineColour }: RoadRibbonOptions,
+  ) {
+    const positions: number[][] = Array.from({ length: CENTRE_LINE + 1 }, () => []);
+    const uvs: number[][] = Array.from({ length: CENTRE_LINE + 1 }, () => []);
     const ribbon = (out: number[], uvOut: number[], points: Point[], width: number, lift: number) => {
       const q: Point[] = [points[0]];
       for (let i = 1; i < points.length; i++) {
@@ -85,7 +91,7 @@ export class RoadRibbons {
       // minor roads are drawn first and pushed furthest back, so a junction shows the bigger road on top
       const order = i === CENTRE_LINE ? 8 : 6 - i;
       const material = new THREE.MeshLambertMaterial({
-        color: new THREE.Color(RIBBON_COLOURS[i]).convertSRGBToLinear(),
+        color: new THREE.Color(i < CENTRE_LINE ? roadColours[i as RoadClass] : centreLineColour).convertSRGBToLinear(),
         map: i < CENTRE_LINE ? this.speckle : null,
         side: THREE.DoubleSide,
         polygonOffset: true,

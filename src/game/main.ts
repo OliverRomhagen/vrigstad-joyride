@@ -116,16 +116,19 @@ const texture = new THREE.CanvasTexture(tex2d);
 texture.anisotropy = renderer.capabilities.getMaxAnisotropy(); texture.colorSpace = THREE.SRGBColorSpace;
 
 // ---------- terrain ----------
-const terrain = new TerrainMesh(D, heightfield, { skirtDepthM: 1.5, material: new THREE.MeshLambertMaterial({ map: texture }),
+const SKIRT_DEPTH_M = 1.5;   // the skirt round the edge, and the far ground plane, sit this far below height 0
+const terrain = new TerrainMesh(heightfield, { skirtDepthM: SKIRT_DEPTH_M, material: new THREE.MeshLambertMaterial({ map: texture }),
   skirtMaterial: new THREE.MeshLambertMaterial({ color: col(0x6f8a58), side: THREE.DoubleSide }) });
 const far = new THREE.Mesh(new THREE.PlaneGeometry(14000, 14000), new THREE.MeshLambertMaterial({ color: col(0x6f9a5e) }));
-far.rotation.x = -Math.PI / 2; far.position.y = -1.5;
+far.rotation.x = -Math.PI / 2; far.position.y = -SKIRT_DEPTH_M;
 scene.add(terrain.surface, far, terrain.skirt);
 
 // ---------- roads: crisp ribbons on the terrain + lookup grid + junction graph ----------
 const roads = new RoadNetwork(D, heightfield), { lines: R, grid: roadGrid, junctions: nodes, driveable } = roads;
 const nearestRoad = roads.nearestRoad.bind(roads), groundAt = roads.groundAt.bind(roads);
-scene.add(...new RoadRibbons(roads, heightfield, { anisotropy: renderer.capabilities.getMaxAnisotropy() }).meshes);
+const ROAD_COLOURS = [0x4c4f52, 0x55585b, 0x606365, 0x74746d, 0xa08c6c, 0xbcae92] as const, CENTRE_LINE_COLOUR = 0xe9e7da;   // sRGB, by road class
+const roadRibbons = new RoadRibbons(roads, heightfield, { anisotropy: renderer.capabilities.getMaxAnisotropy(), roadColours: ROAD_COLOURS, centreLineColour: CENTRE_LINE_COLOUR });
+scene.add(...roadRibbons.meshes);
 
 // ---------- water ----------
 const water = new Water(D, roads), inWater = water.inWater.bind(water);
@@ -193,8 +196,9 @@ const winTex = (function () {
 })();
 
 // ---------- trees: spruces and birches, each with its own shade, size and lean ----------
+const TREE_M2_PER_TRY = 110, TREE_ROAD_CLEARANCE_M = 2.5;   // one try at a tree per this much of a wood's bounding box; no trunk closer to a road's edge
 (function () {
-  const spots = treeSpots(D, rnd, { squareMetresPerTry: 110, minScale: 0.7, scaleSpread: 0.8, roads, roadClearanceM: 2.5 });
+  const spots = treeSpots(D, rnd, { squareMetresPerTry: TREE_M2_PER_TRY, minScale: 0.7, scaleSpread: 0.8, roads, roadClearanceM: TREE_ROAD_CLEARANCE_M });
   // variety comes from a hash of the position, so the trees don't consume rnd() and shift the rest of the world
   const hash = (x, z, k) => { const v = Math.sin(x * 12.9898 + z * 78.233 + k * 37.719) * 43758.5453; return v - Math.floor(v); };
   const cone = (r, h, y) => new THREE.ConeGeometry(r, h, 7, 1, true).translate(0, y + h / 2, 0);

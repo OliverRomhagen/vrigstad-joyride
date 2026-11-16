@@ -83,3 +83,11 @@ describe('sampleHeight', () => {
     expect(field.sampleHeight(2, 2)).toBeCloseTo(2);
   });
 });
+
+describe('sampleCoord', () => {
+  it('puts the samples where heightAt reads them, from edge to edge', () => {
+    const field = new Heightfield(makeWorld({ elev: EAST_SLOPE }));
+    expect([0, 1, 2].map((i) => field.sampleCoord(i))).toEqual([-50, 0, 50]);
+    for (let i = 0; i < 3; i++) expect(field.heightAt(field.sampleCoord(i), 0)).toBeCloseTo(field.sampleHeight(i, 1));
+  });
+});

@@ -1,6 +1,6 @@
 import type { Building, WorldData } from './data';
 import type { Heightfield } from './heightfield';
-import { type Bounds, pointInPolygon, polygonBounds, segmentParam } from './polygon';
+import { type Bounds, pointInPolygon, polygonBounds, segmentParam, signedPolygonArea } from './polygon';
 
 export interface PointXZ {
   x: number;
@@ -78,19 +78,17 @@ export function forEachBuilding(data: WorldData, heightfield: Pick<Heightfield, 
     const outline: PointXZ[] = [];
     let lo = 1e9;
     let hi = -1e9;
-    let twiceArea = 0;
     for (let i = 0; i < n; i++) {
       const x = p[i * 2];
       const z = p[i * 2 + 1];
       const h = heightfield.heightAt(x, z);
-      const j = (i + 1) % n;
       outline.push({ x, z });
       lo = Math.min(lo, h);
       hi = Math.max(hi, h);
-      twiceArea += x * p[j * 2 + 1] - p[j * 2] * z;
     }
     const base = lo - WALL_FOOT_BELOW_GROUND_M;
     const top = hi + building.h;
+    const signedArea = signedPolygonArea(p);
     visit({
       building,
       outline,
@@ -98,8 +96,8 @@ export function forEachBuilding(data: WorldData, heightfield: Pick<Heightfield, 
       hi,
       base,
       top,
-      area: Math.abs(twiceArea) / 2,
-      winding: Math.sign(twiceArea),
+      area: Math.abs(signedArea),
+      winding: Math.sign(signedArea),
       ...roofParts(outline, building.g, top),
     });
   }

@@ -23,9 +23,10 @@ export class Heightfield {
   readonly minElevationM: number;
   /** highest sample above sea level (m), not exaggerated */
   readonly maxElevationM: number;
+  /** samples along each side of the grid */
+  readonly samples: number;
   private readonly size: number;
   private readonly half: number;
-  private readonly samples: number;
   private readonly elev: number[];
   private readonly minDm: number;
   private readonly exaggeration: number;
@@ -73,6 +74,11 @@ export class Heightfield {
   sampleHeight(i: number, j: number) {
     const h = this.elev[j * this.samples + i];
     return ((h - this.minDm) / 10) * this.exaggeration;
+  }
+
+  /** x of the samples in column `i`, or z of those in row `i` (m); the grid's edges are at ±half its size */
+  sampleCoord(i: number) {
+    return -this.half + (this.size * i) / (this.samples - 1);
   }
 
   /** The terrain's up vector at (x, z), written into `out`. Normalised as three's Vector3.normalize does. */
