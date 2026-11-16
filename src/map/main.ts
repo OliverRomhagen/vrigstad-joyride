@@ -14,7 +14,7 @@ import { treeSpots } from '../world/trees';
 (function () {
 'use strict';
 const S = D.size, HALF = S / 2, N = D.n, EX = 2;
-const heightfield = new Heightfield(D, { exaggeration: EX, interpolation: 'bilinear' }), hAt = heightfield.heightAt.bind(heightfield);
+const heightfield = new Heightfield(D, { exaggeration: EX }), hAt = heightfield.heightAt.bind(heightfield);
 const minE = heightfield.minElevationM, maxE = heightfield.maxElevationM;
 document.getElementById('relief').textContent = Math.round(minE) + '–' + Math.round(maxE) + ' m above sea level';
 

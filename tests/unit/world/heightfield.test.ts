@@ -25,11 +25,6 @@ describe('heightAt', () => {
     expect(field.heightAt(30, 30)).toBeCloseTo(2);
   });
 
-  it('averages the four corners when bilinear', () => {
-    const field = new Heightfield(makeWorld({ elev: ONE_CORNER }), { interpolation: 'bilinear' });
-    expect(field.heightAt(25, 25)).toBeCloseTo(2.5);
-  });
-
   it('reads the last row and column, and holds the edge height outside the world', () => {
     const field = new Heightfield(makeWorld({ elev: EAST_SLOPE }));
     expect(field.heightAt(50, 0)).toBeCloseTo(2);
@@ -75,22 +70,12 @@ describe('normalAt', () => {
 });
 
 describe('sampleHeight', () => {
-  // heights where the two interpolations' sums round differently in the last bit, as real data does
+  // uneven heights, as real data has, so a different order of operations would round differently in the last bit
   const UNEVEN = [1001, 1234, 1587, 1102, 1999, 1313, 1050, 1234, 1587];
 
-  it('matches heightAt exactly at the samples, for both interpolations', () => {
-    for (const interpolation of ['triangle', 'bilinear'] as const) {
-      const field = new Heightfield(makeWorld({ elev: UNEVEN }), { exaggeration: 2, interpolation });
-      for (let j = 0; j < 2; j++) for (let i = 0; i < 2; i++) expect(field.sampleHeight(i, j)).toBe(field.heightAt(-50 + 50 * i, -50 + 50 * j));
-    }
-  });
-
-  it('works out each interpolation its own way, so the map keeps its vertices', () => {
-    const triangle = new Heightfield(makeWorld({ elev: UNEVEN }));
-    const bilinear = new Heightfield(makeWorld({ elev: UNEVEN }), { interpolation: 'bilinear' });
-    expect(triangle.sampleHeight(1, 0)).toBe((1234 - 1001) / 10);
-    expect(bilinear.sampleHeight(1, 0)).toBe(1234 / 10 - 1001 / 10);
-    expect(triangle.sampleHeight(1, 0)).not.toBe(bilinear.sampleHeight(1, 0));
+  it('matches heightAt exactly at the samples', () => {
+    const field = new Heightfield(makeWorld({ elev: UNEVEN }), { exaggeration: 2 });
+    for (let j = 0; j < 2; j++) for (let i = 0; i < 2; i++) expect(field.sampleHeight(i, j)).toBe(field.heightAt(-50 + 50 * i, -50 + 50 * j));
   });
 
   it('reads the last row and column', () => {
