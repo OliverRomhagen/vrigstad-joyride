@@ -83,6 +83,59 @@ test.describe('game (index.html)', () => {
     expect(errors).toEqual([]);
   });
 
+  test('Space and steering at speed drifts the car, and letting go after a long slide boosts', async ({ page }, testInfo) => {
+    const errors = watchErrors(page);
+    await page.goto('/index.html');
+    await page.locator('#go').click();
+    await page.keyboard.down('KeyD');                             // into the parked Volvo, as in the test above
+    await expect.poll(async () => (await state(page)).near, { intervals: [50] }).not.toBeNull();
+    await page.keyboard.up('KeyD');
+    await expect.poll(async () => (await state(page)).near).toBe('parked');
+    await page.keyboard.press('KeyE');
+    await expect.poll(async () => (await state(page)).inCar).toBe(true);
+
+    await page.keyboard.down('KeyW');
+    await expect.poll(async () => (await state(page)).speed, { intervals: [50] }).toBeGreaterThan(9);
+    await page.keyboard.down('KeyD');
+    await page.keyboard.down('Space');
+    await expect.poll(async () => (await state(page)).drift, { intervals: [50] }).toBe(1);
+    // past the first spark colour (1 s of sliding, in game time: headless frames are slow); the slide circles on Torget, clear of walls
+    await expect.poll(async () => { const q = await state(page); expect(q.drift).toBe(1); return q.charge; }, { intervals: [100], timeout: 60_000 }).toBeGreaterThan(1.05);
+    await page.screenshot({ path: testInfo.outputPath('game-drift.png') });
+    await page.keyboard.up('Space');
+    await page.keyboard.up('KeyD');
+    await page.keyboard.up('KeyW');
+    await expect.poll(async () => (await state(page)).drift, { intervals: [20] }).toBe(0);
+    const q = await state(page);
+    expect(q.boost).toBeGreaterThan(0);
+    expect(q.loose).toBeGreaterThan(0);   // the rear stays loose for a moment after letting go instead of snapping straight
+    expect(errors).toEqual([]);
+  });
+
+  test('flicking the steering left then right at speed breaks the rear loose', async ({ page }) => {
+    const errors = watchErrors(page);
+    await page.goto('/index.html');
+    await page.locator('#go').click();
+    await page.keyboard.down('KeyD');                             // into the parked Volvo, as in the tests above
+    await expect.poll(async () => (await state(page)).near, { intervals: [50] }).not.toBeNull();
+    await page.keyboard.up('KeyD');
+    await expect.poll(async () => (await state(page)).near).toBe('parked');
+    await page.keyboard.press('KeyE');
+    await expect.poll(async () => (await state(page)).inCar).toBe(true);
+
+    await page.keyboard.down('KeyW');
+    await expect.poll(async () => (await state(page)).speed, { intervals: [50] }).toBeGreaterThan(9);
+    expect((await state(page)).loose).toBe(0);
+    await page.keyboard.down('KeyA');
+    await expect.poll(async () => (await state(page)).flickDir, { intervals: [20] }).toBe(-1);   // a frame has seen the left turn (CI frames are slow)
+    await page.keyboard.up('KeyA');
+    await page.keyboard.down('KeyD');
+    await expect.poll(async () => (await state(page)).loose, { intervals: [20] }).toBeGreaterThan(0);
+    await page.keyboard.up('KeyD');
+    await page.keyboard.up('KeyW');
+    expect(errors).toEqual([]);
+  });
+
   test('cats are around, and the kiosk sells cat treats from its menu', async ({ page }, testInfo) => {
     const errors = watchErrors(page);
     await page.goto('/index.html');
