@@ -112,6 +112,30 @@ test.describe('game (index.html)', () => {
     expect(errors).toEqual([]);
   });
 
+  test('flicking the steering left then right at speed breaks the rear loose', async ({ page }) => {
+    const errors = watchErrors(page);
+    await page.goto('/index.html');
+    await page.locator('#go').click();
+    await page.keyboard.down('KeyD');                             // into the parked Volvo, as in the tests above
+    await expect.poll(async () => (await state(page)).near, { intervals: [50] }).not.toBeNull();
+    await page.keyboard.up('KeyD');
+    await expect.poll(async () => (await state(page)).near).toBe('parked');
+    await page.keyboard.press('KeyE');
+    await expect.poll(async () => (await state(page)).inCar).toBe(true);
+
+    await page.keyboard.down('KeyW');
+    await expect.poll(async () => (await state(page)).speed, { intervals: [50] }).toBeGreaterThan(9);
+    expect((await state(page)).loose).toBe(0);
+    await page.keyboard.down('KeyA');
+    await page.waitForTimeout(150);
+    await page.keyboard.up('KeyA');
+    await page.keyboard.down('KeyD');
+    await expect.poll(async () => (await state(page)).loose, { intervals: [20] }).toBeGreaterThan(0);
+    await page.keyboard.up('KeyD');
+    await page.keyboard.up('KeyW');
+    expect(errors).toEqual([]);
+  });
+
   test('cats are around, and the kiosk sells cat treats from its menu', async ({ page }, testInfo) => {
     const errors = watchErrors(page);
     await page.goto('/index.html');
