@@ -75,9 +75,18 @@ export const VEHICLES = [
 ] as const;
 export type VehicleId = (typeof VEHICLES)[number]['id'];
 export const vehicleDefinition = (id: string | null) => VEHICLES.find((v) => v.id === id);
-export const DEFAULT_VEHICLES: Readonly<Record<string, VehicleId | undefined>> = {
-  volvo: 'volvo240',
-  saab: 'saab900',
-  epa: 'duett-epa',
-  polis: 'xc70-police',
+// The models each simulation type can wear, with relative weights; every model is in the world.
+export const VEHICLE_VARIANTS: Readonly<Record<string, readonly (readonly [VehicleId, number])[]>> = {
+  volvo: [['volvo240', 4], ['impala1970', 1]],
+  saab: [['saab900', 3], ['xc70', 2], ['micra-k11', 2]],
+  epa: [['duett-epa', 1]],
+  polis: [['xc70-police', 1]],
 };
+// roll is in [0, 1); types without a model (the tractor) get none and keep the procedural mesh.
+export function pickVariant(type: string, roll: number): VehicleId | undefined {
+  const variants = VEHICLE_VARIANTS[type];
+  if (!variants) return undefined;
+  let left = roll * variants.reduce((sum, [, weight]) => sum + weight, 0);
+  for (const [id, weight] of variants) if ((left -= weight) < 0) return id;
+  return variants[variants.length - 1][0];
+}
