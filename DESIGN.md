@@ -4,13 +4,14 @@ What kind of game Vrigstad Joyride is, and the choices that shape the features. 
 
 Like the decisions in ARCHITECTURE.md, each section is short and settled. Change one in a PR, so the team sees it.
 
-## Form: a toy, not a crime simulator
+## Form: witty and charming, not grim
 
-The game is playful, toy-like and a little whimsical: closer to a box of Lego set in a real village than to a gritty open-world crime game. You can still steal an EPA-traktor and lose the police; it just stays funny.
+The game is light, witty and full of character: not a children's game, and not a gritty crime simulator either. The touchstones are the LEGO games (a playful world made with care, where everything has personality) and Borderlands (whimsical and funny, but allowed to be rough now and then). You can steal an EPA-traktor, swear at the police and lose them on a gravel road; it stays fun.
 
-- **Violence is slapstick.** Shoves, snowballs, water balloons, knockdowns and getting back up. No blood, no realistic weapons, no dying in pain. Health and damage (#80) are about falling over and dented cars.
+- **Rough edges are fine, realism isn't the point.** Adult humour, mild cursing (the funny, Småland kind) and the odd tough moment all belong. Violence, when there is some, is over the top and stylised, played for laughs or drama, never realistic or cruel. Health and damage (#80) can hurt, but in a cartoonish way.
+- **Detail and love.** Little jokes, local in-jokes, things that reward poking around (#115). A place should feel like someone cared about it.
 - **Creative over grim.** Given a choice, a mechanic that lets players make or mess around with things beats one that only punishes.
-- **Grittier play belongs in mods**, if the game becomes moddable, not in the base game.
+- **Grimmer or more realistic play belongs in mods**, if the game becomes moddable, not in the base game.
 
 This sits next to "Language and tone" in AGENTS.md: humour that is affectionate toward Vrigstad.
 
