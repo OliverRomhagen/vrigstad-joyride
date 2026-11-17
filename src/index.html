@@ -95,16 +95,6 @@ body { background: var(--sky); color: var(--ink); font-family: var(--body); font
 #card .fine { font-size: 11px; color: var(--dim); margin-top: 12px; }
 #card .fine a { color: inherit; }
 #fail { position: absolute; inset: 0; display: grid; place-items: center; padding: 24px; text-align: center; font-size: 15px; color: #16201c; }
-/* the adopt heart over a cat: an outline with a filled copy over it, cut to how many good pets in a row it has had.
-   The game sets transform to the cat's spot on screen; the inner wrapper does the centring and the animations. */
-.catheart { position: absolute; left: 0; top: 0; width: 0; height: 0; pointer-events: none; }
-.catheart svg { position: absolute; left: -16px; top: -32px; width: 32px; height: 32px; filter: drop-shadow(0 1px 2px rgba(0, 0, 0, .6)); animation: heart-pop .35s ease-out; }
-.catheart path { fill: none; stroke: var(--ink); stroke-width: 2; }
-.catheart .fill path { fill: #e8506a; stroke: #e8506a; }
-.catheart.broke svg { animation: heart-shake .4s ease-out; }
-@keyframes heart-pop { from { transform: scale(.4); } 70% { transform: scale(1.2); } }
-@keyframes heart-shake { 25% { translate: -6px 0; } 50% { translate: 6px 0; } 75% { translate: -3px 0; } }
-@media (prefers-reduced-motion: reduce) { .catheart svg, .catheart.broke svg { animation: none; } }
 #pets { border: 0; cursor: pointer; pointer-events: auto; }
 #pets kbd { font-size: 12px; min-width: 16px; padding: 0 4px; }
 @media (pointer: coarse) { #pets kbd { display: none; } #pets { min-height: 44px; padding: 0 16px; } }   /* a finger-sized target */
