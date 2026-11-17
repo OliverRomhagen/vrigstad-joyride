@@ -682,6 +682,25 @@ canvas.addEventListener('pointermove', e => { const lk = locked() && e.pointerTy
   camPitch = clamp(camPitch + dy * 0.004, 0.06, 1.25); });
 const endDrag = e => { if (e.pointerId === dragId) dragId = null; };
 canvas.addEventListener('pointerup', endDrag); canvas.addEventListener('pointercancel', endDrag);
+// camera zoom (#208): the wheel, a trackpad pinch and a two-finger pinch move the camera in and out. The browser's own
+// zoom is blocked, as it scales and crops the whole page: ctrl/⌘ + wheel (also how trackpads send a pinch), ctrl/⌘ + − = 0
+// and Safari's gesture events. The viewport meta and touch-action in index.html stop pinch and double-tap on phones.
+const ZOOM_MIN = 0.6, ZOOM_MAX = 2;   // times the normal camera distance
+let camZoom = 1;
+const zoomBy = f => { camZoom = clamp(camZoom * f, ZOOM_MIN, ZOOM_MAX); };
+addEventListener('wheel', e => { if (e.ctrlKey) e.preventDefault(); if (e.target !== canvas) return;   // elsewhere, e.g. the intro, the wheel scrolls
+  e.preventDefault(); zoomBy(Math.exp(e.deltaY * (e.deltaMode ? 16 : 1) * (e.ctrlKey ? 0.01 : 0.0015))); }, { passive: false });
+addEventListener('keydown', e => { if ((e.ctrlKey || e.metaKey) && /^(Equal|Minus|Digit0|NumpadAdd|NumpadSubtract|Numpad0)$/.test(e.code)) e.preventDefault(); });
+for (const t of ['gesturestart', 'gesturechange', 'gestureend']) document.addEventListener(t, e => e.preventDefault());
+// two fingers on the game pinch instead of turning the camera; the joystick and buttons are other elements, so they don't count
+const pinch = new Map(); let pinchD = 0;
+const spread = () => { const [a, b] = pinch.values(); return Math.hypot(a.x - b.x, a.y - b.y); };
+canvas.addEventListener('pointerdown', e => { if (e.pointerType !== 'touch') return; pinch.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (pinch.size === 2) { pinchD = spread(); dragId = null; } });
+canvas.addEventListener('pointermove', e => { const p = pinch.get(e.pointerId); if (!p) return; p.x = e.clientX; p.y = e.clientY;
+  if (pinch.size !== 2) return; const d = spread(); if (pinchD > 0 && d > 0) zoomBy(pinchD / d); pinchD = d; });
+const endPinch = e => { if (pinch.delete(e.pointerId)) pinchD = 0; };
+canvas.addEventListener('pointerup', endPinch); canvas.addEventListener('pointercancel', endPinch);
 const joyEl = $('joy'), knob = $('knob'); let joyId = null;
 function joyMove(e) { const r = joyEl.getBoundingClientRect(); let dx = e.clientX - r.left - r.width / 2, dy = e.clientY - r.top - r.height / 2;
   const L = Math.hypot(dx, dy), m = 44; if (L > m) { dx *= m / L; dy *= m / L; }
@@ -837,6 +856,7 @@ function frame(now) {
   else if (inCar) { lookIdle += dt; if (lookIdle > 1.2 && dragId === null) lookOff *= Math.pow(0.02, dt);
     camYaw += wrap(pcar.h - pcar.slip * 0.6 + lookOff - camYaw) * Math.min(1, dt * 4.5); dist = 10 + Math.abs(pcar.v) * 0.09; }
   else dist = inside ? 15 : 6.2;
+  if (started) dist *= camZoom;
   const cp = Math.cos(camPitch), cx = T.x - Math.sin(camYaw) * dist * cp, cz = T.z + Math.cos(camYaw) * dist * cp;
   camera.position.set(cx, Math.max(ty + 1.5 + dist * Math.sin(camPitch), hAt(cx, cz) + 0.8), cz);
   camera.lookAt(T.x, ty + 1.5, T.z);
@@ -867,5 +887,5 @@ $('go').addEventListener('click', e => { started = true; $('intro').hidden = tru
 resize(); requestAnimationFrame(frame);
 
 // ---------- test hook: read-only state for the smoke tests (tests/e2e), so they do not have to read pixels ----------
-window.__joyride = { state: () => { const n = nearestCar(); return { started, x: player.x, z: player.z, y: player.y, yaw: camYaw, inCar, car: pcar ? pcar.type : null, near: n ? n.mode : null, speed: pcar ? pcar.v : 0, drift: pcar ? pcar.drift : 0, boost: pcar ? pcar.boost : 0, charge: pcar ? pcar.charge : 0, loose: pcar ? pcar.loose : 0, flickDir: pcar ? pcar.flickDir : 0, stars, cats: cats.length, treats, vehicle: displayCar ? vehicleVisuals.state(displayCar) : null, nearSelectedVehicle: n === displayCar, activeVehicle: pcar ? vehicleVisuals.state(pcar) : null, traffic: cars.filter(c => c.mode === 'ai').map(c => ({ type: c.type, vehicle: vehicleVisuals.state(c) })) }; } };
+window.__joyride = { state: () => { const n = nearestCar(); return { started, x: player.x, z: player.z, y: player.y, yaw: camYaw, inCar, car: pcar ? pcar.type : null, near: n ? n.mode : null, speed: pcar ? pcar.v : 0, drift: pcar ? pcar.drift : 0, boost: pcar ? pcar.boost : 0, charge: pcar ? pcar.charge : 0, loose: pcar ? pcar.loose : 0, flickDir: pcar ? pcar.flickDir : 0, stars, cats: cats.length, treats, vehicle: displayCar ? vehicleVisuals.state(displayCar) : null, nearSelectedVehicle: n === displayCar, activeVehicle: pcar ? vehicleVisuals.state(pcar) : null, traffic: cars.filter(c => c.mode === 'ai').map(c => ({ type: c.type, vehicle: vehicleVisuals.state(c) })), zoom: camZoom }; } };
 })();
