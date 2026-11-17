@@ -230,7 +230,7 @@ test.describe('game (index.html)', () => {
     expect(errors).toEqual([]);
   });
 
-  test('cats are around, and the kiosk sells cat treats from its menu', async ({ page }, testInfo) => {
+  test('cats are around, and the kiosk sells cat treats and food from its menu', async ({ page }, testInfo) => {
     const errors = watchErrors(page);
     await page.goto('/index.html');
     await page.locator('#go').click();
@@ -255,6 +255,13 @@ test.describe('game (index.html)', () => {
     await page.keyboard.press('Escape');
     await expect(page.locator('#kmenu')).toBeHidden();
     expect(await state(page)).toMatchObject({ treats: 3 });
+
+    await page.keyboard.press('KeyE');                                 // food: at full health the kiosk won't sell it, and health stays full
+    await expect(page.locator('#kmenu')).toBeVisible();
+    await page.keyboard.press('Digit3');
+    await expect(page.locator('#kmenu')).toBeHidden();
+    await expect(page.locator('#toast')).toContainText('mätt');
+    expect(await state(page)).toMatchObject({ hp: 100 });
     expect(errors).toEqual([]);
   });
 });

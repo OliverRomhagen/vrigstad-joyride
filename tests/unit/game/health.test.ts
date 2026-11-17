@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  crashDamage, DMG_MAX, damageCar, driverHurt, HP_MAX, heal, hurt, impactSpeed, LIMP_TOP, newHealth, REGEN_DELAY_S, REGEN_HP_S, regen,
+  crackLevel, crashDamage, DMG_MAX, damageCar, driverHurt, HP_MAX, heal, hurt, impactSpeed, LIMP_TOP, newHealth, REGEN_DELAY_S, REGEN_HP_S, regen,
   runOverHurt, smokeLevel, topSpeedShare, wrecked,
 } from '../../../src/game/health';
 
@@ -59,8 +59,12 @@ describe('impacts', () => {
 
   it('does no damage to a car below the threshold, then grows with speed', () => {
     expect(crashDamage(7)).toBe(0);
-    expect(crashDamage(17)).toBe(30);
-    expect(crashDamage(42)).toBeGreaterThan(DMG_MAX);             // a Saab at full speed into a wall is wrecked in one go
+    expect(crashDamage(17)).toBe(22.5);
+  });
+
+  it('wrecks a car on the fourth crash at ~70 km/h, not the third', () => {
+    expect(3 * crashDamage(19)).toBeLessThan(DMG_MAX);
+    expect(4 * crashDamage(19)).toBeGreaterThanOrEqual(DMG_MAX);
   });
 
   it('hurts the driver only in a hard crash', () => {
@@ -96,5 +100,12 @@ describe('car damage', () => {
     expect(smokeLevel(49)).toBe(0);
     expect(smokeLevel(50)).toBe(1);
     expect(smokeLevel(80)).toBe(2);
+  });
+
+  it('cracks more glass as the damage grows', () => {
+    expect(crackLevel(19)).toBe(0);
+    expect(crackLevel(20)).toBe(1);
+    expect(crackLevel(50)).toBe(2);
+    expect(crackLevel(99)).toBe(3);
   });
 });

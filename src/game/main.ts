@@ -23,7 +23,7 @@ import { CAT_ADOPT_PETS, CatColony } from './cats';
 import { Hud } from './hud';
 import { Crowd } from './pedestrians';
 import { Pets } from './pets';
-import { CRASH_COOL_S, crashDamage, damageCar, driverHurt, HP_MAX, hurt, impactSpeed, newHealth, regen, runOverHurt, smokeLevel, topSpeedShare, wrecked } from './health';
+import { CAT_SCRATCH_HP, crackLevel, CRASH_COOL_S, crashDamage, damageCar, driverHurt, HP_MAX, heal, hurt, KORV_HP, impactSpeed, newHealth, regen, RULLE_HP, runOverHurt, smokeLevel, topSpeedShare, wrecked } from './health';
 
 (function () {
 'use strict';
@@ -292,10 +292,11 @@ const PROFILES = {
 };
 PROFILES.polis = Object.assign({}, PROFILES.volvo, { extra: () => [[1.78, 0.2, 3.2, 0, 0.7, 0.2, '#1f4fa3'], [1.79, 0.08, 3.2, 0, 0.56, 0.2, '#f2d21f']] });
 const tyreGeo = new THREE.CylinderGeometry(0.32, 0.32, 0.24, 16).rotateZ(Math.PI / 2), hubGeo = new THREE.CylinderGeometry(0.17, 0.17, 0.26, 10).rotateZ(Math.PI / 2);
+const TRACTOR_CAB = { glass: [[0.05, 1.38], [1.45, 1.38], [1.45, 2.62], [0.25, 2.62], [0.05, 2.3]], gw: 1.35 };
 // tractor: big rear wheels, small front wheels, a sloped bonnet and a glass cab (same size as the old box model)
 function softTractor(c) {
   const parts = [[extrude([[-2.15, 0.78], [0.35, 0.78], [0.35, 1.52], [-1.85, 1.52], [-2.15, 1.3]], 0.95, 0.08), c],
-    [extrude([[0.05, 1.38], [1.45, 1.38], [1.45, 2.62], [0.25, 2.62], [0.05, 2.3]], 1.35, 0.05), GLASS],
+    [extrude(TRACTOR_CAB.glass, TRACTOR_CAB.gw, 0.05), GLASS],
     [extrude([[-0.02, 2.6], [1.52, 2.6], [1.52, 2.72], [-0.02, 2.72]], 1.45, 0.04), c],
     [new THREE.CylinderGeometry(0.06, 0.06, 0.7, 8).translate(0.3, 1.85, -1.6), '#333']];
   for (const x of [-1, 1]) {
@@ -468,10 +469,60 @@ function crash(c, o, impact) {
   if (clockS - c.hitAt < CRASH_COOL_S || (o && clockS - o.hitAt < CRASH_COOL_S)) return;
   const d = crashDamage(impact); if (d <= 0) return;
   c.hitAt = clockS; if (o) o.hitAt = clockS;
-  for (const k of o ? [c, o] : [c]) if (damageCar(k, d)) {
+  for (const k of o ? [c, o] : [c]) { if (damageCar(k, d)) {
     if (k === pcar) toast('”Nä, nu ä den kaputt.” The car is wrecked. Get out and find another.', 4);
     else if (k.mode === 'police') toast('The police car is wrecked.', 3); }
+    crackGlass(k); }
   if (c === pcar || o === pcar) hurtPlayer(driverHurt(impact));
+}
+
+// cracked glass: a crack texture laid over the windscreen and rear window (material 0) and the side windows (material 1), worse at each crackLevel
+const CRACK_OUT_M = 0.06;                      // how far the cracks sit outside the glass profile, past its bevel
+function crackTex(dense) {
+  const S = 256, cv = document.createElement('canvas'); cv.width = cv.height = S; const g = cv.getContext('2d'), r = makeRnd(dense ? 81 : 80);
+  g.lineCap = 'round';
+  for (let hit = 0; hit < (dense ? 4 : 1); hit++) {   // each hit: a star of jagged rays, and broken rings round its centre
+    const cx = S * (0.3 + r() * 0.4), cy = S * (0.3 + r() * 0.4), rays = dense ? 14 : 9;
+    g.strokeStyle = 'rgba(235,240,245,.9)'; g.lineWidth = dense ? 2.4 : 2;
+    for (let i = 0; i < rays; i++) { let a = (i / rays) * Math.PI * 2 + r() * 0.4, x = cx, y = cy; const L = S * (0.25 + r() * (dense ? 0.5 : 0.3));
+      g.beginPath(); g.moveTo(x, y); for (let d = 0; d < L; d += 14) { a += (r() - 0.5) * 0.5; x += Math.cos(a) * 14; y += Math.sin(a) * 14; g.lineTo(x, y); } g.stroke(); }
+    g.lineWidth = 1.5;
+    for (let k = 1; k <= (dense ? 3 : 2); k++) { const R = k * S * 0.06 * (1 + r() * 0.5);
+      for (let i = 0; i < rays; i++) if (r() < 0.7) { const a = (i / rays) * Math.PI * 2; g.beginPath(); g.arc(cx, cy, R * (0.9 + r() * 0.2), a, a + (Math.PI * 2) / rays * 0.8); g.stroke(); } }
+    g.fillStyle = 'rgba(235,240,245,.55)'; g.beginPath(); g.arc(cx, cy, dense ? 7 : 5, 0, Math.PI * 2); g.fill();
+  }
+  const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; return t;
+}
+const crackMat = d => new THREE.MeshBasicMaterial({ map: crackTex(d), transparent: true, depthWrite: false, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 });
+const CRACK_OFF = new THREE.MeshBasicMaterial({ visible: false }), CRACK_LIGHT = crackMat(false), CRACK_HEAVY = crackMat(true);
+const CRACK_MATS = [null, [CRACK_LIGHT, CRACK_OFF], [CRACK_HEAVY, CRACK_LIGHT], [CRACK_HEAVY, CRACK_HEAVY]];
+const CRACK_REAR = { saab: 2 };                // index of the glass profile's point where the rear window starts (default 1); the Saab's is its hatch
+const crackGeoCache = {};
+function crackGeo(t) {
+  if (crackGeoCache[t]) return crackGeoCache[t];
+  const P = t === 'traktor' ? TRACTOR_CAB : PROFILES[t], G = P.glass, n = G.length, pos = [], uv = [];
+  const cx = G.reduce((a, p) => a + p[0], 0) / n, cy = G.reduce((a, p) => a + p[1], 0) / n;   // profile x is the car's z (front is -z), profile y is height
+  const pane = (p, q) => {                     // a quad across the car over the profile edge p–q, pushed out away from the middle of the glass
+    let nx = q[1] - p[1], ny = p[0] - q[0]; const L = Math.hypot(nx, ny); nx /= L; ny /= L;
+    if (nx * ((p[0] + q[0]) / 2 - cx) + ny * ((p[1] + q[1]) / 2 - cy) < 0) { nx = -nx; ny = -ny; }
+    const e = (a, b, k) => [a[0] + (b[0] - a[0]) * k + nx * CRACK_OUT_M, a[1] + (b[1] - a[1]) * k + ny * CRACK_OUT_M], A = e(p, q, 0.08), B = e(p, q, 0.92), w = P.gw / 2 - 0.1;
+    pos.push(-w, A[1], A[0], w, A[1], A[0], w, B[1], B[0], -w, A[1], A[0], w, B[1], B[0], -w, B[1], B[0]); uv.push(0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1);
+  };
+  const ri = CRACK_REAR[t] || 1;
+  pane(G[n - 1], G[0]); pane(G[ri], G[ri + 1]);
+  const front = pos.length / 3;
+  const S = G.map(p => [cx + (p[0] - cx) * 0.88, cy + (p[1] - cy) * 0.88]);   // side windows: the profile shrunk a little, so the cracks stay off the pillars
+  const x0 = Math.min(...S.map(p => p[0])), x1 = Math.max(...S.map(p => p[0])), y0 = Math.min(...S.map(p => p[1])), y1 = Math.max(...S.map(p => p[1]));
+  const tri = THREE.ShapeUtils.triangulateShape(S.map(p => new THREE.Vector2(p[0], p[1])), []);
+  for (const side of [-1, 1]) for (const f of tri) for (const i of f) { pos.push(side * (P.gw / 2 + 0.015), S[i][1], S[i][0]); uv.push((S[i][0] - x0) / (x1 - x0), (S[i][1] - y0) / (y1 - y0)); }
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  g.addGroup(0, front, 0); g.addGroup(front, pos.length / 3 - front, 1);
+  return (crackGeoCache[t] = g);
+}
+function crackGlass(c) {
+  const lv = crackLevel(c.dmg); if (!lv || c.crack === lv) return;
+  if (!c.crackMesh) { c.crackMesh = new THREE.Mesh(crackGeo(c.type), CRACK_MATS[lv]); c.mesh.add(c.crackMesh); }
+  c.crackMesh.material = CRACK_MATS[lv]; c.crack = lv;
 }
 
 // ---------- drift effects: sparks at the rear wheels, a flame while boosting, skid marks (src/game/render/drift-fx.ts) ----------
@@ -489,7 +540,7 @@ let treats = 0;
 // the getters are read when the cats use them, so they can name things declared further down
 const colony = new CatColony({ scene, buildings, inWater, groundAt, half: HALF, coarse, wrap, geoCache, boxGeo, paintMat, blob, cars, toast,
   get player() { return player; }, get keys() { return keys; }, get joy() { return joy; }, get kmenu() { return kmenu; }, get inCar() { return inCar; }, get pcar() { return pcar; }, get inside() { return inside; },
-  useTreat() { if (treats <= 0) return false; treats--; drawTreats(); return true; } });
+  useTreat() { if (treats <= 0) return false; treats--; drawTreats(); return true; }, scratched() { hurtPlayer(CAT_SCRATCH_HP); } });
 const { cats } = colony, updateCats = colony.update.bind(colony), catFirst = colony.catFirst.bind(colony), nearCat = colony.nearest.bind(colony);
 // a good pet that makes a cat ready to be adopted asks whether it comes home with you
 const CAT_MENU_M = 4;   // a cat's menu (the adopt question, or your own cat's) closes when you get further than this from it (m), or it bolts, or you get in a car
@@ -579,7 +630,14 @@ function openMenu(kind, title, items, pick, stay = null) {
 function closeMenu() { kmenu.hidden = true; nameIn = null; menuKind = menuPick = menuStay = null; if (relock) { relock = false; lockMouse(); } }
 // a choice can open the next menu (a pet's "are you sure?"): then the menu stays up, and the cursor stays free
 function menuChoose(k) { const pick = menuPick; menuPick = null; if (pick) pick(k); if (!menuPick) closeMenu(); }
-const openKiosk = () => openMenu('kiosk', '”Va ska dä va?”', [['triss', 'Trisslott'], ['treats', 'Kattgodis (3 st)'], ['no', 'Nä tack']], k => { if (k === 'triss') scratch(); else if (k === 'treats') buyTreats(); }, () => nearPlace()?.kind === 'kiosk');
+const openKiosk = () => openMenu('kiosk', '”Va ska dä va?”', [['triss', 'Trisslott'], ['treats', 'Kattgodis (3 st)'], ['korv', 'Korv me brö <small>+' + KORV_HP + ' health</small>'], ['rulle', 'Smålandsrulle <small>+' + RULLE_HP + ' health</small>'], ['no', 'Nä tack']], k => {
+  if (k === 'triss') scratch(); else if (k === 'treats') buyTreats(); else if (k === 'korv') eat(KORV_HP, '”En korv me brö, varsågod. Senap å ketchup ä på disken.”');
+  else if (k === 'rulle') eat(RULLE_HP, '”En smålandsrulle, mos å räksallad å allt. Dä ä mat dä!”'); }, () => nearPlace()?.kind === 'kiosk');
+// food from the kiosk: free until there is money (#76)
+function eat(n, line) {
+  if (health.hp >= HP_MAX) { toast('”Du ser ju mätt ut, du. Kom tebaks när du ä hungrig.”', 2.5); return; }
+  heal(health, n); drawHealth(); toast(line + ' +' + n + ' health.', 3);
+}
 kmenu.addEventListener('click', e => { const b = e.target.closest('button'); if (b) { menuChoose(b.dataset.k); canvas.focus(); } });
 function nearPlace() { if (inCar) return null; for (const p of places) if (Math.hypot(p.x - player.x, p.z - player.z) < 2.2) return p; return null; }
 function enterHouse(p) {
@@ -739,7 +797,7 @@ function knockedOut() {
   bigScreen('Däckad!', 'Knocked out. You come to ' + (spot.name ? 'at the safehouse on ' + spot.name : 'at Torget') + '.');
 }
 function hurtPlayer(n) { if (n <= 0) return;
-  const el = $('hurt'); el.style.transition = 'none'; el.style.opacity = Math.min(1, 0.35 + n / 40); void el.offsetWidth; el.style.transition = ''; el.style.opacity = 0;   // a red flash that fades
+  const el = $('hurt'); el.style.transition = 'none'; el.style.opacity = Math.min(1, 0.45 + n / 40); void el.offsetWidth; el.style.transition = ''; el.style.opacity = 0;   // a red flash that fades
   hurt(health, n); drawHealth(); }
 function updatePolice(c, dt, T, tv) {
   const dx = T.x - c.x, dz = T.z - c.z, d = Math.hypot(dx, dz), diff = wrap(Math.atan2(dx, -dz) - c.h);
