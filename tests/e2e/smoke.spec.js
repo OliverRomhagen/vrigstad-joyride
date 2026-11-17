@@ -264,6 +264,19 @@ test.describe('game (index.html)', () => {
     expect(await state(page)).toMatchObject({ treats: 3 });
     expect(errors).toEqual([]);
   });
+
+  test('the day ends at 19:00 and blends into the night skip', async ({ page }) => {
+    const errors = watchErrors(page);
+    await page.goto('/index.html?time=18.99');
+    await expectWebGL(page);
+    // 0.01 h of day is well under a second of game time. Headless frames are slow and dt is capped per frame, so the
+    // whole skip to 05:00 would take minutes here; the unit tests cover that, this checks the page runs the cycle.
+    await expect.poll(async () => (await state(page)).night).toBeGreaterThan(0);
+    const { night } = await state(page);
+    await expect.poll(async () => (await state(page)).night).toBeGreaterThan(night);
+    expect((await state(page)).hour).toBe(19);
+    expect(errors).toEqual([]);
+  });
 });
 
 // The real pointer lock is unreliable headless, so these fake it: requestPointerLock / exitPointerLock set a fake
