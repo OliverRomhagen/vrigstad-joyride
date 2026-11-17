@@ -1,11 +1,14 @@
 import { expect, test, vi } from 'vitest';
 import * as THREE from 'three';
 import {
+  FINISH_LEVELS,
   INK_FLAG,
   TOON_FILL_SCALE,
   TOON_LEVELS,
+  TOON_SHADOW_RADIUS,
   TOON_SUN_SCALE,
   ToonStyle,
+  finishOf,
   toonGradient,
 } from '../../../../src/game/render/toon-style';
 
@@ -24,16 +27,72 @@ test('the gradient has one nearest-filtered texel per light level', () => {
   expect(gradient.magFilter).toBe(THREE.NearestFilter);
 });
 
-test('light shifts from the fill to the sun while drawing, and back after', () => {
+test('the levels change where three samples them: at a normal-light dot of -0.5, 0 and 0.5', () => {
+  const texels = toonGradient().image.data as Uint8Array;
+  // gradientmap_pars_fragment: coord = dot * 0.5 + 0.5, nearest texel
+  const sample = (dot: number) => texels[Math.min(texels.length - 1, Math.floor((dot * 0.5 + 0.5) * texels.length))];
+  expect([-0.9, -0.4, 0.1, 0.6, 1].map(sample)).toEqual([9, 45, 132, 255, 255]);
+});
+
+test('vehicle finishes come from the GLB material names, or metalness', () => {
+  const named = (name: string, metalness = 0) => new THREE.MeshStandardMaterial({ name, metalness });
+  expect(finishOf(named('Impala configurable body paint'))).toBe('paint');
+  expect(finishOf(named('glazing envelope clay'))).toBe('glass');
+  expect(finishOf(named('smoky blue grey glass'))).toBe('glass');
+  expect(finishOf(named('police blue lenses'))).toBe('lamp');
+  expect(finishOf(named('tail lamp red'))).toBe('lamp');
+  expect(finishOf(named('tire charcoal'))).toBe('rubber');
+  expect(finishOf(named('restrained satin chrome', 0.7))).toBe('metal');
+  expect(finishOf(named('period wheel covers', 0.5))).toBe('metal');
+  expect(finishOf(new THREE.MeshLambertMaterial())).toBe('paint');
+});
+
+test('each finish draws with its own ramp, shared between materials', () => {
+  const scene = new THREE.Scene(),
+    meshes = ['body paint', 'tail lamp red', 'smoky glass', 'roof paint'].map(
+      (name) => new THREE.Mesh(box, new THREE.MeshStandardMaterial({ name })),
+    );
+  scene.add(...meshes);
+  const renderer = recordingRenderer(scene);
+  new ToonStyle(renderer).render(scene, camera);
+  const ramps = meshes.map((m) => (renderer.seen.get(m) as THREE.MeshToonMaterial).gradientMap as THREE.DataTexture);
+  expect(Array.from(ramps[1].image.data as Uint8Array)).toEqual([...FINISH_LEVELS.lamp]);
+  expect(Array.from(ramps[2].image.data as Uint8Array)).toEqual([...FINISH_LEVELS.glass]);
+  expect(ramps[3]).toBe(ramps[0]);
+});
+
+test('instanced meshes get a back-face hull that shares their instances, only with outlines on', () => {
+  const scene = new THREE.Scene(),
+    trees = new THREE.InstancedMesh(box, new THREE.MeshLambertMaterial(), 3),
+    noOutlines = new THREE.InstancedMesh(box, new THREE.MeshLambertMaterial(), 3);
+  scene.add(trees);
+  const outline = { render: () => {} },
+    style = new ToonStyle({ render: () => {} }, outline);
+  style.render(scene, camera);
+  style.render(scene, camera);
+  const hulls = trees.children.filter((o) => o instanceof THREE.InstancedMesh) as THREE.InstancedMesh[];
+  expect(hulls).toHaveLength(1);
+  expect(hulls[0].instanceMatrix).toBe(trees.instanceMatrix);
+  expect(hulls[0].boundingSphere).toBe(trees.boundingSphere);
+  expect((hulls[0].material as THREE.Material).side).toBe(THREE.BackSide);
+  const flat = new THREE.Scene();
+  flat.add(noOutlines);
+  new ToonStyle({ render: () => {} }).render(flat, camera);
+  expect(noOutlines.children).toHaveLength(0);
+});
+
+test('light shifts from the fill to the sun and shadows harden while drawing, and both come back after', () => {
   const scene = new THREE.Scene(),
     fill = new THREE.HemisphereLight(0xffffff, 0x888888, 2),
     sun = new THREE.DirectionalLight(0xffffff, 3);
+  sun.shadow.radius = 1;
   scene.add(fill, sun);
   let during: number[] = [];
-  new ToonStyle({ render: () => { during = [fill.intensity, sun.intensity]; } }).render(scene, camera);
+  new ToonStyle({ render: () => { during = [fill.intensity, sun.intensity, sun.shadow.radius]; } }).render(scene, camera);
   expect(during[0]).toBeCloseTo(2 * TOON_FILL_SCALE);
   expect(during[1]).toBeCloseTo(3 * TOON_SUN_SCALE);
-  expect([fill.intensity, sun.intensity]).toEqual([2, 3]);
+  expect(during[2]).toBe(TOON_SHADOW_RADIUS);
+  expect([fill.intensity, sun.intensity, sun.shadow.radius]).toEqual([2, 3, 1]);
 });
 
 test('inked objects get crease lines on opaque meshes, once, sharing edges per geometry', () => {
