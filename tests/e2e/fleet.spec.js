@@ -20,8 +20,7 @@ test('volvo240 loads, renders, can be entered and drives',async({page},info)=>{c
  }),{intervals:[50],timeout:60_000}).toBe(true);
  await page.keyboard.up('KeyD');await expect.poll(async()=>(await state()).activeVehicle?.id).toBe(id);
  await expect.poll(async()=>(await state()).activeVehicle?.detailed).toBe(true);
- if(id==='micra-k11')await expect(page.locator('#toast')).toContainText('Nissan Micra K11');
- if(id==='impala1970')await expect(page.locator('#toast')).toContainText('Chevrolet Impala 1970 hardtop');
+ await expect(page.locator('#toast')).toContainText('Volvo 240');
  const before=await state();await page.keyboard.down('KeyW');await page.keyboard.down('KeyD');
  await expect.poll(async()=>(await state()).activeVehicle.wheels.slice(0,2).some(w=>Math.abs(w.steer)>0.001)).toBe(true);
  await expect.poll(async()=>{const s=await state();return Math.hypot(s.x-before.x,s.z-before.z);}).toBeGreaterThan(2);
