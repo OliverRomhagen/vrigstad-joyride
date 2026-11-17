@@ -9,13 +9,17 @@ import type { Heightfield } from '../heightfield';
 
 type Surface = 'wallFoot' | 'wallTop' | 'roof';
 
-/** Emits the shell's triangles, three vertices each: walls, then the roof, then the spire. */
+/**
+ * Emits the shell's triangles, three vertices each: walls, then the roof, then the spire. Front faces point out of the
+ * building, whichever way round the footprint is listed: an inverted-hull outline needs that (#206).
+ */
 function eachShellVertex(shape: BuildingShape, emit: (x: number, y: number, z: number, surface: Surface) => void) {
-  const { ring, yAt, sides, outline, base, top } = shape;
+  const { ring, yAt, sides, outline, base, top, winding } = shape;
   const m = ring.length;
   for (let i = 0; i < m; i++) {
-    const a = ring[i];
-    const d = ring[(i + 1) % m];
+    // walk each wall so that its outside is on the right
+    const a = ring[winding > 0 ? (i + 1) % m : i];
+    const d = ring[winding > 0 ? i : (i + 1) % m];
     const ta = yAt(a);
     const td = yAt(d);
     emit(a.x, base, a.z, 'wallFoot');
@@ -28,8 +32,9 @@ function eachShellVertex(shape: BuildingShape, emit: (x: number, y: number, z: n
   for (const side of sides) {
     // triangulateShape wants { x, y } points, and drops a closing point that repeats the first
     const flat = side.map((v) => new THREE.Vector2(v.x, v.z));
-    for (const face of THREE.ShapeUtils.triangulateShape(flat, [])) {
-      for (const i of face) emit(side[i].x, yAt(side[i]), side[i].z, 'roof');
+    // triangulateShape's faces come out facing down either way round, so take each one backwards
+    for (const [i, j, k] of THREE.ShapeUtils.triangulateShape(flat, [])) {
+      for (const v of [side[k], side[j], side[i]]) emit(v.x, yAt(v), v.z, 'roof');
     }
   }
   const spire = shape.building.s;
@@ -42,8 +47,8 @@ function eachShellVertex(shape: BuildingShape, emit: (x: number, y: number, z: n
       cz += v.z / n;
     }
     for (let i = 0; i < n; i++) {
-      const a = outline[i];
-      const d = outline[(i + 1) % n];
+      const a = outline[winding > 0 ? (i + 1) % n : i];
+      const d = outline[winding > 0 ? i : (i + 1) % n];
       emit(a.x, top, a.z, 'roof');
       emit(d.x, top, d.z, 'roof');
       emit(cx, top + spire, cz, 'roof');

@@ -32,3 +32,40 @@ describe('PaintedBuildingShells', () => {
     shells.dispose();
   });
 });
+
+// Front faces point out of the building, as three expects: an inverted-hull outline pushes the back faces out
+// along their normals (#206). The pages draw the shells double-sided, so the winding doesn't change their look.
+describe('shell winding', () => {
+  const grey = new THREE.Color(0.5, 0.5, 0.5);
+  const colours = () => ({ wall: grey, wallFoot: grey, roof: grey });
+  const flat = { p: square(0, 0, 10), h: 5, k: BuildingKind.OTHER };
+  const reversed = { ...flat, p: [0, 0, 0, 10, 10, 10, 10, 0] };
+  const pitched = { ...flat, g: [0, 5, 10, 5, 5] as [number, number, number, number, number] };
+  const spire = { ...flat, s: 8 };
+
+  it.each([
+    ['a flat roof', flat],
+    ['a footprint listed the other way round', reversed],
+    ['a pitched roof', pitched],
+    ['a spire', spire],
+  ])('every triangle faces out of the building, with %s', (_, building) => {
+    const world = makeWorld({ b: [building] });
+    const mesh = new PaintedBuildingShells(world, new Heightfield(world), { material: new THREE.MeshBasicMaterial(), colours }).mesh;
+    const pos = mesh.geometry.getAttribute('position');
+    const centre = new THREE.Vector3(5, 0, 5);
+    const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3(), normal = new THREE.Vector3();
+    const wrong: number[] = [];
+    for (let i = 0; i < pos.count; i += 3) {
+      a.fromBufferAttribute(pos, i);
+      b.fromBufferAttribute(pos, i + 1);
+      c.fromBufferAttribute(pos, i + 2);
+      THREE.Triangle.getNormal(a, b, c, normal);
+      const middle = a.add(b).add(c).divideScalar(3);
+      // walls point away from the footprint's centre; roofs and spires point up
+      const out = Math.abs(normal.y) < 0.5 ? normal.dot(middle.sub(centre).setY(0)) : normal.y;
+      if (!(out > 0)) wrong.push(i / 3);
+    }
+    expect(wrong).toEqual([]);
+    mesh.geometry.dispose();
+  });
+});
