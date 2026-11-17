@@ -24,7 +24,7 @@ wheel locations and plausible bounds.
 `VehicleVisuals` owns rendering state independently from simulation. Call
 `attach(car,id,fallback,color)` after adding a car, `sync(car)` after positioning it,
 `update(focus,dt)` once per frame and `dispose(car)` on removal. `addCar` accepts
-an optional sixth asset-ID argument overriding the default archetype mapping.
+an optional sixth asset-ID argument overriding the variant pick.
 Names and short Swedish spoken names are read through `vehicleVisuals.definition(car)`;
 they are not stored on simulation car objects. No new input or physics rules are introduced.
 
