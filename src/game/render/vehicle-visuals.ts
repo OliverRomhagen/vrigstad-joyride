@@ -169,14 +169,15 @@ export class VehicleVisuals {
     if (this.elapsed >= REFRESH_SECONDS) {
       this.elapsed = 0;
       for (const view of this.views)
-        view.distance = Math.hypot(view.car.x - focus.x, view.car.z - focus.z);
+        view.distance =
+          Math.hypot(view.car.x - focus.x, view.car.z - focus.z) - (view.selected ? DETAIL_KEEP_M : 0);
       this.views.sort((a, b) => a.distance - b.distance);
       let count = 0;
       for (const view of this.views) {
         view.selected =
           view.status !== 'failed' &&
           view.distance < DETAIL_RANGE_M &&
-          count++ < (this.coarse ? 3 : 8);
+          count++ < (this.coarse ? DETAIL_CAP_COARSE : DETAIL_CAP_DESKTOP);
         if (view.selected) this.loadModel(view);
         this.updateVisibility(view);
       }
