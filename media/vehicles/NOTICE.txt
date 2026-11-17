@@ -1,0 +1,57 @@
+Vehicle models by Axel Tidehorn, CC BY 4.0
+Copyright (c) 2026 Axel Tidehorn
+https://creativecommons.org/licenses/by/4.0/
+
+Original authored geometry; no manufacturer endorsement is implied.
+No reference photographs or third-party meshes are included.
+The distributed GLBs are meshopt-compressed derivatives of the following original
+exports, made with gltfpack 1.3.0 (-c -kn -km -noq). Geometry is not simplified or
+quantized; named nodes and materials are retained. See docs/vehicle-fleet.md for
+reproduction and the original-to-delivery size comparison.
+
+Volvo 240
+https://github.com/AxelTidehorn/vrigstad-joyride/tree/ff6a0f187add7bd9b7ba052f28bd0d67e534c33a/experiments/volvo240/refinement/model.blend
+
+Saab 900 Classic
+https://github.com/AxelTidehorn/vrigstad-joyride/tree/ff6a0f187add7bd9b7ba052f28bd0d67e534c33a/experiments/saab900/build/model.blend
+
+Volvo XC70 P2
+https://github.com/AxelTidehorn/vrigstad-joyride/tree/ff6a0f187add7bd9b7ba052f28bd0d67e534c33a/experiments/xc70p2/build/model.blend
+
+Police XC70 P2
+https://github.com/AxelTidehorn/vrigstad-joyride/tree/ff6a0f187add7bd9b7ba052f28bd0d67e534c33a/experiments/xc70p2/build/model.blend
+
+Chevrolet Impala 1970 hardtop
+https://github.com/AxelTidehorn/vrigstad-joyride/tree/46fa31e9094ab6e1e30f2b542de83383f85fb7c7/experiments/impala1970/build/model.blend
+
+Nissan Micra K11
+https://github.com/AxelTidehorn/vrigstad-joyride/tree/5c84a173f3bbd8206f067ec18594cecdaf5476b5/experiments/micra1995/build/model.blend
+
+Volvo Duett P210 EPA
+https://github.com/AxelTidehorn/vrigstad-joyride/tree/2be04e605ad20f9ffc5dbe097a493bd6a3991e6f/experiments/duettp210/build/model.blend
+
+Retain attribution and the licence link, and indicate changes when redistributing modified versions. Original generator scripts are licensed under MIT; see the repository LICENSE.
+
+Meshopt decoder bundled with the game (MIT)
+------------------------------------------
+MIT License
+
+Copyright (c) 2016-2026 Arseny Kapoulkine
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
