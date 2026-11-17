@@ -561,9 +561,11 @@ const TREAT_BAG = 3, TREAT_MAX = 9;                                  // treats p
 let treats = 0;
 // the getters are read when the cats use them, so they can name things declared further down
 const colony = new CatColony({ scene, buildings, inWater, groundAt, half: HALF, coarse, wrap, geoCache, boxGeo, paintMat, blob, cars, toast,
-  get player() { return player; }, get keys() { return keys; }, get joy() { return joy; }, get kmenu() { return kmenu; }, get inCar() { return inCar; }, get inside() { return inside; },
+  get player() { return player; }, get keys() { return keys; }, get joy() { return joy; }, get kmenu() { return kmenu; }, get inCar() { return inCar; }, get pcar() { return pcar; }, get inside() { return inside; },
   useTreat() { if (treats <= 0) return false; treats--; drawTreats(); return true; } });
-const { cats } = colony, updateCats = colony.update.bind(colony), catFirst = colony.catFirst.bind(colony), nearCat = colony.nearest.bind(colony), petCat = colony.pet.bind(colony);
+const { cats } = colony, updateCats = colony.update.bind(colony), catFirst = colony.catFirst.bind(colony), nearCat = colony.nearest.bind(colony);
+// a good pet that makes a cat ready to be adopted asks whether it comes home with you
+function petCat(k) { if (colony.pet(k)) openMenu('adopt', '”Ska du följa mä hem, kisse?”', [['adopt', 'Ja, adoptera'], ['no', 'Nä, inte nu']], c => c === 'adopt' ? colony.adopt(k) : colony.decline(k), k); }
 function buyTreats() {
   if (treats >= TREAT_MAX) { toast('”Nämen, du har ju fickera fulla redan!”', 2.5); return; }
   treats = Math.min(TREAT_MAX, treats + TREAT_BAG); drawTreats(); toast('”En påse kattgodis, varsågo. Kattera ä tôcka i dä.”', 4);
@@ -617,13 +619,18 @@ function addPlace(kind, name, x, z, color) {
   addFootprint([x - 1.5, z - 1.1, x + 1.5, z - 1.1, x + 1.5, z + 1.1, x - 1.5, z + 1.1]);
   addPlace('kiosk', 'Kiosken', x, z + 2.3, 0xf2c230);
 })();
-// one lucka, several things to buy: E opens a small menu (1 / 2 / Esc, or tap), walking away closes it
+// small menus on one plate (the kiosk's one lucka, adopting a cat): number keys / Esc, or tap; walking away closes it
 const kmenu = $('kmenu');
-let relock = false;                                             // the kiosk menu needs the cursor: free it while the menu is open, and take it back after
-function openKiosk() { kmenu.hidden = false; relock = locked(); if (relock) document.exitPointerLock(); }
-function closeKiosk() { kmenu.hidden = true; if (relock) { relock = false; lockMouse(); } }
-function kioskPick(k) { closeKiosk(); if (k === 'triss') scratch(); else if (k === 'treats') buyTreats(); }
-kmenu.addEventListener('click', e => { const b = e.target.closest('button'); if (b) { kioskPick(b.dataset.k); canvas.focus(); } });
+let relock = false;                                             // a menu needs the cursor: free it while the menu is open, and take it back after
+let menuKind = null, menuPick = null, menuCat = null;           // which menu is open, what a choice does, the cat it is about
+// items are [key, label]; the 'no' item is last and gets Esc
+function openMenu(kind, title, items, pick, cat = null) {
+  kmenu.innerHTML = '<p>' + title + '</p>' + items.map(([k, label], i) => '<button type="button" data-k="' + k + '"><kbd>' + (k === 'no' ? 'Esc' : i + 1) + '</kbd>' + label + '</button>').join('');
+  menuKind = kind; menuPick = pick; menuCat = cat; kmenu.hidden = false; relock = locked(); if (relock) document.exitPointerLock(); }
+function closeMenu() { kmenu.hidden = true; menuKind = menuPick = menuCat = null; if (relock) { relock = false; lockMouse(); } }
+function menuChoose(k) { const pick = menuPick; closeMenu(); if (pick) pick(k); }
+const openKiosk = () => openMenu('kiosk', '”Va ska dä va?”', [['triss', 'Trisslott'], ['treats', 'Kattgodis (3 st)'], ['no', 'Nä tack']], k => { if (k === 'triss') scratch(); else if (k === 'treats') buyTreats(); });
+kmenu.addEventListener('click', e => { const b = e.target.closest('button'); if (b) { menuChoose(b.dataset.k); canvas.focus(); } });
 function nearPlace() { if (inCar) return null; for (const p of places) if (Math.hypot(p.x - player.x, p.z - player.z) < 2.2) return p; return null; }
 function enterHouse(p) {
   if (police.some(c => Math.hypot(c.x - p.x, c.z - p.z) < SAFE_SEEN)) { toast('The police can see you. Get further ahead of them before you go inside.', 3); return; }
@@ -657,7 +664,8 @@ let camYaw = 0.6, camPitch = 0.34, lookOff = 0, lookIdle = 9;
 const keys = {}, joy = { x: 0, y: 0, on: false };
 const KEYMAP = { KeyW: 'up', ArrowUp: 'up', KeyS: 'down', ArrowDown: 'down', KeyA: 'left', ArrowLeft: 'left', KeyD: 'right', ArrowRight: 'right', Space: 'brake', ShiftLeft: 'run', ShiftRight: 'run' };
 addEventListener('keydown', e => { if (!started) return; const k = KEYMAP[e.code];
-  if (!kmenu.hidden && /^(Digit|Numpad)[12]$|^Escape$/.test(e.code)) { kioskPick(e.code === 'Escape' ? 'no' : e.code.endsWith('1') ? 'triss' : 'treats'); return; }
+  if (!kmenu.hidden) { const n = /^(?:Digit|Numpad)([1-9])$/.exec(e.code), b = n && kmenu.querySelectorAll('button')[+n[1] - 1];
+    if (e.code === 'Escape' || b && b.dataset.k !== 'no') { menuChoose(e.code === 'Escape' ? 'no' : b.dataset.k); return; } }
   if (kmenu.contains(e.target)) return;                       // Enter / Space on a focused menu button: let the button's own click handle it
   if (k) { keys[k] = true; e.preventDefault(); if (k === 'brake' && !e.repeat && jumpOk()) jumpQ = true; } else if ((e.code === 'KeyE' || e.code === 'KeyF' || e.code === 'Enter') && !e.repeat) action(); else if (e.code === 'KeyR') respawn(); });
 addEventListener('keyup', e => { const k = KEYMAP[e.code]; if (k) keys[k] = false; });
@@ -736,9 +744,10 @@ function nearestCar() { let best = null, bd = 4.4;
 function action() {
   if (!started || bigT > 0) return;
   if (inside) { leaveHouse(); return; }
+  if (!kmenu.hidden) { closeMenu(); return; }
   const pl = nearPlace(), kt = nearCat();
   if (catFirst(kt, pl)) { petCat(kt); return; }
-  if (pl) { if (pl.kind === 'safe') enterHouse(pl); else if (kmenu.hidden) openKiosk(); else closeKiosk(); return; }
+  if (pl) { if (pl.kind === 'safe') enterHouse(pl); else openKiosk(); return; }
   if (inCar) {
     if (Math.abs(pcar.v) > 3) { toast('Slow down before you get out.', 2); return; }
     player.x = pcar.x - Math.cos(pcar.h) * 2; player.z = pcar.z - Math.sin(pcar.h) * 2; player.h = pcar.h; collide(player, 0.5);
@@ -848,10 +857,10 @@ function frame(now) {
   signT -= dt; if (signT <= 0) { signT = 0.25; updateSign(T);
     const pr = $('prompt'), pl = started && !inside ? nearPlace() : null, kt = started ? nearCat() : null, c = started && !inCar && !inside ? nearestCar() : null;
     $('hide').hidden = !inside;
-    if (!kmenu.hidden && (!pl || pl.kind !== 'kiosk')) closeKiosk();
+    if (menuKind === 'kiosk' && (!pl || pl.kind !== 'kiosk') || menuKind === 'adopt' && (inCar || menuCat.state === 'flee' || Math.hypot(menuCat.x - player.x, menuCat.z - player.z) > 4)) closeMenu();
     if (inside) { $('hide').innerHTML = stars ? 'Lying low<b>' + Math.floor(Math.ceil(Math.max(0, hideT)) / 60) + ':' + String(Math.ceil(Math.max(0, hideT)) % 60).padStart(2, '0') + '</b>' : 'Safehouse · ' + inside.name;
       pr.hidden = false; pr.innerHTML = '<kbd>E</kbd>Go outside'; }
-    else if (catFirst(kt, pl)) { pr.hidden = false; pr.innerHTML = '<kbd>E</kbd>Pet the cat' + (treats ? ' (offer a treat)' : ''); }
+    else if (catFirst(kt, pl)) { pr.hidden = !kmenu.hidden; pr.innerHTML = '<kbd>E</kbd>' + (kt.owned ? 'Pet your cat' : 'Pet the cat') + (treats ? ' (offer a treat)' : ''); }
     else if (pl) { pr.hidden = !kmenu.hidden; pr.innerHTML = '<kbd>E</kbd>' + (pl.kind === 'safe' ? 'Go inside the safehouse' : 'Handla i kiosken'); }
     else if (inCar && !coarse) { pr.hidden = Math.abs(pcar.v) > 3; pr.innerHTML = '<kbd>E</kbd>Get out'; }
     else if (c) { pr.hidden = false; pr.innerHTML = '<kbd>E</kbd>' + (c.owned ? 'Get in the ' : 'Steal the ') + carName(c); }
@@ -867,5 +876,5 @@ $('go').addEventListener('click', e => { started = true; $('intro').hidden = tru
 resize(); requestAnimationFrame(frame);
 
 // ---------- test hook: read-only state for the smoke tests (tests/e2e), so they do not have to read pixels ----------
-window.__joyride = { state: () => { const n = nearestCar(); return { started, x: player.x, z: player.z, y: player.y, yaw: camYaw, inCar, car: pcar ? pcar.type : null, near: n ? n.mode : null, speed: pcar ? pcar.v : 0, drift: pcar ? pcar.drift : 0, boost: pcar ? pcar.boost : 0, charge: pcar ? pcar.charge : 0, loose: pcar ? pcar.loose : 0, flickDir: pcar ? pcar.flickDir : 0, stars, cats: cats.length, treats, vehicle: displayCar ? vehicleVisuals.state(displayCar) : null, nearSelectedVehicle: n === displayCar, activeVehicle: pcar ? vehicleVisuals.state(pcar) : null, traffic: cars.filter(c => c.mode === 'ai').map(c => ({ type: c.type, vehicle: vehicleVisuals.state(c) })) }; } };
+window.__joyride = { state: () => { const n = nearestCar(); return { started, x: player.x, z: player.z, y: player.y, yaw: camYaw, inCar, car: pcar ? pcar.type : null, near: n ? n.mode : null, speed: pcar ? pcar.v : 0, drift: pcar ? pcar.drift : 0, boost: pcar ? pcar.boost : 0, charge: pcar ? pcar.charge : 0, loose: pcar ? pcar.loose : 0, flickDir: pcar ? pcar.flickDir : 0, stars, cats: cats.length, treats, ownCat: !!colony.owned, vehicle: displayCar ? vehicleVisuals.state(displayCar) : null, nearSelectedVehicle: n === displayCar, activeVehicle: pcar ? vehicleVisuals.state(pcar) : null, traffic: cars.filter(c => c.mode === 'ai').map(c => ({ type: c.type, vehicle: vehicleVisuals.state(c) })) }; } };
 })();
