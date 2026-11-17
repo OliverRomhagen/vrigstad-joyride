@@ -3,10 +3,11 @@
 Select the parked Torget car with `?vehicle=volvo240`, `saab900`, `xc70`,
 `xc70-police`, `impala1970`, `micra-k11` or `duett-epa`. Start and use the
 normal movement/E controls. The HUD uses the model name. Without a query,
-parked cars and traffic use Volvo 240, Saab 900, Duett EPA
-and police XC70 visuals by archetype. The tractor stays procedural. Unknown IDs
-use the default Volvo 240 at Torget. Civilian XC70, Impala and Micra remain explicit
-URL choices; the original traffic distribution is unchanged.
+parked cars and traffic pick a model for their type from `VEHICLE_VARIANTS`:
+a Volvo is a Volvo 240 or an Impala, a Saab a Saab 900, XC70 or Micra, an EPA
+a Duett and police a police XC70. The pick uses its own seeded stream, so the
+original traffic distribution and the rest of the world's rolls are unchanged.
+The tractor stays procedural. Unknown IDs use the default Volvo 240 at Torget.
 Models do not define dynamics: mappings reuse
 Volvo/Saab/passenger-car, police and EPA simulation. They are not calibrated
 real-world handling specifications. No experimental drivetrain is included.
