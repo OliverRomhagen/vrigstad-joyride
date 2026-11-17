@@ -750,8 +750,8 @@ function action() {
     toast(pick(['”Hörru! Det där är min bil!”', '”Men va fan gör du?!”', '”Polisen! Han tar ' + (vehicleVisuals.definition(c)?.spokenName || 'min ' + c.T.name) + '!”']) + ' The driver calls the police.');
     addStar(); spawnTraffic(player);
   } else if (!c.owned) {
-    if (police.length || rnd() < 0.35) addStar('A neighbour saw you take the ' + (carName(c)) + ' and called the police.');
-    else toast(c.type === 'epa' ? 'EPA-traktor: legally limited to 30 km/h. Good luck outrunning anyone.' : 'You took the ' + (carName(c)) + '. Nobody noticed.');
+    if (police.length || rnd() < 0.35) addStar('A neighbour saw you take the ' + carName(c) + ' and called the police.');
+    else toast(c.type === 'epa' ? 'EPA-traktor: legally limited to 30 km/h. Good luck outrunning anyone.' : 'You took the ' + carName(c) + '. Nobody noticed.');
   }
   if (!c.owned) { c.owned = true; stolen++; $('count').textContent = 'Cars stolen: ' + stolen; }
   c.mode = 'player'; c.vh = c.h; c.slip = c.drift = c.boost = c.loose = 0; pcar = c; inCar = true; player.y = player.vy = 0; player.mesh.visible = false; lookOff = 0; camYaw = c.h;
