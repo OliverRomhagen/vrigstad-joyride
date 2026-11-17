@@ -607,7 +607,7 @@ const heartMats = [0, 1, 2, 3].map(n => {
   return new THREE.SpriteMaterial({ map: t, depthWrite: false, fog: false, toneMapped: false });   // the HUD's colours, not the scene's light
 });
 const hearts = new Map();   // cat -> { s: its sprite, t: s until it goes (Infinity while the streak lasts), age: s since the last pet, broke: its own wobbling material }
-// after a pet: a new or fuller heart pops, a broken streak wobbles the empty one away; only while pets count towards adopting
+// after a pet: a new or fuller heart pops, a broken streak wobbles the empty one away, while pets count towards adopting; your own cat pops a full one each pet or treat, a small love signal
 function showHeart(k) { let h = hearts.get(k); const full = colony.owned === k, pets = full ? CAT_ADOPT_PETS : k.pets;
   if (!h) { if (!pets || colony.owned && !full) return; h = { s: new THREE.Sprite(heartMats[0]), t: 0, age: 0, broke: null }; h.s.renderOrder = 1; scene.add(h.s); hearts.set(k, h); }
   h.t = full ? HEART_ADOPT_S : pets ? Infinity : HEART_BROKE_S; h.age = 0;
