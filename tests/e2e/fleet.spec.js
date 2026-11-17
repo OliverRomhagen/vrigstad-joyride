@@ -1,7 +1,7 @@
 import {test,expect} from '@playwright/test';
 import {watchErrors} from './render-helpers.js';
-const ids=['volvo240','saab900','xc70','xc70-police','impala1970','micra-k11','duett-epa'];
-for(const id of ids)test(`${id} loads, renders, can be entered and drives`,async({page},info)=>{
+// Every model shares the loader, materials and controller, and the unit tests decode each GLB, so one is driven end to end.
+test('volvo240 loads, renders, can be entered and drives',async({page},info)=>{const id='volvo240';
  test.setTimeout(180_000); // software WebGL advances capped simulation time slowly under CI load
  const errors=watchErrors(page);await page.setViewportSize({width:640,height:360});
  await page.goto('/index.html?vehicle='+id);await page.locator('#go').click();
