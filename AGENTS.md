@@ -11,7 +11,7 @@ A browser open-world driving game set in the real village of Vrigstad, Sweden, b
 ```sh
 npm install                 # once
 npm run dev                 # dev server with hot reload: the game at http://localhost:5173/, the map at /map.html
-npm run check               # typecheck; run before every commit, with npm test (lint joins them in #46)
+npm run check               # typecheck; run before every commit, with npm test, and CI runs it on every PR (lint joins them in #46)
 npm test                    # unit tests (Vitest), once
 npm run build               # production build into dist/ (index.html, map.html)
 npm run preview             # serve the built dist/ locally
