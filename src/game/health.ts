@@ -3,6 +3,7 @@
 
 export const HP_MAX = 100;
 export const KORV_HP = 10, RULLE_HP = 20;               // food from the kiosk: korv me brö, and a smålandsrulle
+export const LOW_HP = 30;                                // below this the hearts pulse, and you say you're hungry
 export const CAT_SCRATCH_HP = 5;                         // a cat's scratch when petting goes wrong
 export const REGEN_DELAY_S = 10, REGEN_HP_S = 1;         // health starts coming back this long after the last hurt, at this rate (hp/s): a heart (20 hp) in 20 s
 

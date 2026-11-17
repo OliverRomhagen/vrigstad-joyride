@@ -23,7 +23,7 @@ import { CAT_ADOPT_PETS, CatColony } from './cats';
 import { Hud } from './hud';
 import { Crowd } from './pedestrians';
 import { Pets } from './pets';
-import { CAT_SCRATCH_HP, crackLevel, CRASH_COOL_S, crashDamage, damageCar, driverHurt, HP_MAX, heal, hurt, KORV_HP, impactSpeed, newHealth, regen, RULLE_HP, runOverHurt, smokeLevel, topSpeedShare, wrecked } from './health';
+import { CAT_SCRATCH_HP, crackLevel, LOW_HP, CRASH_COOL_S, crashDamage, damageCar, driverHurt, HP_MAX, heal, hurt, KORV_HP, impactSpeed, newHealth, regen, RULLE_HP, runOverHurt, smokeLevel, topSpeedShare, wrecked } from './health';
 
 (function () {
 'use strict';
@@ -469,12 +469,22 @@ function crash(c, o, impact) {
   if (clockS - c.hitAt < CRASH_COOL_S || (o && clockS - o.hitAt < CRASH_COOL_S)) return;
   const d = crashDamage(impact); if (d <= 0) return;
   c.hitAt = clockS; if (o) o.hitAt = clockS;
-  for (const k of o ? [c, o] : [c]) { if (damageCar(k, d)) {
-    if (k === pcar) toast('”Nä, nu ä den kaputt.” The car is wrecked. Get out and find another.', 4);
+  let said = false;   // one line per crash: wrecked, then smoke, then the crash itself
+  for (const k of o ? [c, o] : [c]) { const smoke = smokeLevel(k.dmg); if (damageCar(k, d)) {
+    if (k === pcar) { toast(pickLine(WRECK_LINES) + ' The car is wrecked. Get out and find another.', 4); said = true; }
     else if (k.mode === 'police') toast('The police car is wrecked.', 3); }
+    else if (k === pcar && smokeLevel(k.dmg) > smoke) { toast(SMOKE_LINES[smokeLevel(k.dmg)], 3); said = true; }
     crackGlass(k); }
-  if (c === pcar || o === pcar) { hurtPlayer(driverHurt(impact)); shake(d); }
+  if (c === pcar || o === pcar) { const n = driverHurt(impact); hurtPlayer(n); shake(d);
+    if (n > 0 && !said && clockS - crashLineAt > CRASH_LINE_S) { crashLineAt = clockS; toast(pickLine(CRASH_LINES), 2.5); } }
 }
+// what you say about a crash (#213 moves these into a speech bubble over you); picked from their own random stream, so they don't shift the world's rolls
+const lineRnd = makeRnd(213), pickLine = a => a[Math.floor(lineRnd() * a.length)];
+const CRASH_LINE_S = 6;                        // at most one "that hurt" line this often (s)
+const CRASH_LINES = ['”AJ! Dä där kändes i nacken.”', '”Hoppsan. Dä där va inte meningen.”', '”Va fan, vem satte dit den där?!”'];
+const WRECK_LINES = ['”Nä, nu ä den kaputt.”', '”Dä va dä, den bilen.”', '”Den rullar inte mer, den.”'];
+const SMOKE_LINES = [null, '”Hörru, dä ryker ur motorn!”', '”Svart rök… dä ä inte bra, dä.”'];   // by smokeLevel
+let crashLineAt = -9;
 
 // camera shake on a crash: a jolt that dies away, bigger for a harder hit; none with reduced motion
 const SHAKE_S = 0.45, SHAKE_MIN_M = 0.08, SHAKE_MAX_M = 0.5, SHAKE_PER_DMG_M = 1 / 150;   // s it lasts; camera offset (m) at the smallest and largest hit, and per point of car damage
@@ -658,8 +668,9 @@ function openMenu(kind, title, items, pick, stay = null) {
 function closeMenu() { kmenu.hidden = true; nameIn = null; menuKind = menuPick = menuStay = null; if (relock) { relock = false; lockMouse(); } }
 // a choice can open the next menu (a pet's "are you sure?"): then the menu stays up, and the cursor stays free
 function menuChoose(k) { const pick = menuPick; menuPick = null; if (pick) pick(k); if (!menuPick) closeMenu(); }
-const openKiosk = () => openMenu('kiosk', '”Va ska dä va?”', [['triss', 'Trisslott'], ['treats', 'Kattgodis (3 st)'], ['korv', 'Korv me brö <small>+' + KORV_HP + ' health</small>'], ['rulle', 'Smålandsrulle <small>+' + RULLE_HP + ' health</small>'], ['no', 'Nä tack']], k => {
+const openKiosk = () => openMenu('kiosk', '”Va ska dä va?”', [['triss', 'Trisslott'], ['treats', 'Kattgodis (3 st)'], ['korv', 'Korv me brö <small>+' + KORV_HP + ' health</small>'], ['vego', 'Vegokorv me brö'], ['rulle', 'Smålandsrulle <small>+' + RULLE_HP + ' health</small>'], ['no', 'Nä tack']], k => {
   if (k === 'triss') scratch(); else if (k === 'treats') buyTreats(); else if (k === 'korv') eat(KORV_HP, '”En korv me brö, tack.”', '”Varsågod. Senap å ketchup ä på disken.”');
+  else if (k === 'vego') toast('”En vegokåv me brö, tack.”\n”Vegokåv? Nä vi ha ingen vegokåv! Den ligger i frysen.”', 4);   // always sold out
   else if (k === 'rulle') eat(RULLE_HP, '”En smålandsrulle, tack.”', '”Varsågod, mos å räksallad å allt. Dä ä mat dä!”'); }, () => nearPlace()?.kind === 'kiosk');
 // food from the kiosk: free until there is money (#76)
 // \n puts each speaker on their own line in the toast: you order first, then the kiosk answers
@@ -771,11 +782,14 @@ const hud = new Hud({ $, ground: tex2d, P, K, roads, labels: D.labels, cars, pla
 // a declaration, not a bound const, so the sections above can pass toast on before the HUD exists
 function toast(msg, secs, cls) { hud.toast(msg, secs, cls); }
 const drawStars = hud.drawStars.bind(hud), drawMini = hud.drawMini.bind(hud), updateSign = hud.updateSign.bind(hud);
+// a line that waits for the toast and any big screen to clear, so it doesn't cut off what was just said
+let laterLine = null;
+const sayLater = line => { laterLine = line; };
 drawStars();
 // the health bar, and the car's damage bar on the speed plate while driving
 function meter(id, v, bad) { const el = $(id), n = Math.round(v); if (el.getAttribute('aria-valuenow') === String(n)) return;
   el.setAttribute('aria-valuenow', n); el.querySelector('b').style.width = n + '%'; el.classList.toggle('bad', bad); }
-function drawHealth() { meter('hp', health.hp, health.hp < 30); if (inCar) meter('dmg', pcar.dmg, pcar.dmg >= 50); }
+function drawHealth() { meter('hp', health.hp, health.hp < LOW_HP); if (inCar) meter('dmg', pcar.dmg, pcar.dmg >= 50); }
 let signT = 0, blink = false, blinkT = 0;
 
 // ---------- stealing, police, getting caught ----------
@@ -824,11 +838,13 @@ function knockedOut() {
   let spot = { x: HOME.x, z: HOME.z, name: null }, best = Math.hypot(player.x - HOME.x, player.z - HOME.z);
   for (const p of places) { const d = Math.hypot(player.x - p.x, player.z - p.z); if (p.kind === 'safe' && d < best) { best = d; spot = p; } }
   respawn(); player.x = spot.x; player.z = spot.z; collide(player, 0.6); health.hp = HP_MAX; drawHealth();
-  bigScreen('Däckad!', 'Knocked out. You come to ' + (spot.name ? 'at the safehouse on ' + spot.name : 'at Torget') + '.');
+  bigScreen('Däckad!', 'Knocked out. You come to ' + (spot.name ? 'at the safehouse on ' + spot.name : 'at Torget') + '.'); sayLater(pickLine(WAKE_LINES));
 }
-function hurtPlayer(n) { if (n <= 0) return;
+const WAKE_LINES = ['”Va hände? Ja minns ingenting.”', '”Aj, mitt huve…”'];
+function hurtPlayer(n) { if (n <= 0) return; const was = health.hp;
   const el = $('hurt'); el.style.transition = 'none'; el.style.opacity = Math.min(1, 0.45 + n / 40); void el.offsetWidth; el.style.transition = ''; el.style.opacity = 0;   // a red flash that fades
-  hurt(health, n); drawHealth(); }
+  hurt(health, n); drawHealth();
+  if (was >= LOW_HP && health.hp < LOW_HP && health.hp > 0) sayLater('”Ja behöver nog en korv me brö.”'); }   // a hint at the kiosk
 function updatePolice(c, dt, T, tv) {
   const dx = T.x - c.x, dz = T.z - c.z, d = Math.hypot(dx, dz), diff = wrap(Math.atan2(dx, -dz) - c.h);
   let thr = Math.abs(diff) < 1.1 ? 1 : 0.45, steer = clamp(diff * 2.2, -1, 1), brake = false;
@@ -914,6 +930,7 @@ function frame(now) {
   // HUD
   drawHearts(dt);
   hud.update(dt);
+  if (!hud.toasting && laterLine && bigT <= 0) { toast(laterLine, 3); laterLine = null; }
   signT -= dt; if (signT <= 0) { signT = 0.25; updateSign(T);
     const pr = $('prompt'), pl = started && !inside ? nearPlace() : null, kt = started ? nearCat() : null, c = started && !inCar && !inside ? nearestCar() : null;
     $('hide').hidden = !inside;
