@@ -41,14 +41,23 @@ What a person looks like is one piece of plain data, `{ build, skin, face, hair,
 - NPCs roll it from a seeded random stream, which gives the village its variety (#199).
 - The player changes it in game first, in a wardrobe (#137 makes that a disguise). The full character builder (#18) comes later and is mostly UI over the same data.
 
-## Worlds
+## Maps
 
-The real Vrigstad, built from OpenStreetMap, is the heart of the game and always the default. Other worlds are options next to it, mainly in Sandbox:
+The game is a set of generic systems (driving, police, NPCs, modes) that run on a **map**. Vrigstad is the first map and always the default, but the systems don't know they're in Vrigstad. A map has two layers:
 
-- **Seeded, not truly random.** A generated world comes from a seed you can share, test against, and send to other players instead of the whole world.
-- **One seam.** Terrain, roads, buildings, NPCs and police read one world data shape. Anything that produces it (the OSM file, a test fixture, a generator) can stand in.
-- **In order:** a generated Småland village the size of Vrigstad, then Småland that goes on past the map edge in chunks, and "play your own village": any place in Sweden, built from OSM the way Vrigstad is.
+- **Geometry:** terrain, roads, buildings and water, in one world data shape. For Vrigstad it comes from OpenStreetMap through the data pipeline.
+- **An authored layer:** what makes a place itself. Named anchors (spawn, safehouses, the kiosk, landmarks; #74), the people who live there and what they say (#37), its quests (#4), its local flavour and easter eggs (#115).
+
+Systems read anchors ("a safehouse", "the spawn point"), never coordinates, so the same game works on any map.
+
+Other maps sit next to Vrigstad, mainly in Sandbox:
+
+- **Generated maps:** a Småland village made from a seed, then Småland that goes on past the map edge in chunks. The authored layer is generated too.
+- **Your own village:** any place in Sweden, built from OSM the way Vrigstad is, with a thin authored layer (anchors guessed from the data) that people can add to.
+- **Seeded, not truly random.** A generated map comes from a seed you can share, test against, and send to other players instead of the whole map.
 - **Everything can be procedural**, through its own random stream (#73): appearance, names, routines, interiors, errands. Hand-made content stays the default where we have it.
+
+A map is content (where things are, who's there); a mod changes rules (what things do). A map can carry its own quests and characters without being a mod.
 
 ## Experiments
 
