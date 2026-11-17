@@ -471,12 +471,13 @@ function crash(c, o, impact) {
   c.hitAt = clockS; if (o) o.hitAt = clockS;
   let said = false;   // one line per crash: wrecked, then smoke, then the crash itself
   for (const k of o ? [c, o] : [c]) { const smoke = smokeLevel(k.dmg); if (damageCar(k, d)) {
-    if (k === pcar) { toast(pickLine(WRECK_LINES) + ' The car is wrecked. Get out and find another.', 4); said = true; }
+    if (k === pcar) { const cat = catAboard(); toast((cat ? '”Ut, ' + cat.name + '! Den här bilen ä slut.”\n”Mjäu.”' : pickLine(WRECK_LINES)) + ' The car is wrecked. Get out and find another.', 4); said = true; }
     else if (k.mode === 'police') toast('The police car is wrecked.', 3); }
     else if (k === pcar && smokeLevel(k.dmg) > smoke) { toast(SMOKE_LINES[smokeLevel(k.dmg)], 3); said = true; }
     crackGlass(k); }
   if (c === pcar || o === pcar) { const n = driverHurt(impact); hurtPlayer(n); shake(d);
-    if (n > 0 && !said && clockS - crashLineAt > CRASH_LINE_S) { crashLineAt = clockS; toast(pickLine(CRASH_LINES), 2.5); } }
+    const cat = catAboard();   // with your cat along, any real crash is about the cat; without, only one that hurts you
+    if ((n > 0 || cat) && !said && clockS - crashLineAt > CRASH_LINE_S) { crashLineAt = clockS; toast(cat ? '”Förlåt, ' + cat.name + '! Ä du hel?”\n”Fräs!”' : pickLine(CRASH_LINES), 2.5); } }
 }
 // what you say about a crash (#213 moves these into a speech bubble over you); picked from their own random stream, so they don't shift the world's rolls
 const lineRnd = makeRnd(213), pickLine = a => a[Math.floor(lineRnd() * a.length)];
@@ -485,6 +486,13 @@ const CRASH_LINES = ['”AJ! Dä där kändes i nacken.”', '”Hoppsan. Dä d�
 const WRECK_LINES = ['”Nä, nu ä den kaputt.”', '”Dä va dä, den bilen.”', '”Den rullar inte mer, den.”'];
 const SMOKE_LINES = [null, '”Hörru, dä ryker ur motorn!”', '”Svart rök… dä ä inte bra, dä.”'];   // by smokeLevel
 let crashLineAt = -9;
+// your cat riding in your car: then the lines are about it (you first, then the cat, each on their own line)
+const catAboard = () => colony.owned && colony.owned.ride === pcar ? colony.owned : null;
+const CAT_FAST_MS = 25, CAT_CALM_MS = 20;      // above ~90 km/h with your cat along you tell it to hold on; it can come again once you've been below ~72 km/h
+let catFastSaid = false;
+function catRideLines() { const cat = inCar && catAboard(), v = inCar ? Math.abs(pcar.v) : 0;
+  if (cat && v > CAT_FAST_MS && !catFastSaid) { catFastSaid = true; toast('”Håll i dä, ' + cat.name + '!”\n”MJAAAU!”', 2.5); }
+  else if (v < CAT_CALM_MS) catFastSaid = false; }
 
 // camera shake on a crash: a jolt that dies away, bigger for a harder hit; none with reduced motion
 const SHAKE_S = 0.45, SHAKE_MIN_M = 0.08, SHAKE_MAX_M = 0.5, SHAKE_PER_DMG_M = 1 / 150;   // s it lasts; camera offset (m) at the smallest and largest hit, and per point of car damage
@@ -931,7 +939,7 @@ function frame(now) {
   drawHearts(dt);
   hud.update(dt);
   if (!hud.toasting && laterLine && bigT <= 0) { toast(laterLine, 3); laterLine = null; }
-  signT -= dt; if (signT <= 0) { signT = 0.25; updateSign(T);
+  signT -= dt; if (signT <= 0) { signT = 0.25; updateSign(T); catRideLines();
     const pr = $('prompt'), pl = started && !inside ? nearPlace() : null, kt = started ? nearCat() : null, c = started && !inCar && !inside ? nearestCar() : null;
     $('hide').hidden = !inside;
     if (menuStay && !menuStay()) closeMenu();
