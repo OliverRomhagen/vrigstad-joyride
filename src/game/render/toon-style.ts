@@ -1,16 +1,22 @@
 import * as THREE from 'three';
 import { OutlineEffect } from 'three/addons/effects/OutlineEffect.js';
 
-// Light bands by how squarely a surface faces a light (the dot of its normal and the light direction, -1..1).
-// Below the first band a surface is unlit. Each band's light is about Lambert's average over its range,
-// so the toon world comes out about as bright as the default one.
-export const TOON_BANDS = [
-  { fromDot: 0, light: 0.3 },
-  { fromDot: 0.4, light: 0.85 },
-] as const;
-const GRADIENT_TEXELS = 16;
+// The look follows the "Kraftig" (bold) cel shading of the art direction lab (v20).
+// Light per quarter of MeshToonMaterial's ramp, which it samples at `dot * 0.5 + 0.5` (dot of normal and light
+// direction): facing away, turning away, turning towards and facing the light. 0-255.
+export const TOON_LEVELS = [9, 45, 132, 255] as const;
+// Toon bands only shape direct light; the hemisphere fill is smooth and washes them out, so it gives way to the sun.
+export const TOON_SUN_SCALE = 1.22;
+export const TOON_FILL_SCALE = 0.52;
 const OUTLINE_THICKNESS = 0.0045; // clip-space units: OutlineEffect scales by depth, so outlines keep their width on screen
 const OUTLINE_RGB = [0.06, 0.05, 0.04]; // linear RGB, as OutlineEffect takes it
+// Ink lines along the hard creases of inked objects (cars): edges where faces meet at more than this angle
+const INK_CREASE_DEG = 34;
+const INK_COLOR = 0x10151c;
+const INK_OPACITY = 0.67;
+const INK_INFLATE = 1.002; // lines sit just outside the surface, so they don't z-fight with it
+/** Set on an object's userData to give every opaque mesh under it ink lines. */
+export const INK_FLAG = 'toonInk';
 
 type LitMaterial = THREE.MeshLambertMaterial | THREE.MeshPhongMaterial | THREE.MeshStandardMaterial;
 type MeshMaterial = THREE.Material | THREE.Material[];
@@ -21,18 +27,12 @@ const isLit = (material: THREE.Material): material is LitMaterial =>
   material instanceof THREE.MeshLambertMaterial ||
   material instanceof THREE.MeshPhongMaterial ||
   material instanceof THREE.MeshStandardMaterial;
+const isOpaque = (material: MeshMaterial) =>
+  Array.isArray(material) ? material.every((m) => !m.transparent) : !material.transparent;
 
-/** The 1-pixel-high light ramp MeshToonMaterial samples at `dot * 0.5 + 0.5`. */
+/** The light ramp MeshToonMaterial samples, one texel per level. */
 export function toonGradient(): THREE.DataTexture {
-  const data = new Uint8Array(GRADIENT_TEXELS * 4);
-  for (let i = 0; i < GRADIENT_TEXELS; i++) {
-    const dot = ((i + 0.5) / GRADIENT_TEXELS) * 2 - 1;
-    let light = 0;
-    for (const band of TOON_BANDS) if (dot >= band.fromDot) light = band.light;
-    data.fill(Math.round(light * 255), i * 4, i * 4 + 3);
-    data[i * 4 + 3] = 255;
-  }
-  const texture = new THREE.DataTexture(data, GRADIENT_TEXELS, 1);
+  const texture = new THREE.DataTexture(Uint8Array.from(TOON_LEVELS), TOON_LEVELS.length, 1, THREE.RedFormat);
   texture.minFilter = THREE.NearestFilter;
   texture.magFilter = THREE.NearestFilter;
   texture.needsUpdate = true;
@@ -41,9 +41,10 @@ export function toonGradient(): THREE.DataTexture {
 
 /**
  * Draws the scene cel-shaded (#206). For the length of a frame it swaps every lit material for a MeshToonMaterial
- * copy and then puts the originals back, so game code keeps owning, animating and disposing its own materials.
- * What a material is made of (maps, vertex colours, sides) is copied once; what the game animates (colour,
- * emissive, opacity) is copied every frame.
+ * copy, shifts light from the fill to the sun, and then puts everything back, so game code keeps owning, animating
+ * and disposing its own materials and lights. What a material is made of (maps, vertex colours, sides) is copied
+ * once; what the game animates (colour, emissive, opacity) is copied every frame.
+ * Ink lines are the one lasting change: meshes under an object flagged with INK_FLAG get a line child, once.
  */
 export class ToonStyle {
   private readonly gradient = toonGradient();
@@ -52,9 +53,37 @@ export class ToonStyle {
   private readonly instancedToons = new WeakMap<THREE.Material, THREE.MeshToonMaterial>();
   private readonly toonArrays = new WeakMap<THREE.Material[], THREE.Material[]>();
   private readonly instancedToonArrays = new WeakMap<THREE.Material[], THREE.Material[]>();
+  private readonly inkGeometries = new WeakMap<THREE.BufferGeometry, THREE.EdgesGeometry>();
+  private readonly inked = new WeakSet<THREE.Mesh>();
+  private readonly inkMaterial = new THREE.LineBasicMaterial({
+    color: INK_COLOR,
+    transparent: true,
+    opacity: INK_OPACITY,
+    depthWrite: false,
+  });
   private readonly swapped: THREE.Mesh[] = [];
   private readonly originals: MeshMaterial[] = [];
+  private readonly lights: THREE.Light[] = [];
+  private readonly intensities: number[] = [];
+  private readonly addInk = (object: THREE.Object3D) => {
+    if (!(object instanceof THREE.Mesh) || this.inked.has(object)) return;
+    this.inked.add(object);
+    if (!isOpaque(object.material)) return; // no lines across glass
+    let edges = this.inkGeometries.get(object.geometry);
+    if (!edges) {
+      edges = new THREE.EdgesGeometry(object.geometry, INK_CREASE_DEG);
+      this.inkGeometries.set(object.geometry, edges);
+    }
+    const lines = new THREE.LineSegments(edges, this.inkMaterial);
+    lines.scale.setScalar(INK_INFLATE);
+    lines.renderOrder = 10;
+    lines.raycast = () => {};
+    object.add(lines);
+  };
   private readonly swapIn = (object: THREE.Object3D) => {
+    if (object.userData[INK_FLAG]) object.traverse(this.addInk);
+    if (object instanceof THREE.HemisphereLight) this.scaleLight(object, TOON_FILL_SCALE);
+    else if (object instanceof THREE.DirectionalLight) this.scaleLight(object, TOON_SUN_SCALE);
     if (!(object instanceof THREE.Mesh)) return;
     const material: MeshMaterial = object.material;
     const toon = this.toonFor(material, object instanceof THREE.InstancedMesh);
@@ -79,9 +108,18 @@ export class ToonStyle {
       (this.outline ?? this.renderer).render(scene, camera);
     } finally {
       for (let i = 0; i < this.swapped.length; i++) this.swapped[i].material = this.originals[i];
+      for (let i = 0; i < this.lights.length; i++) this.lights[i].intensity = this.intensities[i];
       this.swapped.length = 0;
       this.originals.length = 0;
+      this.lights.length = 0;
+      this.intensities.length = 0;
     }
+  }
+
+  private scaleLight(light: THREE.Light, scale: number) {
+    this.lights.push(light);
+    this.intensities.push(light.intensity);
+    light.intensity *= scale;
   }
 
   private toonFor(material: MeshMaterial, instanced: boolean): MeshMaterial {

@@ -3,7 +3,7 @@
 import * as THREE from 'three';
 import { pickVariant, vehicleDefinition } from './render/vehicle-registry';
 import { VehicleVisuals } from './render/vehicle-visuals';
-import { createToonStyle } from './render/toon-style';
+import { INK_FLAG, createToonStyle } from './render/toon-style';
 import D from '../../data/vrigstad.json';
 import { BUILDING_CELL_M as BC, BuildingIndex } from '../world/buildings';
 import { ROAD_WIDTH_M as ROAD_W } from '../world/data';
@@ -347,6 +347,7 @@ function addCar(type, x, z, h, mode, assetId = pickVariant(type, modelRnd())) {
   fallback.castShadow = true; if (assetId) mesh.add(fallback); blob(mesh, 2.8, 5.8);
   if (type === 'polis') { const bar = new THREE.Mesh(barGeo, barMat); bar.position.set(0, 1.62, 0.2); fallback.add(bar); }
   const c = { type, T, mesh, x, z, h, vh: h, v: 0, slip: 0, drift: 0, charge: 0, yr: 0, spin: 0, loose: 0, flickDir: 0, flickT: 9, boost: 0, mode, wet: false, owned: false, blocked: 0, ghost: 0, stuck: 0, rev: 0, revSteer: 1 };
+  mesh.userData[INK_FLAG] = true;   // the toon style inks the cars' creases, like the art direction lab
   scene.add(mesh); cars.push(c); placeCar(c); if (assetId) { vehicleVisuals.attach(c, assetId, fallback, color); } return c;
 }
 function carName(c) { return vehicleVisuals.definition(c)?.name || c.T.name; }

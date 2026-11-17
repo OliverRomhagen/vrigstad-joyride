@@ -1,6 +1,13 @@
 import { expect, test, vi } from 'vitest';
 import * as THREE from 'three';
-import { TOON_BANDS, ToonStyle, toonGradient } from '../../../../src/game/render/toon-style';
+import {
+  INK_FLAG,
+  TOON_FILL_SCALE,
+  TOON_LEVELS,
+  TOON_SUN_SCALE,
+  ToonStyle,
+  toonGradient,
+} from '../../../../src/game/render/toon-style';
 
 const camera = new THREE.PerspectiveCamera();
 // Records each mesh's material as the renderer sees it, which is only during render().
@@ -11,12 +18,43 @@ function recordingRenderer(scene: THREE.Scene) {
 }
 const box = new THREE.BoxGeometry();
 
-test('the gradient is unlit facing away, then one texel per band', () => {
-  const texels = toonGradient().image.data as Uint8Array;
-  const lightAt = (dot: number) => texels[Math.floor(((dot + 1) / 2) * 16) * 4] / 255;
-  expect(lightAt(-0.5)).toBe(0);
-  expect(lightAt(0.2)).toBeCloseTo(TOON_BANDS[0].light, 2);
-  expect(lightAt(0.9)).toBeCloseTo(TOON_BANDS[1].light, 2);
+test('the gradient has one nearest-filtered texel per light level', () => {
+  const gradient = toonGradient();
+  expect(Array.from(gradient.image.data as Uint8Array)).toEqual([...TOON_LEVELS]);
+  expect(gradient.magFilter).toBe(THREE.NearestFilter);
+});
+
+test('light shifts from the fill to the sun while drawing, and back after', () => {
+  const scene = new THREE.Scene(),
+    fill = new THREE.HemisphereLight(0xffffff, 0x888888, 2),
+    sun = new THREE.DirectionalLight(0xffffff, 3);
+  scene.add(fill, sun);
+  let during: number[] = [];
+  new ToonStyle({ render: () => { during = [fill.intensity, sun.intensity]; } }).render(scene, camera);
+  expect(during[0]).toBeCloseTo(2 * TOON_FILL_SCALE);
+  expect(during[1]).toBeCloseTo(3 * TOON_SUN_SCALE);
+  expect([fill.intensity, sun.intensity]).toEqual([2, 3]);
+});
+
+test('inked objects get crease lines on opaque meshes, once, sharing edges per geometry', () => {
+  const scene = new THREE.Scene(),
+    car = new THREE.Group(),
+    body = new THREE.Mesh(box, new THREE.MeshStandardMaterial()),
+    door = new THREE.Mesh(box, new THREE.MeshStandardMaterial()),
+    glass = new THREE.Mesh(box, new THREE.MeshStandardMaterial({ transparent: true, opacity: 0.3 })),
+    house = new THREE.Mesh(box, new THREE.MeshLambertMaterial());
+  car.userData[INK_FLAG] = true;
+  car.add(body, door, glass);
+  scene.add(car, house);
+  const style = new ToonStyle({ render: () => {} });
+  style.render(scene, camera);
+  style.render(scene, camera);
+  const ink = (mesh: THREE.Mesh) => mesh.children.filter((o) => o instanceof THREE.LineSegments) as THREE.LineSegments[];
+  expect(ink(body)).toHaveLength(1);
+  expect(ink(door)[0].geometry).toBe(ink(body)[0].geometry);
+  expect(ink(body)[0].geometry).toBeInstanceOf(THREE.EdgesGeometry);
+  expect(ink(glass)).toHaveLength(0);
+  expect(ink(house)).toHaveLength(0);
 });
 
 test('lit materials draw as toon copies and are put back after the frame', () => {
