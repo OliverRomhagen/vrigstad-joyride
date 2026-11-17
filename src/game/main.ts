@@ -565,7 +565,18 @@ const colony = new CatColony({ scene, buildings, inWater, groundAt, half: HALF, 
   useTreat() { if (treats <= 0) return false; treats--; drawTreats(); return true; } });
 const { cats } = colony, updateCats = colony.update.bind(colony), catFirst = colony.catFirst.bind(colony), nearCat = colony.nearest.bind(colony);
 // a good pet that makes a cat ready to be adopted asks whether it comes home with you
-function petCat(k) { if (colony.pet(k)) openMenu('adopt', '”Ska du följa mä hem, kisse?”', [['adopt', 'Ja, adoptera'], ['no', 'Nä, inte nu']], c => c === 'adopt' ? colony.adopt(k) : colony.decline(k), k); }
+function petCat(k) { if (colony.pet(k)) openMenu('adopt', '”Ska du följa mä hem, kisse?”', [['adopt', 'Ja, adoptera'], ['no', 'Nä, inte nu']], c => { if (c === 'adopt') colony.adopt(k); else colony.decline(k); drawPets(); }, k); }
+// ---------- your pets: P (or the Pets button) calls them, sends them home or sets them free ----------
+// One entry per pet you own; only the cat so far. Another kind of pet adds its own entry here, and the menu then lists them first.
+function myPets() { return colony.owned ? [{ name: 'Kisse', home: colony.home, call: () => colony.call(inCar ? pcar : player), sendHome: () => colony.sendHome(), free: () => colony.setFree() }] : []; }
+function openPets() { const ps = myPets(); if (!ps.length) return; if (ps.length === 1) { openPet(ps[0]); return; }
+  openMenu('pets', '”Dina djur”', [...ps.map((p, i) => ['p' + i, p.name + (p.home ? ' (hemma)' : '')]), ['no', 'Stäng']], k => { if (k !== 'no') openPet(ps[+k.slice(1)]); }); }
+function openPet(p) {
+  openMenu('pets', '”' + p.name + (p.home ? ' ä hemma.”' : '”'), [p.home ? ['call', 'Ropa hit'] : ['home', 'Skicka hem'], ['free', 'Släpp fri'], ['no', 'Stäng']], k => {
+    if (k === 'call') p.call(); else if (k === 'home') p.sendHome();
+    else if (k === 'free') openMenu('pets', '”Ska du släppa ' + p.name + ' fri? Dä går inte å ångra.”', [['yes', 'Ja, släpp fri'], ['no', 'Nä']], c => { if (c === 'yes') { p.free(); drawPets(); } }); }); }
+function drawPets() { $('pets').hidden = !colony.owned; }
+$('pets').addEventListener('click', () => { if (menuKind === 'pets') closeMenu(); else if (kmenu.hidden) openPets(); canvas.focus(); });
 function buyTreats() {
   if (treats >= TREAT_MAX) { toast('”Nämen, du har ju fickera fulla redan!”', 2.5); return; }
   treats = Math.min(TREAT_MAX, treats + TREAT_BAG); drawTreats(); toast('”En påse kattgodis, varsågo. Kattera ä tôcka i dä.”', 4);
@@ -626,9 +637,10 @@ let menuKind = null, menuPick = null, menuCat = null;           // which menu is
 // items are [key, label]; the 'no' item is last and gets Esc
 function openMenu(kind, title, items, pick, cat = null) {
   kmenu.innerHTML = '<p>' + title + '</p>' + items.map(([k, label], i) => '<button type="button" data-k="' + k + '"><kbd>' + (k === 'no' ? 'Esc' : i + 1) + '</kbd>' + label + '</button>').join('');
-  menuKind = kind; menuPick = pick; menuCat = cat; kmenu.hidden = false; relock = locked(); if (relock) document.exitPointerLock(); }
+  menuKind = kind; menuPick = pick; menuCat = cat; if (kmenu.hidden) { relock = locked(); if (relock) document.exitPointerLock(); } kmenu.hidden = false; }
 function closeMenu() { kmenu.hidden = true; menuKind = menuPick = menuCat = null; if (relock) { relock = false; lockMouse(); } }
-function menuChoose(k) { const pick = menuPick; closeMenu(); if (pick) pick(k); }
+// a choice can open the next menu (a pet's "are you sure?"): then the menu stays up, and the cursor stays free
+function menuChoose(k) { const pick = menuPick; menuPick = null; if (pick) pick(k); if (!menuPick) closeMenu(); }
 const openKiosk = () => openMenu('kiosk', '”Va ska dä va?”', [['triss', 'Trisslott'], ['treats', 'Kattgodis (3 st)'], ['no', 'Nä tack']], k => { if (k === 'triss') scratch(); else if (k === 'treats') buyTreats(); });
 kmenu.addEventListener('click', e => { const b = e.target.closest('button'); if (b) { menuChoose(b.dataset.k); canvas.focus(); } });
 function nearPlace() { if (inCar) return null; for (const p of places) if (Math.hypot(p.x - player.x, p.z - player.z) < 2.2) return p; return null; }
@@ -666,6 +678,7 @@ const KEYMAP = { KeyW: 'up', ArrowUp: 'up', KeyS: 'down', ArrowDown: 'down', Key
 addEventListener('keydown', e => { if (!started) return; const k = KEYMAP[e.code];
   if (!kmenu.hidden) { const n = /^(?:Digit|Numpad)([1-9])$/.exec(e.code), b = n && kmenu.querySelectorAll('button')[+n[1] - 1];
     if (e.code === 'Escape' || b && b.dataset.k !== 'no') { menuChoose(e.code === 'Escape' ? 'no' : b.dataset.k); return; } }
+  if (e.code === 'KeyP' && !e.repeat) { if (menuKind === 'pets') closeMenu(); else if (kmenu.hidden) openPets(); return; }
   if (kmenu.contains(e.target)) return;                       // Enter / Space on a focused menu button: let the button's own click handle it
   if (k) { keys[k] = true; e.preventDefault(); if (k === 'brake' && !e.repeat && jumpOk()) jumpQ = true; } else if ((e.code === 'KeyE' || e.code === 'KeyF' || e.code === 'Enter') && !e.repeat) action(); else if (e.code === 'KeyR') respawn(); });
 addEventListener('keyup', e => { const k = KEYMAP[e.code]; if (k) keys[k] = false; });

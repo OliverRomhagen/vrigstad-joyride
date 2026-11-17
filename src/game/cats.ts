@@ -76,6 +76,8 @@ export class CatColony {
   readonly cats: Cat[] = [];
   /** the player's own cat, if they adopted one */
   owned: Cat | null = null;
+  /** the owned cat was sent home: it is out of the world until it is called */
+  home = false;
   private readonly g: CatDeps;
   private readonly max: number;   // count around the player
   private readonly rnd = makeRnd(9094);
@@ -127,6 +129,25 @@ export class CatColony {
   /** Said no to adopting it: it takes as many good pets again before it asks next time. */
   decline(k: Cat) { k.pets = 0; }
 
+  /** Your cat goes home: out of the world, off any car, until it is called. */
+  sendHome() { const k = this.owned; if (!k || this.home) return;
+    this.drop(k); this.cats.splice(this.cats.indexOf(k), 1); this.home = true; this.g.toast('”Gå hem nu, kisse. Vi ses sen!”', 2.5); }
+
+  /** Your cat comes running from out of sight, to T (the player, or their car, which it then gets into). */
+  call(T: Point) { const k = this.owned, g = this.g; if (!k || !this.home) return;
+    for (let i = 0; i < 6; i++) { const a = this.rnd() * Math.PI * 2, d = i < 5 ? 20 : 2; k.x = T.x + Math.sin(a) * d; k.z = T.z + Math.cos(a) * d; this.collide(k, 0.25); if (!g.inWater(k.x, k.z)) break; }
+    k.state = 'sit'; k.t = 1; k.mesh.position.set(k.x, g.groundAt(k.x, k.z), k.z); g.scene.add(k.mesh); this.cats.push(k); this.home = false;
+    g.toast('”Kiss kiss kiss! Kom hit, kisse!”', 2.5); }
+
+  /** Your cat isn't yours any more: it gets off any car and lives as a stray again (or stays wherever home was). */
+  setFree() { const k = this.owned; if (!k) return;
+    k.owned = false; k.pets = 0; this.owned = null;
+    if (this.home) this.home = false;
+    else if (k.ride) this.hopOff(k);
+    else if (k.hop?.onto) { k.hop.onto.cat = null; k.hop.onto = null; k.hop.tx = k.x; k.hop.tz = k.z; }
+    else if (k.state === 'follow') { k.state = 'sit'; k.t = 2; }
+    this.g.toast('”Hej då, kisse. Sköt om dä nu!”', 3); }
+
   private pick<T>(a: T[]) { return a[Math.floor(this.rnd() * a.length)]; }
 
   private geo(c: string[]) {
@@ -154,8 +175,9 @@ export class CatColony {
     }
   }
 
-  // a cat leaving the world: free its EPA
-  private drop(k: Cat) { if (k.ride) k.ride.cat = null; if (k.hop?.onto) k.hop.onto.cat = null; if (k.epa?.cat === k) k.epa.cat = null; k.mesh.parent?.remove(k.mesh); }
+  // a cat leaving the world: free its car, and take it out of the scene
+  private drop(k: Cat) { if (k.ride) k.ride.cat = null; if (k.hop?.onto) k.hop.onto.cat = null; if (k.epa?.cat === k) k.epa.cat = null;
+    k.ride = k.hop = k.epa = null; k.mesh.parent?.remove(k.mesh); k.mesh.visible = true; }
 
   // a still EPA with an empty flak, close enough to go for; trimmade EPAs (not in the game yet) won't take cats
   private freeEpa(k: Cat) { for (const c of this.g.cars) if (c.type === 'epa' && !c.cat && !c.trimmad && Math.abs(c.v) < 0.3 && Math.hypot(c.x - k.x, c.z - k.z) < CAT_EPA_M) return c; return null; }

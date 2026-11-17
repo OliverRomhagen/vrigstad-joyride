@@ -143,3 +143,49 @@ describe('your cat rides along', () => {
     expect(cat.ride).toBeNull();
   });
 });
+
+describe('sending your cat home, calling it and setting it free', () => {
+  const run = (c: CatColony, p: { x: number; z: number }, s: number) => { for (let i = 0; i < s * 30; i++) c.update(p, 1 / 30); };
+
+  it('goes home out of the world, even from a car, and comes back running when called', () => {
+    const { c, cat, player, drive } = colony();
+    const car: CatCar = { type: 'volvo', x: 2, z: 0, h: 0, v: 0, mesh: new THREE.Object3D() };
+    c.adopt(cat); drive.inCar = true; drive.pcar = car;
+    run(c, player, 3);
+    expect(cat.ride).toBe(car);
+    c.sendHome();
+    expect(c.home).toBe(true);
+    expect(c.cats).not.toContain(cat);
+    expect(car.cat).toBeNull();
+    expect(cat.mesh.parent).toBeNull();
+    drive.inCar = false; drive.pcar = null;
+    c.call(player);
+    expect(c.home).toBe(false);
+    expect(c.cats).toContain(cat);
+    expect(cat.mesh.visible).toBe(true);
+    expect(Math.hypot(cat.x - player.x, cat.z - player.z)).toBeGreaterThan(10);   // out of sight at first
+    run(c, player, 15);
+    expect(Math.hypot(cat.x - player.x, cat.z - player.z)).toBeLessThan(3);
+  });
+
+  it('set free, it is a stray again: it stops following and can be adopted anew', () => {
+    const { c, cat, player } = colony();
+    c.adopt(cat);
+    c.setFree();
+    expect(c.owned).toBeNull();
+    expect(cat.owned).toBe(false);
+    player.x = 30;
+    run(c, player, 10);
+    expect(Math.hypot(cat.x - player.x, cat.z - player.z)).toBeGreaterThan(20);
+    player.x = 0; cat.x = 1; cat.z = 0;
+    petUntilReady(c, cat);
+  });
+
+  it('set free while at home, it is gone for good', () => {
+    const { c, cat } = colony();
+    c.adopt(cat); c.sendHome(); c.setFree();
+    expect(c.home).toBe(false);
+    expect(c.owned).toBeNull();
+    expect(c.cats).not.toContain(cat);
+  });
+});
