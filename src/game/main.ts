@@ -593,7 +593,8 @@ const calm = matchMedia('(prefers-reduced-motion: reduce)').matches;
 // With its 2-unit stroke the heart spans y 3 to 22 of its 24-unit box, so the fill line is measured on that.
 const heartMats = [0, 1, 2, 3].map(n => {
   const cv = document.createElement('canvas'); cv.width = cv.height = 120; const g = cv.getContext('2d'), p = new Path2D(HEART_PATH);
-  g.setTransform(4, 0, 0, 4, 12, 12);   // 12 px of margin: room for the stroke and its shadow g.lineWidth = 2; g.lineJoin = 'round';
+  g.setTransform(4, 0, 0, 4, 12, 12);   // 12 px of margin: room for the stroke and its shadow
+  g.lineWidth = 2; g.lineJoin = 'round';
   g.shadowColor = 'rgba(0, 0, 0, .55)'; g.shadowBlur = 6; g.strokeStyle = '#f4f1e6'; g.stroke(p); g.shadowColor = 'transparent';
   if (n) { g.save(); g.beginPath(); g.rect(-2, n >= CAT_ADOPT_PETS ? -2 : 3 + 19 * (1 - n / CAT_ADOPT_PETS), 28, 28); g.clip(); g.fillStyle = g.strokeStyle = '#e8506a'; g.fill(p); g.stroke(p); g.restore(); }
   const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace;
