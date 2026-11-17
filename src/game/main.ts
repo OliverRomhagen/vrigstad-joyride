@@ -350,7 +350,7 @@ function addCar(type, x, z, h, mode, assetId = pickVariant(type, modelRnd())) {
   const T = TYPES[type], color = pick(T.cols), fallback = new THREE.Mesh(carGeo(type, color), carMat), mesh = assetId ? new THREE.Group() : fallback;
   fallback.castShadow = true; if (assetId) mesh.add(fallback); blob(mesh, 2.8, 5.8);
   if (type === 'polis') { const bar = new THREE.Mesh(barGeo, barMat); bar.position.set(0, 1.62, 0.2); fallback.add(bar); }
-  const c = { type, T, mesh, x, z, h, vh: h, v: 0, slip: 0, drift: 0, charge: 0, yr: 0, spin: 0, loose: 0, flickDir: 0, flickT: 9, boost: 0, mode, wet: false, owned: false, blocked: 0, ghost: 0, stuck: 0, rev: 0, revSteer: 1, dmg: 0, hitAt: -9 };
+  const c = { type, T, mesh, x, z, h, vh: h, v: 0, slip: 0, drift: 0, charge: 0, yr: 0, spin: 0, loose: 0, flickDir: 0, flickT: 9, boost: 0, mode, wet: false, owned: false, blocked: 0, ghost: 0, stuck: 0, rev: 0, revSteer: 1, dmg: 0, hitAt: -9, body: fallback, model: !!assetId };
   scene.add(mesh); cars.push(c); placeCar(c); if (assetId) { vehicleVisuals.attach(c, assetId, fallback, color); } return c;
 }
 function carName(c) { return vehicleVisuals.definition(c)?.name || c.T.name; }
@@ -525,10 +525,32 @@ function crackGeo(t) {
   g.addGroup(0, front, 0); g.addGroup(front, pos.length / 3 - front, 1);
   return (crackGeoCache[t] = g);
 }
+// a car model (#176) cracks its own glass: each of its glass_ parts, with texture coordinates added, split like crackGeo into the panes
+// that face forwards or backwards (material 0) and the rest (material 1); the models' glass has no texture coordinates of its own
+const MODEL_GLASS_FLAT = 0.94;                 // glass whose normal is closer to straight up than this (about 20°) gets no cracks: a raked windscreen still does
+const modelCrackGeos = new WeakMap(), _ga = new THREE.Vector3(), _gb = new THREE.Vector3(), _gc = new THREE.Vector3();
+function modelCrackGeo(src) {
+  let g = modelCrackGeos.get(src); if (g) return g;
+  const s = src.index ? src.toNonIndexed() : src, P = s.attributes.position, pos = [[], []], uv = [[], []];
+  s.computeBoundingBox(); const { min: m, max: M } = s.boundingBox, w = M.x - m.x, h = M.y - m.y, l = M.z - m.z;
+  for (let i = 0; i < P.count; i += 3) {
+    _ga.fromBufferAttribute(P, i); _gb.fromBufferAttribute(P, i + 1); _gc.fromBufferAttribute(P, i + 2);
+    const n = _gc.sub(_gb).cross(_gb.clone().sub(_ga)).normalize(); if (Math.abs(n.y) > MODEL_GLASS_FLAT) continue;   // the glass's flat top, hidden under the roof
+    const k = Math.abs(n.z) > Math.abs(n.x) ? 0 : 1;   // the models face -z
+    for (let j = 0; j < 3; j++) { _ga.fromBufferAttribute(P, i + j); pos[k].push(_ga.x, _ga.y, _ga.z); uv[k].push(k ? (_ga.z - m.z) / l : (_ga.x - m.x) / w, (_ga.y - m.y) / h); }
+  }
+  g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute([...pos[0], ...pos[1]], 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute([...uv[0], ...uv[1]], 2));
+  g.addGroup(0, pos[0].length / 3, 0); g.addGroup(pos[0].length / 3, pos[1].length / 3, 1);
+  modelCrackGeos.set(src, g); return g;
+}
+// the procedural cracks go on the procedural body, so they hide with it when the model shows; the model, which loads later, gets its own
 function crackGlass(c) {
-  const lv = crackLevel(c.dmg); if (!lv || c.crack === lv) return;
-  if (!c.crackMesh) { c.crackMesh = new THREE.Mesh(crackGeo(c.type), CRACK_MATS[lv]); c.mesh.add(c.crackMesh); }
-  c.crackMesh.material = CRACK_MATS[lv]; c.crack = lv;
+  const lv = crackLevel(c.dmg); if (!lv) return;
+  if (c.crack !== lv) { if (!c.crackMesh) { c.crackMesh = new THREE.Mesh(crackGeo(c.type), CRACK_MATS[lv]); c.body.add(c.crackMesh); }
+    c.crackMesh.material = CRACK_MATS[lv]; if (c.modelCrack) for (const m of c.modelCrack) m.material = CRACK_MATS[lv]; c.crack = lv; }
+  if (c.model && !c.modelCrack && c.mesh.getObjectByName('glass_envelope')) { c.modelCrack = [];   // the model has loaded
+    c.mesh.traverse(o => { if (o.isMesh && o.name.startsWith('glass_')) c.modelCrack.push(o); });
+    c.modelCrack = c.modelCrack.map(gl => { const m = new THREE.Mesh(modelCrackGeo(gl.geometry), CRACK_MATS[lv]); gl.add(m); return m; }); }
 }
 
 // ---------- drift effects: sparks at the rear wheels, a flame while boosting, skid marks (src/game/render/drift-fx.ts) ----------
@@ -661,7 +683,8 @@ const puffs = Array.from({ length: SMOKE_N }, () => { const p = new THREE.Sprite
   p.visible = false; p.age = 0; scene.add(p); return p; });
 let puffI = 0;
 function updateSmoke(dt, T) {
-  for (const c of cars) { const lv = smokeLevel(c.dmg); if (!lv || c.wet || Math.abs(c.x - T.x) > SMOKE_NEAR_M || Math.abs(c.z - T.z) > SMOKE_NEAR_M) continue;
+  for (const c of cars) { if (c.crack && c.model && !c.modelCrack) crackGlass(c);   // its model may have loaded since the crash
+    const lv = smokeLevel(c.dmg); if (!lv || c.wet || Math.abs(c.x - T.x) > SMOKE_NEAR_M || Math.abs(c.z - T.z) > SMOKE_NEAR_M) continue;
     c.smokeT = (c.smokeT || 0) + dt * SMOKE_RATE[lv];
     for (; c.smokeT >= 1; c.smokeT--) { const p = puffs[puffI]; puffI = (puffI + 1) % SMOKE_N;   // a ring: the oldest puff goes first
       const fwd = c.type === 'traktor' ? 1.4 : 1.7, x = c.x + Math.sin(c.h) * fwd + (fxRnd() - 0.5) * 0.5, z = c.z - Math.cos(c.h) * fwd + (fxRnd() - 0.5) * 0.5;
