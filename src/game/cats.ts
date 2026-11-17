@@ -22,7 +22,7 @@ const CAT_SEATS: Record<string, Seat> = { epa: { x: 0, y: FLAK_Y, z: 1.5, ry: Ma
   car: { x: 0.35, y: 0.8, z: 0.55, ry: 0, rx: 0.3, inside: true, hi: '”Mjau.”\n”Hoppa in, kisse. Baksätet ä ditt.”' } };
 const CAT_BOARD_M = 3;                         // your cat hops into your car from this close (m)
 // owning a cat: enough good pets of the same cat and it asks to come home with you; then it follows you on foot
-const CAT_ADOPT_PETS = 3;                      // good pets of one cat before it can be adopted
+export const CAT_ADOPT_PETS = 3;                      // good pets in a row of one cat before it can be adopted; a scratch or a bolt starts over
 const CAT_FOLLOW_M = 2.5, CAT_FIND_M = 60;     // an owned cat walks after you when further than this (m); further than CAT_FIND_M it catches up out of sight
 // [coat, ears and paws, chest and muzzle (optional)]
 const CAT_COLS = [['#d9822b', '#f0e0c8'], ['#1e1e20', '#1e1e20'], ['#7d7f84', '#e8e4dc'], ['#ece9e2', '#ece9e2'], ['#8a6a48', '#3f3226'], ['#1e1e20', '#ece9e2', '#ece9e2']];
@@ -42,7 +42,7 @@ export interface CatCar extends Point { type: string; v: number; h: number; mesh
 interface Hop { x0: number; y0: number; z0: number; onto: CatCar | null; tx: number; tz: number; p: number; seat: Seat }
 export interface Cat extends Point { h: number; want: number; state: 'sit' | 'walk' | 'flee' | 'epa' | 'hop' | 'follow'; t: number; nope: number; phase: number; mesh: THREE.Mesh;
   epa: CatCar | null; hop: Hop | null; ride: CatCar | null;   // the EPA it trots to / its hop / the EPA it rides on
-  pets: number; owned: boolean }                             // good pets so far, towards adopting it; the player's own cat
+  pets: number; owned: boolean }                             // good pets in a row, towards adopting it; the player's own cat
 
 /** What the cats read from the rest of the game. The getters are read when used, so main.ts can declare those later. */
 export interface CatDeps {
@@ -118,7 +118,8 @@ export class CatColony {
     k.want = Math.atan2(player.x - k.x, -(player.z - k.z));
     if (k.owned || r < (treat ? CAT_PET_TREAT_OK : CAT_PET_OK)) { k.state = 'sit'; k.t = 6 + this.rnd() * 6; k.nope = CAT_PET_S; toast(pre + this.pick(k.owned ? CAT_PET_OWN : CAT_PET), 3);
       if (k.owned) return false; k.pets++; return !this.owned && k.pets >= CAT_ADOPT_PETS; }
-    else if (this.rnd() < 0.5) { k.state = 'sit'; k.t = 3 + this.rnd() * 4; k.nope = CAT_SCRATCH_S; toast(pre + this.pick(CAT_SCRATCH), 3.5); }
+    k.pets = 0;   // it has to be good in a row
+    if (this.rnd() < 0.5) { k.state = 'sit'; k.t = 3 + this.rnd() * 4; k.nope = CAT_SCRATCH_S; toast(pre + this.pick(CAT_SCRATCH), 3.5); }
     else { k.state = 'flee'; k.t = 2 + this.rnd(); k.want = Math.atan2(k.x - player.x, -(k.z - player.z)); toast(pre + this.pick(CAT_BOLT), 3); }
     return false;
   }

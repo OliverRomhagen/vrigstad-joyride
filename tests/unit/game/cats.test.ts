@@ -52,6 +52,18 @@ describe('owning a cat', () => {
     expect(cat.pets).toBe(3);
   });
 
+  it('a scratch or a bolt starts the count over', () => {
+    const { c, cat } = colony();
+    let run = 0;
+    for (let i = 0; i < 200; i++) {
+      cat.nope = 0; const before = cat.pets, ready = c.pet(cat);
+      if (cat.pets === before + 1) run++; else { expect(cat.pets).toBe(0); run = 0; }   // good: one more; bad: back to zero
+      expect(ready).toBe(run === 3);
+      if (ready) return;
+    }
+    throw new Error('never ready');
+  });
+
   it('needs three good pets again after a no', () => {
     const { c, cat } = colony();
     petUntilReady(c, cat);

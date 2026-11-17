@@ -17,7 +17,7 @@ import { nodeKey, ROAD_CELL_M as RC, RoadNetwork } from '../world/roads';
 import { LEGACY_LIGHT } from '../world/three-legacy';
 import { treeSpots } from '../world/trees';
 import { Water } from '../world/water';
-import { CatColony } from './cats';
+import { CAT_ADOPT_PETS, CatColony } from './cats';
 
 (function () {
 'use strict';
@@ -565,7 +565,7 @@ const colony = new CatColony({ scene, buildings, inWater, groundAt, half: HALF, 
   useTreat() { if (treats <= 0) return false; treats--; drawTreats(); return true; } });
 const { cats } = colony, updateCats = colony.update.bind(colony), catFirst = colony.catFirst.bind(colony), nearCat = colony.nearest.bind(colony);
 // a good pet that makes a cat ready to be adopted asks whether it comes home with you
-function petCat(k) { if (colony.pet(k)) openMenu('adopt', '”Ska du följa mä hem, kisse?”', [['adopt', 'Ja, adoptera'], ['no', 'Nä, inte nu']], c => { if (c === 'adopt') colony.adopt(k); else colony.decline(k); drawPets(); }, k); }
+function petCat(k) { const ready = colony.pet(k); showHeart(k); if (ready) openMenu('adopt', '”Ska du följa mä hem, kisse?”', [['adopt', 'Ja, adoptera'], ['no', 'Nä, inte nu']], c => { if (c === 'adopt') { colony.adopt(k); showHeart(k); } else colony.decline(k); drawPets(); }, k); }
 // ---------- your pets: P (or the Pets button) calls them, sends them home or sets them free ----------
 // One entry per pet you own; only the cat so far. Another kind of pet adds its own entry here, and the menu then lists them first.
 function myPets() { return colony.owned ? [{ name: 'Kisse', home: colony.home, call: () => colony.call(inCar ? pcar : player), sendHome: () => colony.sendHome(), free: () => colony.setFree() }] : []; }
@@ -576,6 +576,26 @@ function openPet(p) {
     if (k === 'call') p.call(); else if (k === 'home') p.sendHome();
     else if (k === 'free') openMenu('pets', '”Ska du släppa ' + p.name + ' fri? Dä går inte å ångra.”', [['yes', 'Ja, släpp fri'], ['no', 'Nä']], c => { if (c === 'yes') { p.free(); drawPets(); } }); }); }
 function drawPets() { $('pets').hidden = !colony.owned; }
+// ---------- the adopt heart: hovers over a stray once it has had a good pet, a third fuller for each good pet in a row ----------
+const HEART_BROKE_S = 0.8, HEART_ADOPT_S = 2, HEART_M = 35;        // a broken streak shakes the empty heart / an adopted cat shows a full one this long (s) before it goes; hidden further away (m)
+const HEART_PATH = 'M12 21s-7.5-4.6-10-9.2C.3 8.4 2.3 4 6.4 4c2.2 0 3.8 1.3 5.6 3.3C13.8 5.3 15.4 4 17.6 4 21.7 4 23.7 8.4 22 11.8 19.5 16.4 12 21 12 21z';
+// an outline, and a filled copy cut off from the top; the heart spans y 4 to 21 of the 24-unit box, so the cut is measured on that
+function heartSvg(pets) { const f = Math.min(1, pets / CAT_ADOPT_PETS), top = ((4 + 17 * (1 - f)) / 24 * 100).toFixed(1);
+  return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="' + HEART_PATH + '"/></svg><svg class="fill" viewBox="0 0 24 24" aria-hidden="true" style="clip-path: inset(' + top + '% 0 0 0)"><path d="' + HEART_PATH + '"/></svg>'; }
+const hearts = new Map(), _hv = new THREE.Vector3();                 // cat -> { el, t: s until it goes, Infinity while the streak lasts }
+// after a pet: a new or fuller heart pops, a broken streak shakes the empty one away; only while pets count towards adopting
+function showHeart(k) { let h = hearts.get(k); const full = colony.owned === k, pets = full ? CAT_ADOPT_PETS : k.pets;
+  if (!h) { if (!pets || colony.owned && !full) return; h = { el: document.createElement('div'), t: 0 }; h.el.className = 'catheart'; $('stage').appendChild(h.el); hearts.set(k, h); }
+  h.t = full ? HEART_ADOPT_S : pets ? Infinity : HEART_BROKE_S; h.el.innerHTML = heartSvg(pets); h.el.classList.toggle('broke', !pets); }   // new svgs: the pop / shake plays again
+function drawHearts(dt) {
+  if (hearts.size) camera.updateMatrixWorld();   // the camera moved this frame, and render() only updates its matrices later: without this the heart lags a frame
+  for (const [k, h] of hearts) {
+    h.t -= dt;
+    // gone: done showing, despawned or sent home, a no to adopting, or another cat adopted (pets stop counting then)
+    if (h.t <= 0 || !k.mesh.parent || h.t === Infinity && !k.pets || colony.owned && colony.owned !== k) { h.el.remove(); hearts.delete(k); continue; }
+    k.mesh.getWorldPosition(_hv); const far = Math.hypot(_hv.x - camera.position.x, _hv.z - camera.position.z) > HEART_M; _hv.y += 0.75; _hv.project(camera);
+    h.el.hidden = far || _hv.z > 1 || !k.mesh.visible;
+    if (!h.el.hidden) h.el.style.transform = 'translate(' + ((_hv.x + 1) / 2 * canvas.clientWidth).toFixed(1) + 'px, ' + ((1 - _hv.y) / 2 * canvas.clientHeight).toFixed(1) + 'px)'; } }
 $('pets').addEventListener('click', () => { if (menuKind === 'pets') closeMenu(); else if (kmenu.hidden) openPets(); canvas.focus(); });
 function buyTreats() {
   if (treats >= TREAT_MAX) { toast('”Nämen, du har ju fickera fulla redan!”', 2.5); return; }
@@ -866,6 +886,7 @@ function frame(now) {
   dome.position.copy(camera.position);
 
   // HUD
+  drawHearts(dt);
   if (toastT > 0) { toastT -= dt; if (toastT <= 0.3) $('toast').style.opacity = 0; if (toastT <= 0) $('toast').hidden = true; }
   signT -= dt; if (signT <= 0) { signT = 0.25; updateSign(T);
     const pr = $('prompt'), pl = started && !inside ? nearPlace() : null, kt = started ? nearCat() : null, c = started && !inCar && !inside ? nearestCar() : null;
