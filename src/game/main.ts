@@ -339,7 +339,7 @@ function placeCar(c) {
   if (c.slip) c.mesh.rotateZ(c.slip * DRIFT_ROLL);           // lean out of the slide
   vehicleVisuals.sync(c);
 }
-function addCar(type, x, z, h, mode, assetId = DEFAULT_VEHICLES[type]) {
+function addCar(type, x, z, h, mode, assetId = pickVariant(type, modelRnd())) {
   const T = TYPES[type], color = pick(T.cols), fallback = new THREE.Mesh(carGeo(type, color), carMat), mesh = assetId ? new THREE.Group() : fallback;
   fallback.castShadow = true; if (assetId) mesh.add(fallback); blob(mesh, 2.8, 5.8);
   if (type === 'polis') { const bar = new THREE.Mesh(barGeo, barMat); bar.position.set(0, 1.62, 0.2); fallback.add(bar); }
