@@ -117,7 +117,7 @@ describe('your cat rides along', () => {
   }
   const run = (c: CatColony, p: { x: number; z: number }, s: number) => { for (let i = 0; i < s * 30; i++) c.update(p, 1 / 30); };
 
-  for (const [type, y] of [['epa', 0.98], ['traktor', 2.72], ['volvo', 0.8], ['saab', 0.8], ['polis', 0.8]] as const) {
+  for (const [type, y] of [['epa', 0.77], ['traktor', 2.72], ['volvo', 0.8], ['saab', 0.8], ['polis', 0.8]] as const) {
     it(`gets into the ${type} and sits ${y} m up`, () => {
       const { c, cat, car, player } = getIn(type);
       run(c, player, 3);

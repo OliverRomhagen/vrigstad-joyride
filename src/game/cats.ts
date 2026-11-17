@@ -11,7 +11,7 @@ const CAT_WALK = 0.7, CAT_RUN = 6.5, CAT_PET_M = 1.6;               // m/s, m/s,
 const CAT_SCARE_CAR_M = 12, CAT_SCARE_RUN_M = 5;                    // a moving car / sprinting player closer than this sends it running
 // riding on an EPA-traktor's flak: a sitting cat near a standing EPA now and then trots over and hops up, and stays on while it drives
 const CAT_EPA_M = 8, CAT_EPA_ON = 0.03, CAT_EPA_OFF = 0.08, CAT_EPA_RIDE_S = 20;   // range (m); chance per second to go for it / to hop off a standing EPA; shortest ride (s)
-const CAT_TROT = 1.4, CAT_HOP_S = 0.5, FLAK_Y = 0.98;                // m/s; seconds per hop; flak floor height in the car's frame (m), where +z points backwards
+const CAT_TROT = 1.4, CAT_HOP_S = 0.5, FLAK_Y = 0.77;                // m/s; seconds per hop; flak floor height in the car's frame (m), where +z points backwards: the Duett model's (#176); a far EPA's simpler fallback flak sits higher
 const _cv = new THREE.Vector3();
 type Seat = { x: number; y: number; z: number; ry: number; rx: number; inside?: boolean; hi: string };
 // where a riding cat sits, in the car's frame (m; +z points backwards), how it is turned (rad; rx > 0 is sitting up), and what you say when
