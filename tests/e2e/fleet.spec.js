@@ -1,0 +1,48 @@
+import {test,expect} from '@playwright/test';
+import {watchErrors} from './render-helpers.js';
+// Every model shares the loader, materials and controller, and the unit tests decode each GLB, so one is driven end to end.
+test('volvo240 loads, renders, can be entered and drives',async({page},info)=>{const id='volvo240';
+ test.setTimeout(180_000); // software WebGL advances capped simulation time slowly under CI load
+ const errors=watchErrors(page);await page.setViewportSize({width:640,height:360});
+ await page.goto('/index.html?vehicle='+id);await page.locator('#go').click();
+ const state=()=>page.evaluate(()=>window.__joyride.state());
+ await expect.poll(async()=>(await state()).vehicle?.status).toBe('loaded');
+ await expect.poll(async()=>(await state()).vehicle.detailed).toBe(true);
+ expect((await state()).vehicle.wheels).toHaveLength(4);
+ await page.keyboard.down('KeyD');
+ // Stop and enter in the same browser task: another frame can change the nearest car.
+ await expect.poll(()=>page.evaluate(()=>{
+  if(!window.__joyride.state().nearSelectedVehicle)return false;
+  const canvas=document.querySelector('#gl');
+  for(const [type,code] of [['keyup','KeyD'],['keydown','KeyE'],['keyup','KeyE']])
+   canvas.dispatchEvent(new KeyboardEvent(type,{code,bubbles:true}));
+  return true;
+ }),{intervals:[50],timeout:60_000}).toBe(true);
+ await page.keyboard.up('KeyD');await expect.poll(async()=>(await state()).activeVehicle?.id).toBe(id);
+ await expect.poll(async()=>(await state()).activeVehicle?.detailed).toBe(true);
+ await expect(page.locator('#toast')).toContainText('Volvo 240');
+ const before=await state();await page.keyboard.down('KeyW');await page.keyboard.down('KeyD');
+ await expect.poll(async()=>(await state()).activeVehicle.wheels.slice(0,2).some(w=>Math.abs(w.steer)>0.001)).toBe(true);
+ await expect.poll(async()=>{const s=await state();return Math.hypot(s.x-before.x,s.z-before.z);}).toBeGreaterThan(2);
+ await page.keyboard.up('KeyW');await page.keyboard.up('KeyD');
+ const after=await state();expect(after.activeVehicle.wheels.some(w=>Math.abs(w.spin)>0.1)).toBe(true);
+ expect(after.activeVehicle.wheels.slice(2).every(w=>w.steer===0)).toBe(true);
+ expect(await page.evaluate(()=>document.querySelector('#gl').getContext('webgl2').getError())).toBe(0);
+ await page.screenshot({path:info.outputPath(id+'.png')});expect(errors).toEqual([]);
+});
+test('a failed GLB remains an explicitly failed procedural fallback',async({page})=>{
+ await page.route('**/media/vehicles/micra-k11.glb',route=>route.abort());
+ await page.goto('/index.html?vehicle=micra-k11');
+ await expect.poll(()=>page.evaluate(()=>window.__joyride?.state().vehicle?.status)).toBe('failed');
+ expect(await page.evaluate(()=>window.__joyride.state().vehicle)).toMatchObject({fallback:true,detailed:false,wheels:[]});
+});
+test('the default fleet is enabled without URL parameters',async({page})=>{
+ const errors=watchErrors(page);await page.setViewportSize({width:640,height:360});await page.goto('/index.html');
+ await expect.poll(()=>page.evaluate(()=>window.__joyride?.state().vehicle?.detailed)).toBe(true);
+ const s=await page.evaluate(()=>window.__joyride.state());expect(s.vehicle.id).toBe('volvo240');expect(s.traffic.length).toBeGreaterThan(0);
+ const expected={volvo:['volvo240','impala1970'],saab:['saab900','xc70','micra-k11'],epa:['duett-epa']};
+ for(const c of s.traffic)expect(expected[c.type]??[null]).toContain(c.vehicle?.id??null);
+ await expect(page.getByRole('link',{name:'CC BY 4.0'})).toBeVisible();
+ const notice=await page.request.get('/media/vehicles/NOTICE.txt');expect(notice.ok()).toBe(true);expect(await notice.text()).toContain('Vehicle models by Axel Tidehorn');
+ expect(errors).toEqual([]);
+});

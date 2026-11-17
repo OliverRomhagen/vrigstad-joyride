@@ -1,6 +1,8 @@
 // @ts-nocheck
 // Moved as-is from the single-file prototype (#44); it gets types as it is split into modules.
 import * as THREE from 'three';
+import { pickVariant, vehicleDefinition } from './render/vehicle-registry';
+import { VehicleVisuals } from './render/vehicle-visuals';
 import D from '../../data/vrigstad.json';
 import { BUILDING_CELL_M as BC, BuildingIndex } from '../world/buildings';
 import { ROAD_WIDTH_M as ROAD_W } from '../world/data';
@@ -324,6 +326,10 @@ function personParts(shirt, pants, hair, arms) {     // arms: separate meshes th
 
 // ---------- cars ----------
 const cars = [], police = [];
+const vehicleVisuals = new VehicleVisuals(coarse);
+const modelRnd = makeRnd(240);                 // own stream: which model a car wears doesn't shift the world's rolls
+const selectedVehicle = vehicleDefinition(new URLSearchParams(location.search).get('vehicle'));
+let displayCar = null;
 const _f = new THREE.Vector3(), _r = new THREE.Vector3(), _m = new THREE.Matrix4();
 function placeCar(c) {
   const n = normalAt(c.x, c.z);
@@ -331,14 +337,17 @@ function placeCar(c) {
   _m.makeBasis(_r, n, _f.negate()); c.mesh.quaternion.setFromRotationMatrix(_m);
   c.mesh.position.set(c.x, groundAt(c.x, c.z) - (c.wet ? 0.55 : 0), c.z);
   if (c.slip) c.mesh.rotateZ(c.slip * DRIFT_ROLL);           // lean out of the slide
+  vehicleVisuals.sync(c);
 }
-function addCar(type, x, z, h, mode) {
-  const T = TYPES[type], mesh = new THREE.Mesh(carGeo(type, pick(T.cols)), carMat); mesh.castShadow = true; blob(mesh, 2.8, 5.8);
-  if (type === 'polis') { const bar = new THREE.Mesh(barGeo, barMat); bar.position.set(0, 1.62, 0.2); mesh.add(bar); }
+function addCar(type, x, z, h, mode, assetId = pickVariant(type, modelRnd())) {
+  const T = TYPES[type], color = pick(T.cols), fallback = new THREE.Mesh(carGeo(type, color), carMat), mesh = assetId ? new THREE.Group() : fallback;
+  fallback.castShadow = true; if (assetId) mesh.add(fallback); blob(mesh, 2.8, 5.8);
+  if (type === 'polis') { const bar = new THREE.Mesh(barGeo, barMat); bar.position.set(0, 1.62, 0.2); fallback.add(bar); }
   const c = { type, T, mesh, x, z, h, vh: h, v: 0, slip: 0, drift: 0, charge: 0, yr: 0, spin: 0, loose: 0, flickDir: 0, flickT: 9, boost: 0, mode, wet: false, owned: false, blocked: 0, ghost: 0, stuck: 0, rev: 0, revSteer: 1 };
-  scene.add(mesh); cars.push(c); placeCar(c); return c;
+  scene.add(mesh); cars.push(c); placeCar(c); if (assetId) { vehicleVisuals.attach(c, assetId, fallback, color); } return c;
 }
-function removeCar(c) { scene.remove(c.mesh); const i = cars.indexOf(c); if (i >= 0) cars.splice(i, 1); }
+function carName(c) { return vehicleVisuals.definition(c)?.name || c.T.name; }
+function removeCar(c) { vehicleVisuals.dispose(c); scene.remove(c.mesh); const i = cars.indexOf(c); if (i >= 0) cars.splice(i, 1); }
 const civType = () => { const r = rnd(); return r < 0.45 ? 'volvo' : r < 0.75 ? 'saab' : r < 0.9 ? 'epa' : 'traktor'; };
 // parked cars along streets and driveways
 (function () {
@@ -568,7 +577,7 @@ const player = { x: HOME.x, z: HOME.z, y: 0, vy: 0, h: 0, speed: 0, phase: 0, me
 collide(player, 0.6); scene.add(player.mesh);
 let jumpQ = false;   // set by a fresh Space / Jump press on foot, used up by the next frame: a held key (braking, then getting out) never jumps, a tap between frames isn't lost
 const jumpOk = () => !inCar && !inside && bigT <= 0;   // queue only where a jump can start, so a press inside a safehouse or under Gripen! can't fire as it ends
-(function () { const o = { x: player.x + 7, z: player.z + 3 }; collide(o, 2.6); addCar('volvo', o.x, o.z, 0.6, 'parked'); })();
+(function () { const o = { x: player.x + 7, z: player.z + 3 }; collide(o, 2.6); displayCar = addCar(selectedVehicle?.archetype || 'volvo', o.x, o.z, 0.6, 'parked', selectedVehicle?.id ?? 'volvo240'); })();
 let inCar = false, pcar = null, stars = 0, evade = 0, bustT = 0, stolen = 0, ramCool = 0, started = false, bigT = 0;
 let inside = null, hideT = 0, trissT = 0, trissN = 0, trissWon = 0, trissLast = '';
 const peds = [], trissLog = [];
@@ -739,11 +748,11 @@ function action() {
   if (c.mode === 'ai') {
     const p = personParts(pick(['#b5463a', '#3f6b8a', '#5c7a4a', '#7a5a8a']), '#3a3a3a');
     p.position.set(c.x - Math.cos(c.h) * 2.2, 0, c.z - Math.sin(c.h) * 2.2); p.position.y = groundAt(p.position.x, p.position.z); p.ttl = 14; scene.add(p); peds.push(p);
-    toast(pick(['”Hörru! Det där är min bil!”', '”Men va fan gör du?!”', '”Polisen! Han tar min ' + c.T.name + '!”']) + ' The driver calls the police.');
+    toast(pick(['”Hörru! Det där är min bil!”', '”Men va fan gör du?!”', '”Polisen! Han tar ' + (vehicleVisuals.definition(c)?.spokenName || 'min ' + c.T.name) + '!”']) + ' The driver calls the police.');
     addStar(); spawnTraffic(player);
   } else if (!c.owned) {
-    if (police.length || rnd() < 0.35) addStar('A neighbour saw you take the ' + c.T.name + ' and called the police.');
-    else toast(c.type === 'epa' ? 'EPA-traktor: legally limited to 30 km/h. Good luck outrunning anyone.' : 'You took the ' + c.T.name + '. Nobody noticed.');
+    if (police.length || rnd() < 0.35) addStar('A neighbour saw you take the ' + carName(c) + ' and called the police.');
+    else toast(c.type === 'epa' ? 'EPA-traktor: legally limited to 30 km/h. Good luck outrunning anyone.' : 'You took the ' + carName(c) + '. Nobody noticed.');
   }
   if (!c.owned) { c.owned = true; stolen++; $('count').textContent = 'Cars stolen: ' + stolen; }
   c.mode = 'player'; c.vh = c.h; c.slip = c.drift = c.boost = c.loose = 0; pcar = c; inCar = true; player.y = player.vy = 0; player.mesh.visible = false; lookOff = 0; camYaw = c.h;
@@ -806,6 +815,7 @@ function frame(now) {
   }
   updateDriftFx(inCar ? pcar : null);
   const T = inCar ? pcar : player;
+  vehicleVisuals.update(T, dt);
   for (const c of cars) if (c.mode === 'ai') updateTraffic(c, dt, T);
   updateNpcs(T, dt);
   updateCats(T, dt);
@@ -844,10 +854,10 @@ function frame(now) {
     else if (catFirst(kt, pl)) { pr.hidden = false; pr.innerHTML = '<kbd>E</kbd>Pet the cat' + (treats ? ' (offer a treat)' : ''); }
     else if (pl) { pr.hidden = !kmenu.hidden; pr.innerHTML = '<kbd>E</kbd>' + (pl.kind === 'safe' ? 'Go inside the safehouse' : 'Handla i kiosken'); }
     else if (inCar && !coarse) { pr.hidden = Math.abs(pcar.v) > 3; pr.innerHTML = '<kbd>E</kbd>Get out'; }
-    else if (c) { pr.hidden = false; pr.innerHTML = '<kbd>E</kbd>' + (c.owned ? 'Get in the ' : 'Steal the ') + c.T.name; }
+    else if (c) { pr.hidden = false; pr.innerHTML = '<kbd>E</kbd>' + (c.owned ? 'Get in the ' : 'Steal the ') + carName(c); }
     else pr.hidden = true;
     const bl = inCar ? 'Brake' : 'Jump'; if ($('p-brake').textContent !== bl) $('p-brake').textContent = bl;
-    $('speed').hidden = !inCar; if (inCar) { $('kmh').textContent = Math.round(Math.abs(pcar.v) * 3.6); $('carname').textContent = pcar.T.name; } }
+    $('speed').hidden = !inCar; if (inCar) { $('kmh').textContent = Math.round(Math.abs(pcar.v) * 3.6); $('carname').textContent = carName(pcar); } }
   drawMini(T);
   renderer.render(scene, camera);
 }
@@ -857,5 +867,5 @@ $('go').addEventListener('click', e => { started = true; $('intro').hidden = tru
 resize(); requestAnimationFrame(frame);
 
 // ---------- test hook: read-only state for the smoke tests (tests/e2e), so they do not have to read pixels ----------
-window.__joyride = { state: () => { const n = nearestCar(); return { started, x: player.x, z: player.z, y: player.y, yaw: camYaw, inCar, car: pcar ? pcar.type : null, near: n ? n.mode : null, speed: pcar ? pcar.v : 0, drift: pcar ? pcar.drift : 0, boost: pcar ? pcar.boost : 0, charge: pcar ? pcar.charge : 0, loose: pcar ? pcar.loose : 0, flickDir: pcar ? pcar.flickDir : 0, stars, cats: cats.length, treats }; } };
+window.__joyride = { state: () => { const n = nearestCar(); return { started, x: player.x, z: player.z, y: player.y, yaw: camYaw, inCar, car: pcar ? pcar.type : null, near: n ? n.mode : null, speed: pcar ? pcar.v : 0, drift: pcar ? pcar.drift : 0, boost: pcar ? pcar.boost : 0, charge: pcar ? pcar.charge : 0, loose: pcar ? pcar.loose : 0, flickDir: pcar ? pcar.flickDir : 0, stars, cats: cats.length, treats, vehicle: displayCar ? vehicleVisuals.state(displayCar) : null, nearSelectedVehicle: n === displayCar, activeVehicle: pcar ? vehicleVisuals.state(pcar) : null, traffic: cars.filter(c => c.mode === 'ai').map(c => ({ type: c.type, vehicle: vehicleVisuals.state(c) })) }; } };
 })();
