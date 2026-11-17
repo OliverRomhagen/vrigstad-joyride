@@ -2,10 +2,10 @@ import { expect, test, vi } from 'vitest';
 import * as THREE from 'three';
 import {
   FINISH_LEVELS,
+  createToonStyle,
   INK_FLAG,
   TOON_FILL_SCALE,
   TOON_LEVELS,
-  TOON_SHADOW_RADIUS,
   TOON_SUN_SCALE,
   ToonStyle,
   finishOf,
@@ -61,38 +61,22 @@ test('each finish draws with its own ramp, shared between materials', () => {
   expect(ramps[3]).toBe(ramps[0]);
 });
 
-test('instanced meshes get a back-face hull that shares their instances, only with outlines on', () => {
-  const scene = new THREE.Scene(),
-    trees = new THREE.InstancedMesh(box, new THREE.MeshLambertMaterial(), 3),
-    noOutlines = new THREE.InstancedMesh(box, new THREE.MeshLambertMaterial(), 3);
-  scene.add(trees);
-  const outline = { render: () => {} },
-    style = new ToonStyle({ render: () => {} }, outline);
-  style.render(scene, camera);
-  style.render(scene, camera);
-  const hulls = trees.children.filter((o) => o instanceof THREE.InstancedMesh) as THREE.InstancedMesh[];
-  expect(hulls).toHaveLength(1);
-  expect(hulls[0].instanceMatrix).toBe(trees.instanceMatrix);
-  expect(hulls[0].boundingSphere).toBe(trees.boundingSphere);
-  expect((hulls[0].material as THREE.Material).side).toBe(THREE.BackSide);
-  const flat = new THREE.Scene();
-  flat.add(noOutlines);
-  new ToonStyle({ render: () => {} }).render(flat, camera);
-  expect(noOutlines.children).toHaveLength(0);
-});
-
-test('light shifts from the fill to the sun and shadows harden while drawing, and both come back after', () => {
+test('light shifts from the fill to the sun while drawing, and back after', () => {
   const scene = new THREE.Scene(),
     fill = new THREE.HemisphereLight(0xffffff, 0x888888, 2),
     sun = new THREE.DirectionalLight(0xffffff, 3);
-  sun.shadow.radius = 1;
   scene.add(fill, sun);
   let during: number[] = [];
-  new ToonStyle({ render: () => { during = [fill.intensity, sun.intensity, sun.shadow.radius]; } }).render(scene, camera);
+  new ToonStyle({ render: () => { during = [fill.intensity, sun.intensity]; } }).render(scene, camera);
   expect(during[0]).toBeCloseTo(2 * TOON_FILL_SCALE);
   expect(during[1]).toBeCloseTo(3 * TOON_SUN_SCALE);
-  expect(during[2]).toBe(TOON_SHADOW_RADIUS);
-  expect([fill.intensity, sun.intensity, sun.shadow.radius]).toEqual([2, 3, 1]);
+  expect([fill.intensity, sun.intensity]).toEqual([2, 3]);
+});
+
+test('the toon style softens the shadows, as in the art direction lab', () => {
+  const renderer = { shadowMap: { type: THREE.PCFShadowMap as THREE.ShadowMapType }, render: () => {} };
+  createToonStyle(renderer as unknown as THREE.WebGLRenderer); // only shadowMap and render are touched
+  expect(renderer.shadowMap.type).toBe(THREE.PCFSoftShadowMap);
 });
 
 test('inked objects get crease lines on opaque meshes, once, sharing edges per geometry', () => {
@@ -154,7 +138,7 @@ test('what the game animates on its materials reaches the next frame', () => {
   expect(toon.color.equals(beacon.color)).toBe(true);
 });
 
-test('material arrays, instanced meshes and transparent materials', () => {
+test('material arrays, instanced trees and custom materials', () => {
   const scene = new THREE.Scene(),
     walls = new THREE.MeshLambertMaterial(),
     glass = new THREE.MeshLambertMaterial({ transparent: true, opacity: 0.4 }),
@@ -163,19 +147,14 @@ test('material arrays, instanced meshes and transparent materials', () => {
     trees = new THREE.InstancedMesh(box, walls, 4),
     dome = new THREE.Mesh(box, sky);
   scene.add(building, trees, dome);
-  const renderer = recordingRenderer(scene),
-    outline = { render: vi.fn(() => renderer.render()) };
-  new ToonStyle(renderer, outline).render(scene, camera);
+  const renderer = recordingRenderer(scene);
+  new ToonStyle(renderer).render(scene, camera);
   const [toonWalls, toonGlass] = renderer.seen.get(building) as THREE.MeshToonMaterial[];
   expect(toonWalls).toBeInstanceOf(THREE.MeshToonMaterial);
-  expect(toonWalls.userData.outlineParameters).toBeUndefined();
-  expect(toonGlass).toMatchObject({ transparent: true, opacity: 0.4, userData: { outlineParameters: { visible: false } } });
-  // OutlineEffect ignores instance transforms, so instanced meshes get their own copy without an outline
-  const toonTrees = renderer.seen.get(trees) as THREE.MeshToonMaterial;
-  expect(toonTrees).not.toBe(toonWalls);
-  expect(toonTrees.userData.outlineParameters).toEqual({ visible: false });
-  expect(sky.userData.outlineParameters).toEqual({ visible: false });
-  expect(outline.render).toHaveBeenCalledOnce();
+  expect(toonGlass).toMatchObject({ transparent: true, opacity: 0.4 });
+  expect(renderer.seen.get(trees)).toBe(toonWalls); // trees get the bands, and no lines: they aren't flagged
+  expect(trees.children).toHaveLength(0);
+  expect(renderer.seen.get(dome)).toBe(sky);
   expect(building.material).toEqual([walls, glass]);
   expect(trees.material).toBe(walls);
 });

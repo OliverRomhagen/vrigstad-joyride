@@ -3,7 +3,7 @@
 import * as THREE from 'three';
 import { pickVariant, vehicleDefinition } from './render/vehicle-registry';
 import { VehicleVisuals } from './render/vehicle-visuals';
-import { INK_FLAG, createToonStyle, toonContactShadow } from './render/toon-style';
+import { INK_FLAG, createToonStyle } from './render/toon-style';
 import D from '../../data/vrigstad.json';
 import { BUILDING_CELL_M as BC, BuildingIndex } from '../world/buildings';
 import { ROAD_WIDTH_M as ROAD_W } from '../world/data';
@@ -41,11 +41,11 @@ let renderer;
 try { renderer = new THREE.WebGLRenderer({ canvas, antialias: true }); }
 catch (err) { $('fail').hidden = false; $('ui').hidden = true; $('intro').hidden = true; return; }
 const coarse = matchMedia('(pointer: coarse)').matches;
-// ?style=toon draws the world cel-shaded (#206); phones get the light bands without the outlines, which double the draw calls
-const toon = new URLSearchParams(location.search).get('style') === 'toon' ? createToonStyle(renderer, !coarse) : null;
 renderer.setPixelRatio(Math.min(devicePixelRatio || 1, coarse ? 1.5 : 2));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFShadowMap;
+// ?style=toon draws the world cel-shaded (#206), with its own, softer shadows
+const toon = new URLSearchParams(location.search).get('style') === 'toon' ? createToonStyle(renderer) : null;
 // filmic tone mapping on an sRGB pipeline: colours below are written in sRGB and converted to linear with col()
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1;
@@ -71,8 +71,7 @@ dome.renderOrder = -1; scene.add(dome);
 // soft round shadow under cars, people and trees, so nothing looks pasted onto the ground
 const blobTex = (function () { const cv = document.createElement('canvas'); cv.width = cv.height = 64; const x = cv.getContext('2d'), g = x.createRadialGradient(32, 32, 0, 32, 32, 32);
   g.addColorStop(0, 'rgba(0,0,0,.9)'); g.addColorStop(0.5, 'rgba(0,0,0,.45)'); g.addColorStop(1, 'rgba(0,0,0,0)'); x.fillStyle = g; x.fillRect(0, 0, 64, 64); return cv; })();
-// contact shadows; the toon style's are hard-edged
-const blobMat = new THREE.MeshBasicMaterial({ color: 0x000000, map: toon ? toonContactShadow() : new THREE.CanvasTexture(blobTex), transparent: true, opacity: 0.5, depthWrite: false,
+const blobMat = new THREE.MeshBasicMaterial({ color: 0x000000, map: new THREE.CanvasTexture(blobTex), transparent: true, opacity: 0.5, depthWrite: false,
   polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -6 }), blobGeo = new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2);
 function blob(parent, w, l) { const m = new THREE.Mesh(blobGeo, blobMat); m.scale.set(w, 1, l); m.position.y = 0.06; m.renderOrder = 3; parent.add(m); return m; }
 sun.castShadow = true;
@@ -327,6 +326,7 @@ function personParts(shirt, pants, hair, arms) {     // arms: separate meshes th
   g.add(b, l, r); g.legs = [l, r]; g.blob = blob(g, 0.9, 0.9);
   if (arms) { const ag = geoCache['arm' + shirt] || (geoCache['arm' + shirt] = boxGeo([[0.14, 0.6, 0.16, 0, -0.3, 0, shirt]]));
     g.arms = [-0.33, 0.33].map(x => { const a = new THREE.Mesh(ag, paintMat); a.position.set(x, 1.42, 0); a.castShadow = true; g.add(a); return a; }); }
+  g.userData[INK_FLAG] = true;   // inked in the toon style, like the cars and houses
   return g;
 }
 
@@ -612,7 +612,7 @@ function addPlace(kind, name, x, z, color) {
   }
   if (!door) return;
   const m = new THREE.Mesh(boxGeo([[1.4, 2.35, 0.1, 0, 1.17, 0, '#f2c230'], [1.05, 2.1, 0.16, 0, 1.05, 0, '#2f5a41'], [0.1, 0.1, 0.24, 0.36, 1.05, 0, '#f2c230']]), paintMat);
-  m.position.set(door.mx, hAt(door.mx, door.mz), door.mz); m.rotation.y = Math.atan2(door.nx, door.nz); scene.add(m);
+  m.position.set(door.mx, hAt(door.mx, door.mz), door.mz); m.rotation.y = Math.atan2(door.nx, door.nz); m.userData[INK_FLAG] = true; scene.add(m);
   addPlace('safe', s[0], door.mx + door.nx * 1.4, door.mz + door.nz * 1.4, 0x4fd27a);
 });
 // kiosk on Torget, counter facing south towards the spawn point; it collides like a building
@@ -620,7 +620,7 @@ function addPlace(kind, name, x, z, color) {
   const x = -13, z = 25.5, y = hAt(x, z), W = '#e8e2d2', RED = '#c8372d';
   const m = new THREE.Mesh(boxGeo([[3, 2.3, 2.2, 0, 1.15, 0, W], [3.5, 0.18, 3, 0, 2.39, 0.25, RED], [1.9, 0.9, 0.06, 0, 1.55, 1.1, GLASS], [2.2, 0.1, 0.5, 0, 1.05, 1.3, '#7a4a3c'],
     [2.4, 0.5, 0.1, 0, 2.75, 1.2, '#f2c230'], [0.5, 2.3, 0.04, -1.25, 1.15, 1.1, RED], [0.5, 2.3, 0.04, 1.25, 1.15, 1.1, RED]]), paintMat);
-  m.position.set(x, y, z); m.castShadow = true; scene.add(m);
+  m.position.set(x, y, z); m.castShadow = true; m.userData[INK_FLAG] = true; scene.add(m);
   addFootprint([x - 1.5, z - 1.1, x + 1.5, z - 1.1, x + 1.5, z + 1.1, x - 1.5, z + 1.1]);
   addPlace('kiosk', 'Kiosken', x, z + 2.3, 0xf2c230);
 })();
@@ -874,5 +874,5 @@ $('go').addEventListener('click', e => { started = true; $('intro').hidden = tru
 resize(); requestAnimationFrame(frame);
 
 // ---------- test hook: read-only state for the smoke tests (tests/e2e), so they do not have to read pixels ----------
-window.__joyride = { state: () => { const n = nearestCar(); return { started, x: player.x, z: player.z, y: player.y, yaw: camYaw, inCar, car: pcar ? pcar.type : null, near: n ? n.mode : null, speed: pcar ? pcar.v : 0, drift: pcar ? pcar.drift : 0, boost: pcar ? pcar.boost : 0, charge: pcar ? pcar.charge : 0, loose: pcar ? pcar.loose : 0, flickDir: pcar ? pcar.flickDir : 0, style: toon ? (toon.outlines ? 'toon' : 'toon-flat') : 'default', stars, cats: cats.length, treats, vehicle: displayCar ? vehicleVisuals.state(displayCar) : null, nearSelectedVehicle: n === displayCar, activeVehicle: pcar ? vehicleVisuals.state(pcar) : null, traffic: cars.filter(c => c.mode === 'ai').map(c => ({ type: c.type, vehicle: vehicleVisuals.state(c) })) }; } };
+window.__joyride = { state: () => { const n = nearestCar(); return { started, x: player.x, z: player.z, y: player.y, yaw: camYaw, inCar, car: pcar ? pcar.type : null, near: n ? n.mode : null, speed: pcar ? pcar.v : 0, drift: pcar ? pcar.drift : 0, boost: pcar ? pcar.boost : 0, charge: pcar ? pcar.charge : 0, loose: pcar ? pcar.loose : 0, flickDir: pcar ? pcar.flickDir : 0, style: toon ? 'toon' : 'default', stars, cats: cats.length, treats, vehicle: displayCar ? vehicleVisuals.state(displayCar) : null, nearSelectedVehicle: n === displayCar, activeVehicle: pcar ? vehicleVisuals.state(pcar) : null, traffic: cars.filter(c => c.mode === 'ai').map(c => ({ type: c.type, vehicle: vehicleVisuals.state(c) })) }; } };
 })();

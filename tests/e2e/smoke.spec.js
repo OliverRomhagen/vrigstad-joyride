@@ -77,12 +77,12 @@ test.describe('game (index.html)', () => {
     expect(errors).toEqual([]);
   });
 
-  test('?style=toon draws the cel-shaded style, outlines included, without errors', async ({ page }, testInfo) => {
+  test('?style=toon draws the cel-shaded style without errors', async ({ page }, testInfo) => {
     const errors = watchErrors(page);
     await page.goto('/index.html?style=toon');
     await page.locator('#go').click();
-    expect(await state(page)).toMatchObject({ started: true, style: 'toon' });   // a mouse pointer, so outlines on
-    await frames(page, 10);   // the toon and outline shaders compile on the first frames; an error there is logged to the console
+    expect(await state(page)).toMatchObject({ started: true, style: 'toon' });
+    await frames(page, 10);   // the toon shaders compile and the ink lines are built on the first frames; an error there is logged
     expect(await page.evaluate(() => document.getElementById('gl').getContext('webgl2').getError())).toBe(0);
     await page.screenshot({ path: testInfo.outputPath('game-toon.png') });
     expect(errors).toEqual([]);
