@@ -1,12 +1,13 @@
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
-import { type Cat, CatColony, type CatDeps } from '../../../src/game/cats';
+import { type Cat, type CatCar, CatColony, type CatDeps } from '../../../src/game/cats';
 import type { BuildingIndex } from '../../../src/world/buildings';
 
 // A colony with no houses (so nothing spawns), flat dry ground and the player at the origin, walking.
 function colony() {
   const toasts: string[] = [];
   const player = { x: 0, z: 0, speed: 0 };
+  const drive = { inCar: false, pcar: null as CatCar | null, cars: [] as CatCar[] };
   const deps: CatDeps = {
     scene: new THREE.Scene(),
     // only what the cats touch; a real index needs the map data
@@ -20,14 +21,14 @@ function colony() {
     boxGeo: () => new THREE.BufferGeometry(),
     paintMat: new THREE.MeshBasicMaterial(),
     blob: () => {},
-    cars: [],
+    cars: drive.cars,
     toast: msg => { toasts.push(msg); },
     player,
     keys: {},
     joy: { on: false },
     kmenu: { hidden: true } as HTMLElement,
-    inCar: false,
-    pcar: null,
+    get inCar() { return drive.inCar; },
+    get pcar() { return drive.pcar; },
     inside: null,
     useTreat: () => false,
   };
@@ -35,7 +36,7 @@ function colony() {
   const cat: Cat = { x: 1, z: 0, h: 0, want: 0, state: 'sit', t: 5, nope: 0, phase: 0, mesh: new THREE.Mesh(), epa: null, hop: null, ride: null, pets: 0, owned: false };
   c.cats.push(cat);
   deps.scene.add(cat.mesh);
-  return { c, cat, player, toasts };
+  return { c, cat, player, toasts, drive };
 }
 
 // pets until the cat asks to be adopted; returns how many tries it took
@@ -90,5 +91,55 @@ describe('owning a cat', () => {
     c.update(player, 1 / 30);
     expect(c.cats).toContain(cat);
     expect(Math.hypot(cat.x - player.x, cat.z - player.z)).toBeLessThan(10);         // caught up out of sight
+  });
+});
+
+describe('your cat rides along', () => {
+  // a car of this type 6 m from the player, with the player in it
+  function getIn(type: string) {
+    const t = colony(), car: CatCar = { type, x: 6, z: 0, h: 0, v: 0, mesh: new THREE.Object3D() };
+    t.drive.cars.push(car);
+    t.c.adopt(t.cat);
+    t.drive.inCar = true; t.drive.pcar = car;
+    return { ...t, car };
+  }
+  const run = (c: CatColony, p: { x: number; z: number }, s: number) => { for (let i = 0; i < s * 30; i++) c.update(p, 1 / 30); };
+
+  for (const [type, y] of [['epa', 0.98], ['traktor', 2.72], ['volvo', 0.8], ['saab', 0.8], ['polis', 0.8]] as const) {
+    it(`gets into the ${type} and sits ${y} m up`, () => {
+      const { c, cat, car, player } = getIn(type);
+      run(c, player, 3);
+      expect(cat.ride).toBe(car);
+      expect(cat.mesh.parent).toBe(car.mesh);
+      expect(cat.mesh.position.y).toBeCloseTo(y);
+      expect(cat.mesh.visible).toBe(type === 'epa' || type === 'traktor');   // inside a car it is hidden behind the glass
+    });
+  }
+
+  it('gets out when you do, and follows you again', () => {
+    const { c, cat, car, player, drive } = getIn('volvo');
+    run(c, player, 3);
+    drive.inCar = false; drive.pcar = null;
+    run(c, player, 4);
+    expect(cat.ride).toBeNull();
+    expect(car.cat).toBeNull();
+    expect(cat.mesh.visible).toBe(true);
+    expect(Math.hypot(cat.x - player.x, cat.z - player.z)).toBeLessThan(3);
+  });
+
+  it('makes a stray on the EPA flak hop off', () => {
+    const { c, cat, car, player } = getIn('epa');
+    const stray: Cat = { ...cat, mesh: new THREE.Mesh(), owned: false, x: 6, z: 0, state: 'sit', ride: car };
+    car.mesh.add(stray.mesh); car.cat = stray; c.cats.push(stray);
+    run(c, player, 3);
+    expect(cat.ride).toBe(car);
+    expect(stray.ride).toBeNull();
+  });
+
+  it('stays put when the car is out of reach', () => {
+    const { c, cat, car, player } = getIn('volvo');
+    car.x = 500;
+    run(c, player, 3);
+    expect(cat.ride).toBeNull();
   });
 });
