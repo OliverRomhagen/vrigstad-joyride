@@ -327,6 +327,7 @@ function personParts(shirt, pants, hair, arms) {     // arms: separate meshes th
 // ---------- cars ----------
 const cars = [], police = [];
 const vehicleVisuals = new VehicleVisuals(coarse);
+const modelRnd = makeRnd(240);                 // own stream: which model a car wears doesn't shift the world's rolls
 const selectedVehicle = vehicleDefinition(new URLSearchParams(location.search).get('vehicle'));
 let displayCar = null;
 const _f = new THREE.Vector3(), _r = new THREE.Vector3(), _m = new THREE.Matrix4();
