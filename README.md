@@ -83,10 +83,10 @@ To cut a release, from an up-to-date `main`:
 ```sh
 git tag -a v0.1.0 -m "v0.1.0"
 git push origin v0.1.0
-gh release create v0.1.0 --generate-notes
+npm run --silent release-notes | gh release create v0.1.0 --notes-file -
 ```
 
-`--generate-notes` builds the changelog from merged PR titles, so keep those titles descriptive.
+`release-notes` runs [git-cliff](https://git-cliff.org) over the commits since the previous tag. Each one is a squash-merged PR title, so keep those titles descriptive: `cliff.toml` groups them by type (features, fixes, performance, data, then the rest folded under "Under the hood") and shows the scope in bold. To preview the notes before tagging, run `npx git-cliff --unreleased --tag v0.1.0 --strip all`.
 
 ## Known simplifications
 
