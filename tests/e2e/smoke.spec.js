@@ -59,6 +59,8 @@ test.describe('game (index.html)', () => {
     await expect(page.locator('#stars')).toHaveText('★★★');
     await expect(page.locator('#stars b')).toHaveCount(0);              // <b> is a lit star: none when not wanted
     await expect(page.locator('#mini')).toBeVisible();
+    await expect(page.locator('#hp')).toHaveAttribute('aria-valuenow', '100');   // full health
+    expect(await state(page)).toMatchObject({ hp: 100, carDmg: null });
 
     // The Blender fleet is on without URL parameters, and each traffic type only wears its own models.
     await expect.poll(async () => (await state(page)).vehicle?.detailed).toBe(true);
@@ -90,7 +92,8 @@ test.describe('game (index.html)', () => {
     await getInVolvo(page);
     await expect(page.locator('#speed')).toBeVisible();
     await expect(page.locator('#carname')).toHaveText('Volvo 240');
-    expect(await state(page)).toMatchObject({ inCar: true, car: 'volvo', stars: 0 });
+    await expect(page.locator('#dmg')).toHaveAttribute('aria-valuenow', '0');   // the car's damage bar, empty
+    expect(await state(page)).toMatchObject({ inCar: true, car: 'volvo', stars: 0, carDmg: 0 });
     // Every model shares the loader, materials and controller, and the unit tests decode each GLB, so one is driven here.
     await expect.poll(async () => (await state(page)).activeVehicle).toMatchObject({ id: 'volvo240', status: 'loaded', detailed: true });
     expect((await state(page)).activeVehicle.wheels).toHaveLength(4);

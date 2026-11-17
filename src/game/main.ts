@@ -23,6 +23,7 @@ import { CAT_ADOPT_PETS, CatColony } from './cats';
 import { Hud } from './hud';
 import { Crowd } from './pedestrians';
 import { Pets } from './pets';
+import { CRASH_COOL_S, crashDamage, damageCar, driverHurt, HP_MAX, hurt, impactSpeed, newHealth, regen, runOverHurt, smokeLevel, topSpeedShare, wrecked } from './health';
 
 (function () {
 'use strict';
@@ -348,7 +349,7 @@ function addCar(type, x, z, h, mode, assetId = pickVariant(type, modelRnd())) {
   const T = TYPES[type], color = pick(T.cols), fallback = new THREE.Mesh(carGeo(type, color), carMat), mesh = assetId ? new THREE.Group() : fallback;
   fallback.castShadow = true; if (assetId) mesh.add(fallback); blob(mesh, 2.8, 5.8);
   if (type === 'polis') { const bar = new THREE.Mesh(barGeo, barMat); bar.position.set(0, 1.62, 0.2); fallback.add(bar); }
-  const c = { type, T, mesh, x, z, h, vh: h, v: 0, slip: 0, drift: 0, charge: 0, yr: 0, spin: 0, loose: 0, flickDir: 0, flickT: 9, boost: 0, mode, wet: false, owned: false, blocked: 0, ghost: 0, stuck: 0, rev: 0, revSteer: 1 };
+  const c = { type, T, mesh, x, z, h, vh: h, v: 0, slip: 0, drift: 0, charge: 0, yr: 0, spin: 0, loose: 0, flickDir: 0, flickT: 9, boost: 0, mode, wet: false, owned: false, blocked: 0, ghost: 0, stuck: 0, rev: 0, revSteer: 1, dmg: 0, hitAt: -9 };
   scene.add(mesh); cars.push(c); placeCar(c); if (assetId) { vehicleVisuals.attach(c, assetId, fallback, color); } return c;
 }
 function carName(c) { return vehicleVisuals.definition(c)?.name || c.T.name; }
@@ -420,6 +421,7 @@ const TURBO_AT = [1, 2.2], TURBO_S = [0.7, 1.3];   // s of sliding for a blue / 
 const TURBO_ACC = 14, TURBO_TOP = 1.2;         // m/s² of boost; top speed multiplier while boosting
 // shared driving model for the player and the police; only the player passes canDrift
 function drive(c, thr, steer, brake, dt, canDrift) {
+  if (wrecked(c)) { thr = 0; c.boost = 0; }   // the engine is dead: it only rolls to a stop
   const road = nearestRoad(c.x, c.z).d < 0.6; c.wet = inWater(c.x, c.z);
   if (c.drift) { if (!brake || c.v < DRIFT_KEEP_V || c.wet) { const t = c.charge > TURBO_AT[1] ? 1 : c.charge > TURBO_AT[0] ? 0 : -1;
       if (!brake && t >= 0) c.boost = TURBO_S[t]; c.drift = 0; c.loose = RECOVER_S; c.spin = c.yr; } }
@@ -434,7 +436,7 @@ function drive(c, thr, steer, brake, dt, canDrift) {
   else if (thr < 0) c.v += (c.v > 0.5 ? 20 : c.T.acc * 0.6) * thr * dt;
   else c.v -= Math.sign(c.v) * Math.min(Math.abs(c.v), (road ? 2 : 5) * dt);
   if (c.boost > 0) { c.boost -= dt; if (c.wet) c.boost = 0; }   // water puts the turbo out
-  const max = (c.wet ? 2.5 : c.T.max * (road ? 1 : c.T.off)) * (c.boost > 0 ? TURBO_TOP : 1);
+  const max = (c.wet ? 2.5 : c.T.max * (road ? 1 : c.T.off)) * (c.boost > 0 ? TURBO_TOP : 1) * topSpeedShare(c.dmg);
   if (c.boost > 0 && c.v < max) c.v = Math.min(max, c.v + TURBO_ACC * dt);   // only up to the limit, so it never cancels the overspeed braking below
   if (c.v > max) c.v = Math.max(max, c.v - 14 * dt);
   if (c.v < -7) c.v = -7;
@@ -449,13 +451,27 @@ function drive(c, thr, steer, brake, dt, canDrift) {
   else { c.vh = c.h; c.slip = 0; }
   c.x += Math.sin(c.vh) * c.v * dt; c.z -= Math.cos(c.vh) * c.v * dt;
   c.x = clamp(c.x, -HALF + 4, HALF - 4); c.z = clamp(c.z, -HALF + 4, HALF - 4);
-  if (collide(c, 1.5)) { c.v *= Math.pow(0.02, dt); c.drift = c.loose = c.boost = 0; }     // a wall ends the slide, and the turbo with it (charged or firing)
+  const vx = Math.sin(c.vh) * c.v, vz = -Math.cos(c.vh) * c.v, bx = c.x, bz = c.z;   // velocity and place before any hit: the push out gives the hit's normal
+  if (collide(c, 1.5)) { const nx = c.x - bx, nz = c.z - bz, L = Math.hypot(nx, nz); if (L > 1e-6) crash(c, null, impactSpeed(vx, vz, nx / L, nz / L));
+    c.v *= Math.pow(0.02, dt); c.drift = c.loose = c.boost = 0; }     // a wall ends the slide, and the turbo with it (charged or firing)
   for (const o of cars) { if (o === c) continue; const dx = c.x - o.x, dz = c.z - o.z, d = Math.hypot(dx, dz);
-    if (d < 2.7 && d > 0.01) { const push = 2.7 - d; c.x += dx / d * push; c.z += dz / d * push;
+    if (d < 2.7 && d > 0.01) { const push = 2.7 - d, oh = o.mode === 'ai' ? o.h : o.vh;   // traffic steers by h alone
+      crash(c, o, impactSpeed(vx - Math.sin(oh) * o.v, vz + Math.cos(oh) * o.v, dx / d, dz / d)); c.x += dx / d * push; c.z += dz / d * push;
       if (Math.abs(c.v) > 6 && c === pcar && o.mode === 'police' && ramCool <= 0) { ramCool = 6; addStar('Ramming a police car. That will not help.'); }
       if (o.mode === 'parked' || o.mode === 'idle') { o.x -= dx / d * push * 0.4; o.z -= dz / d * push * 0.4; placeCar(o); }
       c.v *= Math.pow(0.05, dt); } }
   placeCar(c);
+}
+
+// one hit: both cars take the damage, and the player too if they're in one. A car takes no new hit for CRASH_COOL_S, as contact lasts several frames.
+function crash(c, o, impact) {
+  if (clockS - c.hitAt < CRASH_COOL_S || (o && clockS - o.hitAt < CRASH_COOL_S)) return;
+  const d = crashDamage(impact); if (d <= 0) return;
+  c.hitAt = clockS; if (o) o.hitAt = clockS;
+  for (const k of o ? [c, o] : [c]) if (damageCar(k, d)) {
+    if (k === pcar) toast('”Nä, nu ä den kaputt.” The car is wrecked. Get out and find another.', 4);
+    else if (k.mode === 'police') toast('The police car is wrecked.', 3); }
+  if (c === pcar || o === pcar) hurtPlayer(driverHurt(impact));
 }
 
 // ---------- drift effects: sparks at the rear wheels, a flame while boosting, skid marks (src/game/render/drift-fx.ts) ----------
@@ -512,6 +528,8 @@ let jumpQ = false;   // set by a fresh Space / Jump press on foot, used up by th
 const jumpOk = () => !inCar && !inside && bigT <= 0;   // queue only where a jump can start, so a press inside a safehouse or under Gripen! can't fire as it ends
 (function () { const o = { x: player.x + 7, z: player.z + 3 }; collide(o, 2.6); displayCar = addCar(selectedVehicle?.archetype || 'volvo', o.x, o.z, 0.6, 'parked', selectedVehicle?.id ?? 'volvo240'); })();
 let inCar = false, pcar = null, stars = 0, evade = 0, bustT = 0, stolen = 0, ramCool = 0, started = false, bigT = 0;
+let clockS = 0;                                  // s of play, for hit cool-downs
+const health = newHealth();
 let inside = null, hideT = 0, trissT = 0, trissN = 0, trissWon = 0, trissLast = '';
 const peds = [], trissLog = [];
 
@@ -570,6 +588,24 @@ function enterHouse(p) {
   toast(stars ? 'You slip inside. Stay put for a minute and the police give up.' : 'Home sweet home. Nobody is looking for you.');
 }
 function leaveHouse() { if (!inside) return; inside = null; player.mesh.visible = true; $('hide').hidden = true; if (stars) toast('Back outside, and still wanted.', 2.5); }
+// ---------- car damage: smoke from the bonnet, grey past half damage and black when nearly wrecked ----------
+const SMOKE_N = 48, SMOKE_S = 1.8, SMOKE_NEAR_M = 140, SMOKE_RATE = [0, 8, 12];   // puffs in the pool; s each lasts; only cars this close smoke; puffs/s by smoke level
+const SMOKE_COLS = [null, col(0x7c7c78), col(0x2a2826)];
+const smokeTex = (() => { const cv = document.createElement('canvas'); cv.width = cv.height = 64; const g = cv.getContext('2d'), r = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+  r.addColorStop(0, 'rgba(255,255,255,1)'); r.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = r; g.fillRect(0, 0, 64, 64); return new THREE.CanvasTexture(cv); })();
+const puffs = Array.from({ length: SMOKE_N }, () => { const p = new THREE.Sprite(new THREE.SpriteMaterial({ map: smokeTex, transparent: true, depthWrite: false }));
+  p.visible = false; p.age = 0; scene.add(p); return p; });
+let puffI = 0;
+function updateSmoke(dt, T) {
+  for (const c of cars) { const lv = smokeLevel(c.dmg); if (!lv || c.wet || Math.abs(c.x - T.x) > SMOKE_NEAR_M || Math.abs(c.z - T.z) > SMOKE_NEAR_M) continue;
+    c.smokeT = (c.smokeT || 0) + dt * SMOKE_RATE[lv];
+    for (; c.smokeT >= 1; c.smokeT--) { const p = puffs[puffI]; puffI = (puffI + 1) % SMOKE_N;   // a ring: the oldest puff goes first
+      const fwd = c.type === 'traktor' ? 1.4 : 1.7, x = c.x + Math.sin(c.h) * fwd + (fxRnd() - 0.5) * 0.5, z = c.z - Math.cos(c.h) * fwd + (fxRnd() - 0.5) * 0.5;
+      p.position.set(x, groundAt(x, z) + 1.1, z); p.age = 0; p.visible = true; p.material.color.copy(SMOKE_COLS[lv]); } }
+  for (const p of puffs) { if (!p.visible) continue; p.age += dt; const t = p.age / SMOKE_S; if (t >= 1) { p.visible = false; continue; }
+    p.position.y += dt * 1.3; p.scale.setScalar(0.6 + t * 2.4); p.material.opacity = 0.75 * (1 - t); }
+}
+
 // trisslott: one win in a thousand, and the temper gets worse with every losing ticket scratched inside the window
 const TRISS_ODDS = 0.001, TRISS_WINDOW = 25;
 const TRISS = [
@@ -648,6 +684,10 @@ const hud = new Hud({ $, ground: tex2d, P, K, roads, labels: D.labels, cars, pla
 function toast(msg, secs, cls) { hud.toast(msg, secs, cls); }
 const drawStars = hud.drawStars.bind(hud), drawMini = hud.drawMini.bind(hud), updateSign = hud.updateSign.bind(hud);
 drawStars();
+// the health bar, and the car's damage bar on the speed plate while driving
+function meter(id, v, bad) { const el = $(id), n = Math.round(v); if (el.getAttribute('aria-valuenow') === String(n)) return;
+  el.setAttribute('aria-valuenow', n); el.querySelector('b').style.width = n + '%'; el.classList.toggle('bad', bad); }
+function drawHealth() { meter('hp', health.hp, health.hp < 30); if (inCar) meter('dmg', pcar.dmg, pcar.dmg >= 50); }
 let signT = 0, blink = false, blinkT = 0;
 
 // ---------- stealing, police, getting caught ----------
@@ -688,7 +728,19 @@ function spawnPolice() {
 function clearWanted() { stars = 0; evade = 0; bustT = 0; for (const p of police) removeCar(p); police.length = 0; drawStars(); $('stars').classList.remove('evading'); }
 function respawn() { leaveHouse(); if (inCar) { pcar.mode = 'idle'; pcar.v = pcar.slip = pcar.drift = pcar.boost = 0; placeCar(pcar); pcar = null; inCar = false; player.mesh.visible = true; }
   player.x = HOME.x; player.z = HOME.z; player.y = player.vy = 0; jumpQ = false; collide(player, 0.6); }
-function busted() { clearWanted(); respawn(); bigT = 3; $('big').hidden = false; }
+function bigScreen(title, msg) { $('big-t').textContent = title; $('big-p').textContent = msg; bigT = 3; $('big').hidden = false; }
+function busted() { clearWanted(); respawn(); health.hp = HP_MAX; drawHealth(); bigScreen('Gripen!', 'Busted. The police drop you off at Torget.'); }
+// health at zero: with the police after you it's Gripen!, otherwise you come to at the nearest safehouse, or Torget
+function knockedOut() {
+  if (stars) { busted(); return; }
+  let spot = { x: HOME.x, z: HOME.z, name: null }, best = Math.hypot(player.x - HOME.x, player.z - HOME.z);
+  for (const p of places) { const d = Math.hypot(player.x - p.x, player.z - p.z); if (p.kind === 'safe' && d < best) { best = d; spot = p; } }
+  respawn(); player.x = spot.x; player.z = spot.z; collide(player, 0.6); health.hp = HP_MAX; drawHealth();
+  bigScreen('Däckad!', 'Knocked out. You come to ' + (spot.name ? 'at the safehouse on ' + spot.name : 'at Torget') + '.');
+}
+function hurtPlayer(n) { if (n <= 0) return;
+  const el = $('hurt'); el.style.transition = 'none'; el.style.opacity = Math.min(1, 0.35 + n / 40); void el.offsetWidth; el.style.transition = ''; el.style.opacity = 0;   // a red flash that fades
+  hurt(health, n); drawHealth(); }
 function updatePolice(c, dt, T, tv) {
   const dx = T.x - c.x, dz = T.z - c.z, d = Math.hypot(dx, dz), diff = wrap(Math.atan2(dx, -dz) - c.h);
   let thr = Math.abs(diff) < 1.1 ? 1 : 0.45, steer = clamp(diff * 2.2, -1, 1), brake = false;
@@ -708,6 +760,8 @@ function frame(now) {
   requestAnimationFrame(frame);
   const dt = clamp((now - last) / 1000, 0, 0.05); last = now;
   const mx = started ? clamp((keys.right ? 1 : 0) - (keys.left ? 1 : 0) + joy.x, -1, 1) : 0, my = started ? clamp((keys.up ? 1 : 0) - (keys.down ? 1 : 0) + joy.y, -1, 1) : 0;
+  clockS += dt; if (started) regen(health, dt);
+  if (health.hp <= 0) knockedOut();   // here, not where the hit lands: that can be halfway through moving the car
   if (bigT > 0) { bigT -= dt; if (bigT <= 0) $('big').hidden = true; }
   if (ramCool > 0) ramCool -= dt;
   if (trissT > 0) { trissT -= dt; if (trissT <= 0) trissResult(); }
@@ -724,7 +778,9 @@ function frame(now) {
       player.h += wrap(Math.atan2(dx, -dz) - player.h) * Math.min(1, dt * 12); player.speed = sp; player.phase += sp * dt * 2.1;
     } else { player.speed = 0; player.phase *= 0.8; }
     collide(player, 0.5);
-    if (!inside) for (const c of cars) { const dx = player.x - c.x, dz = player.z - c.z, d = Math.hypot(dx, dz); if (d < 1.6 && d > 0.01) { player.x += dx / d * (1.6 - d); player.z += dz / d * (1.6 - d); } }
+    if (!inside) for (const c of cars) { const dx = player.x - c.x, dz = player.z - c.z, d = Math.hypot(dx, dz); if (d < 1.6 && d > 0.01) { player.x += dx / d * (1.6 - d); player.z += dz / d * (1.6 - d);
+      const a = c.mode === 'ai' ? c.h : c.vh, n = runOverHurt(impactSpeed(Math.sin(a) * c.v, -Math.cos(a) * c.v, -dx / d, -dz / d));   // the car's speed towards you
+      if (n > 0 && clockS - c.hitAt >= CRASH_COOL_S) { c.hitAt = clockS; hurtPlayer(n); if (health.hp <= 0) break; } } }
     const wetNow = inWater(player.x, player.z);                // after this frame's move: take-off and wading depth follow where the player stands now
     if (player.y === 0 && jump && !wetNow && !inside && bigT <= 0) player.vy = JUMP_V;   // on foot, Space and the touch Brake button jump
     if (player.y > 0 || player.vy > 0) { player.y += (player.vy - GRAVITY * dt / 2) * dt; player.vy -= GRAVITY * dt; if (player.y <= 0) player.y = player.vy = 0; }   // exact for constant gravity: same hop at any frame rate
@@ -737,6 +793,7 @@ function frame(now) {
   updateDriftFx(inCar ? pcar : null);
   const T = inCar ? pcar : player;
   vehicleVisuals.update(T, dt);
+  updateSmoke(dt, T);
   for (const c of cars) if (c.mode === 'ai') updateTraffic(c, dt, T);
   updateNpcs(T, dt);
   updateCats(T, dt);
@@ -776,10 +833,11 @@ function frame(now) {
     else if (catFirst(kt, pl)) { pr.hidden = !kmenu.hidden; pr.innerHTML = '<kbd>E</kbd>' + (kt.owned ? 'Hang out with ' + esc(kt.name) : 'Pet the cat' + (treats ? ' (offer a treat)' : '')); }
     else if (pl) { pr.hidden = !kmenu.hidden; pr.innerHTML = '<kbd>E</kbd>' + (pl.kind === 'safe' ? 'Go inside the safehouse' : 'Handla i kiosken'); }
     else if (inCar && !coarse) { pr.hidden = Math.abs(pcar.v) > 3; pr.innerHTML = '<kbd>E</kbd>Get out'; }
-    else if (c) { pr.hidden = false; pr.innerHTML = '<kbd>E</kbd>' + (c.owned ? 'Get in the ' : 'Steal the ') + carName(c); }
+    else if (c) { pr.hidden = false; pr.innerHTML = '<kbd>E</kbd>' + (c.owned ? 'Get in the ' : 'Steal the ') + carName(c) + (wrecked(c) ? ' (wrecked)' : ''); }
     else pr.hidden = true;
     const bl = inCar ? 'Brake' : 'Jump'; if ($('p-brake').textContent !== bl) $('p-brake').textContent = bl;
-    $('speed').hidden = !inCar; if (inCar) { $('kmh').textContent = Math.round(Math.abs(pcar.v) * 3.6); $('carname').textContent = carName(pcar); } }
+    $('speed').hidden = !inCar; if (inCar) { $('kmh').textContent = Math.round(Math.abs(pcar.v) * 3.6); $('carname').textContent = carName(pcar) + (wrecked(pcar) ? ' · wrecked' : ''); }
+    drawHealth(); }
   drawMini(T);
   renderer.render(scene, camera);
 }
@@ -789,5 +847,5 @@ $('go').addEventListener('click', e => { started = true; $('intro').hidden = tru
 resize(); requestAnimationFrame(frame);
 
 // ---------- test hook: read-only state for the smoke tests (tests/e2e), so they do not have to read pixels ----------
-window.__joyride = { state: () => { const n = nearestCar(); return { started, x: player.x, z: player.z, y: player.y, yaw: camYaw, inCar, car: pcar ? pcar.type : null, near: n ? n.mode : null, speed: pcar ? pcar.v : 0, drift: pcar ? pcar.drift : 0, boost: pcar ? pcar.boost : 0, charge: pcar ? pcar.charge : 0, loose: pcar ? pcar.loose : 0, flickDir: pcar ? pcar.flickDir : 0, stars, cats: cats.length, treats, ownCat: !!colony.owned, vehicle: displayCar ? vehicleVisuals.state(displayCar) : null, nearSelectedVehicle: n === displayCar, activeVehicle: pcar ? vehicleVisuals.state(pcar) : null, traffic: cars.filter(c => c.mode === 'ai').map(c => ({ type: c.type, vehicle: vehicleVisuals.state(c) })) }; } };
+window.__joyride = { state: () => { const n = nearestCar(); return { started, x: player.x, z: player.z, y: player.y, yaw: camYaw, inCar, car: pcar ? pcar.type : null, near: n ? n.mode : null, speed: pcar ? pcar.v : 0, drift: pcar ? pcar.drift : 0, boost: pcar ? pcar.boost : 0, charge: pcar ? pcar.charge : 0, loose: pcar ? pcar.loose : 0, flickDir: pcar ? pcar.flickDir : 0, stars, cats: cats.length, treats, hp: health.hp, carDmg: pcar ? pcar.dmg : null, ownCat: !!colony.owned, vehicle: displayCar ? vehicleVisuals.state(displayCar) : null, nearSelectedVehicle: n === displayCar, activeVehicle: pcar ? vehicleVisuals.state(pcar) : null, traffic: cars.filter(c => c.mode === 'ai').map(c => ({ type: c.type, vehicle: vehicleVisuals.state(c) })) }; } };
 })();
