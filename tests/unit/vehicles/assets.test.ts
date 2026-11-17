@@ -37,8 +37,19 @@ test.each(VEHICLES)(
     expect(size.z).toBeLessThan(7);
   },
 );
-test('default visuals retain simulation archetypes', () => {
-  for (const [archetype, id] of Object.entries(DEFAULT_VEHICLES)) {
-    expect(VEHICLES.find((model) => model.id === id)?.archetype).toBe(archetype);
-  }
+test('every model is in the world, worn only by its own simulation type', () => {
+  const used = Object.entries(VEHICLE_VARIANTS).flatMap(([archetype, variants]) =>
+    variants.map(([id]) => {
+      expect(VEHICLES.find((model) => model.id === id)?.archetype).toBe(archetype);
+      return id;
+    }),
+  );
+  expect(new Set(used)).toEqual(new Set(VEHICLES.map((model) => model.id)));
+});
+test('variant rolls follow the weights', () => {
+  expect(pickVariant('volvo', 0)).toBe('volvo240');
+  expect(pickVariant('volvo', 0.79)).toBe('volvo240');
+  expect(pickVariant('volvo', 0.8)).toBe('impala1970');
+  expect(pickVariant('saab', 0.999)).toBe('micra-k11');
+  expect(pickVariant('traktor', 0.5)).toBeUndefined();
 });
