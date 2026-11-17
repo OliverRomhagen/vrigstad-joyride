@@ -473,8 +473,14 @@ function crash(c, o, impact) {
     if (k === pcar) toast('”Nä, nu ä den kaputt.” The car is wrecked. Get out and find another.', 4);
     else if (k.mode === 'police') toast('The police car is wrecked.', 3); }
     crackGlass(k); }
-  if (c === pcar || o === pcar) hurtPlayer(driverHurt(impact));
+  if (c === pcar || o === pcar) { hurtPlayer(driverHurt(impact)); shake(d); }
 }
+
+// camera shake on a crash: a jolt that dies away, bigger for a harder hit; none with reduced motion
+const SHAKE_S = 0.45, SHAKE_MIN_M = 0.08, SHAKE_MAX_M = 0.5, SHAKE_PER_DMG_M = 1 / 150;   // s it lasts; camera offset (m) at the smallest and largest hit, and per point of car damage
+const calmMotion = matchMedia('(prefers-reduced-motion: reduce)');
+let shakeT = 0, shakeM = 0;
+function shake(dmg) { if (calmMotion.matches) return; const m = Math.min(SHAKE_MAX_M, SHAKE_MIN_M + dmg * SHAKE_PER_DMG_M); if (shakeT <= 0 || m > shakeM) shakeM = m; shakeT = SHAKE_S; }
 
 // cracked glass: a crack texture laid over the windscreen and rear window (material 0) and the side windows (material 1), worse at each crackLevel
 const CRACK_OUT_M = 0.06;                      // how far the cracks sit outside the glass profile, past its bevel
@@ -838,7 +844,7 @@ function frame(now) {
     collide(player, 0.5);
     if (!inside) for (const c of cars) { const dx = player.x - c.x, dz = player.z - c.z, d = Math.hypot(dx, dz); if (d < 1.6 && d > 0.01) { player.x += dx / d * (1.6 - d); player.z += dz / d * (1.6 - d);
       const a = c.mode === 'ai' ? c.h : c.vh, n = runOverHurt(impactSpeed(Math.sin(a) * c.v, -Math.cos(a) * c.v, -dx / d, -dz / d));   // the car's speed towards you
-      if (n > 0 && clockS - c.hitAt >= CRASH_COOL_S) { c.hitAt = clockS; hurtPlayer(n); if (health.hp <= 0) break; } } }
+      if (n > 0 && clockS - c.hitAt >= CRASH_COOL_S) { c.hitAt = clockS; hurtPlayer(n); shake(n); if (health.hp <= 0) break; } } }
     const wetNow = inWater(player.x, player.z);                // after this frame's move: take-off and wading depth follow where the player stands now
     if (player.y === 0 && jump && !wetNow && !inside && bigT <= 0) player.vy = JUMP_V;   // on foot, Space and the touch Brake button jump
     if (player.y > 0 || player.vy > 0) { player.y += (player.vy - GRAVITY * dt / 2) * dt; player.vy -= GRAVITY * dt; if (player.y <= 0) player.y = player.vy = 0; }   // exact for constant gravity: same hop at any frame rate
@@ -876,6 +882,8 @@ function frame(now) {
   const cp = Math.cos(camPitch), cx = T.x - Math.sin(camYaw) * dist * cp, cz = T.z + Math.cos(camYaw) * dist * cp;
   camera.position.set(cx, Math.max(ty + 1.5 + dist * Math.sin(camPitch), hAt(cx, cz) + 0.8), cz);
   camera.lookAt(T.x, ty + 1.5, T.z);
+  if (shakeT > 0) { shakeT -= dt; const k = Math.max(0, shakeT / SHAKE_S) ** 2 * shakeM * 2;   // eases out, so the jolt fades instead of stopping dead
+    camera.position.x += (fxRnd() - 0.5) * k; camera.position.y += (fxRnd() - 0.5) * k; camera.position.z += (fxRnd() - 0.5) * k; }
   sun.target.position.set(T.x, ty, T.z); sun.position.copy(sun.target.position).addScaledVector(SUN_DIR, 400);
   dome.position.copy(camera.position);
 
