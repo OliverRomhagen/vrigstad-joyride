@@ -1,5 +1,107 @@
-import type { WorldData } from './data';
-import { type Bounds, pointInPolygon, polygonBounds, segmentParam } from './polygon';
+import type { Building, WorldData } from './data';
+import type { Heightfield } from './heightfield';
+import { type Bounds, pointInPolygon, polygonBounds, segmentParam, signedPolygonArea } from './polygon';
+
+export interface PointXZ {
+  x: number;
+  z: number;
+}
+
+/** roof rise per metre of the ridge's half width, and the most a roof rises (m) */
+const ROOF_PITCH = 0.7;
+const MAX_ROOF_RISE_M = 5;
+/** walls start this far below the lowest corner, so no gap shows under them on a slope (m) */
+const WALL_FOOT_BELOW_GROUND_M = 1;
+
+export interface RoofParts {
+  /** the outline, with a corner added wherever it crosses the ridge */
+  ring: PointXZ[];
+  /** height of the wall top, which is the roof's edge, at a point on the ring (m) */
+  yAt: (v: PointXZ) => number;
+  /** the roof's faces: the flat roof, or the two halves either side of the ridge */
+  sides: PointXZ[][];
+}
+
+/**
+ * Walls and roof halves of an outline. A pitched roof (`ridge`, over the bounding rectangle) is cut to the outline,
+ * which gets a corner wherever it crosses the ridge.
+ */
+export function roofParts(outline: PointXZ[], ridge: Building['g'], top: number): RoofParts {
+  if (!ridge) return { ring: outline, yAt: () => top, sides: [outline] };
+  const [ax, az, bx, bz, halfWidth] = ridge;
+  const length = Math.hypot(bx - ax, bz - az);
+  const nx = (az - bz) / length;
+  const nz = (bx - ax) / length;
+  const rise = Math.min(halfWidth * ROOF_PITCH, MAX_ROOF_RISE_M);
+  const offset = (v: PointXZ) => (v.x - ax) * nx + (v.z - az) * nz;
+  const yAt = (v: PointXZ) => top + rise * Math.max(0, 1 - Math.abs(offset(v)) / halfWidth);
+  const ring: PointXZ[] = [];
+  const offsets: number[] = [];
+  outline.forEach((a, i) => {
+    const d = outline[(i + 1) % outline.length];
+    const oa = offset(a);
+    const od = offset(d);
+    ring.push(a);
+    offsets.push(oa);
+    if (oa * od < 0) {
+      const t = oa / (oa - od);
+      ring.push({ x: a.x + (d.x - a.x) * t, z: a.z + (d.z - a.z) * t });
+      offsets.push(0);
+    }
+  });
+  const sides = [1, -1].map((s) => ring.filter((_, i) => s * offsets[i] >= 0)).filter((side) => side.length > 2);
+  return { ring, yAt, sides };
+}
+
+/** One building as the meshes need it: its outline on the terrain, wall heights and roof. */
+export interface BuildingShape extends RoofParts {
+  building: Building;
+  /** the footprint's corners, in data order */
+  outline: PointXZ[];
+  /** lowest and highest ground under the corners (m) */
+  lo: number;
+  hi: number;
+  /** foot and top of the walls (m) */
+  base: number;
+  top: number;
+  /** footprint area (m²) */
+  area: number;
+  /** +1 or -1 with the outline's winding, to find the outside of each wall */
+  winding: number;
+}
+
+/** Calls `visit` once per building, in `data.b` order, so a caller that rolls dice per building rolls them in that order. */
+export function forEachBuilding(data: WorldData, heightfield: Pick<Heightfield, 'heightAt'>, visit: (shape: BuildingShape) => void) {
+  for (const building of data.b) {
+    const p = building.p;
+    const n = p.length / 2;
+    const outline: PointXZ[] = [];
+    let lo = 1e9;
+    let hi = -1e9;
+    for (let i = 0; i < n; i++) {
+      const x = p[i * 2];
+      const z = p[i * 2 + 1];
+      const h = heightfield.heightAt(x, z);
+      outline.push({ x, z });
+      lo = Math.min(lo, h);
+      hi = Math.max(hi, h);
+    }
+    const base = lo - WALL_FOOT_BELOW_GROUND_M;
+    const top = hi + building.h;
+    const signedArea = signedPolygonArea(p);
+    visit({
+      building,
+      outline,
+      lo,
+      hi,
+      base,
+      top,
+      area: Math.abs(signedArea),
+      winding: Math.sign(signedArea),
+      ...roofParts(outline, building.g, top),
+    });
+  }
+}
 
 export interface Footprint extends Bounds {
   p: number[];

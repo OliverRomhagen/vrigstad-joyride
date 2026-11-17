@@ -7,35 +7,31 @@ export interface Vec3Like {
   z: number;
 }
 
-/**
- * 'triangle' follows the terrain mesh's triangles exactly, so things placed with it sit on the ground.
- * 'bilinear' is the map's older lookup, which drifts off the mesh between grid points.
- */
-export type Interpolation = 'triangle' | 'bilinear';
-
 export interface HeightfieldOptions {
   /** vertical scale; the map doubles heights so the low relief reads */
   exaggeration?: number;
-  interpolation?: Interpolation;
 }
 
 const NORMAL_STEP_M = 1.5;
 
-/** Terrain heights from the elevation grid, in metres above the lowest sample (times `exaggeration`). */
+/**
+ * Terrain heights from the elevation grid, in metres above the lowest sample (times `exaggeration`).
+ * Interpolated on the terrain mesh's triangles, so anything placed with it sits on the ground.
+ */
 export class Heightfield {
   /** lowest sample above sea level (m), not exaggerated */
   readonly minElevationM: number;
   /** highest sample above sea level (m), not exaggerated */
   readonly maxElevationM: number;
+  /** samples along each side of the grid */
+  readonly samples: number;
   private readonly size: number;
   private readonly half: number;
-  private readonly samples: number;
   private readonly elev: number[];
   private readonly minDm: number;
   private readonly exaggeration: number;
-  private readonly interpolation: Interpolation;
 
-  constructor(data: WorldData, { exaggeration = 1, interpolation = 'triangle' }: HeightfieldOptions = {}) {
+  constructor(data: WorldData, { exaggeration = 1 }: HeightfieldOptions = {}) {
     this.size = data.size;
     this.half = data.size / 2;
     this.samples = data.n;
@@ -51,7 +47,6 @@ export class Heightfield {
     this.minElevationM = minDm / 10;
     this.maxElevationM = maxDm / 10;
     this.exaggeration = exaggeration;
-    this.interpolation = interpolation;
   }
 
   heightAt(x: number, z: number) {
@@ -68,12 +63,22 @@ export class Heightfield {
     const b = this.elev[k + 1];
     const d = this.elev[k + n];
     const c = this.elev[k + n + 1];
-    if (this.interpolation === 'bilinear') {
-      const h = a * (1 - fu) * (1 - fv) + b * fu * (1 - fv) + d * (1 - fu) * fv + c * fu * fv;
-      return (h / 10 - this.minElevationM) * this.exaggeration;
-    }
     const h = fu + fv <= 1 ? a + (b - a) * fu + (d - a) * fv : c + (d - c) * (1 - fu) + (b - c) * (1 - fv);
     return ((h - this.minDm) / 10) * this.exaggeration;
+  }
+
+  /**
+   * Height of the elevation sample in column `i` (from the west) and row `j` (from the north): the value `heightAt`
+   * interpolates from there, worked out the same way, so a mesh built on the samples matches the lookup.
+   */
+  sampleHeight(i: number, j: number) {
+    const h = this.elev[j * this.samples + i];
+    return ((h - this.minDm) / 10) * this.exaggeration;
+  }
+
+  /** x of the samples in column `i`, or z of those in row `i` (m); the grid's edges are at ±half its size */
+  sampleCoord(i: number) {
+    return -this.half + (this.size * i) / (this.samples - 1);
   }
 
   /** The terrain's up vector at (x, z), written into `out`. Normalised as three's Vector3.normalize does. */

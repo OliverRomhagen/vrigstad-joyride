@@ -25,11 +25,6 @@ describe('heightAt', () => {
     expect(field.heightAt(30, 30)).toBeCloseTo(2);
   });
 
-  it('averages the four corners when bilinear', () => {
-    const field = new Heightfield(makeWorld({ elev: ONE_CORNER }), { interpolation: 'bilinear' });
-    expect(field.heightAt(25, 25)).toBeCloseTo(2.5);
-  });
-
   it('reads the last row and column, and holds the edge height outside the world', () => {
     const field = new Heightfield(makeWorld({ elev: EAST_SLOPE }));
     expect(field.heightAt(50, 0)).toBeCloseTo(2);
@@ -71,5 +66,28 @@ describe('normalAt', () => {
     const field = new Heightfield(makeWorld());
     const out = { x: 9, y: 9, z: 9 };
     expect(field.normalAt(0, 0, out)).toBe(out);
+  });
+});
+
+describe('sampleHeight', () => {
+  // uneven heights, as real data has, so a different order of operations would round differently in the last bit
+  const UNEVEN = [1001, 1234, 1587, 1102, 1999, 1313, 1050, 1234, 1587];
+
+  it('matches heightAt exactly at the samples', () => {
+    const field = new Heightfield(makeWorld({ elev: UNEVEN }), { exaggeration: 2 });
+    for (let j = 0; j < 2; j++) for (let i = 0; i < 2; i++) expect(field.sampleHeight(i, j)).toBe(field.heightAt(-50 + 50 * i, -50 + 50 * j));
+  });
+
+  it('reads the last row and column', () => {
+    const field = new Heightfield(makeWorld({ elev: EAST_SLOPE }));
+    expect(field.sampleHeight(2, 2)).toBeCloseTo(2);
+  });
+});
+
+describe('sampleCoord', () => {
+  it('puts the samples where heightAt reads them, from edge to edge', () => {
+    const field = new Heightfield(makeWorld({ elev: EAST_SLOPE }));
+    expect([0, 1, 2].map((i) => field.sampleCoord(i))).toEqual([-50, 0, 50]);
+    for (let i = 0; i < 3; i++) expect(field.heightAt(field.sampleCoord(i), 0)).toBeCloseTo(field.sampleHeight(i, 1));
   });
 });
