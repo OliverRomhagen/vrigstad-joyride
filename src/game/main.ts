@@ -1,7 +1,7 @@
 // @ts-nocheck
 // Moved as-is from the single-file prototype (#44); it gets types as it is split into modules.
 import * as THREE from 'three';
-import { DEFAULT_VEHICLES, vehicleDefinition } from './render/vehicle-registry';
+import { pickVariant, vehicleDefinition } from './render/vehicle-registry';
 import { VehicleVisuals } from './render/vehicle-visuals';
 import D from '../../data/vrigstad.json';
 import { BUILDING_CELL_M as BC, BuildingIndex } from '../world/buildings';
