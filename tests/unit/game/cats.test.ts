@@ -139,6 +139,19 @@ describe('your cat rides along', () => {
     expect(Math.hypot(cat.x - player.x, cat.z - player.z)).toBeLessThan(3);
   });
 
+  it('lands on the side away from you, out of petting reach, so E gets you back in', () => {
+    const { c, cat, car, player, drive } = getIn('volvo');
+    run(c, player, 3);
+    player.x = car.x - 2; player.z = car.z;   // getting out puts you 2 m to the car's left
+    drive.inCar = false; drive.pcar = null;
+    run(c, player, 0.6);                      // the hop down
+    expect(cat.x).toBeGreaterThan(car.x);
+    expect(cat.state).not.toBe('walk');       // it doesn't wander off
+    run(c, player, 4);
+    expect(c.nearest()).toBeNull();
+    expect(Math.hypot(cat.x - player.x, cat.z - player.z)).toBeLessThan(3);
+  });
+
   it('makes a stray on the EPA flak hop off', () => {
     const { c, cat, car, player } = getIn('epa');
     const stray: Cat = { ...cat, mesh: new THREE.Mesh(), owned: false, x: 6, z: 0, state: 'sit', ride: car };

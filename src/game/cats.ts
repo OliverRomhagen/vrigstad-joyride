@@ -21,9 +21,13 @@ const CAT_SEATS: Record<string, Seat> = { epa: { x: 0, y: FLAK_Y, z: 1.5, ry: Ma
   traktor: { x: 0, y: 2.72, z: 0.8, ry: 0, rx: 0.3, hi: '”Håll i dä, {n}, nu åker vi traktor!”' },
   car: { x: 0.35, y: 0.8, z: 0.55, ry: 0, rx: 0.3, inside: true, hi: '”Mjau.”\n”Hoppa in, {n}. Baksätet ä ditt.”' } };
 const CAT_BOARD_M = 3;                         // your cat hops into your car from this close (m)
+const CAT_OFF_SIDE_M = 1.8, CAT_OFF_BACK_M = 1.4;   // a cat hopping off a car lands this far to its side and behind its middle (m); yours on the side away from you
+const STILL_MS = 0.3;                          // a car slower than this (m/s) counts as standing still
+const CAT_EPA_TROT_S = 15;                     // a cat trotting to an EPA gives up after this long (s)
 // owning a cat: enough good pets of the same cat and it asks to come home with you; then it follows you on foot
 export const CAT_ADOPT_PETS = 3;                      // good pets in a row of one cat before it can be adopted; a scratch or a bolt starts over
 const CAT_FOLLOW_M = 2.5, CAT_FIND_M = 60;     // an owned cat walks after you when further than this (m); further than CAT_FIND_M it catches up out of sight
+const CAT_CATCH_UP_M = 6, CAT_CALL_M = 20;     // a lost cat catching up shows up this far from you (m); a called one comes running from this far (m)
 // [coat, ears and paws, chest and muzzle (optional)]
 const CAT_COLS = [['#d9822b', '#f0e0c8'], ['#1e1e20', '#1e1e20'], ['#7d7f84', '#e8e4dc'], ['#ece9e2', '#ece9e2'], ['#8a6a48', '#3f3226'], ['#1e1e20', '#ece9e2', '#ece9e2']];
 const CAT_PET_OK = 0.5, CAT_PET_TREAT_OK = 0.75;   // chance a pet goes well, without / with a treat
@@ -33,7 +37,7 @@ const CAT_PET = ['”Mjau.”\n”Ja du ä la en go kisse, du.”', '”Prrrrr�
   '”Där ja, bakom örona. Dä gillar du, va?”'];
 const CAT_SCRATCH = ['Dä kommer svida ett tag.', 'Dä kommer synas i mårra.', 'Din lilla skitkatt!'].map(t => '”AJAJAJ! Kattafan rev mä! ' + t + '”');
 const CAT_PET_OWN = ['”Prrrrr…”\n”Ja, du ä min katt, du.”', '”Mjau!”\n”Ja ja, vi går snart, {n}.”', '”Där ja. Vem ä en go kisse? {n} ä en go kisse.”'];   // {n}: its name
-export const CAT_NAME = 'Kisse', CAT_NAME_MAX = 16;   // a new cat's name until you give it one; longest name (characters)
+export const CAT_NAME = 'Kisse', CAT_NAME_MAX = 16;   // a new cat's name until you give it one; longest name (code points)
 const CAT_BOLT = ['”Nä men vart ska du? Kom tebaks!”', '”Mjäu!”\n”Jaha, där sprang du. Dä va la dä då.”', '”Du behöver inte springa iväg! Ja ä la inte farli, din lilla fjant!”'];
 
 type Point = { x: number; z: number };
@@ -131,7 +135,7 @@ export class CatColony {
   /** Said no to adopting it: it takes as many good pets again before it asks next time. */
   decline(k: Cat) { k.pets = 0; }
 
-  /** Gives your cat a name: trimmed, at most CAT_NAME_MAX characters (an emoji counts as one); a blank name changes nothing. Returns its name. */
+  /** Gives your cat a name: trimmed, at most CAT_NAME_MAX code points (most emoji count as one; a joined one such as a family counts as several); a blank name changes nothing. Returns its name. */
   rename(name: string) { const k = this.owned, n = [...name.trim()].slice(0, CAT_NAME_MAX).join(''); if (k && n) k.name = n; return k ? k.name : ''; }
 
   // puts the cat on dry land about d metres from T, or right at T if every try lands in water
@@ -146,7 +150,7 @@ export class CatColony {
 
   /** Your cat comes running from out of sight, to T (the player, or their car, which it then gets into). */
   call(T: Point) { const k = this.owned, g = this.g; if (!k || !this.home) return;
-    this.placeNear(k, T, 20);
+    this.placeNear(k, T, CAT_CALL_M);
     k.state = 'sit'; k.t = 1; k.mesh.position.set(k.x, g.groundAt(k.x, k.z), k.z); g.scene.add(k.mesh); this.cats.push(k); this.home = false;
     g.toast('”Kiss kiss kiss! Kom hit, ' + k.name + '!”', 2.5); }
 
@@ -155,7 +159,7 @@ export class CatColony {
     k.owned = false; k.pets = 0; this.owned = null;
     if (this.home) this.home = false;
     else if (k.ride) this.hopOff(k);
-    else if (k.hop?.onto) { k.hop.onto.cat = null; k.hop.onto = null; k.hop.tx = k.x; k.hop.tz = k.z; }
+    else if (k.hop?.onto) this.landHop(k);
     else if (k.state === 'follow') { k.state = 'sit'; k.t = 2; }
     this.g.toast('”Hej då, ' + k.name + '. Sköt om dä nu!”', 3); }
 
@@ -191,7 +195,7 @@ export class CatColony {
     k.ride = k.hop = k.epa = null; k.mesh.parent?.remove(k.mesh); k.mesh.visible = true; }
 
   // a still EPA with an empty flak, close enough to go for; trimmade EPAs (not in the game yet) won't take cats
-  private freeEpa(k: Cat) { for (const c of this.g.cars) if (c.type === 'epa' && !c.cat && !c.trimmad && Math.abs(c.v) < 0.3 && Math.hypot(c.x - k.x, c.z - k.z) < CAT_EPA_M) return c; return null; }
+  private freeEpa(k: Cat) { for (const c of this.g.cars) if (c.type === 'epa' && !c.cat && !c.trimmad && Math.abs(c.v) < STILL_MS && Math.hypot(c.x - k.x, c.z - k.z) < CAT_EPA_M) return c; return null; }
 
   // where on this car the cat sits; on the roomy EPA flak, a little different each time
   private seat(c: CatCar): Seat {
@@ -206,9 +210,12 @@ export class CatColony {
   // your cat gets into your car; a stray already on the flak makes room
   private board(k: Cat, c: CatCar) {
     const o = c.cat;
-    if (o && o !== k) { if (o.ride) this.hopOff(o); else if (o.hop) { o.hop.onto = null; o.hop.tx = o.x; o.hop.tz = o.z; } c.cat = null; }
+    if (o && o !== k) { if (o.ride) this.hopOff(o); else if (o.hop) this.landHop(o); c.cat = null; }
     k.epa = null; this.startHop(k, k.x, this.g.groundAt(k.x, k.z), k.z, c); k.mesh.rotation.x = 0;
   }
+
+  // a hop onto a car that is called off: the cat lands where it is instead
+  private landHop(k: Cat) { const H = k.hop!; if (H.onto) H.onto.cat = null; H.onto = null; H.tx = k.x; H.tz = k.z; }
 
   private stepHop(k: Cat, dt: number) {
     const H = k.hop!, c = H.onto, S = H.seat, rnd = this.rnd; H.p = Math.min(1, H.p + dt / CAT_HOP_S);
@@ -219,12 +226,14 @@ export class CatColony {
     k.hop = null;
     if (c) { c.mesh.add(k.mesh); k.mesh.position.set(S.x, S.y, S.z); k.mesh.rotation.set(S.rx, S.ry, 0); k.mesh.visible = !S.inside;
       k.ride = c; k.state = 'sit'; k.t = CAT_EPA_RIDE_S + rnd() * 20; if (k.owned) this.g.toast(S.hi.replace('{n}', () => k.name), 2.5); else if (c === this.g.pcar) this.g.toast('”Mjau.”\n”Jaha, ska du åka mä, du?”', 3); }
+    else if (k.owned) { k.state = 'sit'; k.t = 1; }   // yours stays with you rather than wander off
     else { k.state = 'walk'; k.t = 2 + rnd() * 3; k.want = rnd() * Math.PI * 2; }
   }
 
   private hopOff(k: Cat) {
     const c = k.ride!, g = this.g; k.mesh.getWorldPosition(_cv); c.mesh.remove(k.mesh); g.scene.add(k.mesh); k.mesh.visible = true; c.cat = null; k.ride = null;
-    let side = this.rnd() < 0.5 ? 1 : -1; const sh = Math.sin(c.h), ch = Math.cos(c.h), tx = (s: number) => c.x + ch * s * 1.8 - sh * 1.4, tz = (s: number) => c.z + sh * s * 1.8 + ch * 1.4;
+    // you get out on the car's left (side -1), so your cat lands on its right, out of petting reach: E then still gets you back in
+    let side = k.owned || this.rnd() < 0.5 ? 1 : -1; const sh = Math.sin(c.h), ch = Math.cos(c.h), tx = (s: number) => c.x + ch * s * CAT_OFF_SIDE_M - sh * CAT_OFF_BACK_M, tz = (s: number) => c.z + sh * s * CAT_OFF_SIDE_M + ch * CAT_OFF_BACK_M;
     if (g.inWater(tx(side), tz(side))) side = -side;   // the dry side, if there is one
     k.h = k.want = g.wrap(c.h + Math.PI * side / 2); k.mesh.rotation.set(0, -k.h, 0);
     this.startHop(k, _cv.x, _cv.y, _cv.z, null, tx(side), tz(side));
@@ -235,9 +244,9 @@ export class CatColony {
     const g = this.g, { player, wrap, inWater, groundAt } = g, HALF = g.half, rnd = this.rnd;
     const car = k.owned && g.inCar ? g.pcar : null;   // the car your own cat goes with
     if (k.ride) { const c = k.ride; k.x = c.x; k.z = c.z; k.t -= dt;
-      if (k.owned ? c !== car : Math.abs(c.v) < 0.3 && k.t <= 0 && rnd() < CAT_EPA_OFF * dt) this.hopOff(k);   // yours gets out when you do
+      if (k.owned ? c !== car : Math.abs(c.v) < STILL_MS && k.t <= 0 && rnd() < CAT_EPA_OFF * dt) this.hopOff(k);   // yours gets out when you do
       return; }
-    if (k.state === 'hop') { if (k.owned && k.hop!.onto && k.hop!.onto !== car) { const H = k.hop!; H.onto!.cat = null; H.onto = null; H.tx = k.x; H.tz = k.z; }
+    if (k.state === 'hop') { if (k.owned && k.hop!.onto && k.hop!.onto !== car) this.landHop(k);
       this.stepHop(k, dt); return; }
     let fx = 0, fz = 0;
     // a moving car close by scares it off; your cat isn't scared of your own car
@@ -249,7 +258,7 @@ export class CatColony {
     let follow = 0;   // how fast the owned cat walks after the player this frame (m/s)
     if (k.owned && k.state !== 'flee' && !g.inCar && !g.inside) {
       let dx = player.x - k.x, dz = player.z - k.z, d = Math.hypot(dx, dz);
-      if (d > CAT_FIND_M || inWater(k.x, k.z)) { this.placeNear(k, player, 6); dx = player.x - k.x; dz = player.z - k.z; d = Math.hypot(dx, dz); }   // too far, or stuck in the lake: it catches up out of sight
+      if (d > CAT_FIND_M || inWater(k.x, k.z)) { this.placeNear(k, player, CAT_CATCH_UP_M); dx = player.x - k.x; dz = player.z - k.z; d = Math.hypot(dx, dz); }   // too far, or stuck in the lake: it catches up out of sight
       if (d > CAT_FOLLOW_M) { k.state = 'follow'; k.t = 1; k.want = Math.atan2(dx, -dz); follow = clamp((d - CAT_FOLLOW_M) * 2, CAT_TROT, CAT_RUN); }
       else if (k.state === 'follow') { k.state = 'sit'; k.t = 4 + rnd() * 8; }
     } else if (car && k.state !== 'flee') {   // run to your car and hop in; left behind, it waits, and catches up when you walk again
@@ -258,9 +267,9 @@ export class CatColony {
       if (d < CAT_FIND_M) { k.state = 'follow'; k.t = 1; k.want = Math.atan2(dx, -dz); follow = CAT_RUN; }
       else if (k.state === 'follow') { k.state = 'sit'; k.t = 4 + rnd() * 8; }
     } else if (k.state === 'follow') { k.state = 'sit'; k.t = 4 + rnd() * 8; }
-    if (!k.owned && k.state === 'sit' && rnd() < CAT_EPA_ON * dt) { const c = this.freeEpa(k); if (c) { k.state = 'epa'; k.epa = c; k.t = 15; } }
+    if (!k.owned && k.state === 'sit' && rnd() < CAT_EPA_ON * dt) { const c = this.freeEpa(k); if (c) { k.state = 'epa'; k.epa = c; k.t = CAT_EPA_TROT_S; } }
     if (k.state === 'epa' && k.epa) { const c = k.epa, bx = c.x - Math.sin(c.h) * 3, bz = c.z + Math.cos(c.h) * 3;   // trot to just behind the tailgate
-      if (Math.abs(c.v) > 0.3 || c.cat) { k.state = 'sit'; k.t = 3 + rnd() * 6; k.epa = null; }
+      if (Math.abs(c.v) > STILL_MS || c.cat) { k.state = 'sit'; k.t = 3 + rnd() * 6; k.epa = null; }
       else if (Math.hypot(bx - k.x, bz - k.z) < 0.5) { k.epa = null; this.startHop(k, k.x, groundAt(k.x, k.z), k.z, c); k.mesh.rotation.x = 0; this.stepHop(k, dt); return; }
       else k.want = Math.atan2(bx - k.x, -(bz - k.z)); }
     if (k.t <= 0) { k.epa = null; if (k.state === 'sit' && !k.owned) {   // your own cat sits and waits rather than wander off
