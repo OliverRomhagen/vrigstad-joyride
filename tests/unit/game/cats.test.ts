@@ -4,7 +4,7 @@ import { type Cat, type CatCar, CatColony, type CatDeps } from '../../../src/gam
 import type { BuildingIndex } from '../../../src/world/buildings';
 
 // A colony with no houses (so nothing spawns), flat dry ground and the player at the origin, walking.
-function colony() {
+function colony(water: (x: number, z: number) => boolean = () => false) {
   const toasts: string[] = [];
   const player = { x: 0, z: 0, speed: 0 };
   const drive = { inCar: false, pcar: null as CatCar | null, cars: [] as CatCar[] };
@@ -12,7 +12,7 @@ function colony() {
     scene: new THREE.Scene(),
     // only what the cats touch; a real index needs the map data
     buildings: { collide: () => false, grid: new Map(), footprints: [] } as unknown as BuildingIndex,
-    inWater: () => false,
+    inWater: water,
     groundAt: () => 0,
     half: 1100,
     coarse: false,
@@ -33,7 +33,7 @@ function colony() {
     useTreat: () => false,
   };
   const c = new CatColony(deps);
-  const cat: Cat = { x: 1, z: 0, h: 0, want: 0, state: 'sit', t: 5, nope: 0, phase: 0, mesh: new THREE.Mesh(), epa: null, hop: null, ride: null, pets: 0, owned: false };
+  const cat: Cat = { x: 1, z: 0, h: 0, want: 0, state: 'sit', t: 5, nope: 0, phase: 0, mesh: new THREE.Mesh(), epa: null, hop: null, ride: null, pets: 0, owned: false, name: 'Kisse' };
   c.cats.push(cat);
   deps.scene.add(cat.mesh);
   return { c, cat, player, toasts, drive };
@@ -199,5 +199,80 @@ describe('sending your cat home, calling it and setting it free', () => {
     expect(c.home).toBe(false);
     expect(c.owned).toBeNull();
     expect(c.cats).not.toContain(cat);
+  });
+});
+
+describe('strays on the EPA flak', () => {
+  const run = (c: CatColony, p: { x: number; z: number }, s: number) => { for (let i = 0; i < s * 30; i++) c.update(p, 1 / 30); };
+  // a standing EPA by a sitting stray, the player out of the way
+  function epaScene() {
+    const t = colony(), car: CatCar = { type: 'epa', x: 4, z: 0, h: 0, v: 0, mesh: new THREE.Object3D() };
+    t.drive.cars.push(car); t.player.x = -20;
+    return { ...t, car };
+  }
+
+  it('trots over, hops on, rides while it drives, and hops off once it has stood still a while', () => {
+    const { c, cat, car, player } = epaScene();
+    for (let i = 0; i < 3000 && !cat.ride; i++) { if (cat.state === 'walk' || cat.state === 'flee') { cat.state = 'sit'; cat.t = 99; } c.update(player, 1 / 30); }
+    expect(cat.ride).toBe(car);
+    expect(car.cat).toBe(cat);
+    car.v = 5; run(c, player, 5);                    // driving: it stays on, whatever its timer says
+    expect(cat.ride).toBe(car);
+    car.v = 0;                                       // standing: it gets off within a couple of minutes (and may come back on later)
+    let off = false;
+    for (let i = 0; i < 120 * 30 && !off; i++) { c.update(player, 1 / 30); off = !cat.ride && cat.state !== 'hop' && !car.cat; }
+    expect(off).toBe(true);
+  });
+
+  it('adopted mid-hop onto the flak, it lands on the ground and leaves the EPA free', () => {
+    const { c, cat, car, player } = epaScene();
+    for (let i = 0; i < 3000 && cat.state !== 'hop'; i++) { if (cat.state === 'walk' || cat.state === 'flee') { cat.state = 'sit'; cat.t = 99; } c.update(player, 1 / 30); }
+    expect(cat.hop?.onto).toBe(car);
+    c.adopt(cat);
+    run(c, player, 2);
+    expect(cat.ride).toBeNull();
+    expect(car.cat).toBeNull();
+  });
+
+  it('your cat sent home mid-hop into your car leaves the car free', () => {
+    const { c, cat, car, player, drive } = epaScene();
+    c.adopt(cat); cat.x = 2;                         // within hopping reach of the EPA
+    drive.inCar = true; drive.pcar = car;
+    c.update(player, 1 / 30);
+    expect(cat.hop?.onto).toBe(car);
+    c.sendHome();
+    expect(car.cat).toBeNull();
+    expect(cat.hop).toBeNull();
+  });
+});
+
+describe('your cat and water', () => {
+  it('catches up on dry land when it ends up in the lake', () => {
+    const wet = (x: number) => x > 50;                // a lake east of x = 50
+    const { c, cat, player } = colony(wet);
+    c.adopt(cat);
+    cat.x = 60;                                        // in the lake
+    for (let i = 0; i < 30; i++) c.update(player, 1 / 30);
+    expect(wet(cat.x)).toBe(false);
+    expect(Math.hypot(cat.x - player.x, cat.z - player.z)).toBeLessThan(10);
+  });
+});
+
+describe('naming your cat', () => {
+  it('takes a trimmed name of at most 16 characters, ignores a blank one, and uses it when you talk to it', () => {
+    const { c, cat, toasts } = colony();
+    expect(cat.name).toBe('Kisse');
+    c.rename('  Måns  ');
+    expect(cat.name).toBe('Kisse');                    // not yours yet
+    c.adopt(cat);
+    c.rename('  Måns  ');
+    expect(cat.name).toBe('Måns');
+    c.rename('   ');
+    expect(cat.name).toBe('Måns');
+    c.rename('Kattis von Vrigstad den Store');
+    expect(cat.name).toBe('Kattis von Vrigs');
+    c.rename('Måns');
+    c.sendHome();
+    expect(toasts.at(-1)).toContain('Måns');
   });
 });

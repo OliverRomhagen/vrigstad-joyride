@@ -17,7 +17,7 @@ import { nodeKey, ROAD_CELL_M as RC, RoadNetwork } from '../world/roads';
 import { LEGACY_LIGHT } from '../world/three-legacy';
 import { treeSpots } from '../world/trees';
 import { Water } from '../world/water';
-import { CAT_ADOPT_PETS, CatColony } from './cats';
+import { CAT_ADOPT_PETS, CAT_NAME_MAX, CatColony } from './cats';
 
 (function () {
 'use strict';
@@ -568,19 +568,27 @@ const { cats } = colony, updateCats = colony.update.bind(colony), catFirst = col
 function petCat(k) { const ready = colony.pet(k); showHeart(k); if (ready) openMenu('adopt', '”Ska du följa mä hem, kisse?”', [['adopt', 'Ja, adoptera'], ['no', 'Nä, inte nu']], c => { if (c === 'adopt') { colony.adopt(k); showHeart(k); } else colony.decline(k); drawPets(); }, k); }
 // ---------- your pets: P (or the Pets button) calls them, sends them home or sets them free ----------
 // One entry per pet you own; only the cat so far. Another kind of pet adds its own entry here, and the menu then lists them first.
-function myPets() { return colony.owned ? [{ name: 'Kisse', home: colony.home, call: () => colony.call(inCar ? pcar : player), sendHome: () => colony.sendHome(), free: () => colony.setFree() }] : []; }
+function myPets() { return colony.owned ? [{ name: colony.owned.name, home: colony.home, rename: n => colony.rename(n), call: () => colony.call(inCar ? pcar : player), sendHome: () => colony.sendHome(), free: () => colony.setFree() }] : []; }
 function openPets() { const ps = myPets(); if (!ps.length) return; if (ps.length === 1) { openPet(ps[0]); return; }
-  openMenu('pets', '”Dina djur”', [...ps.map((p, i) => ['p' + i, p.name + (p.home ? ' (hemma)' : '')]), ['no', 'Stäng']], k => { if (k !== 'no') openPet(ps[+k.slice(1)]); }); }
+  openMenu('pets', '”Dina djur”', [...ps.map((p, i) => ['p' + i, esc(p.name) + (p.home ? ' (hemma)' : '')]), ['no', 'Stäng']], k => { if (k !== 'no') openPet(ps[+k.slice(1)]); }); }
 function openPet(p) {
-  openMenu('pets', '”' + p.name + (p.home ? ' ä hemma.”' : '”'), [p.home ? ['call', 'Ropa hit'] : ['home', 'Skicka hem'], ['free', 'Släpp fri'], ['no', 'Stäng']], k => {
-    if (k === 'call') p.call(); else if (k === 'home') p.sendHome();
-    else if (k === 'free') openMenu('pets', '”Ska du släppa ' + p.name + ' fri? Dä går inte å ångra.”', [['yes', 'Ja, släpp fri'], ['no', 'Nä']], c => { if (c === 'yes') { p.free(); drawPets(); } }); }); }
+  openMenu('pets', '”' + esc(p.name) + (p.home ? ' ä hemma.”' : '”'), [p.home ? ['call', 'Ropa hit'] : ['home', 'Skicka hem'], ['name', 'Byt namn'], ['free', 'Släpp fri'], ['no', 'Stäng']], k => {
+    if (k === 'call') p.call(); else if (k === 'home') p.sendHome(); else if (k === 'name') openRename(p);
+    else if (k === 'free') openMenu('pets', '”Ska du släppa ' + esc(p.name) + ' fri? Dä går inte å ångra.”', [['yes', 'Ja, släpp fri'], ['no', 'Nä']], c => { if (c === 'yes') { p.free(); drawPets(); } }); }); }
+// naming a pet: a text field in the menu; Enter saves, Esc cancels, and game keys don't fire while you type
+const esc = t => t.replace(/[&<>"']/g, c => '&#' + c.charCodeAt(0) + ';');
+let nameIn = null;
+function openRename(p) {
+  openMenu('pets', '”Va ska ' + esc(p.name) + ' heta?”', [['ok', 'Spara'], ['no', 'Avbryt']], k => { const n = nameIn.value; nameIn = null; if (k === 'ok' && n.trim()) toast('”' + p.rename(n) + '. Dä ä ett fint namn, dä.”', 2.5); });
+  nameIn = document.createElement('input'); nameIn.type = 'text'; nameIn.maxLength = CAT_NAME_MAX; nameIn.value = p.name; nameIn.setAttribute('aria-label', 'Name');
+  nameIn.autocomplete = 'off'; nameIn.spellcheck = false; kmenu.querySelector('p').after(nameIn); nameIn.focus(); nameIn.select(); }
 function drawPets() { $('pets').hidden = !colony.owned; }
 // ---------- the adopt heart: hovers over a stray once it has had a good pet, a third fuller for each good pet in a row ----------
 const HEART_BROKE_S = 0.8, HEART_ADOPT_S = 2, HEART_M = 35;        // a broken streak shakes the empty heart / an adopted cat shows a full one this long (s) before it goes; hidden further away (m)
 const HEART_PATH = 'M12 21s-7.5-4.6-10-9.2C.3 8.4 2.3 4 6.4 4c2.2 0 3.8 1.3 5.6 3.3C13.8 5.3 15.4 4 17.6 4 21.7 4 23.7 8.4 22 11.8 19.5 16.4 12 21 12 21z';
-// an outline, and a filled copy cut off from the top; the heart spans y 4 to 21 of the 24-unit box, so the cut is measured on that
-function heartSvg(pets) { const f = Math.min(1, pets / CAT_ADOPT_PETS), top = ((4 + 17 * (1 - f)) / 24 * 100).toFixed(1);
+// an outline, and a filled copy cut off from the top; with its 2-unit stroke the heart spans y 3 to 22 of the 24-unit box, so the cut is
+// measured on that (measured on the path alone, a full heart kept a rim of outline along the top)
+function heartSvg(pets) { const f = Math.min(1, pets / CAT_ADOPT_PETS), top = f >= 1 ? '0' : ((3 + 19 * (1 - f)) / 24 * 100).toFixed(1);
   return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="' + HEART_PATH + '"/></svg><svg class="fill" viewBox="0 0 24 24" aria-hidden="true" style="clip-path: inset(' + top + '% 0 0 0)"><path d="' + HEART_PATH + '"/></svg>'; }
 const hearts = new Map(), _hv = new THREE.Vector3();                 // cat -> { el, t: s until it goes, Infinity while the streak lasts }
 // after a pet: a new or fuller heart pops, a broken streak shakes the empty one away; only while pets count towards adopting
@@ -588,7 +596,8 @@ function showHeart(k) { let h = hearts.get(k); const full = colony.owned === k, 
   if (!h) { if (!pets || colony.owned && !full) return; h = { el: document.createElement('div'), t: 0 }; h.el.className = 'catheart'; $('stage').appendChild(h.el); hearts.set(k, h); }
   h.t = full ? HEART_ADOPT_S : pets ? Infinity : HEART_BROKE_S; h.el.innerHTML = heartSvg(pets); h.el.classList.toggle('broke', !pets); }   // new svgs: the pop / shake plays again
 function drawHearts(dt) {
-  if (hearts.size) camera.updateMatrixWorld();   // the camera moved this frame, and render() only updates its matrices later: without this the heart lags a frame
+  if (!hearts.size) return;
+  camera.updateMatrixWorld();   // the camera moved this frame, and render() only updates its matrices later: without this the heart lags a frame
   for (const [k, h] of hearts) {
     h.t -= dt;
     // gone: done showing, despawned or sent home, a no to adopting, or another cat adopted (pets stop counting then)
@@ -596,7 +605,7 @@ function drawHearts(dt) {
     k.mesh.getWorldPosition(_hv); const far = Math.hypot(_hv.x - camera.position.x, _hv.z - camera.position.z) > HEART_M; _hv.y += 0.75; _hv.project(camera);
     h.el.hidden = far || _hv.z > 1 || !k.mesh.visible;
     if (!h.el.hidden) h.el.style.transform = 'translate(' + ((_hv.x + 1) / 2 * canvas.clientWidth).toFixed(1) + 'px, ' + ((1 - _hv.y) / 2 * canvas.clientHeight).toFixed(1) + 'px)'; } }
-$('pets').addEventListener('click', () => { if (menuKind === 'pets') closeMenu(); else if (kmenu.hidden) openPets(); canvas.focus(); });
+$('pets').addEventListener('click', () => { if (menuKind === 'pets') closeMenu(); else openPets(); canvas.focus(); });   // from the kiosk or adopt menu too
 function buyTreats() {
   if (treats >= TREAT_MAX) { toast('”Nämen, du har ju fickera fulla redan!”', 2.5); return; }
   treats = Math.min(TREAT_MAX, treats + TREAT_BAG); drawTreats(); toast('”En påse kattgodis, varsågo. Kattera ä tôcka i dä.”', 4);
@@ -656,9 +665,9 @@ let relock = false;                                             // a menu needs 
 let menuKind = null, menuPick = null, menuCat = null;           // which menu is open, what a choice does, the cat it is about
 // items are [key, label]; the 'no' item is last and gets Esc
 function openMenu(kind, title, items, pick, cat = null) {
-  kmenu.innerHTML = '<p>' + title + '</p>' + items.map(([k, label], i) => '<button type="button" data-k="' + k + '"><kbd>' + (k === 'no' ? 'Esc' : i + 1) + '</kbd>' + label + '</button>').join('');
+  nameIn = null; kmenu.innerHTML = '<p id="kmenu-t">' + title + '</p>' + items.map(([k, label], i) => '<button type="button" data-k="' + k + '"><kbd>' + (k === 'no' ? 'Esc' : k === 'ok' ? 'Enter' : i + 1) + '</kbd>' + label + '</button>').join('');
   menuKind = kind; menuPick = pick; menuCat = cat; if (kmenu.hidden) { relock = locked(); if (relock) document.exitPointerLock(); } kmenu.hidden = false; }
-function closeMenu() { kmenu.hidden = true; menuKind = menuPick = menuCat = null; if (relock) { relock = false; lockMouse(); } }
+function closeMenu() { kmenu.hidden = true; nameIn = null; menuKind = menuPick = menuCat = null; if (relock) { relock = false; lockMouse(); } }
 // a choice can open the next menu (a pet's "are you sure?"): then the menu stays up, and the cursor stays free
 function menuChoose(k) { const pick = menuPick; menuPick = null; if (pick) pick(k); if (!menuPick) closeMenu(); }
 const openKiosk = () => openMenu('kiosk', '”Va ska dä va?”', [['triss', 'Trisslott'], ['treats', 'Kattgodis (3 st)'], ['no', 'Nä tack']], k => { if (k === 'triss') scratch(); else if (k === 'treats') buyTreats(); });
@@ -696,9 +705,10 @@ let camYaw = 0.6, camPitch = 0.34, lookOff = 0, lookIdle = 9;
 const keys = {}, joy = { x: 0, y: 0, on: false };
 const KEYMAP = { KeyW: 'up', ArrowUp: 'up', KeyS: 'down', ArrowDown: 'down', KeyA: 'left', ArrowLeft: 'left', KeyD: 'right', ArrowRight: 'right', Space: 'brake', ShiftLeft: 'run', ShiftRight: 'run' };
 addEventListener('keydown', e => { if (!started) return; const k = KEYMAP[e.code];
+  if (nameIn && e.target === nameIn) { if (e.isComposing) return; if (e.code === 'Enter' || e.code === 'NumpadEnter' || e.code === 'Escape') { e.preventDefault(); menuChoose(e.code === 'Escape' ? 'no' : 'ok'); canvas.focus(); } return; }   // typing a name
   if (!kmenu.hidden) { const n = /^(?:Digit|Numpad)([1-9])$/.exec(e.code), b = n && kmenu.querySelectorAll('button')[+n[1] - 1];
-    if (e.code === 'Escape' || b && b.dataset.k !== 'no') { menuChoose(e.code === 'Escape' ? 'no' : b.dataset.k); return; } }
-  if (e.code === 'KeyP' && !e.repeat) { if (menuKind === 'pets') closeMenu(); else if (kmenu.hidden) openPets(); return; }
+    if (e.code === 'Escape' || b && b.dataset.k !== 'no') { e.preventDefault(); menuChoose(e.code === 'Escape' ? 'no' : b.dataset.k); return; } }
+  if (e.code === 'KeyP' && !e.repeat && colony.owned) { if (menuKind === 'pets') closeMenu(); else openPets(); return; }
   if (kmenu.contains(e.target)) return;                       // Enter / Space on a focused menu button: let the button's own click handle it
   if (k) { keys[k] = true; e.preventDefault(); if (k === 'brake' && !e.repeat && jumpOk()) jumpQ = true; } else if ((e.code === 'KeyE' || e.code === 'KeyF' || e.code === 'Enter') && !e.repeat) action(); else if (e.code === 'KeyR') respawn(); });
 addEventListener('keyup', e => { const k = KEYMAP[e.code]; if (k) keys[k] = false; });
