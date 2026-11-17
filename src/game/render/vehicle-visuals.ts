@@ -24,6 +24,9 @@ type View = {
   color?: string;
 };
 const DETAIL_RANGE_M = 120,
+  DETAIL_KEEP_M = 15, // a detailed car keeps its model until it is this much further away than the next candidate, so it doesn't pop back and forth
+  DETAIL_CAP_COARSE = 3,
+  DETAIL_CAP_DESKTOP = 8,
   REFRESH_SECONDS = 0.35;
 // Rendering owns resource lifetime; no simulation or gameplay rules are mutated.
 export class VehicleVisuals {
