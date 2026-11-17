@@ -7,7 +7,8 @@ import {
   BODY_NODE,
   WHEEL_NODES,
   VEHICLES,
-  DEFAULT_VEHICLES,
+  VEHICLE_VARIANTS,
+  pickVariant,
 } from '../../../src/game/render/vehicle-registry';
 
 const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
