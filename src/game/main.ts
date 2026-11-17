@@ -17,7 +17,7 @@ import { nodeKey, ROAD_CELL_M as RC, RoadNetwork } from '../world/roads';
 import { LEGACY_LIGHT } from '../world/three-legacy';
 import { treeSpots } from '../world/trees';
 import { Water } from '../world/water';
-import { CatColony } from './cats';
+import { CAT_ADOPT_PETS, CatColony } from './cats';
 
 (function () {
 'use strict';
@@ -561,9 +561,71 @@ const TREAT_BAG = 3, TREAT_MAX = 9;                                  // treats p
 let treats = 0;
 // the getters are read when the cats use them, so they can name things declared further down
 const colony = new CatColony({ scene, buildings, inWater, groundAt, half: HALF, coarse, wrap, geoCache, boxGeo, paintMat, blob, cars, toast,
-  get player() { return player; }, get keys() { return keys; }, get joy() { return joy; }, get kmenu() { return kmenu; }, get inCar() { return inCar; }, get inside() { return inside; },
+  get player() { return player; }, get keys() { return keys; }, get joy() { return joy; }, get kmenu() { return kmenu; }, get inCar() { return inCar; }, get pcar() { return pcar; }, get inside() { return inside; },
   useTreat() { if (treats <= 0) return false; treats--; drawTreats(); return true; } });
-const { cats } = colony, updateCats = colony.update.bind(colony), catFirst = colony.catFirst.bind(colony), nearCat = colony.nearest.bind(colony), petCat = colony.pet.bind(colony);
+const { cats } = colony, updateCats = colony.update.bind(colony), catFirst = colony.catFirst.bind(colony), nearCat = colony.nearest.bind(colony);
+// a good pet that makes a cat ready to be adopted asks whether it comes home with you
+const CAT_MENU_M = 4;   // a cat's menu (the adopt question, or your own cat's) closes when you get further than this from it (m), or it bolts, or you get in a car
+const nearMenuCat = k => () => !inCar && k.state !== 'flee' && Math.hypot(k.x - player.x, k.z - player.z) < CAT_MENU_M;
+function petCat(k) { const ready = colony.pet(k); showHeart(k); if (ready) openMenu('adopt', '”Ska du följa mä hem, kisse?”', [['adopt', 'Ja, adoptera'], ['no', 'Nä, inte nu']], c => { if (c === 'adopt') { colony.adopt(k); showHeart(k); } else colony.decline(k); drawPets(); }, nearMenuCat(k)); }
+// your own cat: E opens its menu rather than petting it straight away; Ge godis shows only while you have treats
+function openOwnCat(k) {
+  openMenu('cat', '”' + esc(k.name) + '”', [['pet', 'Klappa'], ...(treats ? [['treat', 'Ge godis']] : []), ['play', 'Leka'], ['home', 'Skicka hem'], ['no', 'Stäng']], c => {
+    if (c === 'pet') petCat(k); else if (c === 'treat') { if (colony.treat(k)) showHeart(k); } else if (c === 'play') colony.play(k); else if (c === 'home') colony.sendHome(); }, nearMenuCat(k)); }
+// ---------- your pets: P (or the Pets button) calls them, sends them home or sets them free ----------
+// One entry per pet you own; only the cat so far. Another kind of pet adds its own entry here, and the menu then lists them first.
+function myPets() { return colony.owned ? [{ name: colony.owned.name, home: colony.home, rename: n => colony.rename(n), call: () => colony.call(inCar ? pcar : player), sendHome: () => colony.sendHome(), free: () => colony.setFree() }] : []; }
+function openPets() { const ps = myPets(); if (!ps.length) return; if (ps.length === 1) { openPet(ps[0]); return; }
+  openMenu('pets', '”Dina djur”', [...ps.map((p, i) => ['p' + i, esc(p.name) + (p.home ? ' (hemma)' : '')]), ['no', 'Stäng']], k => { if (k !== 'no') openPet(ps[+k.slice(1)]); }); }
+function openPet(p) {
+  openMenu('pets', '”' + esc(p.name) + (p.home ? ' ä hemma.”' : '”'), [p.home ? ['call', 'Ropa hit'] : ['home', 'Skicka hem'], ['name', 'Byt namn'], ['free', 'Släpp fri'], ['no', 'Stäng']], k => {
+    if (k === 'call') p.call(); else if (k === 'home') p.sendHome(); else if (k === 'name') openRename(p);
+    else if (k === 'free') openMenu('pets', '”Ska du släppa ' + esc(p.name) + ' fri? Dä går inte å ångra.”', [['yes', 'Ja, släpp fri'], ['no', 'Nä']], c => { if (c === 'yes') { p.free(); drawPets(); } }); }); }
+// naming a pet: a text field in the menu; Enter saves, Esc cancels, and game keys don't fire while you type
+const esc = t => t.replace(/[&<>"']/g, c => '&#' + c.charCodeAt(0) + ';');
+let nameIn = null;
+function openRename(p) {
+  openMenu('pets', '”Va ska ' + esc(p.name) + ' heta?”', [['ok', 'Spara'], ['no', 'Avbryt']], k => { const n = nameIn.value; nameIn = null; if (k === 'ok' && n.trim()) toast('”' + p.rename(n) + '. Dä ä ett fint namn, dä.”', 2.5); });
+  nameIn = document.createElement('input'); nameIn.type = 'text'; nameIn.value = p.name; nameIn.setAttribute('aria-label', 'Name');
+  nameIn.autocomplete = 'off'; nameIn.spellcheck = false; kmenu.querySelector('p').after(nameIn); nameIn.focus(); nameIn.select(); }
+function drawPets() { $('pets').hidden = !colony.owned; }
+// ---------- the adopt heart: hovers over a stray once it has had a good pet, a third fuller for each good pet in a row ----------
+// A sprite in the scene, so it shrinks with distance and hides behind walls like the cat does.
+const HEART_BROKE_S = 0.8, HEART_ADOPT_S = 2;   // a broken streak wobbles the empty heart / an adopted cat shows a full one this long (s) before it goes
+const HEART_M = 0.42, HEART_Y = 0.9, HEART_POP_S = 0.35;   // heart size and height of its middle over the cat's feet (m); how long a new or fuller heart pops (s)
+const HEART_PATH = 'M12 21s-7.5-4.6-10-9.2C.3 8.4 2.3 4 6.4 4c2.2 0 3.8 1.3 5.6 3.3C13.8 5.3 15.4 4 17.6 4 21.7 4 23.7 8.4 22 11.8 19.5 16.4 12 21 12 21z';
+const calm = matchMedia('(prefers-reduced-motion: reduce)').matches;
+// one material per fill (0 to 3 thirds), drawn once on a canvas: a light outline, and the pink fill clipped from the bottom.
+// With its 2-unit stroke the heart spans y 3 to 22 of its 24-unit box, so the fill line is measured on that.
+const heartMats = [0, 1, 2, 3].map(n => {
+  const cv = document.createElement('canvas'); cv.width = cv.height = 120; const g = cv.getContext('2d'), p = new Path2D(HEART_PATH);
+  g.setTransform(4, 0, 0, 4, 12, 12);   // 12 px of margin: room for the stroke and its shadow
+  g.lineWidth = 2; g.lineJoin = 'round';
+  g.shadowColor = 'rgba(0, 0, 0, .55)'; g.shadowBlur = 6; g.strokeStyle = '#f4f1e6'; g.stroke(p); g.shadowColor = 'transparent';
+  if (n) { g.save(); g.beginPath(); g.rect(-2, n >= CAT_ADOPT_PETS ? -2 : 3 + 19 * (1 - n / CAT_ADOPT_PETS), 28, 28); g.clip(); g.fillStyle = g.strokeStyle = '#e8506a'; g.fill(p); g.stroke(p); g.restore(); }
+  const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace;
+  return new THREE.SpriteMaterial({ map: t, depthWrite: false, fog: false, toneMapped: false });   // the HUD's colours, not the scene's light
+});
+const hearts = new Map();   // cat -> { s: its sprite, t: s until it goes (Infinity while the streak lasts), age: s since the last pet, broke: its own wobbling material }
+// after a pet: a new or fuller heart pops, a broken streak wobbles the empty one away, while pets count towards adopting; your own cat pops a full one each pet or treat, a small love signal
+function showHeart(k) { let h = hearts.get(k); const full = colony.owned === k, pets = full ? CAT_ADOPT_PETS : k.pets;
+  if (!h) { if (!pets || colony.owned && !full) return; h = { s: new THREE.Sprite(heartMats[0]), t: 0, age: 0, broke: null }; h.s.renderOrder = 1; scene.add(h.s); hearts.set(k, h); }
+  h.t = full ? HEART_ADOPT_S : pets ? Infinity : HEART_BROKE_S; h.age = 0;
+  if (h.broke) { h.broke.dispose(); h.broke = null; }
+  if (!pets) h.broke = heartMats[0].clone();   // a copy to wobble, sharing the texture, so two broken hearts don't wobble as one
+  h.s.material = h.broke || heartMats[Math.min(pets, CAT_ADOPT_PETS)]; }
+function drawHearts(dt) {
+  if (!hearts.size) return;
+  for (const [k, h] of hearts) {
+    h.t -= dt; h.age += dt;
+    // gone: done showing, despawned or sent home, a no to adopting, or another cat adopted (pets stop counting then)
+    if (h.t <= 0 || !k.mesh.parent || h.t === Infinity && !k.pets || colony.owned && colony.owned !== k) { scene.remove(h.s); if (h.broke) h.broke.dispose(); hearts.delete(k); continue; }
+    k.mesh.getWorldPosition(h.s.position); h.s.position.y += HEART_Y; h.s.visible = k.mesh.visible;
+    const a = calm ? 1 : Math.min(1, h.age / HEART_POP_S);
+    h.s.scale.setScalar(HEART_M * (h.broke ? 1 : 0.4 + 0.6 * a + Math.sin(a * Math.PI) * 0.35));   // pops up past its size and settles
+    if (h.broke) h.broke.rotation = calm ? 0 : Math.sin(h.age * 40) * 0.35 * (1 - h.age / HEART_BROKE_S);
+  } }
+$('pets').addEventListener('click', () => { if (menuKind === 'pets') closeMenu(); else openPets(); canvas.focus(); });   // from the kiosk or adopt menu too
 function buyTreats() {
   if (treats >= TREAT_MAX) { toast('”Nämen, du har ju fickera fulla redan!”', 2.5); return; }
   treats = Math.min(TREAT_MAX, treats + TREAT_BAG); drawTreats(); toast('”En påse kattgodis, varsågo. Kattera ä tôcka i dä.”', 4);
@@ -617,13 +679,19 @@ function addPlace(kind, name, x, z, color) {
   addFootprint([x - 1.5, z - 1.1, x + 1.5, z - 1.1, x + 1.5, z + 1.1, x - 1.5, z + 1.1]);
   addPlace('kiosk', 'Kiosken', x, z + 2.3, 0xf2c230);
 })();
-// one lucka, several things to buy: E opens a small menu (1 / 2 / Esc, or tap), walking away closes it
+// small menus on one plate (the kiosk's one lucka, adopting a cat): number keys / Esc, or tap; walking away closes it
 const kmenu = $('kmenu');
-let relock = false;                                             // the kiosk menu needs the cursor: free it while the menu is open, and take it back after
-function openKiosk() { kmenu.hidden = false; relock = locked(); if (relock) document.exitPointerLock(); }
-function closeKiosk() { kmenu.hidden = true; if (relock) { relock = false; lockMouse(); } }
-function kioskPick(k) { closeKiosk(); if (k === 'triss') scratch(); else if (k === 'treats') buyTreats(); }
-kmenu.addEventListener('click', e => { const b = e.target.closest('button'); if (b) { kioskPick(b.dataset.k); canvas.focus(); } });
+let relock = false;                                             // a menu needs the cursor: free it while the menu is open, and take it back after
+let menuKind = null, menuPick = null, menuStay = null;          // which menu is open, what a choice does, what keeps it open (checked 4 times a second; none: stays open)
+// items are [key, label]; the 'no' item is last and gets Esc
+function openMenu(kind, title, items, pick, stay = null) {
+  nameIn = null; kmenu.innerHTML = '<p id="kmenu-t">' + title + '</p>' + items.map(([k, label], i) => '<button type="button" data-k="' + k + '"><kbd>' + (k === 'no' ? 'Esc' : k === 'ok' ? 'Enter' : i + 1) + '</kbd>' + label + '</button>').join('');
+  menuKind = kind; menuPick = pick; menuStay = stay; if (kmenu.hidden) { relock = locked(); if (relock) document.exitPointerLock(); } kmenu.hidden = false; }
+function closeMenu() { kmenu.hidden = true; nameIn = null; menuKind = menuPick = menuStay = null; if (relock) { relock = false; lockMouse(); } }
+// a choice can open the next menu (a pet's "are you sure?"): then the menu stays up, and the cursor stays free
+function menuChoose(k) { const pick = menuPick; menuPick = null; if (pick) pick(k); if (!menuPick) closeMenu(); }
+const openKiosk = () => openMenu('kiosk', '”Va ska dä va?”', [['triss', 'Trisslott'], ['treats', 'Kattgodis (3 st)'], ['no', 'Nä tack']], k => { if (k === 'triss') scratch(); else if (k === 'treats') buyTreats(); }, () => nearPlace()?.kind === 'kiosk');
+kmenu.addEventListener('click', e => { const b = e.target.closest('button'); if (b) { menuChoose(b.dataset.k); canvas.focus(); } });
 function nearPlace() { if (inCar) return null; for (const p of places) if (Math.hypot(p.x - player.x, p.z - player.z) < 2.2) return p; return null; }
 function enterHouse(p) {
   if (police.some(c => Math.hypot(c.x - p.x, c.z - p.z) < SAFE_SEEN)) { toast('The police can see you. Get further ahead of them before you go inside.', 3); return; }
@@ -657,7 +725,11 @@ let camYaw = 0.6, camPitch = 0.34, lookOff = 0, lookIdle = 9;
 const keys = {}, joy = { x: 0, y: 0, on: false };
 const KEYMAP = { KeyW: 'up', ArrowUp: 'up', KeyS: 'down', ArrowDown: 'down', KeyA: 'left', ArrowLeft: 'left', KeyD: 'right', ArrowRight: 'right', Space: 'brake', ShiftLeft: 'run', ShiftRight: 'run' };
 addEventListener('keydown', e => { if (!started) return; const k = KEYMAP[e.code];
-  if (!kmenu.hidden && /^(Digit|Numpad)[12]$|^Escape$/.test(e.code)) { kioskPick(e.code === 'Escape' ? 'no' : e.code.endsWith('1') ? 'triss' : 'treats'); return; }
+  if (nameIn && e.target === nameIn) { if (e.isComposing) return; if (e.code === 'Enter' || e.code === 'NumpadEnter' || e.code === 'Escape') { e.preventDefault(); menuChoose(e.code === 'Escape' ? 'no' : 'ok'); canvas.focus(); } return; }   // typing a name
+  if (!kmenu.hidden) { const n = /^(?:Digit|Numpad)([1-9])$/.exec(e.code), b = n && kmenu.querySelectorAll('button')[+n[1] - 1];
+    if (e.code === 'Escape' || b && b.dataset.k !== 'no') { e.preventDefault(); menuChoose(e.code === 'Escape' ? 'no' : b.dataset.k); return; }
+    if ((e.code === 'Enter' || e.code === 'NumpadEnter') && !kmenu.contains(e.target) && kmenu.querySelector('[data-k="ok"]')) { e.preventDefault(); menuChoose('ok'); return; } }   // Enter is labelled on Spara, so it saves wherever focus is
+  if (e.code === 'KeyP' && !e.repeat && colony.owned) { if (menuKind === 'pets') closeMenu(); else openPets(); return; }
   if (kmenu.contains(e.target)) return;                       // Enter / Space on a focused menu button: let the button's own click handle it
   if (k) { keys[k] = true; e.preventDefault(); if (k === 'brake' && !e.repeat && jumpOk()) jumpQ = true; } else if ((e.code === 'KeyE' || e.code === 'KeyF' || e.code === 'Enter') && !e.repeat) action(); else if (e.code === 'KeyR') respawn(); });
 addEventListener('keyup', e => { const k = KEYMAP[e.code]; if (k) keys[k] = false; });
@@ -736,9 +808,10 @@ function nearestCar() { let best = null, bd = 4.4;
 function action() {
   if (!started || bigT > 0) return;
   if (inside) { leaveHouse(); return; }
+  if (!kmenu.hidden) { closeMenu(); return; }
   const pl = nearPlace(), kt = nearCat();
-  if (catFirst(kt, pl)) { petCat(kt); return; }
-  if (pl) { if (pl.kind === 'safe') enterHouse(pl); else if (kmenu.hidden) openKiosk(); else closeKiosk(); return; }
+  if (catFirst(kt, pl)) { if (kt.owned) openOwnCat(kt); else petCat(kt); return; }
+  if (pl) { if (pl.kind === 'safe') enterHouse(pl); else openKiosk(); return; }
   if (inCar) {
     if (Math.abs(pcar.v) > 3) { toast('Slow down before you get out.', 2); return; }
     player.x = pcar.x - Math.cos(pcar.h) * 2; player.z = pcar.z - Math.sin(pcar.h) * 2; player.h = pcar.h; collide(player, 0.5);
@@ -844,14 +917,15 @@ function frame(now) {
   dome.position.copy(camera.position);
 
   // HUD
+  drawHearts(dt);
   if (toastT > 0) { toastT -= dt; if (toastT <= 0.3) $('toast').style.opacity = 0; if (toastT <= 0) $('toast').hidden = true; }
   signT -= dt; if (signT <= 0) { signT = 0.25; updateSign(T);
     const pr = $('prompt'), pl = started && !inside ? nearPlace() : null, kt = started ? nearCat() : null, c = started && !inCar && !inside ? nearestCar() : null;
     $('hide').hidden = !inside;
-    if (!kmenu.hidden && (!pl || pl.kind !== 'kiosk')) closeKiosk();
+    if (menuStay && !menuStay()) closeMenu();
     if (inside) { $('hide').innerHTML = stars ? 'Lying low<b>' + Math.floor(Math.ceil(Math.max(0, hideT)) / 60) + ':' + String(Math.ceil(Math.max(0, hideT)) % 60).padStart(2, '0') + '</b>' : 'Safehouse · ' + inside.name;
       pr.hidden = false; pr.innerHTML = '<kbd>E</kbd>Go outside'; }
-    else if (catFirst(kt, pl)) { pr.hidden = false; pr.innerHTML = '<kbd>E</kbd>Pet the cat' + (treats ? ' (offer a treat)' : ''); }
+    else if (catFirst(kt, pl)) { pr.hidden = !kmenu.hidden; pr.innerHTML = '<kbd>E</kbd>' + (kt.owned ? 'Hang out with ' + esc(kt.name) : 'Pet the cat' + (treats ? ' (offer a treat)' : '')); }
     else if (pl) { pr.hidden = !kmenu.hidden; pr.innerHTML = '<kbd>E</kbd>' + (pl.kind === 'safe' ? 'Go inside the safehouse' : 'Handla i kiosken'); }
     else if (inCar && !coarse) { pr.hidden = Math.abs(pcar.v) > 3; pr.innerHTML = '<kbd>E</kbd>Get out'; }
     else if (c) { pr.hidden = false; pr.innerHTML = '<kbd>E</kbd>' + (c.owned ? 'Get in the ' : 'Steal the ') + carName(c); }
@@ -867,5 +941,5 @@ $('go').addEventListener('click', e => { started = true; $('intro').hidden = tru
 resize(); requestAnimationFrame(frame);
 
 // ---------- test hook: read-only state for the smoke tests (tests/e2e), so they do not have to read pixels ----------
-window.__joyride = { state: () => { const n = nearestCar(); return { started, x: player.x, z: player.z, y: player.y, yaw: camYaw, inCar, car: pcar ? pcar.type : null, near: n ? n.mode : null, speed: pcar ? pcar.v : 0, drift: pcar ? pcar.drift : 0, boost: pcar ? pcar.boost : 0, charge: pcar ? pcar.charge : 0, loose: pcar ? pcar.loose : 0, flickDir: pcar ? pcar.flickDir : 0, stars, cats: cats.length, treats, vehicle: displayCar ? vehicleVisuals.state(displayCar) : null, nearSelectedVehicle: n === displayCar, activeVehicle: pcar ? vehicleVisuals.state(pcar) : null, traffic: cars.filter(c => c.mode === 'ai').map(c => ({ type: c.type, vehicle: vehicleVisuals.state(c) })) }; } };
+window.__joyride = { state: () => { const n = nearestCar(); return { started, x: player.x, z: player.z, y: player.y, yaw: camYaw, inCar, car: pcar ? pcar.type : null, near: n ? n.mode : null, speed: pcar ? pcar.v : 0, drift: pcar ? pcar.drift : 0, boost: pcar ? pcar.boost : 0, charge: pcar ? pcar.charge : 0, loose: pcar ? pcar.loose : 0, flickDir: pcar ? pcar.flickDir : 0, stars, cats: cats.length, treats, ownCat: !!colony.owned, vehicle: displayCar ? vehicleVisuals.state(displayCar) : null, nearSelectedVehicle: n === displayCar, activeVehicle: pcar ? vehicleVisuals.state(pcar) : null, traffic: cars.filter(c => c.mode === 'ai').map(c => ({ type: c.type, vehicle: vehicleVisuals.state(c) })) }; } };
 })();
