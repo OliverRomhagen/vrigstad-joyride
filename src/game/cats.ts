@@ -37,6 +37,10 @@ const CAT_PET = ['”Mjau.”\n”Ja du ä la en go kisse, du.”', '”Prrrrr�
   '”Där ja, bakom örona. Dä gillar du, va?”'];
 const CAT_SCRATCH = ['Dä kommer svida ett tag.', 'Dä kommer synas i mårra.', 'Din lilla skitkatt!'].map(t => '”AJAJAJ! Kattafan rev mä! ' + t + '”');
 const CAT_PET_OWN = ['”Prrrrr…”\n”Ja, du ä min katt, du.”', '”Mjau!”\n”Ja ja, vi går snart, {n}.”', '”Där ja. Vem ä en go kisse? {n} ä en go kisse.”'];   // {n}: its name
+// your cat's menu: a treat (cat first, then you, as in CAT_PET), and playing, when it pounces a little way off
+const CAT_TREAT_OWN = ['”Här, {n}, en godisbit.”\n”Mjam!”', '”Titta va ja har! Kattgodis!”\n”Mjaaau!”', '”Mjam mjam…”\n”En bit te? Ja ja, en bit te, {n}.”'];
+const CAT_PLAY = ['”Mjau!”\n”Kom igen, {n}, ta’n!”', '”Hoppsan! Du ä la en riktig tiger, du.”', '”Va snabb du ä, {n}!”'];
+const CAT_POUNCE_M = 0.8;                         // how far your cat pounces when you play with it (m)
 export const CAT_NAME = 'Kisse', CAT_NAME_MAX = 16;   // a new cat's name until you give it one; longest name (code points)
 const CAT_BOLT = ['”Nä men vart ska du? Kom tebaks!”', '”Mjäu!”\n”Jaha, där sprang du. Dä va la dä då.”', '”Du behöver inte springa iväg! Ja ä la inte farli, din lilla fjant!”'];
 
@@ -116,10 +120,11 @@ export class CatColony {
   nearest() { const g = this.g; if (g.inCar || g.inside) return null; const { player } = g; let best: Cat | null = null, bd = CAT_PET_M;
     for (const k of this.cats) { const d = Math.hypot(k.x - player.x, k.z - player.z); if (d < bd && k.state !== 'flee' && k.state !== 'hop' && !k.ride && k.nope <= 0) { bd = d; best = k; } } return best; }
 
-  /** Pets a cat: it purrs, scratches or bolts; your own cat always purrs. A treat goes into the cat whatever happens next.
+  /** Pets a cat: it purrs, scratches or bolts; your own cat always purrs. A stray gets a treat, if you have one, whatever happens next;
+   *  your own cat gets treats from its menu instead (treat).
    *  True when that was the good pet that makes the cat ready to be adopted. */
   pet(k: Cat) {
-    const { player, toast } = this.g, treat = this.g.useTreat(), r = this.rnd(), pre = treat ? '”Här, en godisbit.”\n' : '';
+    const { player, toast } = this.g, treat = !k.owned && this.g.useTreat(), r = this.rnd(), pre = treat ? '”Här, en godisbit.”\n' : '';
     k.want = Math.atan2(player.x - k.x, -(player.z - k.z));
     if (k.owned || r < (treat ? CAT_PET_TREAT_OK : CAT_PET_OK)) { k.state = 'sit'; k.t = 6 + this.rnd() * 6; k.nope = CAT_PET_S; toast(pre + this.pick(k.owned ? CAT_PET_OWN : CAT_PET).replace('{n}', () => k.name), 3);
       if (k.owned) return false; k.pets++; return !this.owned && k.pets >= CAT_ADOPT_PETS; }
@@ -128,6 +133,19 @@ export class CatColony {
     else { k.state = 'flee'; k.t = 2 + this.rnd(); k.want = Math.atan2(k.x - player.x, -(k.z - player.z)); toast(pre + this.pick(CAT_BOLT), 3); }
     return false;
   }
+
+  /** Gives your cat a treat, if you have one. True when it got one. */
+  treat(k: Cat) { if (!k.owned || !this.g.useTreat()) return false;
+    const { player } = this.g; k.want = Math.atan2(player.x - k.x, -(player.z - k.z)); k.state = 'sit'; k.t = 6 + this.rnd() * 6; k.nope = CAT_PET_S;
+    this.g.toast(this.pick(CAT_TREAT_OWN).replace('{n}', () => k.name), 3); return true; }
+
+  /** Plays with your cat: it pounces a little way off, in a direction of its own, and lands sitting. */
+  play(k: Cat) { if (!k.owned) return; const g = this.g; let a = this.rnd() * Math.PI * 2, tx = 0, tz = 0;
+    for (let i = 0; i < 4; i++, a += Math.PI / 2) { tx = k.x + Math.sin(a) * CAT_POUNCE_M; tz = k.z - Math.cos(a) * CAT_POUNCE_M; if (!g.inWater(tx, tz)) break; }
+    if (g.inWater(tx, tz)) { tx = k.x; tz = k.z; }   // nowhere dry to land: it jumps on the spot
+    k.h = k.want = a; k.mesh.rotation.set(0, -a, 0); k.nope = CAT_PET_S;
+    this.startHop(k, k.x, g.groundAt(k.x, k.z), k.z, null, tx, tz);
+    g.toast(this.pick(CAT_PLAY).replace('{n}', () => k.name), 3); }
 
   /** The cat becomes the player's own and follows them. Mid-hop onto an EPA, the hop then lands it back on the ground. */
   adopt(k: Cat) { k.owned = true; k.pets = 0; this.owned = k; k.epa = null; if (k.state !== 'hop') { k.state = 'sit'; k.t = 1; } this.g.toast('”Mjau!”\n”Då ä du min katt nu. Kom så går vi hem!”', 3.5); }

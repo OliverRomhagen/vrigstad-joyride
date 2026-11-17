@@ -8,6 +8,7 @@ function colony(water: (x: number, z: number) => boolean = () => false) {
   const toasts: string[] = [];
   const player = { x: 0, z: 0, speed: 0 };
   const drive = { inCar: false, pcar: null as CatCar | null, cars: [] as CatCar[] };
+  const pockets = { treats: 0 };
   const deps: CatDeps = {
     scene: new THREE.Scene(),
     // only what the cats touch; a real index needs the map data
@@ -30,13 +31,13 @@ function colony(water: (x: number, z: number) => boolean = () => false) {
     get inCar() { return drive.inCar; },
     get pcar() { return drive.pcar; },
     inside: null,
-    useTreat: () => false,
+    useTreat: () => { if (pockets.treats <= 0) return false; pockets.treats--; return true; },
   };
   const c = new CatColony(deps);
   const cat: Cat = { x: 1, z: 0, h: 0, want: 0, state: 'sit', t: 5, nope: 0, phase: 0, mesh: new THREE.Mesh(), epa: null, hop: null, ride: null, pets: 0, owned: false, name: 'Kisse' };
   c.cats.push(cat);
   deps.scene.add(cat.mesh);
-  return { c, cat, player, toasts, drive };
+  return { c, cat, player, toasts, drive, pockets };
 }
 
 // pets until the cat asks to be adopted; returns how many tries it took
@@ -81,6 +82,41 @@ describe('owning a cat', () => {
     toasts.length = 0;
     for (let i = 0; i < 20; i++) { cat.nope = 0; expect(c.pet(cat)).toBe(false); }
     expect(toasts.every(t => !t.includes('AJAJAJ'))).toBe(true);
+  });
+
+  it('petting your own cat keeps your treats; its menu gives them, one at a time, while you have any', () => {
+    const { c, cat, pockets, toasts } = colony();
+    petUntilReady(c, cat);
+    c.adopt(cat);
+    pockets.treats = 1;
+    cat.nope = 0; c.pet(cat);
+    expect(pockets.treats).toBe(1);
+    expect(toasts.at(-1)).not.toContain('godisbit');
+    expect(c.treat(cat)).toBe(true);
+    expect(pockets.treats).toBe(0);
+    expect(c.treat(cat)).toBe(false);
+  });
+
+  it('a stray takes no treat from its menu, and still gets one with a pet', () => {
+    const { c, cat, pockets } = colony();
+    pockets.treats = 2;
+    expect(c.treat(cat)).toBe(false);
+    expect(pockets.treats).toBe(2);
+    c.pet(cat);
+    expect(pockets.treats).toBe(1);
+  });
+
+  it('playing makes your cat pounce a little way off and land sitting', () => {
+    const { c, cat, player } = colony();
+    petUntilReady(c, cat);
+    c.adopt(cat);
+    const x = cat.x, z = cat.z;
+    c.play(cat);
+    expect(cat.state).toBe('hop');
+    expect(c.nearest()).toBeNull();   // no menu mid-pounce
+    for (let i = 0; i < 20; i++) c.update(player, 1 / 30);
+    expect(cat.state).toBe('sit');
+    expect(Math.hypot(cat.x - x, cat.z - z)).toBeCloseTo(0.8);
   });
 
   it('a second cat cannot be adopted while you own one', () => {

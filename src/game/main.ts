@@ -565,8 +565,13 @@ const colony = new CatColony({ scene, buildings, inWater, groundAt, half: HALF, 
   useTreat() { if (treats <= 0) return false; treats--; drawTreats(); return true; } });
 const { cats } = colony, updateCats = colony.update.bind(colony), catFirst = colony.catFirst.bind(colony), nearCat = colony.nearest.bind(colony);
 // a good pet that makes a cat ready to be adopted asks whether it comes home with you
-const ADOPT_MENU_M = 4;   // the adopt question closes when you get further than this from the cat (m), or it bolts, or you get in a car
-function petCat(k) { const ready = colony.pet(k); showHeart(k); if (ready) openMenu('adopt', '”Ska du följa mä hem, kisse?”', [['adopt', 'Ja, adoptera'], ['no', 'Nä, inte nu']], c => { if (c === 'adopt') { colony.adopt(k); showHeart(k); } else colony.decline(k); drawPets(); }, () => !inCar && k.state !== 'flee' && Math.hypot(k.x - player.x, k.z - player.z) < ADOPT_MENU_M); }
+const CAT_MENU_M = 4;   // a cat's menu (the adopt question, or your own cat's) closes when you get further than this from it (m), or it bolts, or you get in a car
+const nearMenuCat = k => () => !inCar && k.state !== 'flee' && Math.hypot(k.x - player.x, k.z - player.z) < CAT_MENU_M;
+function petCat(k) { const ready = colony.pet(k); showHeart(k); if (ready) openMenu('adopt', '”Ska du följa mä hem, kisse?”', [['adopt', 'Ja, adoptera'], ['no', 'Nä, inte nu']], c => { if (c === 'adopt') { colony.adopt(k); showHeart(k); } else colony.decline(k); drawPets(); }, nearMenuCat(k)); }
+// your own cat: E opens its menu rather than petting it straight away; Ge godis shows only while you have treats
+function openOwnCat(k) {
+  openMenu('cat', '”' + esc(k.name) + '”', [['pet', 'Klappa'], ...(treats ? [['treat', 'Ge godis']] : []), ['play', 'Leka'], ['home', 'Skicka hem'], ['no', 'Stäng']], c => {
+    if (c === 'pet') petCat(k); else if (c === 'treat') { if (colony.treat(k)) showHeart(k); } else if (c === 'play') colony.play(k); else if (c === 'home') colony.sendHome(); }, nearMenuCat(k)); }
 // ---------- your pets: P (or the Pets button) calls them, sends them home or sets them free ----------
 // One entry per pet you own; only the cat so far. Another kind of pet adds its own entry here, and the menu then lists them first.
 function myPets() { return colony.owned ? [{ name: colony.owned.name, home: colony.home, rename: n => colony.rename(n), call: () => colony.call(inCar ? pcar : player), sendHome: () => colony.sendHome(), free: () => colony.setFree() }] : []; }
@@ -805,7 +810,7 @@ function action() {
   if (inside) { leaveHouse(); return; }
   if (!kmenu.hidden) { closeMenu(); return; }
   const pl = nearPlace(), kt = nearCat();
-  if (catFirst(kt, pl)) { petCat(kt); return; }
+  if (catFirst(kt, pl)) { if (kt.owned) openOwnCat(kt); else petCat(kt); return; }
   if (pl) { if (pl.kind === 'safe') enterHouse(pl); else openKiosk(); return; }
   if (inCar) {
     if (Math.abs(pcar.v) > 3) { toast('Slow down before you get out.', 2); return; }
@@ -920,7 +925,7 @@ function frame(now) {
     if (menuStay && !menuStay()) closeMenu();
     if (inside) { $('hide').innerHTML = stars ? 'Lying low<b>' + Math.floor(Math.ceil(Math.max(0, hideT)) / 60) + ':' + String(Math.ceil(Math.max(0, hideT)) % 60).padStart(2, '0') + '</b>' : 'Safehouse · ' + inside.name;
       pr.hidden = false; pr.innerHTML = '<kbd>E</kbd>Go outside'; }
-    else if (catFirst(kt, pl)) { pr.hidden = !kmenu.hidden; pr.innerHTML = '<kbd>E</kbd>' + (kt.owned ? 'Pet your cat' : 'Pet the cat') + (treats ? ' (offer a treat)' : ''); }
+    else if (catFirst(kt, pl)) { pr.hidden = !kmenu.hidden; pr.innerHTML = '<kbd>E</kbd>' + (kt.owned ? 'Hang out with ' + esc(kt.name) : 'Pet the cat' + (treats ? ' (offer a treat)' : '')); }
     else if (pl) { pr.hidden = !kmenu.hidden; pr.innerHTML = '<kbd>E</kbd>' + (pl.kind === 'safe' ? 'Go inside the safehouse' : 'Handla i kiosken'); }
     else if (inCar && !coarse) { pr.hidden = Math.abs(pcar.v) > 3; pr.innerHTML = '<kbd>E</kbd>Get out'; }
     else if (c) { pr.hidden = false; pr.innerHTML = '<kbd>E</kbd>' + (c.owned ? 'Get in the ' : 'Steal the ') + carName(c); }
