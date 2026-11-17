@@ -345,6 +345,7 @@ function addCar(type, x, z, h, mode, assetId = DEFAULT_VEHICLES[type]) {
   const c = { type, T, mesh, x, z, h, vh: h, v: 0, slip: 0, drift: 0, charge: 0, yr: 0, spin: 0, loose: 0, flickDir: 0, flickT: 9, boost: 0, mode, wet: false, owned: false, blocked: 0, ghost: 0, stuck: 0, rev: 0, revSteer: 1 };
   scene.add(mesh); cars.push(c); placeCar(c); if (assetId) { vehicleVisuals.attach(c, assetId, fallback, color); } return c;
 }
+function carName(c) { return vehicleVisuals.definition(c)?.name || c.T.name; }
 function removeCar(c) { vehicleVisuals.dispose(c); scene.remove(c.mesh); const i = cars.indexOf(c); if (i >= 0) cars.splice(i, 1); }
 const civType = () => { const r = rnd(); return r < 0.45 ? 'volvo' : r < 0.75 ? 'saab' : r < 0.9 ? 'epa' : 'traktor'; };
 // parked cars along streets and driveways
@@ -749,8 +750,8 @@ function action() {
     toast(pick(['”Hörru! Det där är min bil!”', '”Men va fan gör du?!”', '”Polisen! Han tar ' + (vehicleVisuals.definition(c)?.spokenName || 'min ' + c.T.name) + '!”']) + ' The driver calls the police.');
     addStar(); spawnTraffic(player);
   } else if (!c.owned) {
-    if (police.length || rnd() < 0.35) addStar('A neighbour saw you take the ' + (vehicleVisuals.definition(c)?.name || c.T.name) + ' and called the police.');
-    else toast(c.type === 'epa' ? 'EPA-traktor: legally limited to 30 km/h. Good luck outrunning anyone.' : 'You took the ' + (vehicleVisuals.definition(c)?.name || c.T.name) + '. Nobody noticed.');
+    if (police.length || rnd() < 0.35) addStar('A neighbour saw you take the ' + (carName(c)) + ' and called the police.');
+    else toast(c.type === 'epa' ? 'EPA-traktor: legally limited to 30 km/h. Good luck outrunning anyone.' : 'You took the ' + (carName(c)) + '. Nobody noticed.');
   }
   if (!c.owned) { c.owned = true; stolen++; $('count').textContent = 'Cars stolen: ' + stolen; }
   c.mode = 'player'; c.vh = c.h; c.slip = c.drift = c.boost = c.loose = 0; pcar = c; inCar = true; player.y = player.vy = 0; player.mesh.visible = false; lookOff = 0; camYaw = c.h;
@@ -852,10 +853,10 @@ function frame(now) {
     else if (catFirst(kt, pl)) { pr.hidden = false; pr.innerHTML = '<kbd>E</kbd>Pet the cat' + (treats ? ' (offer a treat)' : ''); }
     else if (pl) { pr.hidden = !kmenu.hidden; pr.innerHTML = '<kbd>E</kbd>' + (pl.kind === 'safe' ? 'Go inside the safehouse' : 'Handla i kiosken'); }
     else if (inCar && !coarse) { pr.hidden = Math.abs(pcar.v) > 3; pr.innerHTML = '<kbd>E</kbd>Get out'; }
-    else if (c) { pr.hidden = false; pr.innerHTML = '<kbd>E</kbd>' + (c.owned ? 'Get in the ' : 'Steal the ') + (vehicleVisuals.definition(c)?.name || c.T.name); }
+    else if (c) { pr.hidden = false; pr.innerHTML = '<kbd>E</kbd>' + (c.owned ? 'Get in the ' : 'Steal the ') + (carName(c)); }
     else pr.hidden = true;
     const bl = inCar ? 'Brake' : 'Jump'; if ($('p-brake').textContent !== bl) $('p-brake').textContent = bl;
-    $('speed').hidden = !inCar; if (inCar) { $('kmh').textContent = Math.round(Math.abs(pcar.v) * 3.6); $('carname').textContent = vehicleVisuals.definition(pcar)?.name || pcar.T.name; } }
+    $('speed').hidden = !inCar; if (inCar) { $('kmh').textContent = Math.round(Math.abs(pcar.v) * 3.6); $('carname').textContent = carName(pcar); } }
   drawMini(T);
   renderer.render(scene, camera);
 }

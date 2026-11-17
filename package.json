@@ -10,7 +10,7 @@
     "dev": "vite",
     "build": "node tools/build.mjs",
     "preview": "vite preview",
-    "check": "tsc --noEmit",
+    "check": "tsc --noEmit && tsc --noEmit -p tsconfig.tests.json",
     "data": "python3 tools/process.py data/raw data/vrigstad.json",
     "test": "vitest run",
     "test:e2e": "playwright test",

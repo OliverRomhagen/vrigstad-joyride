@@ -125,17 +125,15 @@ in Blender before export. No model-specific collision changes are made.
 Vite copies the only tracked GLBs from `src/public` to `dist/media/vehicles`.
 Relative URLs work under a GitHub Pages project/preview prefix. #167 has landed:
 the built HTML files are no longer tracked, and E2E serves `dist` directly.
-The current main Pages workflow still copies only HTML from `dist` plus root
-`media`, so the feature retains an ignored root-asset bridge for that workflow.
-The dependent CI/publishing PR copies the complete dist tree and removes the
-bridge atomically; otherwise GLBs would be missing after a main deployment.
-No second tracked model directory or root HTML is introduced.
+The fleet's Pages workflow publishes root teaser media followed by the entire
+`dist` tree, so production and preview both ship the Vite public assets.
+There is no root GLB compatibility copy, second tracked model directory or root HTML.
 
 Run `npm run check`, `npm test`, `npm run build`, `npm run test:e2e`.
 The production build, actual asset parsing, gameplay/fallback and WebGL checks
 are automated; images are review artifacts, never pixel-diff tests.
 The upstream preview workflow requires a branch in the upstream repository.
-CI workflow additions are carried in a separate branch above the fleet feature;
+Optional manual CI dispatch is carried in a separate branch above the fleet feature;
 its base contains the feature tests. Vehicle checks now run through the ordinary
 Vitest unit workflow; there is no separate `test:vehicles` runner.
 Source parsing and visual-controller regressions run in Vitest; E2E keeps game
@@ -145,8 +143,8 @@ The controller is a class, following the current lifecycle-owner convention.
 
 ## Visual verification limits
 
-Visible model attribution and `media/vehicles/NOTICE.txt` accompany both the root
-compatibility build and the production/preview assets.
+Visible model attribution and `media/vehicles/NOTICE.txt` accompany the production
+and preview assets.
 
 Geometric parsing is not reference approval. Round 2 retains the existing Saab
 silhouette comparison against an uncertain brochure proxy (recorded IoU ~0.9154),

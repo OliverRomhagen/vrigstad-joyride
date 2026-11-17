@@ -30,7 +30,7 @@ jobs:
       - run: npm ci
       - run: npm run build
       # media/ holds the teaser the README links to on the live site; .nojekyll serves the files as they are
-      - run: mkdir site && cp dist/*.html site/ && cp -r media site/ && touch site/.nojekyll
+      - run: mkdir site && cp -r media site/ && cp -r dist/. site/ && touch site/.nojekyll
       - uses: JamesIves/github-pages-deploy-action@fa24774553152dd7873cd16ebd8d959b010c5445 # v4.9.0
         with:
           folder: site
