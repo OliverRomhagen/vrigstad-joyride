@@ -19,7 +19,7 @@ const CENTRE_LINE = ROAD_WIDTH_M.length;
 const CENTRE_LINE_WIDTH_M = 0.2;
 const CENTRE_LINE_LIFT_M = 0.3;
 /** the asphalt texture repeats every this many metres, across and along (m) */
-const TILE_M = 4;
+export const TILE_M = 4;
 
 /**
  * The road ribbons drawn over the ground texture: one mesh per road class, plus the centre lines. Adds nothing to a
@@ -28,6 +28,8 @@ const TILE_M = 4;
 export class RoadRibbons {
   /** in draw order; classes with no roads have no mesh */
   readonly meshes: THREE.Mesh[] = [];
+  /** each road class's material, by RoadClass, so road-level patches beside the ribbons can look the same */
+  readonly materials: (THREE.Material | undefined)[] = [];
 
   constructor(
     roads: Pick<RoadNetwork, 'lines'>,
@@ -78,6 +80,7 @@ export class RoadRibbons {
         polygonOffsetFactor: -2,
         polygonOffsetUnits: -4 * order,
       });
+      if (i < CENTRE_LINE) this.materials[i] = material;
       const mesh = new THREE.Mesh(g, material);
       mesh.receiveShadow = true;
       mesh.renderOrder = order;

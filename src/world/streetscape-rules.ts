@@ -180,8 +180,20 @@ function separateCover(road: RoadLine, sidewalks: readonly RoadLine[], side: num
   return any ? out : null;
 }
 
+/** building centres filed by FRONTAGE_REACH_M cell */
+function centreGrid(centres: readonly Point[]) {
+  const grid = new Map<string, Point[]>();
+  for (const c of centres) {
+    const k = Math.floor(c[0] / FRONTAGE_REACH_M) + ',' + Math.floor(c[1] / FRONTAGE_REACH_M);
+    let list = grid.get(k);
+    if (!list) grid.set(k, (list = []));
+    list.push(c);
+  }
+  return grid;
+}
+
 /** Buildings near the road: how many per 100 m within FRONTAGE_REACH_M, and how many on each side within SIDE_REACH_M. */
-function frontage(road: RoadLine, centres: readonly Point[]) {
+function frontage(road: RoadLine, grid: Map<string, Point[]>) {
   let x0 = Infinity;
   let x1 = -Infinity;
   let z0 = Infinity;
@@ -195,6 +207,9 @@ function frontage(road: RoadLine, centres: readonly Point[]) {
   let near = 0;
   let left = 0;
   let right = 0;
+  const centres: Point[] = [];
+  for (let gx = Math.floor((x0 - FRONTAGE_REACH_M) / FRONTAGE_REACH_M); gx <= Math.floor((x1 + FRONTAGE_REACH_M) / FRONTAGE_REACH_M); gx++)
+    for (let gz = Math.floor((z0 - FRONTAGE_REACH_M) / FRONTAGE_REACH_M); gz <= Math.floor((z1 + FRONTAGE_REACH_M) / FRONTAGE_REACH_M); gz++) centres.push(...(grid.get(gx + ',' + gz) ?? []));
   for (const [x, z] of centres) {
     if (x < x0 - FRONTAGE_REACH_M || x > x1 + FRONTAGE_REACH_M || z < z0 - FRONTAGE_REACH_M || z > z1 + FRONTAGE_REACH_M) continue;
     const { d, side } = sideOf(road.p, x, z);
@@ -244,7 +259,7 @@ export function classifyStreetscape(
   buildings: { readonly footprints: readonly FootprintLike[] },
   overrides: Readonly<Record<number, StreetscapeOverride>> = {},
 ): StreetSides[] {
-  const centres: Point[] = buildings.footprints.map((b) => [(b.x0 + b.x1) / 2, (b.z0 + b.z1) / 2]);
+  const centres = centreGrid(buildings.footprints.map((b): Point => [(b.x0 + b.x1) / 2, (b.z0 + b.z1) / 2]));
   const sidewalks = roads.lines.filter((_, ri) => data.r[ri].s === RoadUse.SIDEWALK);
 
   return roads.lines.map((road, ri): StreetSides => {
