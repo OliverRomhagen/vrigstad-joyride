@@ -50,10 +50,10 @@ test('grain covers canvas and UI, boils through resize, and preserves mouse/keyb
     return Math.hypot(state.x - before.x, state.z - before.z);
   }).toBeGreaterThan(0.5);
   await page.keyboard.up('KeyW');
-  await expect.poll(() => layer(page).evaluate(element => element.getAnimations()[0].playState)).toBe('paused');
+  // standing still, the grain keeps boiling at a third of the rate rather than freezing
+  await expect.poll(() => layer(page).evaluate(element => element.getAnimations()[0].playbackRate)).toBeCloseTo(1 / 3);
   const stopped = await layer(page).evaluate(element => element.getAnimations()[0].currentTime);
-  await page.waitForTimeout(250);
-  expect(await layer(page).evaluate(element => element.getAnimations()[0].currentTime)).toBe(stopped);
+  await expect.poll(() => layer(page).evaluate(element => element.getAnimations()[0].currentTime)).toBeGreaterThan(stopped);
   await page.mouse.move(300, 250); await page.mouse.down();
   await page.mouse.move(380, 250, { steps: 3 }); await page.mouse.up();
   await expect.poll(() => page.evaluate(() => window.__joyride.state().yaw)).not.toBe(before.yaw);

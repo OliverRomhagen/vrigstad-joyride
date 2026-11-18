@@ -10,6 +10,12 @@ const FINE_CONTRAST = 40;
 const COARSE_CONTRAST = 18;
 const TEXTURE_ALPHA = 176;
 export const GRAIN_UPDATES_PER_SECOND = 12;
+// While the camera is still the grain keeps boiling, but slowly: frozen grain reads as a dirty screen, 12 Hz as busy.
+export const GRAIN_STILL_UPDATES_PER_SECOND = 4;
+// Per-frame camera change below which it counts as still. The chase camera eases towards its target and never
+// stops exactly, so an exact comparison would keep it 'moving' for seconds after the car stops.
+export const GRAIN_STILL_MOVE_M = 0.001;
+export const GRAIN_STILL_TURN_RAD = 1e-4;
 const GRAIN_SEQUENCE_LENGTH = 97;
 
 // Uncorrelated jumps of two independently positioned repetitions produce boiling,
@@ -24,8 +30,20 @@ export function grainKeyframes(): Keyframe[] {
 
 export function grainEnabled(search: string) {
   const value = new URLSearchParams(search).get('grain')?.trim().toLowerCase();
-  return value === 'on' || value === 'iso800' || value === 'subtle' || value === 'strong';
+  return value === 'on' || value === 'iso800';
 }
+
+type Vec = { x: number; y: number; z: number };
+type Quat = Vec & { w: number };
+/** Whether the camera moved or turned noticeably between two frames. Plain numbers, so the effect needs no three.js. */
+export function cameraMoved(fromPosition: Vec, fromRotation: Quat, toPosition: Vec, toRotation: Quat) {
+  const dx = toPosition.x - fromPosition.x, dy = toPosition.y - fromPosition.y, dz = toPosition.z - fromPosition.z;
+  if (dx * dx + dy * dy + dz * dz > GRAIN_STILL_MOVE_M ** 2) return true;
+  const dot = Math.abs(fromRotation.x * toRotation.x + fromRotation.y * toRotation.y + fromRotation.z * toRotation.z + fromRotation.w * toRotation.w);
+  return 2 * Math.acos(Math.min(1, dot)) > GRAIN_STILL_TURN_RAD;
+}
+
+const playbackRate = (moving: boolean) => (moving ? 1 : GRAIN_STILL_UPDATES_PER_SECOND / GRAIN_UPDATES_PER_SECOND);
 
 // A separate seeded stream keeps the photograph fixed without consuming game RNG.
 // Periodic interpolation joins the edges without seams. Summed samples soften
@@ -70,7 +88,7 @@ export class FilmGrain {
         duration: GRAIN_SEQUENCE_LENGTH / GRAIN_UPDATES_PER_SECOND * 1000,
         iterations: Infinity,
       });
-      if (!this.moving) this.animation.pause();
+      this.animation.playbackRate = playbackRate(this.moving);
     }
   };
 
@@ -105,12 +123,16 @@ export class FilmGrain {
     this.updateMotion();
   }
 
-  /** The render host supplies camera motion without exposing scene objects. */
+  /** False when grain is off: the host can skip its per-frame motion check. */
+  get enabled() {
+    return !!this.layer;
+  }
+
+  /** The render host supplies camera motion without exposing scene objects: full rate while moving, slow while still. */
   setMoving(moving: boolean) {
     if (moving === this.moving) return;
     this.moving = moving;
-    if (moving) this.animation?.play();
-    else this.animation?.pause();
+    if (this.animation) this.animation.playbackRate = playbackRate(moving);
   }
 
   dispose() {

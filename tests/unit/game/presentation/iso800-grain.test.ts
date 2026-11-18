@@ -1,10 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { FilmGrain, grainEnabled, grainKeyframes, grainPixels, GRAIN_TILE_SIZE } from '../../../../src/game/presentation/iso800-grain';
+import { cameraMoved, FilmGrain, grainEnabled, grainKeyframes, grainPixels, GRAIN_STILL_UPDATES_PER_SECOND, GRAIN_TILE_SIZE, GRAIN_UPDATES_PER_SECOND } from '../../../../src/game/presentation/iso800-grain';
 
 describe('ISO 800 presentation texture', () => {
   it('defaults off and accepts explicit enable values', () => {
     for (const query of ['', '?grain=', '?grain=unknown']) expect(grainEnabled(query)).toBe(false);
-    for (const value of ['on', 'iso800', 'subtle', 'strong', '%20ON%20']) expect(grainEnabled('?grain=' + value)).toBe(true);
+    for (const value of ['on', 'iso800', '%20ON%20']) expect(grainEnabled('?grain=' + value)).toBe(true);
+    for (const value of ['subtle', 'strong']) expect(grainEnabled('?grain=' + value)).toBe(false);   // no strengths until they differ
     expect(grainEnabled('?grain=off')).toBe(false);
     expect(grainEnabled('?grain=%20OFF%20')).toBe(false);
   });
@@ -14,6 +15,7 @@ describe('ISO 800 presentation texture', () => {
   it('allocates nothing when disabled', () => {
     vi.stubGlobal('document', { createElement: vi.fn(() => { throw new Error('allocation'); }) });
     const grain = new FilmGrain({} as HTMLElement, '');
+    expect(grain.enabled).toBe(false);
     expect(() => grain.dispose()).not.toThrow();
   });
 
@@ -28,9 +30,11 @@ describe('ISO 800 presentation texture', () => {
     }
   });
 
-  it('cancels animation and removes the motion listener on disposal', () => {
-    const cancel = vi.fn(), remove = vi.fn(), pause = vi.fn(), play = vi.fn();
-    const animate = vi.fn(() => ({ cancel, pause, play }));
+  it('boils slowly while still, at full rate while moving, and cleans up on disposal', () => {
+    const cancel = vi.fn(), remove = vi.fn();
+    const animation = { cancel, playbackRate: 1 };
+    const animate = vi.fn(() => animation);
+    const still = GRAIN_STILL_UPDATES_PER_SECOND / GRAIN_UPDATES_PER_SECOND;
     const layer = { style: {}, setAttribute: vi.fn(), animate, remove };
     const motion = { matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() };
     vi.stubGlobal('matchMedia', () => motion);
@@ -39,13 +43,13 @@ describe('ISO 800 presentation texture', () => {
       toDataURL: () => 'data:image/png;base64,test',
     } : layer });
     const grain = new FilmGrain({ append: vi.fn() } as unknown as HTMLElement, '?grain=on');
+    expect(grain.enabled).toBe(true);
     expect(animate).toHaveBeenCalledOnce();
-    expect(pause).toHaveBeenCalledOnce();
+    expect(animation.playbackRate).toBeCloseTo(still);
     grain.setMoving(true);
-    grain.setMoving(true);
-    expect(play).toHaveBeenCalledOnce();
+    expect(animation.playbackRate).toBe(1);
     grain.setMoving(false);
-    expect(pause).toHaveBeenCalledTimes(2);
+    expect(animation.playbackRate).toBeCloseTo(still);
     const listener = motion.addEventListener.mock.calls[0][1] as () => void;
     motion.matches = true;
     listener();
@@ -59,6 +63,17 @@ describe('ISO 800 presentation texture', () => {
     listener();
     expect(animate).toHaveBeenCalledTimes(2);
     expect(remove).toHaveBeenCalledOnce();
+  });
+
+  it('counts the camera as still below a millimetre and a tenth of a milliradian per frame', () => {
+    const at = { x: 10, y: 2, z: -5 }, level = { x: 0, y: 0, z: 0, w: 1 };
+    const turned = (rad: number) => ({ x: 0, y: Math.sin(rad / 2), z: 0, w: Math.cos(rad / 2) });
+    expect(cameraMoved(at, level, at, level)).toBe(false);
+    expect(cameraMoved(at, level, { ...at, x: 10.0005 }, level)).toBe(false);   // the chase camera still easing in
+    expect(cameraMoved(at, level, { ...at, x: 10.01 }, level)).toBe(true);
+    expect(cameraMoved(at, level, at, turned(5e-5))).toBe(false);
+    expect(cameraMoved(at, level, at, turned(1e-3))).toBe(true);
+    expect(cameraMoved(at, level, at, { x: 0, y: 0, z: 0, w: -1 })).toBe(false);   // the same rotation, sign flipped
   });
 
   it('produces repeatable, neutral monochrome texture with visible fine variation and clusters', () => {
