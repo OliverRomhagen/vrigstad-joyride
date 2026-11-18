@@ -18,6 +18,7 @@ import { LEGACY_LIGHT } from '../world/three-legacy';
 import { treeSpots } from '../world/trees';
 import { Water } from '../world/water';
 import { CAT_ADOPT_PETS, CatColony } from './cats';
+import { Hud } from './hud';
 
 (function () {
 'use strict';
@@ -740,7 +741,7 @@ const LOCK_K = 0.4;   // a locked mouse turns this much less per pixel than a dr
 const LOCK_MAX_PX = 120;   // per event; some browsers report a huge movementX right after locking, which would spin the camera
 const locked = () => document.pointerLockElement === canvas;
 function lockMouse() { if (locked() || !canvas.requestPointerLock) return; try { const p = canvas.requestPointerLock(); if (p && p.catch) p.catch(() => {}); } catch (err) {} }
-document.addEventListener('pointerlockchange', () => { if (!locked() && started && kmenu.hidden && toastT <= 0) toast('Click the game to look around with the mouse again.', 3); });
+document.addEventListener('pointerlockchange', () => { if (!locked() && started && kmenu.hidden && !hud.toasting) toast('Click the game to look around with the mouse again.', 3); });
 let dragId = null, lx = 0, ly = 0;
 canvas.addEventListener('pointerdown', e => { dragId = e.pointerId; lx = e.clientX; ly = e.clientY; try { canvas.setPointerCapture(e.pointerId); } catch (err) {}
   if (started && kmenu.hidden && e.pointerType === 'mouse') lockMouse(); });   // the kiosk menu needs the cursor
@@ -769,38 +770,15 @@ $('p-act').addEventListener('click', () => action());
 function showTouch() { $('joy').hidden = false; $('pad').hidden = false; }
 if (coarse) showTouch(); else addEventListener('touchstart', showTouch, { once: true, passive: true });
 
-// ---------- HUD ----------
-let toastT = 0;
-function toast(msg, secs, cls) { const t = $('toast'); t.textContent = msg; t.className = 'plate' + (cls ? ' ' + cls : ''); t.hidden = false; t.style.opacity = 1; toastT = secs || 3.5; }
-function drawStars() { const el = $('stars'); el.textContent = '';
-  for (let i = 0; i < 3; i++) { const s = document.createElement(i < stars ? 'b' : 'span'); s.textContent = '★'; el.appendChild(s); } }
+// ---------- HUD (src/game/hud.ts) ----------
+// the getters are read when the HUD uses them, so they can name things that change during play
+const hud = new Hud({ $, ground: tex2d, P, K, roads, labels: D.labels, cars, places,
+  get stars() { return stars; }, get pcar() { return pcar; }, get blink() { return blink; } });
+// a declaration, not a bound const, so the sections above can pass toast on before the HUD exists
+function toast(msg, secs, cls) { hud.toast(msg, secs, cls); }
+const drawStars = hud.drawStars.bind(hud), drawMini = hud.drawMini.bind(hud), updateSign = hud.updateSign.bind(hud);
 drawStars();
-const mini = $('mini'), mctx = mini.getContext('2d'), MW = mini.width, MR = 210;
-function drawMini(T) {
-  mctx.fillStyle = '#6f9a5e'; mctx.fillRect(0, 0, MW, MW);
-  mctx.drawImage(tex2d, P(T.x - MR), P(T.z - MR), MR * 2 * K, MR * 2 * K, 0, 0, MW, MW);
-  const q = v => (v / MR * 0.5 + 0.5) * MW;
-  for (const c of cars) { const dx = c.x - T.x, dz = c.z - T.z; if (c === pcar || Math.abs(dx) > MR || Math.abs(dz) > MR) continue;
-    mctx.fillStyle = c.mode === 'police' ? (blink ? '#2f6bff' : '#ff3b30') : '#ffffff'; const s = c.mode === 'police' ? 12 : 6;
-    mctx.fillRect(q(dx) - s / 2, q(dz) - s / 2, s, s); }
-  mctx.lineWidth = 3; mctx.strokeStyle = '#1a1a14';
-  for (const p of places) { let dx = p.x - T.x, dz = p.z - T.z; const L = Math.hypot(dx, dz), edge = MR * 0.88;
-    if (L > edge) { if (p.kind !== 'safe') continue; dx *= edge / L; dz *= edge / L; }        // safehouses stay pinned to the rim so they can be found
-    const x = q(dx), y = q(dz); mctx.beginPath();
-    if (p.kind === 'safe') { mctx.moveTo(x, y - 12); mctx.lineTo(x + 11, y - 2); mctx.lineTo(x + 8, y - 2); mctx.lineTo(x + 8, y + 9); mctx.lineTo(x - 8, y + 9); mctx.lineTo(x - 8, y - 2); mctx.lineTo(x - 11, y - 2); mctx.closePath(); mctx.fillStyle = '#4fd27a'; }
-    else { mctx.arc(x, y, 8, 0, Math.PI * 2); mctx.fillStyle = '#f2c230'; }
-    mctx.stroke(); mctx.fill(); }
-  mctx.save(); mctx.translate(MW / 2, MW / 2); mctx.rotate(T.h);
-  mctx.fillStyle = '#f2c230'; mctx.strokeStyle = '#1a1a14'; mctx.lineWidth = 3;
-  mctx.beginPath(); mctx.moveTo(0, -15); mctx.lineTo(10, 11); mctx.lineTo(0, 5); mctx.lineTo(-10, 11); mctx.closePath(); mctx.stroke(); mctx.fill(); mctx.restore();
-}
 let signT = 0, blink = false, blinkT = 0;
-function updateSign(T) {
-  const n = nearestRoad(T.x, T.z); let best = null, bd = 130;
-  for (const l of D.labels) { const d = Math.hypot(l.x - T.x, l.z - T.z); if (d < bd) { bd = d; best = l; } }
-  $('street').textContent = n.ri >= 0 && n.d < 9 && R[n.ri].n ? R[n.ri].n : best && bd < 45 ? best.t : 'Vrigstad';
-  $('near').textContent = best && $('street').textContent !== best.t ? 'near ' + best.t : '';
-}
 
 // ---------- stealing, police, getting caught ----------
 function nearestCar() { let best = null, bd = 4.4;
@@ -918,7 +896,7 @@ function frame(now) {
 
   // HUD
   drawHearts(dt);
-  if (toastT > 0) { toastT -= dt; if (toastT <= 0.3) $('toast').style.opacity = 0; if (toastT <= 0) $('toast').hidden = true; }
+  hud.update(dt);
   signT -= dt; if (signT <= 0) { signT = 0.25; updateSign(T);
     const pr = $('prompt'), pl = started && !inside ? nearPlace() : null, kt = started ? nearCat() : null, c = started && !inCar && !inside ? nearestCar() : null;
     $('hide').hidden = !inside;
