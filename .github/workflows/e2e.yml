@@ -2,6 +2,14 @@ name: e2e
 
 on:
   pull_request:
+    # Skip PRs that only change docs, labels, issue forms, agent files or other workflows: none of them reaches the built pages.
+    # Later patterns win, so this workflow's own file still runs it. main runs it on every push.
+    paths:
+      - '**'
+      - '!**/*.md'
+      - '!.claude/**'
+      - '!.github/**'
+      - '.github/workflows/e2e.yml'
   push:
     branches: [main]
 
