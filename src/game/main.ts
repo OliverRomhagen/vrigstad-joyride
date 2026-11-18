@@ -498,6 +498,7 @@ function catRideLines() { const cat = inCar && catAboard(), v = inCar ? Math.abs
 const SHAKE_S = 0.45, SHAKE_MIN_M = 0.08, SHAKE_MAX_M = 0.5, SHAKE_PER_DMG_M = 1 / 150;   // s it lasts; camera offset (m) at the smallest and largest hit, and per point of car damage
 const calmMotion = matchMedia('(prefers-reduced-motion: reduce)');
 let shakeT = 0, shakeM = 0;
+const dmgRnd = makeRnd(808);                   // own stream for the shake and the smoke puffs, which roll every frame
 function shake(dmg) { if (calmMotion.matches) return; const m = Math.min(SHAKE_MAX_M, SHAKE_MIN_M + dmg * SHAKE_PER_DMG_M); if (shakeT <= 0 || m > shakeM) shakeM = m; shakeT = SHAKE_S; }
 
 // cracked glass: a crack texture laid over the windscreen and rear window (material 0) and the side windows (material 1), worse at each crackLevel
@@ -707,7 +708,7 @@ function updateSmoke(dt, T) {
     const lv = smokeLevel(c.dmg); if (!lv || c.wet || Math.abs(c.x - T.x) > SMOKE_NEAR_M || Math.abs(c.z - T.z) > SMOKE_NEAR_M) continue;
     c.smokeT = (c.smokeT || 0) + dt * SMOKE_RATE[lv];
     for (; c.smokeT >= 1; c.smokeT--) { const p = puffs[puffI]; puffI = (puffI + 1) % SMOKE_N;   // a ring: the oldest puff goes first
-      const fwd = c.type === 'traktor' ? 1.4 : 1.7, x = c.x + Math.sin(c.h) * fwd + (fxRnd() - 0.5) * 0.5, z = c.z - Math.cos(c.h) * fwd + (fxRnd() - 0.5) * 0.5;
+      const fwd = c.type === 'traktor' ? 1.4 : 1.7, x = c.x + Math.sin(c.h) * fwd + (dmgRnd() - 0.5) * 0.5, z = c.z - Math.cos(c.h) * fwd + (dmgRnd() - 0.5) * 0.5;
       p.position.set(x, groundAt(x, z) + 1.1, z); p.age = 0; p.visible = true; p.material.color.copy(SMOKE_COLS[lv]); } }
   for (const p of puffs) { if (!p.visible) continue; p.age += dt; const t = p.age / SMOKE_S; if (t >= 1) { p.visible = false; continue; }
     p.position.y += dt * 1.3; p.scale.setScalar(0.6 + t * 2.4); p.material.opacity = 0.75 * (1 - t); }
@@ -928,7 +929,7 @@ function frame(now) {
   camera.position.set(cx, Math.max(ty + 1.5 + dist * Math.sin(camPitch), hAt(cx, cz) + 0.8), cz);
   camera.lookAt(T.x, ty + 1.5, T.z);
   if (shakeT > 0) { shakeT -= dt; const k = Math.max(0, shakeT / SHAKE_S) ** 2 * shakeM * 2;   // eases out, so the jolt fades instead of stopping dead
-    camera.position.x += (fxRnd() - 0.5) * k; camera.position.y += (fxRnd() - 0.5) * k; camera.position.z += (fxRnd() - 0.5) * k; }
+    camera.position.x += (dmgRnd() - 0.5) * k; camera.position.y += (dmgRnd() - 0.5) * k; camera.position.z += (dmgRnd() - 0.5) * k; }
   sun.target.position.set(T.x, ty, T.z); sun.position.copy(sun.target.position).addScaledVector(SUN_DIR, 400);
   dome.position.copy(camera.position);
 
