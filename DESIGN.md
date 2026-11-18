@@ -4,16 +4,20 @@ What kind of game Vrigstad Joyride is, and the choices that shape the features. 
 
 Like the decisions in ARCHITECTURE.md, each section is short and settled. Change one in a PR, so the team sees it.
 
-## Form: witty and charming, not grim
+## Form: how rough the game gets
 
-The game is light, witty and full of character: not a children's game, and not a gritty crime simulator either. The touchstones are the LEGO games (a playful world made with care, where everything has personality) and Borderlands (whimsical and funny, but allowed to be rough now and then). You can steal an EPA-traktor, swear at the police and lose them on a gravel road; it stays fun.
+*Open: the team picks a route here.* Whatever we pick, some things hold: the humour is affectionate toward Vrigstad (AGENTS.md, "Language and tone"), it has detail and love (little jokes and local in-jokes, things that reward poking around, #115), and it isn't a children's game: adult humour and the funny Småland kind of swearing belong.
 
-- **Rough edges are fine, realism isn't the point.** Adult humour, mild cursing (the funny, Småland kind) and the odd tough moment all belong. Violence, when there is some, is over the top and stylised, played for laughs or drama, never realistic or cruel. Health and damage (#80) can hurt, but in a cartoonish way.
-- **Detail and love.** Little jokes, local in-jokes, things that reward poking around (#115). A place should feel like someone cared about it.
-- **Creative over grim.** Given a choice, a mechanic that lets players make or mess around with things beats one that only punishes.
-- **Grimmer or more realistic play belongs in mods**, if the game becomes moddable, not in the base game.
+| Route | Touchstone | Violence | What it gives us | What it costs |
+|---|---|---|---|---|
+| **A. Toy box** | LEGO games | Slapstick: shoves, snowballs, knockdowns, no real weapons | Charm, a broad audience, little risk around a real village | Less edge; guns (#17) don't fit |
+| **B. Witty and rough** | Borderlands | Over-the-top guns that feel good to fire; you shoot people, but nothing is taken seriously | Fun combat, guns on your car, humour with teeth | Needs combat, enemies and damage (#80); harder to keep the affection for a real place |
+| **C. Chaos sandbox** | Goat Simulator | Physics mayhem with no stakes | Cheap to build, very shareable moments | Thin story and progression |
+| **D. Crime satire** | GTA, Saints Row | Realistic-ish crime and violence | Familiar open-world loop | Clashes with a real village and its people; the tone we've been avoiding |
 
-This sits next to "Language and tone" in AGENTS.md: humour that is affectionate toward Vrigstad.
+The routes mix: B with A's care for detail (a LEGO-made world with Borderlands guns) is one option, A with C's mayhem another.
+
+Leaning, to discuss: **B with A's care**. Rocket launchers that *ballar ur*, a minigun on the EPA-traktor, enemies that are over the top rather than people you feel bad about. Grimmer or more realistic play would belong in mods.
 
 ## Modes
 
