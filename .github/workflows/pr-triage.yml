@@ -1,6 +1,6 @@
 name: PR triage
 
-# Assigns a new PR to its author, gives it a scope label and the issue's lab or accessibility label, and notes when it references no issue.
+# Assigns a new PR to its author, gives it a scope label and the issue's lab, accessibility or security label, and notes when it references no issue.
 # pull_request_target, so it can write to PRs from forks too: it never checks out or runs the PR's code,
 # and reads the PR's text from the event file, never through ${{ }} in the script.
 on:
@@ -98,7 +98,7 @@ jobs:
           if [ -n "$carry" ]; then
             args=()
             while read -r label; do args+=(-f "labels[]=$label"); done < <(
-              jq -r '.labels[]?.name | select(. == "lab" or . == "accessibility")' <<<"$issue_json")
+              jq -r '.labels[]?.name | select(. == "lab" or . == "accessibility" or . == "security")' <<<"$issue_json")
             [ ${#args[@]} = 0 ] || gh api -X POST "repos/$GH_REPO/issues/$number/labels" "${args[@]}" --silent
           fi
 
