@@ -23,6 +23,16 @@ The routes mix: B with A's care for detail (a LEGO-made world with Borderlands g
 
 Leaning, to discuss: **B with A's care**. Rocket launchers that *ballar ur*, a minigun on the EPA-traktor, enemies that are over the top rather than people you feel bad about. Grimmer or more realistic play would belong in mods: if the base game stays softer than you'd like, a "Gore and Guns" mod pack is the way to get it (#17).
 
+## Look: stylised, not photoreal
+
+Stylised and more or less low-poly, in the direction of Borderlands' cel-shaded look with outlines (#206). It suits a game that runs in the browser:
+
+- **Performance:** simple shapes and flat colour run on phones and old laptops, and leave room in the graphics quality tiers (#72).
+- **Accessibility:** clear shapes, strong silhouettes and outlines are easier to read than realistic detail (#82).
+- **Feeling:** it matches the tone, ages better than near-realism, and makes the world look made with love rather than scanned.
+
+Photographic touches (grain #124, colour grading #140) stay optional extras, not the default look.
+
 ## Modes
 
 Three modes, each playable alone or with friends:
