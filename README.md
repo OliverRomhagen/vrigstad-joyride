@@ -34,7 +34,9 @@ Taking an occupied car always earns a wanted star; a parked one sometimes does. 
 
 Three houses are safehouses, shown as green houses on the minimap and marked with a green door. Go inside on foot and stay for a minute and the police give up; it only works if no police car is within 60 m when you go in, and leaving early keeps your stars.
 
-The kiosk on Torget sells trisslotter. One in a thousand wins, and the more losing tickets you scratch in a row, the worse your language gets.
+You start with 200 kr, shown under the stars. The kiosk on Torget sells trisslotter (30 kr), cat treats and food. One ticket in ten wins, from 30 kr up to a rare 10 000 kr, and the more losing tickets you scratch in a row, the worse your language gets. Getting *gripen* costs a fine: a quarter of your money, or 100 kr per star if that is more.
+
+For testing, `npm run dev` or `?cheats` on any build's URL turns on cheats: type MYNT to get 1 000 kr.
 
 ## How it is built
 

@@ -58,7 +58,7 @@ body { background: var(--sky); color: var(--ink); font-family: var(--body); font
 #dmg b { width: 0; background: var(--gold); }
 #dmg.bad b { background: var(--alarm); }
 #hurt { position: absolute; inset: 0; pointer-events: none; opacity: 0; transition: opacity .7s ease-out; box-shadow: inset 0 0 150px 36px rgba(205, 28, 18, .8); }
-#count, #triss, #treats, #pets { padding: 4px 10px; font: 500 13px var(--body); font-variant-numeric: tabular-nums; }
+#kr, #count, #triss, #treats, #pets { padding: 4px 10px; font: 500 13px var(--body); font-variant-numeric: tabular-nums; }
 
 #bl { grid-area: bl; align-self: end; }
 #joy { width: 124px; height: 124px; border-radius: 50%; background: var(--hud); position: relative; pointer-events: auto; touch-action: none; }
@@ -124,7 +124,7 @@ body { background: var(--sky); color: var(--ink); font-family: var(--body); font
   <div id="fail" hidden>This game needs WebGL, which this browser or view does not provide.</div>
   <div id="ui">
     <div id="tl"><canvas id="mini" width="296" height="296" aria-label="Minimap"></canvas><div id="sign"><span id="street">Torget</span><small id="near"></small></div></div>
-    <div id="tr"><div id="hp" class="plate" role="meter" aria-label="Health" aria-valuemin="0" aria-valuemax="100" aria-valuenow="100"><i><b></b></i></div><div id="stars" class="plate" aria-label="Wanted level"></div><div id="count" class="plate">Cars stolen: 0</div><div id="triss" class="plate" hidden></div><div id="treats" class="plate" hidden></div><button type="button" id="pets" class="plate" aria-keyshortcuts="P" hidden><kbd aria-hidden="true">P</kbd>Pets</button></div>
+    <div id="tr"><div id="hp" class="plate" role="meter" aria-label="Health" aria-valuemin="0" aria-valuemax="100" aria-valuenow="100"><i><b></b></i></div><div id="stars" class="plate" aria-label="Wanted level"></div><div id="kr" class="plate"></div><div id="count" class="plate">Cars stolen: 0</div><div id="triss" class="plate" hidden></div><div id="treats" class="plate" hidden></div><button type="button" id="pets" class="plate" aria-keyshortcuts="P" hidden><kbd aria-hidden="true">P</kbd>Pets</button></div>
     <div id="bl"><div id="joy" hidden><div id="knob"></div></div></div>
     <div id="br">
       <div id="speed" class="plate" hidden><em id="carname"></em><b id="kmh">0</b><span>km/h</span><div id="dmg" class="meter" role="meter" aria-label="Car damage" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span>Damage</span><i><b></b></i></div></div>

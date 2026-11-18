@@ -237,12 +237,13 @@ test.describe('game (index.html)', () => {
     expect(errors).toEqual([]);
   });
 
-  test('cats are around, and the kiosk sells cat treats and food from its menu', async ({ page }, testInfo) => {
+  test('cats are around, and the kiosk sells cat treats and food from its menu, for money', async ({ page }, testInfo) => {
     const errors = watchErrors(page);
     await page.goto('/index.html');
     await page.locator('#go').click();
     await expect.poll(async () => (await state(page)).cats).toBeGreaterThan(0);   // Torget is built-up, so cats spawn at once
-    expect(await state(page)).toMatchObject({ treats: 0 });
+    expect(await state(page)).toMatchObject({ treats: 0, kr: 200 });
+    await expect(page.locator('#kr')).toHaveText('200 kr');
 
     // With the camera as Start leaves it, the kiosk lucka is about 4.6 m to the player's left.
     await page.keyboard.down('KeyA');
@@ -255,7 +256,8 @@ test.describe('game (index.html)', () => {
     await page.keyboard.press('Digit2');
     await expect(page.locator('#kmenu')).toBeHidden();
     await expect(page.locator('#treats')).toHaveText('Cat treats: 3');
-    expect(await state(page)).toMatchObject({ treats: 3 });
+    expect(await state(page)).toMatchObject({ treats: 3, kr: 195 });
+    await expect(page.locator('#kr')).toHaveText('195 kr');
 
     await page.keyboard.press('KeyE');
     await expect(page.locator('#kmenu')).toBeVisible();
@@ -268,8 +270,22 @@ test.describe('game (index.html)', () => {
     await page.keyboard.press('Digit3');
     await expect(page.locator('#kmenu')).toBeHidden();
     await expect(page.locator('#toast')).toContainText('mätt');
-    expect(await state(page)).toMatchObject({ hp: 100 });
+    expect(await state(page)).toMatchObject({ hp: 100, kr: 195 });   // and it costs nothing
     expect(errors).toEqual([]);
+  });
+
+  test('with ?cheats, typing MYNT adds money; without it, or with another key between, it does nothing', async ({ page }) => {
+    const type = async keys => { for (const c of keys) await page.keyboard.press('Key' + c); };
+    await page.goto('/index.html');
+    await page.locator('#go').click();
+    await type('MYNT');
+    expect(await state(page)).toMatchObject({ kr: 200 });
+    await page.goto('/index.html?cheats');
+    await page.locator('#go').click();
+    await type('MYKNT');
+    expect(await state(page)).toMatchObject({ kr: 200 });
+    await type('MYNT');
+    await expect(page.locator('#kr')).toHaveText('1 200 kr');
   });
 });
 

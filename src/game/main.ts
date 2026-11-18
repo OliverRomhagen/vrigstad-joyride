@@ -23,6 +23,7 @@ import { CAT_ADOPT_PETS, CatColony } from './cats';
 import { Hud } from './hud';
 import { Crowd } from './pedestrians';
 import { Pets } from './pets';
+import { earn, fine, KORV_KR, newWallet, pay, RULLE_KR, TREATS_KR, TRISS_KR, trissPrize } from './economy';
 import { CAT_SCRATCH_HP, crackLevel, LOW_HP, CRASH_COOL_S, crashCars, crashDamage, driverHurt, HP_MAX, heal, hurt, KORV_HP, impactSpeed, newHealth, regen, RULLE_HP, runOverHurt, smokeLevel, topSpeedShare, wakeSpot, wrecked } from './health';
 
 (function () {
@@ -336,6 +337,17 @@ const cars = [], police = [];
 const vehicleVisuals = new VehicleVisuals(coarse);
 const modelRnd = makeRnd(240);                 // own stream: which model a car wears doesn't shift the world's rolls
 const selectedVehicle = vehicleDefinition(new URLSearchParams(location.search).get('vehicle'));
+// dev cheats: on with npm run dev, or with ?cheats on any build (preview links too). Typing MYNT adds CHEAT_KR.
+// A typed word, in letters the game doesn't use, so it can't go off by accident or set off anything else.
+const CHEATS = import.meta.env.DEV || new URLSearchParams(location.search).has('cheats'), CHEAT_KR = 1000;
+const CHEAT_WORD = 'MYNT', CHEAT_GAP_MS = 1000;   // the letters in order, at most this long apart, with no other key between
+let cheatTyped = '', cheatAt = 0;
+function cheatKey(code) {
+  const t = performance.now(), ch = code.startsWith('Key') ? code.slice(3) : '';
+  if (t - cheatAt > CHEAT_GAP_MS) cheatTyped = '';
+  cheatAt = t; cheatTyped = ch ? (cheatTyped + ch).slice(-CHEAT_WORD.length) : '';
+  if (cheatTyped === CHEAT_WORD) { cheatTyped = ''; earn(wallet, CHEAT_KR); drawKr(); toast('Cheat: +' + fmtKr(CHEAT_KR) + '.', 1.5); }
+}
 let displayCar = null;
 const _f = new THREE.Vector3(), _r = new THREE.Vector3(), _m = new THREE.Matrix4();
 function placeCar(c) {
@@ -613,7 +625,8 @@ const adoptHearts = new AdoptHearts({ scene, colony }), showHeart = adoptHearts.
 $('pets').addEventListener('click', () => { if (menuKind === 'pets') closeMenu(); else openPets(); canvas.focus(); });   // from the kiosk or adopt menu too
 function buyTreats() {
   if (treats >= TREAT_MAX) { toast('”Nämen, du har ju fickera fulla redan!”', 2.5); return; }
-  treats = Math.min(TREAT_MAX, treats + TREAT_BAG); drawTreats(); toast('”En påse kattgodis, varsågo. Kattera ä tôcka i dä.”', 4);
+  if (!pay(wallet, TREATS_KR)) { toast(broke(TREATS_KR), 3); return; }
+  drawKr(); treats = Math.min(TREAT_MAX, treats + TREAT_BAG); drawTreats(); toast('”En påse kattgodis, varsågo. Kattera ä tôcka i dä.”', 4);
 }
 function drawTreats() { const el = $('treats'); el.hidden = false; el.textContent = 'Cat treats: ' + treats; }
 
@@ -628,7 +641,8 @@ const jumpOk = () => !inCar && !inside && bigT <= 0;   // queue only where a jum
 let inCar = false, pcar = null, stars = 0, evade = 0, bustT = 0, stolen = 0, ramCool = 0, started = false, bigT = 0;
 let clockS = 0;                                  // s of play, for hit cool-downs
 const health = newHealth();
-let inside = null, hideT = 0, trissT = 0, trissN = 0, trissWon = 0, trissLast = '';
+const wallet = newWallet();
+let inside = null, hideT = 0, trissT = 0, trissN = 0, trissWon = 0, trissWonKr = 0, trissLast = '';
 const peds = [], trissLog = [];
 
 // ---------- places: safehouses (lie low to lose your stars) and the trisslott kiosk ----------
@@ -677,15 +691,15 @@ function openMenu(kind, title, items, pick, stay = null) {
 function closeMenu() { kmenu.hidden = true; nameIn = null; menuKind = menuPick = menuStay = null; if (relock) { relock = false; lockMouse(); } }
 // a choice can open the next menu (a pet's "are you sure?"): then the menu stays up, and the cursor stays free
 function menuChoose(k) { const pick = menuPick; menuPick = null; if (pick) pick(k); if (!menuPick) closeMenu(); }
-const openKiosk = () => openMenu('kiosk', '”Va ska dä va?”', [['triss', 'Trisslott'], ['treats', 'Kattgodis (3 st)'], ['korv', 'Korv me brö <small>+' + KORV_HP + ' health</small>'], ['vego', 'Vegokorv me brö'], ['rulle', 'Smålandsrulle <small>+' + RULLE_HP + ' health</small>'], ['no', 'Nä tack']], k => {
-  if (k === 'triss') scratch(); else if (k === 'treats') buyTreats(); else if (k === 'korv') eat(KORV_HP, '”En korv me brö, tack.”', '”Varsågod. Senap å ketchup ä på disken.”');
+const openKiosk = () => openMenu('kiosk', '”Va ska dä va?”', [['triss', 'Trisslott <small>' + TRISS_KR + ' kr</small>'], ['treats', 'Kattgodis (3 st) <small>' + TREATS_KR + ' kr</small>'], ['korv', 'Korv me brö <small>' + KORV_KR + ' kr · +' + KORV_HP + ' health</small>'], ['vego', 'Vegokorv me brö <small>' + KORV_KR + ' kr</small>'], ['rulle', 'Smålandsrulle <small>' + RULLE_KR + ' kr · +' + RULLE_HP + ' health</small>'], ['no', 'Nä tack']], k => {
+  if (k === 'triss') scratch(); else if (k === 'treats') buyTreats(); else if (k === 'korv') eat(KORV_HP, KORV_KR, '”En korv me brö, tack.”', '”Varsågod. Senap å ketchup ä på disken.”');
   else if (k === 'vego') toast('”En vegokåv me brö, tack.”\n”Vegokåv? Nä vi ha ingen vegokåv! Den ligger i frysen.”', 4);   // always sold out
-  else if (k === 'rulle') eat(RULLE_HP, '”En smålandsrulle, tack.”', '”Varsågod, mos å räksallad å allt. Dä ä mat dä!”'); }, () => nearPlace()?.kind === 'kiosk');
-// food from the kiosk: free until there is money (#76)
-// \n puts each speaker on their own line in the toast: you order first, then the kiosk answers
-function eat(n, order, reply) {
+  else if (k === 'rulle') eat(RULLE_HP, RULLE_KR, '”En smålandsrulle, tack.”', '”Varsågod, mos å räksallad å allt. Dä ä mat dä!”'); }, () => nearPlace()?.kind === 'kiosk');
+// food from the kiosk; \n puts each speaker on their own line in the toast: you order first, then the kiosk answers
+function eat(n, kr, order, reply) {
   if (health.hp >= HP_MAX) { toast(order + '\n”Du ser ju mätt ut, du. Kom tebaks när du ä hungrig.”', 3); return; }
-  heal(health, n); drawHealth(); toast(order + '\n' + reply + ' +' + n + ' health.', 3.5);
+  if (!pay(wallet, kr)) { toast(order + '\n' + broke(kr), 3.5); return; }
+  drawKr(); heal(health, n); drawHealth(); toast(order + '\n' + reply + ' +' + n + ' health.', 3.5);
 }
 kmenu.addEventListener('click', e => { const b = e.target.closest('button'); if (b) { menuChoose(b.dataset.k); canvas.focus(); } });
 function nearPlace() { if (inCar) return null; for (const p of places) if (Math.hypot(p.x - player.x, p.z - player.z) < 2.2) return p; return null; }
@@ -714,32 +728,36 @@ function updateSmoke(dt, T) {
     p.position.y += dt * 1.3; p.scale.setScalar(0.6 + t * 2.4); p.material.opacity = 0.75 * (1 - t); }
 }
 
-// trisslott: one win in a thousand, and the temper gets worse with every losing ticket scratched inside the window
-const TRISS_ODDS = 0.001, TRISS_WINDOW = 25;
+// trisslott: the vinstplan is in economy.ts; the temper gets worse with every losing ticket scratched inside the window
+const TRISS_WINDOW = 25;          // s
+const TRISS_BIG_KR = 10_000;     // a win this big gets the big toast
 const TRISS = [
   ['Järnspikar, ingen vinst denna gång heller.', 'Äsch, dä va la synd.', 'Nä, inget dänna gången heller.', 'Jaja, nästa lott så.'],
   ['Men jösses, inte ett öre!', 'Tusan hakar, en nitlott te!', 'Dä här börjar likna lurendrejeri.', 'Sjutton gubbar, nu får dä la ändå vända!'],
   ['Fy sjutton, dä ä ju rena fusket!', 'Jäklar anamma, inte en krona!', 'Va i hela fridens namn hôller di på mä?!', 'Nu blir ja förbannad på riktigt!'],
   ['Fan i helvete, dä ä ju bedrägeri!', 'Satans jävla skitlotter!', 'Jävlar i min lilla låda, ge mej en te!', 'Helvetes förbannade skrapskit, ja ska anmäla hela Svenska Spel!']
 ];
-function scratch() { if (trissT > 0) return; trissT = 0.9; toast('Skrap, skrap, skrap…', 1.5); }
+function scratch() { if (trissT > 0) return; if (!pay(wallet, TRISS_KR)) { toast(broke(TRISS_KR), 3); return; } drawKr(); trissT = 0.9; toast('Skrap, skrap, skrap…', 1.5); }
 function trissResult() {
   trissN++;
-  if (Math.random() < TRISS_ODDS) { trissWon++; trissLog.length = 0; toast('”VINST! Dä va som sjutton, ja visste väl dä!” You won on a trisslott. That never happens.', 8, 'win'); }
+  const kr = trissPrize(Math.random());
+  if (kr) { earn(wallet, kr); drawKr(); trissWon++; trissWonKr += kr; trissLog.length = 0;
+    if (kr >= TRISS_BIG_KR) toast('”VINST! Dä va som sjutton, ja visste väl dä!” You won ' + fmtKr(kr) + ' on a trisslott. That never happens.', 8, 'win');
+    else toast('”Vinst! ' + fmtKr(kr) + ', dä ä la nåt.”', 3, 'win'); }
   else {
     const t = performance.now() / 1000; while (trissLog.length && t - trissLog[0] > TRISS_WINDOW) trissLog.shift(); trissLog.push(t);
     const n = trissLog.length, lines = TRISS[n < 3 ? 0 : n < 5 ? 1 : n < 8 ? 2 : 3]; let line = trissN === 1 ? lines[0] : pick(lines);
     while (line === trissLast) line = pick(lines);
     trissLast = line; toast('”' + line + '”', 3);
   }
-  const el = $('triss'); el.hidden = false; el.textContent = 'Trisslotter: ' + trissN + ' · Vinster: ' + trissWon;
+  const el = $('triss'); el.hidden = false; el.innerHTML = 'Trisslotter: ' + trissN + ' · Vinster: ' + trissWon + '<br>Insatt: ' + fmtKr(trissN * TRISS_KR) + ' · Vunnit: ' + fmtKr(trissWonKr);   // numbers only, so innerHTML is safe
 }
 let camYaw = 0.6, camPitch = 0.34, lookOff = 0, lookIdle = 9;
 
 // ---------- input ----------
 const keys = {}, joy = { x: 0, y: 0, on: false };
 const KEYMAP = { KeyW: 'up', ArrowUp: 'up', KeyS: 'down', ArrowDown: 'down', KeyA: 'left', ArrowLeft: 'left', KeyD: 'right', ArrowRight: 'right', Space: 'brake', ShiftLeft: 'run', ShiftRight: 'run' };
-addEventListener('keydown', e => { if (!started) return; const k = KEYMAP[e.code];
+addEventListener('keydown', e => { if (!started) return; const k = KEYMAP[e.code]; if (CHEATS && !e.repeat && kmenu.hidden) cheatKey(e.code);
   if (nameIn && e.target === nameIn) { if (e.isComposing) return; if (e.code === 'Enter' || e.code === 'NumpadEnter' || e.code === 'Escape') { e.preventDefault(); menuChoose(e.code === 'Escape' ? 'no' : 'ok'); canvas.focus(); } return; }   // typing a name
   if (!kmenu.hidden) { const n = /^(?:Digit|Numpad)([1-9])$/.exec(e.code), b = n && kmenu.querySelectorAll('button')[+n[1] - 1];
     if (e.code === 'Escape' || b && b.dataset.k !== 'no') { e.preventDefault(); menuChoose(e.code === 'Escape' ? 'no' : b.dataset.k); return; }
@@ -796,6 +814,11 @@ let laterLine = null;
 const sayLater = line => { laterLine = line; };
 drawStars();
 function drawHealth() { hud.drawHealth(health.hp, inCar ? pcar.dmg : null); }
+// money on its plate, in Swedish style: 10 000 kr
+const fmtKr = n => n.toLocaleString('sv-SE') + ' kr';
+function drawKr() { $('kr').textContent = fmtKr(wallet.kr); }
+drawKr();
+const broke = kr => '”Dä blir ' + kr + ' kronor. Va, har du inga pengar? Nä, då blir dä inget.”';
 let signT = 0, blink = false, blinkT = 0;
 
 // ---------- stealing, police, getting caught ----------
@@ -837,7 +860,8 @@ function clearWanted() { stars = 0; evade = 0; bustT = 0; for (const p of police
 function respawn() { leaveHouse(); if (inCar) { pcar.mode = 'idle'; pcar.v = pcar.slip = pcar.drift = pcar.boost = 0; placeCar(pcar); pcar = null; inCar = false; player.mesh.visible = true; }
   player.x = HOME.x; player.z = HOME.z; player.y = player.vy = 0; jumpQ = false; collide(player, 0.6); }
 function bigScreen(title, msg) { $('big-t').textContent = title; $('big-p').textContent = msg; bigT = 3; $('big').hidden = false; hud.hideToast(); }   // the big screen replaces any line from the same moment
-function busted() { clearWanted(); respawn(); health.hp = HP_MAX; drawHealth(); bigScreen('Gripen!', 'Busted. The police drop you off at Torget.'); }
+function busted() { const f = fine(wallet.kr, stars); pay(wallet, f); drawKr(); clearWanted(); respawn(); health.hp = HP_MAX; drawHealth();
+  bigScreen('Gripen!', 'Busted. The police ' + (f ? 'fine you ' + fmtKr(f) + ' and ' : '') + 'drop you off at Torget.'); }
 // health at zero: with the police after you it's Gripen!, otherwise you come to at the nearest safehouse, or Torget
 function knockedOut() {
   if (stars) { busted(); return; }
@@ -962,5 +986,5 @@ $('go').addEventListener('click', e => { started = true; $('intro').hidden = tru
 resize(); requestAnimationFrame(frame);
 
 // ---------- test hook: read-only state for the smoke tests (tests/e2e), so they do not have to read pixels ----------
-window.__joyride = { state: () => { const n = nearestCar(); return { started, x: player.x, z: player.z, y: player.y, yaw: camYaw, inCar, car: pcar ? pcar.type : null, near: n ? n.mode : null, speed: pcar ? pcar.v : 0, drift: pcar ? pcar.drift : 0, boost: pcar ? pcar.boost : 0, charge: pcar ? pcar.charge : 0, loose: pcar ? pcar.loose : 0, flickDir: pcar ? pcar.flickDir : 0, stars, cats: cats.length, treats, hp: health.hp, carDmg: pcar ? pcar.dmg : null, ownCat: !!colony.owned, vehicle: displayCar ? vehicleVisuals.state(displayCar) : null, nearSelectedVehicle: n === displayCar, activeVehicle: pcar ? vehicleVisuals.state(pcar) : null, traffic: cars.filter(c => c.mode === 'ai').map(c => ({ type: c.type, vehicle: vehicleVisuals.state(c) })) }; } };
+window.__joyride = { state: () => { const n = nearestCar(); return { started, x: player.x, z: player.z, y: player.y, yaw: camYaw, inCar, car: pcar ? pcar.type : null, near: n ? n.mode : null, speed: pcar ? pcar.v : 0, drift: pcar ? pcar.drift : 0, boost: pcar ? pcar.boost : 0, charge: pcar ? pcar.charge : 0, loose: pcar ? pcar.loose : 0, flickDir: pcar ? pcar.flickDir : 0, stars, cats: cats.length, treats, kr: wallet.kr, hp: health.hp, carDmg: pcar ? pcar.dmg : null, ownCat: !!colony.owned, vehicle: displayCar ? vehicleVisuals.state(displayCar) : null, nearSelectedVehicle: n === displayCar, activeVehicle: pcar ? vehicleVisuals.state(pcar) : null, traffic: cars.filter(c => c.mode === 'ai').map(c => ({ type: c.type, vehicle: vehicleVisuals.state(c) })) }; } };
 })();
