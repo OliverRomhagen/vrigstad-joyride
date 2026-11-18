@@ -41,7 +41,9 @@ export class Hud {
   /** whether a toast is showing */
   get toasting() { return this.toastT > 0; }
 
-  toast(msg: string, secs?: number, cls?: string) { const t = this.g.$('toast'); t.textContent = msg; t.className = 'plate' + (cls ? ' ' + cls : ''); t.hidden = false; t.style.opacity = '1'; this.toastT = secs || 3.5; }
+  /** cls 'win' pops the toast in; the reflow in between restarts the pop when one win follows another */
+  toast(msg: string, secs?: number, cls?: string) { const t = this.g.$('toast'); t.textContent = msg; t.className = 'plate'; if (cls) { void t.offsetWidth; t.className = 'plate ' + cls; }
+    t.hidden = false; t.style.opacity = '1'; this.toastT = secs || 3.5; }
 
   hideToast() { this.toastT = 0; this.g.$('toast').hidden = true; }
 

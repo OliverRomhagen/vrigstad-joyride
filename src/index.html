@@ -85,7 +85,9 @@ body { background: var(--sky); color: var(--ink); font-family: var(--body); font
 #kmenu small { margin-left: 4px; font-size: .8em; opacity: .7; }
 #toast { position: absolute; left: 50%; top: 22%; transform: translateX(-50%); padding: 8px 16px; max-width: min(86vw, 520px); text-align: center;
   font: 500 15px var(--body); white-space: pre-line; transition: opacity .3s; }
-#toast.win { background: var(--gold); color: #1a1a14; font-weight: 600; }
+#toast.win { font-weight: 600; box-shadow: 0 0 0 2px var(--gold); animation: pop .45s cubic-bezier(.3, 1.6, .5, 1); }
+@keyframes pop { from { transform: translateX(-50%) scale(.6); } to { transform: translateX(-50%) scale(1); } }
+#confetti { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
 #hide { position: absolute; left: 50%; top: 12%; transform: translateX(-50%); padding: 6px 16px 8px; text-align: center; white-space: nowrap;
   font: 600 14px var(--display); letter-spacing: .06em; text-transform: uppercase; color: var(--gold); }
 #hide b { display: block; font: 700 34px/1 var(--display); letter-spacing: .02em; color: var(--ink); font-variant-numeric: tabular-nums; }
@@ -115,7 +117,7 @@ body { background: var(--sky); color: var(--ink); font-family: var(--body); font
 @media (pointer: coarse) { #pets kbd { display: none; } #pets { min-height: 44px; padding: 0 16px; } }   /* a finger-sized target */
 @media (pointer: coarse) { #kmenu { bottom: calc(160px + env(safe-area-inset-bottom, 0px)); } }   /* above the joystick and the Use button */
 @media (max-width: 560px) { #mini { width: 108px; height: 108px; } #sign { font-size: 15px; } #speed > b { font-size: 30px; } }
-@media (prefers-reduced-motion: reduce) { #stars.evading b, #hp.bad i { animation: none; } #hp b { transition: none; } }
+@media (prefers-reduced-motion: reduce) { #stars.evading b, #hp.bad i, #toast.win { animation: none; } #hp b { transition: none; } }
 </style>
 </head>
 <body>
@@ -133,6 +135,7 @@ body { background: var(--sky); color: var(--ink); font-family: var(--body); font
   </div>
   <div id="prompt" class="plate" hidden></div>
   <div id="kmenu" class="plate" role="group" aria-labelledby="kmenu-t" aria-live="polite" hidden></div>
+  <canvas id="confetti" aria-hidden="true" hidden></canvas>
   <div id="toast" class="plate" hidden></div>
   <div id="hide" class="plate" hidden></div>
   <div id="hurt" aria-hidden="true"></div>

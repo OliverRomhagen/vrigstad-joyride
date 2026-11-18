@@ -23,6 +23,7 @@ import { CAT_ADOPT_PETS, CatColony } from './cats';
 import { Hud } from './hud';
 import { Crowd } from './pedestrians';
 import { Pets } from './pets';
+import { Confetti, confettiCount } from './confetti';
 import { earn, fine, KORV_KR, newWallet, pay, RAIN_KR, RULLE_KR, TREATS_KR, TRISS_KR, trissPrize } from './economy';
 import { CAT_SCRATCH_HP, crackLevel, LOW_HP, CRASH_COOL_S, crashCars, crashDamage, driverHurt, HP_MAX, heal, hurt, KORV_HP, impactSpeed, newHealth, regen, RULLE_HP, runOverHurt, smokeLevel, topSpeedShare, wakeSpot, wrecked } from './health';
 
@@ -748,14 +749,18 @@ let billI = 0;
 function makeItRain() {
   if (!started || bigT > 0 || inside || !kmenu.hidden) return;
   if (!pay(wallet, RAIN_KR)) { toast('”Låta dä regna? Mä ' + fmtKr(wallet.kr) + '? Nä.”', 2.5); return; }
-  drawKr(); const o = inCar ? pcar : player, n = calmMotion.matches ? RAIN_CALM_N : RAIN_N;
+  drawKr(); const o = inCar ? pcar : player; dropBills(o);
+  const seen = crowd.stare(o, RAIN_SEEN_M, RAIN_GAWK_S);
+  toast(pickLine(RAIN_LINES), 2.5); if (seen) sayLater(pickLine(GAWK_LINES));
+}
+// a shower of notes around o: for låt det regna, and for the big trisslott win
+function dropBills(o) {
+  const n = calmMotion.matches ? RAIN_CALM_N : RAIN_N;
   for (let i = 0; i < n; i++) { const b = bills[billI]; billI = (billI + 1) % RAIN_N;   // a ring: the oldest note goes first
     const a = fxRnd() * Math.PI * 2, d = Math.sqrt(fxRnd()) * RAIN_R_M, x = o.x + Math.sin(a) * d, z = o.z + Math.cos(a) * d;   // sqrt: evenly over the disc
     b.position.set(x, groundAt(x, z) + RAIN_TOP_M + fxRnd() * RAIN_TOP_SPREAD_M, z); b.rotation.set(fxRnd() * 6.3, fxRnd() * 6.3, fxRnd() * 6.3);
     b.vy = RAIN_FALL_MS + fxRnd() * RAIN_FALL_SPREAD_MS; b.sway = 0.4 + fxRnd() * 0.5; b.phase = fxRnd() * 6.3;
     b.sx = (fxRnd() - 0.5) * 6; b.sy = (fxRnd() - 0.5) * 4; b.sz = (fxRnd() - 0.5) * 6; b.lieT = -1; b.material.opacity = 1; b.visible = true; }
-  const seen = crowd.stare(o, RAIN_SEEN_M, RAIN_GAWK_S);
-  toast(pickLine(RAIN_LINES), 2.5); if (seen) sayLater(pickLine(GAWK_LINES));
 }
 function updateRain(dt) {
   for (const b of bills) { if (!b.visible) continue;
@@ -768,7 +773,8 @@ function updateRain(dt) {
 
 // trisslott: the vinstplan is in economy.ts; the temper gets worse with every losing ticket scratched inside the window
 const TRISS_WINDOW = 25;          // s
-const TRISS_BIG_KR = 10_000;     // a win this big gets the big toast
+const TRISS_BIG_KR = 10_000;     // a win this big gets the big toast, and banknotes rain down too
+const confetti = new Confetti($('confetti'), fxRnd);   // fired on every win, more for a bigger one
 const TRISS = [
   ['Järnspikar, ingen vinst denna gång heller.', 'Äsch, dä va la synd.', 'Nä, inget dänna gången heller.', 'Jaja, nästa lott så.'],
   ['Men jösses, inte ett öre!', 'Tusan hakar, en nitlott te!', 'Dä här börjar likna lurendrejeri.', 'Sjutton gubbar, nu får dä la ändå vända!'],
@@ -779,7 +785,8 @@ function scratch() { if (trissT > 0) return; if (!pay(wallet, TRISS_KR)) { toast
 function trissResult() {
   trissN++;
   const kr = trissPrize(Math.random());
-  if (kr) { earn(wallet, kr); drawKr(); trissWon++; trissWonKr += kr; trissLog.length = 0;
+  if (kr) { earn(wallet, kr); drawKr(); trissWon++; trissWonKr += kr;
+    if (!calmMotion.matches) confetti.burst(confettiCount(kr)); if (kr >= TRISS_BIG_KR) dropBills(player); trissLog.length = 0;
     if (kr >= TRISS_BIG_KR) toast('”VINST! Dä va som sjutton, ja visste väl dä!” You won ' + fmtKr(kr) + ' on a trisslott. That never happens.', 8, 'win');
     else toast('”Vinst! ' + fmtKr(kr) + ', dä ä la nåt.”', 3, 'win'); }
   else {
@@ -967,7 +974,7 @@ function frame(now) {
   const T = inCar ? pcar : player;
   vehicleVisuals.update(T, dt);
   updateSmoke(dt, T);
-  updateRain(dt);
+  updateRain(dt); confetti.update(dt);
   for (const c of cars) if (c.mode === 'ai') updateTraffic(c, dt, T);
   updateNpcs(T, dt);
   updateCats(T, dt);
@@ -1025,5 +1032,5 @@ $('go').addEventListener('click', e => { started = true; $('intro').hidden = tru
 resize(); requestAnimationFrame(frame);
 
 // ---------- test hook: read-only state for the smoke tests (tests/e2e), so they do not have to read pixels ----------
-window.__joyride = { state: () => { const n = nearestCar(); return { started, x: player.x, z: player.z, y: player.y, yaw: camYaw, inCar, car: pcar ? pcar.type : null, near: n ? n.mode : null, speed: pcar ? pcar.v : 0, drift: pcar ? pcar.drift : 0, boost: pcar ? pcar.boost : 0, charge: pcar ? pcar.charge : 0, loose: pcar ? pcar.loose : 0, flickDir: pcar ? pcar.flickDir : 0, stars, cats: cats.length, treats, kr: wallet.kr, bills: bills.filter(b => b.visible).length, hp: health.hp, carDmg: pcar ? pcar.dmg : null, ownCat: !!colony.owned, vehicle: displayCar ? vehicleVisuals.state(displayCar) : null, nearSelectedVehicle: n === displayCar, activeVehicle: pcar ? vehicleVisuals.state(pcar) : null, traffic: cars.filter(c => c.mode === 'ai').map(c => ({ type: c.type, vehicle: vehicleVisuals.state(c) })) }; } };
+window.__joyride = { state: () => { const n = nearestCar(); return { started, x: player.x, z: player.z, y: player.y, yaw: camYaw, inCar, car: pcar ? pcar.type : null, near: n ? n.mode : null, speed: pcar ? pcar.v : 0, drift: pcar ? pcar.drift : 0, boost: pcar ? pcar.boost : 0, charge: pcar ? pcar.charge : 0, loose: pcar ? pcar.loose : 0, flickDir: pcar ? pcar.flickDir : 0, stars, cats: cats.length, treats, kr: wallet.kr, bills: bills.filter(b => b.visible).length, confetti: confetti.live, hp: health.hp, carDmg: pcar ? pcar.dmg : null, ownCat: !!colony.owned, vehicle: displayCar ? vehicleVisuals.state(displayCar) : null, nearSelectedVehicle: n === displayCar, activeVehicle: pcar ? vehicleVisuals.state(pcar) : null, traffic: cars.filter(c => c.mode === 'ai').map(c => ({ type: c.type, vehicle: vehicleVisuals.state(c) })) }; } };
 })();
