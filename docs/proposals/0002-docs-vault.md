@@ -78,7 +78,18 @@ Whether lore lives in `docs/lore/` or next to the map data (`data/vrigstad/lore/
 - **Diagrams:** Mermaid, which renders on GitHub and in Obsidian. Canvas boards (`.canvas`, plain JSON) for mood boards and flows.
 - **Shared config only:** `app.json` is committed; each person's workspace layout is in `.gitignore`. Plugins are suggestions in `docs/README.md`, not committed.
 - **Suggested plugins:** Dataview (index pages that fill themselves: every proposal under discussion, every quest that starts at Torget), Excalidraw (sketches), Git.
-- **Later:** publish `docs/` next to the game on the Pages site.
+
+## Publishing: the wiki
+
+The vault is also the project's wiki: a site built from `docs/` and served next to the game, at `/vrigstad-joyride/wiki/`. People who never open the repo, players included, can read the lore, the proposals and the decisions there.
+
+- **On `main`, not a branch of its own.** The game reads `docs/lore/`, so lore has to change together with the code that reads it. A separate wiki branch, or GitHub's built-in wiki (a separate repo, with no PR review), would drift from the code.
+- **Built by [Quartz](https://quartz.jzhao.xyz).** It is made for publishing Obsidian vaults: backlinks, a graph view, tags and callouts come out much as they look in Obsidian, and for lore the links between characters, places and quests are the point. VitePress would match our Vite build but has no backlinks or graph. Quartz is set up by cloning its repo, not installed from npm, so CI clones a pinned tag.
+- **Deployed with the game.** `pages.yml` builds the wiki in the same job as the game and puts it in `site/wiki/`, so one push to `gh-pages` carries both. A second workflow pushing to `gh-pages` would race the first.
+- **Previews for docs PRs.** A PR that changes `docs/` gets its wiki built into its preview (`pr-preview/pr-<n>/wiki/`), so a writer sees the rendered page before merging.
+- **Lore is checked.** Once the game reads lore notes, a typo in their frontmatter can break the build. A CI check validates `docs/lore/` frontmatter on every PR. A PR that changes only prose outside `lore/` skips the game's e2e tests.
+- **Easy for writers.** CODEOWNERS gives the lore writer `docs/lore/`, so they review lore PRs. A `lore` commit scope lets `docs(lore): add Pastorn` pass the PR title check. The GitHub web editor or Obsidian's Git plugin is enough to make a PR without a terminal.
+- **Public.** The site is public, and so is every draft in `docs/`. Spoilers and half-written lore are visible to anyone who looks.
 
 ## Done when
 
@@ -86,10 +97,12 @@ Whether lore lives in `docs/lore/` or next to the map data (`data/vrigstad/lore/
 - #214 has moved to `docs/proposals/0001-game-design.md`, and this proposal is accepted or rejected in its file.
 - AGENTS.md says where proposals, decisions and research go.
 
-Lore read by the game is its own follow-up issue, once dialogue (#37) is being built.
+Lore read by the game is its own follow-up issue, once dialogue (#37) is being built. Publishing the wiki is another, filed when this is accepted.
 
 ## Open questions
 
 - Do we move DESIGN.md into the vault, or keep it at the root next to ARCHITECTURE.md and put only proposals in `docs/`?
 - Lore in `docs/lore/` or next to the map data?
 - Numbered proposals (`0002-`) or dated ones (`2026-11-docs-vault`)?
+- Is a public wiki fine for lore drafts, or do drafts stay out of the build until they are ready (a `draft: true` in their frontmatter, which Quartz can skip)?
+- Quartz, or VitePress to stay on one build tool?
