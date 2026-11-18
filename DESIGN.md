@@ -99,3 +99,11 @@ Some ideas are worth trying without promising them. An experiment:
 - reports in its PR what it costs (download size, speed, which devices) and whether it's good enough to keep.
 
 The first candidate is talking to NPCs with speech-to-text and a small language model running in the browser on WebGPU: for example, talking your way out of *Gripen!*. Scripted voice lines don't need this: they are generated from text at build time and shipped as plain audio (#132).
+
+More ideas for experiments, from the first brainstorm:
+
+- **Shouting:** the microphone's volume alone scares off cats, horses and protesters (#127). No AI needed.
+- **Dialect minigame:** say "inte för allt smör i Småland" and speech-to-text scores it (#142).
+- **Order by voice** at the kiosk, trisslotter included.
+- **Village gossip:** people bring up what you did ("va de du som körde i sjön?"), from templates first, rewritten by a model later.
+- **Radio Vrigstad** in the car: a host's chatter and made-up ads, generated at build time like the voice lines.
