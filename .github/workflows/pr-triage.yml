@@ -46,11 +46,11 @@ jobs:
           closes='close[sd]?|fix(e[sd])?|resolve[sd]?'
           repo=${GH_REPO//./\\.}
           refs() {
-            grep -oiE "\b($1):?[[:space:]]+(${repo}#|https://github\.com/${repo}/issues/|#)[0-9]+" <<<"$body" |
+            grep -oiE "\b($1):?[[:space:]]+(${repo}#|https://github\.com/${repo}/issues/|#)[0-9]+" <<<"$2" |
               grep -oE '[0-9]+$' | head -1 || true
           }
-          closing=$(refs "$closes")
-          referenced=${closing:-$(refs 'part of')}
+          closing=$(refs "$closes" "$body")
+          referenced=${closing:-$(refs 'part of' "$body")}
           elsewhere=$(grep -ciE "\b($closes|part of):?[[:space:]]+([[:alnum:]_.-]+/[[:alnum:]_.-]+#|https://github\.com/[^[:space:]]+/issues/)[0-9]+" <<<"$body" || true)
 
           # The issue the PR is for: the reference, else the number a `gh issue develop` branch starts with.
@@ -83,11 +83,23 @@ jobs:
             if [ "$current" = "${old:+scope:$old}" ]; then set_scope "$old" "$(derived "$title")"; fi
           fi
 
-          # Labels that describe the change itself carry over from the issue, once on open; priority and status stay on the issue.
-          carry='lab accessibility'
-          if [ "$action" = opened ] && [ -n "$issue_json" ]; then
-            jq -r --arg carry "$carry" '($carry | split(" ")) as $c | .labels[]?.name | select(IN($c[]))' <<<"$issue_json" |
-              while read -r label; do gh api -X POST "repos/$GH_REPO/issues/$number/labels" -f "labels[]=$label" --silent; done
+          # Labels that describe the change itself carry over from the issue; priority and status stay on the issue.
+          # Once per issue: on open, and on an edit that points the body at a different issue, as the comment below asks.
+          carry=
+          if [ "$action" = opened ]; then
+            carry=$issue
+          elif [ "$(event '.changes.body != null')" = true ]; then
+            old_body=$(event '.changes.body.from // ""' | perl -0pe 's/<!--.*?-->//gs')
+            old_closing=$(refs "$closes" "$old_body")
+            old_issue=${old_closing:-$(refs 'part of' "$old_body")}
+            old_issue=${old_issue:-$(grep -oE '^[0-9]+' <<<"$branch" || true)}
+            [ "$issue" = "$old_issue" ] || carry=$issue
+          fi
+          if [ -n "$carry" ]; then
+            args=()
+            while read -r label; do args+=(-f "labels[]=$label"); done < <(
+              jq -r '.labels[]?.name | select(. == "lab" or . == "accessibility")' <<<"$issue_json")
+            [ ${#args[@]} = 0 ] || gh api -X POST "repos/$GH_REPO/issues/$number/labels" "${args[@]}" --silent
           fi
 
           # One comment while the body references no issue, removed once it does.
