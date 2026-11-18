@@ -29,7 +29,8 @@ describe('ISO 800 presentation texture', () => {
   });
 
   it('cancels animation and removes the motion listener on disposal', () => {
-    const cancel = vi.fn(), remove = vi.fn(), animate = vi.fn(() => ({ cancel }));
+    const cancel = vi.fn(), remove = vi.fn(), pause = vi.fn(), play = vi.fn();
+    const animate = vi.fn(() => ({ cancel, pause, play }));
     const layer = { style: {}, setAttribute: vi.fn(), animate, remove };
     const motion = { matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() };
     vi.stubGlobal('matchMedia', () => motion);
@@ -39,6 +40,12 @@ describe('ISO 800 presentation texture', () => {
     } : layer });
     const grain = new FilmGrain({ append: vi.fn() } as unknown as HTMLElement, '?grain=on');
     expect(animate).toHaveBeenCalledOnce();
+    expect(pause).toHaveBeenCalledOnce();
+    grain.setMoving(true);
+    grain.setMoving(true);
+    expect(play).toHaveBeenCalledOnce();
+    grain.setMoving(false);
+    expect(pause).toHaveBeenCalledTimes(2);
     const listener = motion.addEventListener.mock.calls[0][1] as () => void;
     motion.matches = true;
     listener();
