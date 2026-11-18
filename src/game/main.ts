@@ -1,6 +1,7 @@
 // @ts-nocheck
 // Moved as-is from the single-file prototype (#44); it gets types as it is split into modules.
 import * as THREE from 'three';
+import { DriftFx } from './render/drift-fx';
 import { pickVariant, vehicleDefinition } from './render/vehicle-registry';
 import { VehicleVisuals } from './render/vehicle-visuals';
 import D from '../../data/vrigstad.json';
@@ -13,12 +14,13 @@ import { RoadRibbons } from '../world/mesh/road-ribbons';
 import { TerrainMesh } from '../world/mesh/terrain';
 import { pointInPolygon as inPoly, polygonArea as polyArea, segmentDistance as segDist } from '../world/polygon';
 import { makeRnd } from '../world/random';
-import { nodeKey, ROAD_CELL_M as RC, RoadNetwork } from '../world/roads';
+import { nodeKey, RoadNetwork } from '../world/roads';
 import { LEGACY_LIGHT } from '../world/three-legacy';
 import { treeSpots } from '../world/trees';
 import { Water } from '../world/water';
 import { CAT_ADOPT_PETS, CatColony } from './cats';
 import { Hud } from './hud';
+import { Crowd } from './pedestrians';
 
 (function () {
 'use strict';
@@ -128,7 +130,7 @@ far.rotation.x = -Math.PI / 2; far.position.y = -SKIRT_DEPTH_M;
 scene.add(terrain.surface, far, terrain.skirt);
 
 // ---------- roads: crisp ribbons on the terrain + lookup grid + junction graph ----------
-const roads = new RoadNetwork(D, heightfield), { lines: R, grid: roadGrid, junctions: nodes, driveable } = roads;
+const roads = new RoadNetwork(D, heightfield), { lines: R, junctions: nodes, driveable } = roads;
 const nearestRoad = roads.nearestRoad.bind(roads), groundAt = roads.groundAt.bind(roads);
 const ROAD_COLOURS = [0x4c4f52, 0x55585b, 0x606365, 0x74746d, 0xa08c6c, 0xbcae92] as const, CENTRE_LINE_COLOUR = 0xe9e7da;   // sRGB, by road class
 const asphalt = (() => {   // a light, speckled tile that the road colours tint, so asphalt and gravel aren't flat
@@ -454,108 +456,14 @@ function drive(c, thr, steer, brake, dt, canDrift) {
   placeCar(c);
 }
 
-// ---------- drift effects: sparks at the rear wheels (white, then blue and orange as the turbo charges), a flame while boosting, skid marks ----------
-const SKID_N = 600, SKID_STEP_M = 0.6, SPARK_COLS = [col(0xfff2c0), col(0x4aa8ff), col(0xff8a1f)];
-const fxRnd = makeRnd(4242);                   // own stream: the flicker rolls every frame
-const sparkMat = new THREE.MeshBasicMaterial({ color: SPARK_COLS[0].clone() }), sparkGeo = new THREE.OctahedronGeometry(0.22);
-const sparks = [0, 1].map(() => { const m = new THREE.Mesh(sparkGeo, sparkMat); m.visible = false; scene.add(m); return m; });
-const flame = new THREE.Mesh(new THREE.ConeGeometry(0.22, 1, 8).rotateX(Math.PI / 2).translate(0, 0, 0.5), new THREE.MeshBasicMaterial({ color: col(0xffb347) }));
-flame.visible = false; scene.add(flame);
-const skids = new THREE.InstancedMesh(new THREE.PlaneGeometry(0.24, 1).rotateX(-Math.PI / 2).translate(0, 0, 0.5),
-  new THREE.MeshBasicMaterial({ color: 0x111111, transparent: true, opacity: 0.4, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 }), SKID_N);
-skids.count = 0; skids.frustumCulled = false; scene.add(skids);
-const skidLast = [null, null], _sp = new THREE.Vector3(), _sq = new THREE.Quaternion(), _ss = new THREE.Vector3(), _up = new THREE.Vector3(0, 1, 0);
-let skidI = 0;
-function laySkid(w, x, z) {
-  const l = skidLast[w]; if (!l) { skidLast[w] = { x, z }; return; }
-  const dx = x - l.x, dz = z - l.z, L = Math.hypot(dx, dz); if (L < SKID_STEP_M) return;
-  _sp.set(l.x, groundAt(l.x, l.z) + 0.02, l.z); _sq.setFromAxisAngle(_up, Math.atan2(dx, dz)); _ss.set(1, 1, L);
-  skids.setMatrixAt(skidI, _m.compose(_sp, _sq, _ss)); skidI = (skidI + 1) % SKID_N; skids.count = Math.min(SKID_N, skids.count + 1);   // a ring: the oldest mark goes first
-  skids.instanceMatrix.needsUpdate = true; l.x = x; l.z = z;
-}
-function updateDriftFx(c) {
-  const on = !!c && !c.wet && (c.drift !== 0 || Math.abs(c.slip) > 0.3), back = c ? (c.type === 'traktor' ? 1.5 : PROFILES[c.type].wz[1]) : 0;
-  const fx = c ? Math.sin(c.h) : 0, fz = c ? -Math.cos(c.h) : 0;
-  for (let w = 0; w < 2; w++) {
-    if (!on) { sparks[w].visible = false; skidLast[w] = null; continue; }
-    const side = w ? 0.8 : -0.8, x = c.x - fx * back - fz * side, z = c.z - fz * back + fx * side;
-    laySkid(w, x, z);
-    const sx = x - fx * 0.45, sz = z - fz * 0.45;                 // just behind the tyre, which would hide it
-    const tier = c.charge > TURBO_AT[1] ? 2 : c.charge > TURBO_AT[0] ? 1 : 0, sp = sparks[w];
-    sp.visible = c.drift !== 0; sp.position.set(sx, groundAt(sx, sz) + 0.18, sz); sp.scale.setScalar((0.6 + tier * 0.35) * (0.6 + fxRnd() * 0.8));
-    sp.rotation.set(fxRnd() * 3, fxRnd() * 3, 0); if (!w) sparkMat.color.copy(SPARK_COLS[tier]);
-  }
-  flame.visible = !!c && c.boost > 0;
-  if (flame.visible) { const x = c.x - fx * (back + 0.95), z = c.z - fz * (back + 0.95);
-    flame.position.set(x, groundAt(x, z) + 0.45, z); flame.rotation.set(0, -c.h, 0); flame.scale.set(1, 1, 0.7 + fxRnd() * 0.8); }   // the cone's tip is local +Z, which -h turns to the car's rear
-}
+// ---------- drift effects: sparks at the rear wheels, a flame while boosting, skid marks (src/game/render/drift-fx.ts) ----------
+const driftFx = new DriftFx({ scene, groundAt, profiles: PROFILES, turboAt: TURBO_AT }), updateDriftFx = driftFx.update.bind(driftFx);
 
-// ---------- pedestrians: walk the streets and footpaths, now and then stop for a while ----------
-// Each 50 m cell gets a density (0..1): how built-up the cell and its neighbours are, plus a boost near named places.
-// NPC_ZONES hand-tunes spots on top of that (m multiplies the density within r metres).
-const NPC_ZONES = [{ x: -8.9, z: 30.1, r: 80, m: 1.8 }];       // Torget
-const NPC_MAX = coarse ? 26 : 42, NPC_NEAR = 200, NPC_FAR = 250;
-const dens = new Map(), densAt = (x, z) => dens.get(Math.floor(x / RC) + ',' + Math.floor(z / RC)) || 0;
-(function () {
-  const cnt = new Map();
-  for (const b of bPolys) { const k = Math.floor((b.x0 + b.x1) / 2 / RC) + ',' + Math.floor((b.z0 + b.z1) / 2 / RC); cnt.set(k, (cnt.get(k) || 0) + 1); }
-  for (const k of roadGrid.keys()) { const [x, z] = k.split(',').map(Number), cx = (x + 0.5) * RC, cz = (z + 0.5) * RC; let n = 0;
-    for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) n += cnt.get((x + i) + ',' + (z + j)) || 0;
-    let d = 0.04 + Math.min(1, n / 16) * 0.66;
-    for (const l of D.labels) if (l.k === 'p') d += 0.45 * Math.max(0, 1 - Math.hypot(l.x - cx, l.z - cz) / 110);
-    for (const o of NPC_ZONES) if (Math.hypot(o.x - cx, o.z - cz) < o.r) d *= o.m;
-    dens.set(k, Math.min(1, d)); }
-})();
-// every road and path is walkable: junction graph plus a grid of segments to spawn on
-const wnodes = new Map(), walkGrid = new Map();
-R.forEach((r, ri) => r.p.forEach((p, vi) => { const k = nodeKey(p); let l = wnodes.get(k); if (!l) wnodes.set(k, l = []); l.push(ri, vi);
-  if (!vi) return; const q = r.p[vi - 1], g = Math.floor((p[0] + q[0]) / 2 / RC) + ',' + Math.floor((p[1] + q[1]) / 2 / RC);
-  let s = walkGrid.get(g); if (!s) walkGrid.set(g, s = []); s.push(ri, vi - 1); }));
-const npcs = [], SHIRTS = ['#b5463a', '#3f6b8a', '#5c7a4a', '#7a5a8a', '#d8d4c8', '#2b3a55', '#c9862f', '#8c1c1c', '#4d4a48'],
-  PANTS = ['#3a3a3a', '#2b3a55', '#4a4038', '#5a6470', '#23272b'], HAIR = ['#5a4632', '#2a2320', '#c9a560', '#8a8580', '#7a3f22'];
-const segLen = (r, a, b) => Math.max(0.01, Math.hypot(r.p[b][0] - r.p[a][0], r.p[b][1] - r.p[a][1]));
-function spawnNpc(T, minD) {
-  for (let t = 0; t < 12; t++) {
-    const ang = rnd() * Math.PI * 2, dist = minD + rnd() * (NPC_NEAR - minD), x = T.x + Math.sin(ang) * dist, z = T.z + Math.cos(ang) * dist;
-    const l = walkGrid.get(Math.floor(x / RC) + ',' + Math.floor(z / RC)); if (!l || rnd() > densAt(x, z)) continue;
-    const i = Math.floor(rnd() * l.length / 2) * 2, ri = l[i], fwd = rnd() < 0.5, a = fwd ? l[i + 1] : l[i + 1] + 1;
-    const n = { ri, a, dir: fwd ? 1 : -1, t: rnd() * segLen(R[ri], l[i + 1], l[i + 1] + 1), side: rnd() < 0.5 ? 1 : -1, speed: 1.05 + rnd() * 0.45,
-      idle: rnd() < 0.3 ? 2 + rnd() * 10 : 0, walk: 10 + rnd() * 30, x: 0, z: 0, h: 0, phase: 0, first: true, mesh: personParts(pick(SHIRTS), pick(PANTS), pick(HAIR)) };
-    n.mesh.scale.setScalar(0.92 + rnd() * 0.14); scene.add(n.mesh); npcs.push(n); return;
-  }
-}
-function updateNpc(n, dt) {
-  const d0 = densAt(n.x, n.z);
-  if (n.idle > 0) { n.idle -= dt; n.phase *= 0.8; }
-  else { n.t += n.speed * dt; n.phase += n.speed * dt * 2.1; n.walk -= dt;
-    if (n.walk <= 0) { n.idle = 3 + rnd() * 12; n.walk = 12 + rnd() * 40 * (1.2 - d0); } }    // busy places: shorter walks between stops
-  let r = R[n.ri], L = segLen(r, n.a, n.a + n.dir);
-  for (let g = 0; n.t >= L && g < 8; g++) { n.t -= L; advance(n, wnodes); r = R[n.ri]; L = segLen(r, n.a, n.a + n.dir); }
-  const A = r.p[n.a], B = r.p[n.a + n.dir], dx = (B[0] - A[0]) / L, dz = (B[1] - A[1]) / L, off = r.c <= 3 ? (ROAD_W[r.c] / 2 + 0.8) * n.side : 0;
-  const k = n.first ? 1 : Math.min(1, dt * 4);
-  n.x += (A[0] + dx * n.t - dz * off - n.x) * k; n.z += (A[1] + dz * n.t + dx * off - n.z) * k;
-  for (const c of cars) { const ex = n.x - c.x, ez = n.z - c.z, d = Math.hypot(ex, ez); if (d < 2.3 && d > 0.01) { n.x += ex / d * (2.3 - d); n.z += ez / d * (2.3 - d); } }
-  if (!inCar) { const ex = n.x - player.x, ez = n.z - player.z, d = Math.hypot(ex, ez); if (d < 0.75 && d > 0.01) { n.x += ex / d * (0.75 - d); n.z += ez / d * (0.75 - d); } }
-  collide(n, 0.35);
-  // walking: face the way along the path; standing around: glance at the player when they come close
-  const ph = Math.hypot(player.x - n.x, player.z - n.z), want = n.idle > 0 ? (ph < 8 ? Math.atan2(player.x - n.x, -(player.z - n.z)) : n.h) : Math.atan2(dx, -dz);
-  n.h = n.first ? want : wrap(n.h + wrap(want - n.h) * Math.min(1, dt * 5)); n.first = false;
-  const sw = Math.sin(n.phase) * 0.6; n.mesh.legs[0].rotation.x = sw; n.mesh.legs[1].rotation.x = -sw;
-  n.mesh.position.set(n.x, groundAt(n.x, n.z), n.z); n.mesh.rotation.y = -n.h;
-}
-// keep a crowd around the player that matches how busy the area is; refill everything after a teleport
-let npcT = 0, npcX = 1e9, npcZ = 1e9;
-function updateNpcs(T, dt) {
-  npcT -= dt;
-  if (npcT <= 0) { npcT = 0.4;
-    const jump = Math.hypot(T.x - npcX, T.z - npcZ) > 120; npcX = T.x; npcZ = T.z;
-    for (let i = npcs.length - 1; i >= 0; i--) if (Math.hypot(npcs[i].x - T.x, npcs[i].z - T.z) > NPC_FAR) { scene.remove(npcs[i].mesh); npcs.splice(i, 1); }
-    let s = 0; for (let i = -4; i <= 4; i++) for (let j = -4; j <= 4; j++) s += densAt(T.x + i * RC, T.z + j * RC);
-    const want = Math.round(NPC_MAX * Math.min(1, s / 81 * 2.2));
-    for (let i = 0; i < (jump ? 60 : 3) && npcs.length < want; i++) spawnNpc(T, jump ? 0 : 90);
-  }
-  for (const n of npcs) updateNpc(n, dt);
-}
+// ---------- pedestrians: walk the streets and footpaths, now and then stop for a while (src/game/pedestrians.ts) ----------
+// the getters are read when the pedestrians use them, so they can name things declared further down
+const crowd = new Crowd({ scene, roads, buildings, labels: D.labels, groundAt, coarse, wrap, rnd, pick, personParts, advance, cars,
+  get player() { return player; }, get inCar() { return inCar; } });
+const updateNpcs = crowd.update.bind(crowd);
 
 // ---------- cats: lounge by the house walls, wander a little, bolt from cars and running feet (src/game/cats.ts) ----------
 const TREAT_BAG = 3, TREAT_MAX = 9;                                  // treats per bag from the kiosk; how many fit in your pockets
