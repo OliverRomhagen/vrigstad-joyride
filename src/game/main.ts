@@ -464,18 +464,19 @@ function drive(c, thr, steer, brake, dt, canDrift) {
   placeCar(c);
 }
 
-// one hit: both cars take the damage, and the player too if they're in one. A car takes no new hit for CRASH_COOL_S, as contact lasts several frames.
+// one hit: both cars take the damage, and the player too if they're in one. A car takes no new hit for CRASH_COOL_S, as contact lasts several frames;
+// each car keeps its own cooldown, so ramming a car that was just hit still damages yours
+const POLICE_WRECK_SEEN_M = 80;                // "the police car is wrecked" only when it happens this close to the camera
 function crash(c, o, impact) {
-  if (clockS - c.hitAt < CRASH_COOL_S || (o && clockS - o.hitAt < CRASH_COOL_S)) return;
   const d = crashDamage(impact); if (d <= 0) return;
-  c.hitAt = clockS; if (o) o.hitAt = clockS;
+  const hit = (o ? [c, o] : [c]).filter(k => clockS - k.hitAt >= CRASH_COOL_S); if (!hit.length) return;
   let said = false;   // one line per crash: wrecked, then smoke, then the crash itself
-  for (const k of o ? [c, o] : [c]) { const smoke = smokeLevel(k.dmg); if (damageCar(k, d)) {
+  for (const k of hit) { k.hitAt = clockS; const smoke = smokeLevel(k.dmg); if (damageCar(k, d)) {
     if (k === pcar) { const cat = catAboard(); toast((cat ? '”Ut, ' + cat.name + '! Den här bilen ä slut.”\n”Mjäu.”' : pickLine(WRECK_LINES)) + ' The car is wrecked. Get out and find another.', 4); said = true; }
-    else if (k.mode === 'police') toast('The police car is wrecked.', 3); }
+    else if (k.mode === 'police' && Math.hypot(k.x - camera.position.x, k.z - camera.position.z) < POLICE_WRECK_SEEN_M) toast('The police car is wrecked.', 3); }
     else if (k === pcar && smokeLevel(k.dmg) > smoke) { toast(SMOKE_LINES[smokeLevel(k.dmg)], 3); said = true; }
     crackGlass(k); }
-  if (c === pcar || o === pcar) { const n = driverHurt(impact); hurtPlayer(n); shake(d);
+  if (hit.includes(pcar)) { const n = driverHurt(impact); hurtPlayer(n); shake(d);
     const cat = catAboard();   // with your cat along, any real crash is about the cat; without, only one that hurts you
     if ((n > 0 || cat) && !said && clockS - crashLineAt > CRASH_LINE_S) { crashLineAt = clockS; toast(cat ? '”Förlåt, ' + cat.name + '! Ä du hel?”\n”Fräs!”' : pickLine(CRASH_LINES), 2.5); } }
 }
