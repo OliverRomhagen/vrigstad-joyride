@@ -26,14 +26,17 @@ async function expectCoverage(page) {
   })).toBe(true);
 }
 
-test('grain covers canvas and UI, stays fixed through resize, and preserves mouse/keyboard input', async ({ page }, info) => {
+test('grain covers canvas and UI, boils through resize, and preserves mouse/keyboard input', async ({ page }, info) => {
   const errors = watchErrors(page);
   await page.addInitScript(() => { HTMLCanvasElement.prototype.requestPointerLock = undefined; });
   await page.setViewportSize({ width: 800, height: 600 });
-  await page.goto('/index.html');
+  await page.goto('/index.html?grain=on');
   await expect(layer(page)).toBeVisible();
   await expectCoverage(page);
   const texture = await layer(page).evaluate(element => element.style.backgroundImage);
+  const position = await layer(page).evaluate(element => getComputedStyle(element).backgroundPosition);
+  await expect.poll(() => layer(page).evaluate(element => getComputedStyle(element).backgroundPosition)).not.toBe(position);
+  expect(await layer(page).evaluate(element => element.getAnimations().length)).toBe(1);
   await page.setViewportSize({ width: 640, height: 480 });
   await expectCoverage(page);
   expect(await layer(page).evaluate(element => element.style.backgroundImage)).toBe(texture);
@@ -66,11 +69,24 @@ test('grain=off allocates no overlay and preserves Start', async ({ page }) => {
   expect(errors).toEqual([]);
 });
 
+test('grain is absent by default and reduced motion keeps an enabled texture static', async ({ page }) => {
+  await page.goto('/index.html');
+  await expect(layer(page)).toHaveCount(0);
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.goto('/index.html?grain=on');
+  await expect(layer(page)).toBeVisible();
+  expect(await layer(page).evaluate(element => element.getAnimations().length)).toBe(0);
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await expect.poll(() => layer(page).evaluate(element => element.getAnimations().length)).toBe(1);
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await expect.poll(() => layer(page).evaluate(element => element.getAnimations().length)).toBe(0);
+});
+
 test('grain keeps CSS-pixel scale and touch controls on a high-DPR viewport', async ({ browser, baseURL }, info) => {
   const context = await browser.newContext({ baseURL, viewport: { width: 768, height: 1024 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
   try {
     const page = await context.newPage(), errors = watchErrors(page);
-    await page.goto('/index.html');
+    await page.goto('/index.html?grain=on');
     await expect(layer(page)).toBeVisible();
     await expectCoverage(page);
     expect(await layer(page).evaluate(element => getComputedStyle(element).backgroundSize)).toMatch(/^256px 256px,/);
