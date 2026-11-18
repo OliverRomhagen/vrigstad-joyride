@@ -145,7 +145,7 @@ test.describe('game (index.html)', () => {
     await expect.poll(async () => (await state(page)).speed, { intervals: [50], timeout: 60_000 }).toBeGreaterThan(9);
     expect((await state(page)).loose).toBe(0);
     await page.keyboard.down('KeyA');
-    await expect.poll(async () => (await state(page)).flickDir, { intervals: [20] }).toBe(-1);   // a frame has seen the left turn (CI frames are slow)
+    await expect.poll(async () => (await state(page)).flickHeld, { intervals: [20] }).toBeGreaterThanOrEqual(0.3);   // held long enough to load the car up (FLICK_LOAD_S)
     await page.keyboard.up('KeyA');
     await page.keyboard.down('KeyD');
     await expect.poll(async () => (await state(page)).loose, { intervals: [20] }).toBeGreaterThan(0);

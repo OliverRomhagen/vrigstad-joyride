@@ -35,7 +35,8 @@ export type VehicleSpec = {
   suspension: Suspension;
 };
 
-// The handling wheelbase is the procedural model's; a GLB model brings its own.
+// Wheelbase and rear axle are where the procedural model draws its wheels; a GLB model brings its own measured ones.
+// Response times: the civilian cars answer a little late, so they feel some weight; the police stay sharp for the chase.
 export const VEHICLE_SPECS: Readonly<Record<CarType, VehicleSpec>> = {
   volvo: {
     name: 'Volvo 240',
@@ -43,7 +44,7 @@ export const VEHICLE_SPECS: Readonly<Record<CarType, VehicleSpec>> = {
     acc: 7,
     off: 0.5,
     cols: ['#27406b', '#7a2530', '#c9bd9c', '#e6e4dc', '#2f5a41', '#8a8f93'],
-    handling: { wheelbaseM: 2.65, steerResponseS: 0.12, throttleResponseS: 0.22 },
+    handling: { wheelbaseM: 2.95, rearAxleM: 1.45, steerResponseS: 0.15, throttleResponseS: 0.28 },
     suspension: { freqHz: 1.3, damping: 0.6, rollPerAcc: 0.0045, maxRollRad: 0.07, pitchPerAcc: 0.0026, maxPitchRad: 0.045, heavePerAcc: 0.004, maxHeaveM: 0.06 },
   },
   saab: {
@@ -52,7 +53,7 @@ export const VEHICLE_SPECS: Readonly<Record<CarType, VehicleSpec>> = {
     acc: 8.5,
     off: 0.5,
     cols: ['#1d1d1f', '#8c1c1c', '#3d5a80', '#d8d4c8', '#55606a'],
-    handling: { wheelbaseM: 2.52, steerResponseS: 0.09, throttleResponseS: 0.16 },
+    handling: { wheelbaseM: 2.8, rearAxleM: 1.35, steerResponseS: 0.12, throttleResponseS: 0.2 },
     suspension: { freqHz: 1.6, damping: 0.7, rollPerAcc: 0.0035, maxRollRad: 0.055, pitchPerAcc: 0.0022, maxPitchRad: 0.04, heavePerAcc: 0.003, maxHeaveM: 0.05 },
   },
   epa: {
@@ -61,7 +62,7 @@ export const VEHICLE_SPECS: Readonly<Record<CarType, VehicleSpec>> = {
     acc: 4,
     off: 0.7,
     cols: ['#c8372d', '#2a2a2c', '#e8a020', '#3f6b8a'],
-    handling: { wheelbaseM: 2.6, steerResponseS: 0.15, throttleResponseS: 0.35 },
+    handling: { wheelbaseM: 2.9, rearAxleM: 1.4, steerResponseS: 0.18, throttleResponseS: 0.4 },
     suspension: { freqHz: 1.2, damping: 0.5, rollPerAcc: 0.005, maxRollRad: 0.08, pitchPerAcc: 0.003, maxPitchRad: 0.05, heavePerAcc: 0.005, maxHeaveM: 0.07 },
   },
   traktor: {
@@ -70,7 +71,7 @@ export const VEHICLE_SPECS: Readonly<Record<CarType, VehicleSpec>> = {
     acc: 3.5,
     off: 1,
     cols: ['#2f7a3a', '#b5302a', '#2a5fa0'],
-    handling: { wheelbaseM: 2.4, steerResponseS: 0.24, throttleResponseS: 0.5 },
+    handling: { wheelbaseM: 2.4, rearAxleM: 0.9, steerResponseS: 0.28, throttleResponseS: 0.5 },
     suspension: { freqHz: 2.2, damping: 0.35, rollPerAcc: 0.002, maxRollRad: 0.035, pitchPerAcc: 0.002, maxPitchRad: 0.03, heavePerAcc: 0.006, maxHeaveM: 0.08 },
   },
   polis: {
@@ -79,22 +80,32 @@ export const VEHICLE_SPECS: Readonly<Record<CarType, VehicleSpec>> = {
     acc: 9,
     off: 0.6,
     cols: ['#f1f1ee'],
-    handling: { wheelbaseM: 2.76, steerResponseS: 0.08, throttleResponseS: 0.14 },
+    handling: { wheelbaseM: 2.95, rearAxleM: 1.45, steerResponseS: 0.08, throttleResponseS: 0.14 },
     suspension: { freqHz: 1.8, damping: 0.75, rollPerAcc: 0.003, maxRollRad: 0.05, pitchPerAcc: 0.002, maxPitchRad: 0.035, heavePerAcc: 0.0025, maxHeaveM: 0.04 },
   },
 };
 
-/** What a model can change about its type: its real wheelbase in metres, and how it rides. */
-export type ModelOverrides = { wheelbase?: number; suspension?: Partial<Suspension> };
+/** What a model can change about its type: its measured axles in metres, how it answers the controls and how it rides. */
+export type ModelOverrides = {
+  wheelbase?: number;
+  rearAxle?: number;
+  handling?: Partial<Pick<Handling, 'steerResponseS' | 'throttleResponseS'>>;
+  suspension?: Partial<Suspension>;
+};
 
 /** The spec for a car of this type wearing this model. Throws on an unknown type, so a typo can't drive like a Volvo. */
 export function specFor(type: CarType, model?: ModelOverrides): VehicleSpec {
   const base = VEHICLE_SPECS[type];
   if (!base) throw new Error(`unknown car type: ${type}`);
-  if (!model?.wheelbase && !model?.suspension) return base;
+  if (!model?.wheelbase && !model?.rearAxle && !model?.handling && !model?.suspension) return base;
   return {
     ...base,
-    handling: model.wheelbase ? { ...base.handling, wheelbaseM: model.wheelbase } : base.handling,
+    handling: {
+      ...base.handling,
+      ...model.handling,
+      wheelbaseM: model.wheelbase ?? base.handling.wheelbaseM,
+      rearAxleM: model.rearAxle ?? base.handling.rearAxleM,
+    },
     suspension: { ...base.suspension, ...model.suspension },
   };
 }

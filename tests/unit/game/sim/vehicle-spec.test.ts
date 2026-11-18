@@ -9,7 +9,7 @@ describe('specFor', () => {
   });
   it('takes the model’s wheelbase and layers its ride on the type', () => {
     const impala = specFor('volvo', vehicleDefinition('impala1970'));
-    expect(impala.handling).toEqual({ ...VEHICLE_SPECS.volvo.handling, wheelbaseM: 3.0226 });
+    expect(impala.handling).toEqual({ ...VEHICLE_SPECS.volvo.handling, wheelbaseM: 3.0226, rearAxleM: 1.2294 });
     expect(impala.suspension.freqHz).toBeLessThan(VEHICLE_SPECS.volvo.suspension.freqHz);
     expect(impala.suspension.maxPitchRad).toBe(VEHICLE_SPECS.volvo.suspension.maxPitchRad);
     expect(impala.max).toBe(VEHICLE_SPECS.volvo.max);
@@ -17,7 +17,21 @@ describe('specFor', () => {
   it('leaves the shared table alone', () => {
     specFor('saab', vehicleDefinition('micra-k11'));
     expect(VEHICLE_SPECS.saab.suspension.freqHz).toBe(1.6);
-    expect(VEHICLE_SPECS.saab.handling.wheelbaseM).toBe(2.52);
+    expect(VEHICLE_SPECS.saab.handling.wheelbaseM).toBe(2.8);
+  });
+  it('lets the XC70 answer and ride heavier than the Saab it shares a type with', () => {
+    const xc70 = specFor('saab', vehicleDefinition('xc70')),
+      saab = specFor('saab', vehicleDefinition('saab900'));
+    expect(xc70.handling.steerResponseS).toBeGreaterThan(saab.handling.steerResponseS);
+    expect(xc70.handling.throttleResponseS).toBeGreaterThan(saab.handling.throttleResponseS);
+    expect(xc70.suspension.maxRollRad).toBeGreaterThan(saab.suspension.maxRollRad);
+    expect(xc70.max).toBe(saab.max);
+  });
+  it('keeps every rear axle between the wheels', () => {
+    for (const { handling } of Object.values(VEHICLE_SPECS)) {
+      expect(handling.rearAxleM).toBeGreaterThan(0);
+      expect(handling.rearAxleM).toBeLessThan(handling.wheelbaseM);
+    }
   });
   it('throws on an unknown type instead of quietly driving like a Volvo', () => {
     expect(() => specFor('ufo' as CarType)).toThrow('unknown car type: ufo');
