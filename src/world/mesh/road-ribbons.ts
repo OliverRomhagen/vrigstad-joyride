@@ -2,6 +2,7 @@ import '../three-legacy';
 import * as THREE from 'three';
 import { ROAD_WIDTH_M, type RoadClass } from '../data';
 import type { Heightfield } from '../heightfield';
+import { resample, ribbonEdges, STEP_M } from '../polyline';
 import { type Point, type RoadNetwork, roadLiftM } from '../roads';
 
 export interface RoadRibbonOptions {
@@ -17,8 +18,6 @@ export interface RoadRibbonOptions {
 const CENTRE_LINE = ROAD_WIDTH_M.length;
 const CENTRE_LINE_WIDTH_M = 0.2;
 const CENTRE_LINE_LIFT_M = 0.3;
-/** ribbons are cut every this many metres so they follow the terrain (m) */
-const STEP_M = 6;
 /** the asphalt texture repeats every this many metres, across and along (m) */
 const TILE_M = 4;
 
@@ -38,32 +37,16 @@ export class RoadRibbons {
     const positions: number[][] = Array.from({ length: CENTRE_LINE + 1 }, () => []);
     const uvs: number[][] = Array.from({ length: CENTRE_LINE + 1 }, () => []);
     const ribbon = (out: number[], uvOut: number[], points: Point[], width: number, lift: number) => {
-      const q: Point[] = [points[0]];
-      for (let i = 1; i < points.length; i++) {
-        const a = points[i - 1];
-        const b = points[i];
-        const steps = Math.max(1, Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]) / STEP_M));
-        for (let s = 1; s <= steps; s++) q.push([a[0] + ((b[0] - a[0]) * s) / steps, a[1] + ((b[1] - a[1]) * s) / steps]);
-      }
+      const q = resample(points, STEP_M);
       let pl: number[] = [];
       let pr: number[] = [];
       let v = 0;
       let pv = 0;
       const u = width / TILE_M;
       for (let i = 0; i < q.length; i++) {
-        const a = q[Math.max(0, i - 1)];
-        const b = q[Math.min(q.length - 1, i + 1)];
-        let dx = b[0] - a[0];
-        let dz = b[1] - a[1];
-        const length = Math.hypot(dx, dz) || 1;
-        dx /= length;
-        dz /= length;
-        const nx = (-dz * width) / 2;
-        const nz = (dx * width) / 2;
-        const l = [q[i][0] - nx, 0, q[i][1] - nz];
-        const r = [q[i][0] + nx, 0, q[i][1] + nz];
-        l[1] = heightfield.heightAt(l[0], l[2]) + lift;
-        r[1] = heightfield.heightAt(r[0], r[2]) + lift;
+        const { lx, lz, rx, rz } = ribbonEdges(q, i, width);
+        const l = [lx, heightfield.heightAt(lx, lz) + lift, lz];
+        const r = [rx, heightfield.heightAt(rx, rz) + lift, rz];
         if (i > 0) {
           v += Math.hypot(q[i][0] - q[i - 1][0], q[i][1] - q[i - 1][1]) / TILE_M;
           out.push(pl[0], pl[1], pl[2], l[0], l[1], l[2], r[0], r[1], r[2], pl[0], pl[1], pl[2], r[0], r[1], r[2], pr[0], pr[1], pr[2]);
