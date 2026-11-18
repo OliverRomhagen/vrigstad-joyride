@@ -154,6 +154,24 @@ test.describe('game (index.html)', () => {
     expect(errors).toEqual([]);
   });
 
+  test('the car body squats under throttle and leans out of a turn', async ({ page }) => {
+    test.setTimeout(120_000);
+    await page.setViewportSize({ width: 640, height: 360 });
+    const errors = watchErrors(page);
+    await page.goto('/index.html');
+    await page.locator('#go').click();
+    await getInVolvo(page);
+    expect((await state(page)).wheelbase).toBeCloseTo(2.65, 2);  // the parked Volvo 240 brings its model's wheelbase
+    await page.keyboard.down('KeyW');
+    await expect.poll(async () => (await state(page)).body.pitch, { intervals: [50], timeout: 30_000 }).toBeGreaterThan(0.003);   // nose up
+    await expect.poll(async () => (await state(page)).speed, { intervals: [50], timeout: 60_000 }).toBeGreaterThan(6);
+    await page.keyboard.down('KeyD');
+    await expect.poll(async () => (await state(page)).body.roll, { intervals: [50], timeout: 30_000 }).toBeGreaterThan(0.01);   // roof out to the left
+    await page.keyboard.up('KeyD');
+    await page.keyboard.up('KeyW');
+    expect(errors).toEqual([]);
+  });
+
   test('dragging the view turns the camera', async ({ page }) => {
     // The pointer lock is taken away (see beforeEach), so this covers the drag that touch and lock-refusing browsers fall back to.
     const errors = watchErrors(page);
