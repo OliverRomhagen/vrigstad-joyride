@@ -8,8 +8,8 @@ export const FINE_SHARE = 0.25, FINE_PER_STAR_KR = 100;   // Gripen! costs this 
 
 // The trisslott vinstplan: of every TRISS_TICKETS tickets, how many win each prize, as [kr, tickets]; the rest lose.
 // One ticket in ten wins, most of them a ticket back, and about a fifth of the money comes back.
-export const TRISS_TICKETS = 200_000;
-export const TRISS_PLAN: readonly (readonly [number, number])[] = [[30, 16_000], [60, 2_400], [100, 900], [200, 400], [500, 200], [1000, 80], [10_000, 20]];
+export const TRISS_TICKETS = 100_000;
+export const TRISS_PLAN: readonly (readonly [number, number])[] = [[30, 8_000], [60, 1_200], [100, 450], [200, 200], [500, 100], [1000, 40], [10_000, 10]];
 
 export interface Wallet {
   kr: number;

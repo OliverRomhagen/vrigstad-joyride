@@ -40,10 +40,10 @@ describe('trisslott vinstplan', () => {
 
   it('reads the plan in order, and the rest of the tickets lose', () => {
     expect(trissPrize(0)).toBe(30);
-    expect(trissPrize(15_999.5 / TRISS_TICKETS)).toBe(30);
-    expect(trissPrize(16_000.5 / TRISS_TICKETS)).toBe(60);
-    expect(trissPrize(19_999.5 / TRISS_TICKETS)).toBe(10_000);
-    expect(trissPrize(20_000.5 / TRISS_TICKETS)).toBe(0);
+    expect(trissPrize(7_999.5 / TRISS_TICKETS)).toBe(30);
+    expect(trissPrize(8_000.5 / TRISS_TICKETS)).toBe(60);
+    expect(trissPrize(9_999.5 / TRISS_TICKETS)).toBe(10_000);
+    expect(trissPrize(10_000.5 / TRISS_TICKETS)).toBe(0);
     expect(trissPrize(0.999999)).toBe(0);
   });
 
