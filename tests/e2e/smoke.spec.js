@@ -274,7 +274,7 @@ test.describe('game (index.html)', () => {
     expect(errors).toEqual([]);
   });
 
-  test('with ?cheats, typing MYNT adds money; without it, or with another key between, it does nothing', async ({ page }) => {
+  test('with ?cheats, typing MYNT adds money (and L makes it rain); without it, or with another key between, it does nothing', async ({ page }) => {
     const type = async keys => { for (const c of keys) await page.keyboard.press('Key' + c); };
     await page.goto('/index.html');
     await page.locator('#go').click();
@@ -286,6 +286,11 @@ test.describe('game (index.html)', () => {
     expect(await state(page)).toMatchObject({ kr: 200 });
     await type('MYNT');
     await expect(page.locator('#kr')).toHaveText('1 200 kr');
+    await page.keyboard.press('KeyL');                                 // låt det regna: 1 000 kr in the air
+    await expect(page.locator('#kr')).toHaveText('200 kr');
+    expect((await state(page)).bills).toBeGreaterThan(0);
+    await page.keyboard.press('KeyL');                                 // not enough left: nothing is taken
+    expect(await state(page)).toMatchObject({ kr: 200 });
   });
 });
 

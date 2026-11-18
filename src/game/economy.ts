@@ -4,6 +4,7 @@
 export const START_KR = 200;                              // what you have in your pocket at the start
 export const TRISS_KR = 30, TREATS_KR = 5;                // a trisslott; a bag of three cat treats
 export const KORV_KR = 25, RULLE_KR = 45;                 // korv me brö; a smålandsrulle
+export const RAIN_KR = 1000;                              // låt det regna: banknotes thrown in the air, for show
 export const FINE_SHARE = 0.25, FINE_PER_STAR_KR = 100;   // Gripen! costs this share of your money, or this much per star, whichever is more
 
 // The trisslott vinstplan: of every TRISS_TICKETS tickets, how many win each prize, as [kr, tickets]; the rest lose.

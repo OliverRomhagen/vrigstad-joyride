@@ -18,7 +18,7 @@ type Point = { x: number; z: number };
 export type PersonMesh = THREE.Object3D & { legs: THREE.Object3D[] };
 /** Where a pedestrian is on the walk graph: road ri, from vertex a towards a + dir, t metres along; the same shape as a car's. */
 export interface Npc extends Point { ri: number; a: number; dir: number; t: number; side: number; speed: number; idle: number; walk: number;
-  h: number; phase: number; first: boolean; mesh: PersonMesh }
+  h: number; phase: number; first: boolean; gawk: number; mesh: PersonMesh }   // gawk: s left staring at the player
 
 /** What the pedestrians read from the rest of the game. The getters are read when used, so main.ts can declare those later. */
 export interface CrowdDeps {
@@ -84,7 +84,7 @@ export class Crowd {
       const l = this.walkGrid.get(Math.floor(x / RC) + ',' + Math.floor(z / RC)); if (!l || rnd() > this.densAt(x, z)) continue;
       const i = Math.floor(rnd() * l.length / 2) * 2, ri = l[i], fwd = rnd() < 0.5, a = fwd ? l[i + 1] : l[i + 1] + 1;
       const n: Npc = { ri, a, dir: fwd ? 1 : -1, t: rnd() * this.segLen(R[ri], l[i + 1], l[i + 1] + 1), side: rnd() < 0.5 ? 1 : -1, speed: 1.05 + rnd() * 0.45,
-        idle: rnd() < 0.3 ? 2 + rnd() * 10 : 0, walk: 10 + rnd() * 30, x: 0, z: 0, h: 0, phase: 0, first: true, mesh: personParts(pick(SHIRTS), pick(PANTS), pick(HAIR)) };
+        idle: rnd() < 0.3 ? 2 + rnd() * 10 : 0, walk: 10 + rnd() * 30, x: 0, z: 0, h: 0, phase: 0, first: true, gawk: 0, mesh: personParts(pick(SHIRTS), pick(PANTS), pick(HAIR)) };
       n.mesh.scale.setScalar(0.92 + rnd() * 0.14); scene.add(n.mesh); this.npcs.push(n); return;
     }
   }
@@ -92,6 +92,7 @@ export class Crowd {
   private updateNpc(n: Npc, dt: number) {
     const { rnd, advance, cars, player, inCar, groundAt, wrap } = this.g, { R } = this;
     const d0 = this.densAt(n.x, n.z);
+    if (n.gawk > 0) n.gawk -= dt;
     if (n.idle > 0) { n.idle -= dt; n.phase *= 0.8; }
     else { n.t += n.speed * dt; n.phase += n.speed * dt * 2.1; n.walk -= dt;
       if (n.walk <= 0) { n.idle = 3 + rnd() * 12; n.walk = 12 + rnd() * 40 * (1.2 - d0); } }    // busy places: shorter walks between stops
@@ -103,11 +104,18 @@ export class Crowd {
     for (const c of cars) { const ex = n.x - c.x, ez = n.z - c.z, d = Math.hypot(ex, ez); if (d < 2.3 && d > 0.01) { n.x += ex / d * (2.3 - d); n.z += ez / d * (2.3 - d); } }
     if (!inCar) { const ex = n.x - player.x, ez = n.z - player.z, d = Math.hypot(ex, ez); if (d < 0.75 && d > 0.01) { n.x += ex / d * (0.75 - d); n.z += ez / d * (0.75 - d); } }
     this.collide(n, 0.35);
-    // walking: face the way along the path; standing around: glance at the player when they come close
-    const ph = Math.hypot(player.x - n.x, player.z - n.z), want = n.idle > 0 ? (ph < 8 ? Math.atan2(player.x - n.x, -(player.z - n.z)) : n.h) : Math.atan2(dx, -dz);
+    // walking: face the way along the path; standing around: glance at the player when they come close, or stare while gawking
+    const ph = Math.hypot(player.x - n.x, player.z - n.z), want = n.idle > 0 ? (ph < 8 || n.gawk > 0 ? Math.atan2(player.x - n.x, -(player.z - n.z)) : n.h) : Math.atan2(dx, -dz);
     n.h = n.first ? want : wrap(n.h + wrap(want - n.h) * Math.min(1, dt * 5)); n.first = false;
     const sw = Math.sin(n.phase) * 0.6; n.mesh.legs[0].rotation.x = sw; n.mesh.legs[1].rotation.x = -sw;
     n.mesh.position.set(n.x, groundAt(n.x, n.z), n.z); n.mesh.rotation.y = -n.h;
+  }
+
+  /** Everyone within r metres of o stops and stares at the player for s seconds. True when anyone saw. */
+  stare(o: Point, r: number, s: number) {
+    let seen = false;
+    for (const n of this.npcs) if (Math.hypot(n.x - o.x, n.z - o.z) < r) { n.gawk = s; n.idle = Math.max(n.idle, s); seen = true; }
+    return seen;
   }
 
   /** Keeps a crowd around the player that matches how busy the area is, refilling everything after a teleport, and moves everyone; T is where the player (or their car) is. */

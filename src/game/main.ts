@@ -23,7 +23,7 @@ import { CAT_ADOPT_PETS, CatColony } from './cats';
 import { Hud } from './hud';
 import { Crowd } from './pedestrians';
 import { Pets } from './pets';
-import { earn, fine, KORV_KR, newWallet, pay, RULLE_KR, TREATS_KR, TRISS_KR, trissPrize } from './economy';
+import { earn, fine, KORV_KR, newWallet, pay, RAIN_KR, RULLE_KR, TREATS_KR, TRISS_KR, trissPrize } from './economy';
 import { CAT_SCRATCH_HP, crackLevel, LOW_HP, CRASH_COOL_S, crashCars, crashDamage, driverHurt, HP_MAX, heal, hurt, KORV_HP, impactSpeed, newHealth, regen, RULLE_HP, runOverHurt, smokeLevel, topSpeedShare, wakeSpot, wrecked } from './health';
 
 (function () {
@@ -728,6 +728,44 @@ function updateSmoke(dt, T) {
     p.position.y += dt * 1.3; p.scale.setScalar(0.6 + t * 2.4); p.material.opacity = 0.75 * (1 - t); }
 }
 
+// ---------- låt det regna: an easter egg, L throws RAIN_KR in the air as banknotes that flutter down around you ----------
+const RAIN_N = 48, RAIN_CALM_N = 12, RAIN_R_M = 4.5;          // notes in the pool; how many with reduced motion; how far around you they fall (m)
+const RAIN_TOP_M = 2.5, RAIN_TOP_SPREAD_M = 2.5;             // they start 2.5–5 m above the ground
+const RAIN_FALL_MS = 0.9, RAIN_FALL_SPREAD_MS = 0.6;         // and fall at 0.9–1.5 m/s, swaying: down in 2–5 s
+const RAIN_LIE_S = 3, RAIN_FADE_S = 0.8;                     // s a note lies on the ground, then fades out
+const RAIN_SEEN_M = 20, RAIN_GAWK_S = 5;                     // walkers this close (m) stop and stare this long (s)
+const RAIN_LINES = ['”Låt dä regna!”', '”Pengar ä bara papper, dä.”', '”Hôll i hatten, nu regnar dä sedlar!”'];
+const GAWK_LINES = ['”Va i hela friden!”', '”Ä du inte klok, människa?!”', '”Hörru, ja tar en sån där!”'];
+const billTex = (() => { const cv = document.createElement('canvas'); cv.width = 128; cv.height = 64; const g = cv.getContext('2d');
+  g.fillStyle = '#6f82c2'; g.fillRect(0, 0, 128, 64); g.strokeStyle = '#dfe4f4'; g.lineWidth = 4; g.strokeRect(6, 6, 116, 52);
+  g.fillStyle = '#4c5d9e'; g.beginPath(); g.arc(38, 32, 16, 0, Math.PI * 2); g.fill();
+  g.fillStyle = '#eef1fa'; g.font = 'bold 22px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('100', 88, 33);
+  const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; return t; })();
+const billGeo = new THREE.PlaneGeometry(0.4, 0.2);
+const bills = Array.from({ length: RAIN_N }, () => { const b = new THREE.Mesh(billGeo, new THREE.MeshBasicMaterial({ map: billTex, transparent: true, side: THREE.DoubleSide, depthWrite: false }));
+  b.visible = false; b.lieT = 0; b.vy = 0; b.sway = 0; b.phase = 0; b.sx = b.sy = b.sz = 0; scene.add(b); return b; });
+let billI = 0;
+function makeItRain() {
+  if (!started || bigT > 0 || inside || !kmenu.hidden) return;
+  if (!pay(wallet, RAIN_KR)) { toast('”Låta dä regna? Mä ' + fmtKr(wallet.kr) + '? Nä.”', 2.5); return; }
+  drawKr(); const o = inCar ? pcar : player, n = calmMotion.matches ? RAIN_CALM_N : RAIN_N;
+  for (let i = 0; i < n; i++) { const b = bills[billI]; billI = (billI + 1) % RAIN_N;   // a ring: the oldest note goes first
+    const a = fxRnd() * Math.PI * 2, d = Math.sqrt(fxRnd()) * RAIN_R_M, x = o.x + Math.sin(a) * d, z = o.z + Math.cos(a) * d;   // sqrt: evenly over the disc
+    b.position.set(x, groundAt(x, z) + RAIN_TOP_M + fxRnd() * RAIN_TOP_SPREAD_M, z); b.rotation.set(fxRnd() * 6.3, fxRnd() * 6.3, fxRnd() * 6.3);
+    b.vy = RAIN_FALL_MS + fxRnd() * RAIN_FALL_SPREAD_MS; b.sway = 0.4 + fxRnd() * 0.5; b.phase = fxRnd() * 6.3;
+    b.sx = (fxRnd() - 0.5) * 6; b.sy = (fxRnd() - 0.5) * 4; b.sz = (fxRnd() - 0.5) * 6; b.lieT = -1; b.material.opacity = 1; b.visible = true; }
+  const seen = crowd.stare(o, RAIN_SEEN_M, RAIN_GAWK_S);
+  toast(pickLine(RAIN_LINES), 2.5); if (seen) sayLater(pickLine(GAWK_LINES));
+}
+function updateRain(dt) {
+  for (const b of bills) { if (!b.visible) continue;
+    if (b.lieT < 0) { b.phase += dt * 2.2; b.position.x += Math.cos(b.phase) * b.sway * dt; b.position.z += Math.sin(b.phase * 0.7) * b.sway * dt; b.position.y -= b.vy * dt;
+      b.rotation.x += b.sx * dt; b.rotation.y += b.sy * dt; b.rotation.z += b.sz * dt;
+      const g = groundAt(b.position.x, b.position.z) + 0.02;
+      if (b.position.y <= g) { b.position.y = g; b.rotation.set(-Math.PI / 2, 0, b.rotation.z); b.lieT = 0; } }   // lands flat, turned whichever way it fell
+    else { b.lieT += dt; const f = b.lieT - RAIN_LIE_S; if (f >= RAIN_FADE_S) b.visible = false; else b.material.opacity = f > 0 ? 1 - f / RAIN_FADE_S : 1; } }
+}
+
 // trisslott: the vinstplan is in economy.ts; the temper gets worse with every losing ticket scratched inside the window
 const TRISS_WINDOW = 25;          // s
 const TRISS_BIG_KR = 10_000;     // a win this big gets the big toast
@@ -764,7 +802,7 @@ addEventListener('keydown', e => { if (!started) return; const k = KEYMAP[e.code
     if ((e.code === 'Enter' || e.code === 'NumpadEnter') && !kmenu.contains(e.target) && kmenu.querySelector('[data-k="ok"]')) { e.preventDefault(); menuChoose('ok'); return; } }   // Enter is labelled on Spara, so it saves wherever focus is
   if (e.code === 'KeyP' && !e.repeat && colony.owned) { if (menuKind === 'pets') closeMenu(); else openPets(); return; }
   if (kmenu.contains(e.target)) return;                       // Enter / Space on a focused menu button: let the button's own click handle it
-  if (k) { keys[k] = true; e.preventDefault(); if (k === 'brake' && !e.repeat && jumpOk()) jumpQ = true; } else if ((e.code === 'KeyE' || e.code === 'KeyF' || e.code === 'Enter') && !e.repeat) action(); else if (e.code === 'KeyR') respawn(); });
+  if (k) { keys[k] = true; e.preventDefault(); if (k === 'brake' && !e.repeat && jumpOk()) jumpQ = true; } else if ((e.code === 'KeyE' || e.code === 'KeyF' || e.code === 'Enter') && !e.repeat) action(); else if (e.code === 'KeyR') respawn(); else if (e.code === 'KeyL' && !e.repeat) makeItRain(); });
 addEventListener('keyup', e => { const k = KEYMAP[e.code]; if (k) keys[k] = false; });
 addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
 // mouse look: a click on the game locks the pointer, and the mouse then turns the camera with no button held. Esc frees the cursor.
@@ -929,6 +967,7 @@ function frame(now) {
   const T = inCar ? pcar : player;
   vehicleVisuals.update(T, dt);
   updateSmoke(dt, T);
+  updateRain(dt);
   for (const c of cars) if (c.mode === 'ai') updateTraffic(c, dt, T);
   updateNpcs(T, dt);
   updateCats(T, dt);
@@ -986,5 +1025,5 @@ $('go').addEventListener('click', e => { started = true; $('intro').hidden = tru
 resize(); requestAnimationFrame(frame);
 
 // ---------- test hook: read-only state for the smoke tests (tests/e2e), so they do not have to read pixels ----------
-window.__joyride = { state: () => { const n = nearestCar(); return { started, x: player.x, z: player.z, y: player.y, yaw: camYaw, inCar, car: pcar ? pcar.type : null, near: n ? n.mode : null, speed: pcar ? pcar.v : 0, drift: pcar ? pcar.drift : 0, boost: pcar ? pcar.boost : 0, charge: pcar ? pcar.charge : 0, loose: pcar ? pcar.loose : 0, flickDir: pcar ? pcar.flickDir : 0, stars, cats: cats.length, treats, kr: wallet.kr, hp: health.hp, carDmg: pcar ? pcar.dmg : null, ownCat: !!colony.owned, vehicle: displayCar ? vehicleVisuals.state(displayCar) : null, nearSelectedVehicle: n === displayCar, activeVehicle: pcar ? vehicleVisuals.state(pcar) : null, traffic: cars.filter(c => c.mode === 'ai').map(c => ({ type: c.type, vehicle: vehicleVisuals.state(c) })) }; } };
+window.__joyride = { state: () => { const n = nearestCar(); return { started, x: player.x, z: player.z, y: player.y, yaw: camYaw, inCar, car: pcar ? pcar.type : null, near: n ? n.mode : null, speed: pcar ? pcar.v : 0, drift: pcar ? pcar.drift : 0, boost: pcar ? pcar.boost : 0, charge: pcar ? pcar.charge : 0, loose: pcar ? pcar.loose : 0, flickDir: pcar ? pcar.flickDir : 0, stars, cats: cats.length, treats, kr: wallet.kr, bills: bills.filter(b => b.visible).length, hp: health.hp, carDmg: pcar ? pcar.dmg : null, ownCat: !!colony.owned, vehicle: displayCar ? vehicleVisuals.state(displayCar) : null, nearSelectedVehicle: n === displayCar, activeVehicle: pcar ? vehicleVisuals.state(pcar) : null, traffic: cars.filter(c => c.mode === 'ai').map(c => ({ type: c.type, vehicle: vehicleVisuals.state(c) })) }; } };
 })();
