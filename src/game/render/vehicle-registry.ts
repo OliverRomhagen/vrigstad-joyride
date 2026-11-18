@@ -36,7 +36,7 @@ export const VEHICLES = [
     wheelbase: 2.763,
     rearAxle: 1.393,
     // a tall, heavy estate on the Saab's type: slower to answer, softer and leaning more
-    handling: { steerResponseS: 0.17, throttleResponseS: 0.3 },
+    handling: { steerResponseS: 0.14, throttleResponseS: 0.25 },
     suspension: { freqHz: 1.25, damping: 0.55, rollPerAcc: 0.0055, maxRollRad: 0.08, pitchPerAcc: 0.003, maxPitchRad: 0.05 },
     police: false,
   },

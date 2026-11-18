@@ -404,7 +404,7 @@ const GRIP = 12, DRIFT_GRIP = 1.6;             // 1/s: how fast the line of trav
 const DRIFT_YAW = 1.7, DRIFT_MAX_SLIP = 1.0;   // yaw rate multiplier in a drift; rad, the most the nose can point off the line (no spin-outs)
 const DRIFT_DRAG = 2.5, DRIFT_THR = 0.35;      // m/s² lost to sideways scrub; share of normal acceleration the throttle still gives
 const DRIFT_ROLL = 0.08;                       // rad of body lean per rad of slip
-const BRAKE_MS2 = 17, COUNTER_MS2 = 14;        // m/s² of braking, and of reverse or throttle against the roll: firm, but a car still carries its weight
+const BRAKE_MS2 = 21, COUNTER_MS2 = 17;        // m/s² of braking, and of reverse or throttle against the roll: firm, but a car still carries its weight
 const RECOVER_S = 0.9, SPIN_DECAY = 2.5;       // s for grip to come back after a drift; 1/s fade of the yaw the nose carries out of it (counter-steer to catch it)
 const FLICK_LOOSE = 0.5, FLICK_S = 0.6;        // s of looseness each quick left-right reversal adds (up to RECOVER_S); s apart that still counts as quick
 const FLICK_LOAD_S = 0.3;                      // s the first direction must be held to load the car up: shorter taps are corrections, not a flick

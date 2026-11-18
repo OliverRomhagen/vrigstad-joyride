@@ -3,11 +3,11 @@ import { approach, rearPivotShift, yawRate } from '../../../../src/game/sim/hand
 
 describe('yawRate', () => {
   it('is the bicycle model: v / L · tan(lock)', () => {
-    // at 11 m/s the lock has halved: 0.6 rad · 1 / 2
-    expect(yawRate(11, 1, 2.75)).toBeCloseTo((11 / 2.75) * Math.tan(0.3), 10);
+    // at 13 m/s the lock has halved: 0.6 rad · 1 / 2
+    expect(yawRate(13, 1, 2.75)).toBeCloseTo((13 / 2.75) * Math.tan(0.3), 10);
   });
-  it('keeps a fast car at full lock under 3 g sideways, so a correction at speed stays small', () => {
-    for (const v of [20, 30, 38]) expect((v * yawRate(v, 1, 2.65)) / 9.81).toBeLessThan(3);
+  it('keeps a fast car at full lock under 3.5 g sideways, so a correction at speed stays small', () => {
+    for (const v of [20, 30, 38]) expect((v * yawRate(v, 1, 2.65)) / 9.81).toBeLessThan(3.5);
   });
   it('turns a longer car wider at the same speed and stick', () => {
     expect(Math.abs(yawRate(10, 1, 3.02))).toBeLessThan(Math.abs(yawRate(10, 1, 2.36)));

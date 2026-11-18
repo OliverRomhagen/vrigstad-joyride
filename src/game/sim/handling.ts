@@ -13,7 +13,7 @@ export type Handling = {
 };
 
 const MAX_LOCK_RAD = 0.6; // front-wheel angle at full stick, standing still
-const LOCK_FADE_MS = 11; // m/s at which the lock has halved; it fades with speed squared, so a fast car's small correction stays small
+const LOCK_FADE_MS = 13; // m/s at which the lock has halved; it fades with speed squared, so a fast car's small correction stays small
 
 /** Yaw rate in rad/s of a car at speed v (m/s) with the stick at steer (−1..1), from the bicycle model. */
 export function yawRate(v: number, steer: number, wheelbaseM: number): number {
