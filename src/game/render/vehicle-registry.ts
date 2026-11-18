@@ -1,3 +1,5 @@
+import type { CarType } from '../sim/vehicle-spec';
+
 // Metres, +Y up, -Z forward; normalized exports share these node names.
 export const BODY_NODE = 'body';
 export const WHEEL_NODES = ['wheel_fl', 'wheel_fr', 'wheel_rl', 'wheel_rr'] as const;
@@ -50,6 +52,7 @@ export const VEHICLES = [
     url: 'media/vehicles/impala1970.glb',
     radius: 0.35,
     wheelbase: 3.0226,
+    suspension: { freqHz: 1.0, damping: 0.45, rollPerAcc: 0.006, maxRollRad: 0.09 }, // a soft American barge
     police: false,
   },
   {
@@ -60,6 +63,7 @@ export const VEHICLES = [
     url: 'media/vehicles/micra-k11.glb',
     radius: 0.276,
     wheelbase: 2.36,
+    suspension: { freqHz: 1.9, rollPerAcc: 0.004 }, // short, light and busy
     police: false,
   },
   {
@@ -72,18 +76,18 @@ export const VEHICLES = [
     wheelbase: 2.6,
     police: false,
   },
-] as const;
+] as const satisfies readonly (Record<string, unknown> & { archetype: CarType })[];
 export type VehicleId = (typeof VEHICLES)[number]['id'];
 export const vehicleDefinition = (id: string | null) => VEHICLES.find((v) => v.id === id);
 // The models each simulation type can wear, with relative weights; every model is in the world.
-export const VEHICLE_VARIANTS: Readonly<Record<string, readonly (readonly [VehicleId, number])[]>> = {
+export const VEHICLE_VARIANTS: Readonly<Partial<Record<CarType, readonly (readonly [VehicleId, number])[]>>> = {
   volvo: [['volvo240', 4], ['impala1970', 1]],
   saab: [['saab900', 3], ['xc70', 2], ['micra-k11', 2]],
   epa: [['duett-epa', 1]],
   polis: [['xc70-police', 1]],
 };
 // roll is in [0, 1); types without a model (the tractor) get none and keep the procedural mesh.
-export function pickVariant(type: string, roll: number): VehicleId | undefined {
+export function pickVariant(type: CarType, roll: number): VehicleId | undefined {
   const variants = VEHICLE_VARIANTS[type];
   if (!variants) return undefined;
   let left = roll * variants.reduce((sum, [, weight]) => sum + weight, 0);

@@ -1,17 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { approach, HANDLING, handlingFor, rearPivotShift, yawRate } from '../../../../src/game/sim/handling';
-
-describe('handlingFor', () => {
-  it('uses the type and lets a model bring its own wheelbase', () => {
-    expect(handlingFor('traktor')).toBe(HANDLING.traktor);
-    expect(handlingFor('volvo', 3.02)).toEqual({ ...HANDLING.volvo, wheelbaseM: 3.02 });
-    expect(handlingFor('ufo')).toBe(HANDLING.volvo);
-  });
-  it('makes the tractor slower to answer than the police car', () => {
-    expect(HANDLING.traktor.steerResponseS).toBeGreaterThan(HANDLING.polis.steerResponseS);
-    expect(HANDLING.traktor.throttleResponseS).toBeGreaterThan(HANDLING.polis.throttleResponseS);
-  });
-});
+import { approach, rearPivotShift, yawRate } from '../../../../src/game/sim/handling';
 
 describe('yawRate', () => {
   it('is the bicycle model: v / L · tan(lock)', () => {

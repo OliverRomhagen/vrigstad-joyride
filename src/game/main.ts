@@ -4,8 +4,8 @@ import * as THREE from 'three';
 import { pickVariant, vehicleDefinition } from './render/vehicle-registry';
 import { VehicleVisuals } from './render/vehicle-visuals';
 import { BodyMotion } from './render/body-motion';
-import { suspensionFor } from './render/suspension';
-import { approach, handlingFor, rearPivotShift, yawRate } from './sim/handling';
+import { approach, rearPivotShift, yawRate } from './sim/handling';
+import { specFor } from './sim/vehicle-spec';
 import D from '../../data/vrigstad.json';
 import { BUILDING_CELL_M as BC, BuildingIndex } from '../world/buildings';
 import { ROAD_WIDTH_M as ROAD_W } from '../world/data';
@@ -269,13 +269,6 @@ const paintMat = new THREE.MeshLambertMaterial({ vertexColors: true });
 const carMat = new THREE.MeshPhongMaterial({ vertexColors: true, shininess: 60, specular: col(0x555555) });   // glossy paint and glass
 const GLASS = '#26323a', TYRE = '#1c1c1c';
 const lamps = z => [[0.34, 0.16, 0.06, -0.6, 0.72, -z, '#fff6c8'], [0.34, 0.16, 0.06, 0.6, 0.72, -z, '#fff6c8'], [0.34, 0.16, 0.06, -0.6, 0.72, z, '#c8261c'], [0.34, 0.16, 0.06, 0.6, 0.72, z, '#c8261c']];
-const TYPES = {
-  volvo: { name: 'Volvo 240', max: 38, acc: 7, off: 0.5, cols: ['#27406b', '#7a2530', '#c9bd9c', '#e6e4dc', '#2f5a41', '#8a8f93'] },
-  saab: { name: 'Saab 900', max: 42, acc: 8.5, off: 0.5, cols: ['#1d1d1f', '#8c1c1c', '#3d5a80', '#d8d4c8', '#55606a'] },
-  epa: { name: 'EPA-traktor', max: 8.33, acc: 4, off: 0.7, cols: ['#c8372d', '#2a2a2c', '#e8a020', '#3f6b8a'] },
-  traktor: { name: 'Traktor', max: 11, acc: 3.5, off: 1, cols: ['#2f7a3a', '#b5302a', '#2a5fa0'] },
-  polis: { name: 'Polisbil', max: 35, acc: 9, off: 0.6, cols: ['#f1f1ee'] }
-};
 // car bodies: a bevelled side profile, round wheels and big black bumpers
 const VOLVO_BODY = [[-2.4, 0.36], [2.4, 0.36], [2.4, 0.98], [-0.9, 0.98], [-2.4, 0.9]];
 const PROFILES = {
@@ -344,11 +337,11 @@ function placeCar(c) {
   vehicleVisuals.sync(c);
 }
 function addCar(type, x, z, h, mode, assetId = pickVariant(type, modelRnd())) {
-  const T = TYPES[type], color = pick(T.cols), fallback = new THREE.Mesh(carGeo(type, color), carMat), mesh = new THREE.Group();
+  const T = specFor(type, vehicleDefinition(assetId)), color = pick(T.cols), fallback = new THREE.Mesh(carGeo(type, color), carMat), mesh = new THREE.Group();
   fallback.castShadow = true; mesh.add(fallback); blob(mesh, 2.8, 5.8);   // the fallback sits apart from the blob, so it can roll on its springs
   if (type === 'polis') { const bar = new THREE.Mesh(barGeo, barMat); bar.position.set(0, 1.62, 0.2); fallback.add(bar); }
-  const c = { type, T, mesh, x, z, h, vh: h, v: 0, hd: handlingFor(type, vehicleDefinition(assetId)?.wheelbase), st: 0, thr: 0, slip: 0, drift: 0, charge: 0, yr: 0, spin: 0, loose: 0, flickDir: 0, flickT: 9, boost: 0, mode, wet: false, owned: false, blocked: 0, ghost: 0, stuck: 0, rev: 0, revSteer: 1 };
-  scene.add(mesh); cars.push(c); placeCar(c); bodyMotion.add(c, suspensionFor(type, assetId), fallback); if (assetId) { vehicleVisuals.attach(c, assetId, fallback, color); } return c;
+  const c = { type, T, mesh, x, z, h, vh: h, v: 0, st: 0, thr: 0, slip: 0, drift: 0, charge: 0, yr: 0, spin: 0, loose: 0, flickDir: 0, flickT: 9, boost: 0, mode, wet: false, owned: false, blocked: 0, ghost: 0, stuck: 0, rev: 0, revSteer: 1 };
+  scene.add(mesh); cars.push(c); placeCar(c); bodyMotion.add(c, T.suspension, fallback); if (assetId) { vehicleVisuals.attach(c, assetId, fallback, color); } return c;
 }
 function carName(c) { return vehicleVisuals.definition(c)?.name || c.T.name; }
 function removeCar(c) { vehicleVisuals.dispose(c); bodyMotion.remove(c); scene.remove(c.mesh); const i = cars.indexOf(c); if (i >= 0) cars.splice(i, 1); }
@@ -419,7 +412,7 @@ const TURBO_AT = [1, 2.2], TURBO_S = [0.7, 1.3];   // s of sliding for a blue / 
 const TURBO_ACC = 14, TURBO_TOP = 1.2;         // m/s² of boost; top speed multiplier while boosting
 // shared driving model for the player and the police; only the player passes canDrift
 function drive(c, thr, steer, brake, dt, canDrift) {
-  c.thr = thr = Math.abs(thr - c.thr) < 0.02 ? thr : approach(c.thr, thr, c.hd.throttleResponseS, dt); c.st = approach(c.st, steer, c.hd.steerResponseS, dt);   // weight: speed and heading answer a little late
+  c.thr = thr = Math.abs(thr - c.thr) < 0.02 ? thr : approach(c.thr, thr, c.T.handling.throttleResponseS, dt); c.st = approach(c.st, steer, c.T.handling.steerResponseS, dt);   // weight: speed and heading answer a little late
   const road = nearestRoad(c.x, c.z).d < 0.6; c.wet = inWater(c.x, c.z);
   if (c.drift) { if (!brake || c.v < DRIFT_KEEP_V || c.wet) { const t = c.charge > TURBO_AT[1] ? 1 : c.charge > TURBO_AT[0] ? 0 : -1;
       if (!brake && t >= 0) c.boost = TURBO_S[t]; c.drift = 0; c.loose = RECOVER_S; c.spin = c.yr; } }
@@ -439,7 +432,7 @@ function drive(c, thr, steer, brake, dt, canDrift) {
   if (c.v > max) c.v = Math.max(max, c.v - 14 * dt);
   if (c.v < -7) c.v = -7;
   const s = c.drift ? c.drift * (0.6 + 0.4 * c.st * c.drift) : c.st;   // in a drift the nose always swings the drift's way; steering tightens or widens it
-  c.yr = yawRate(c.v, s, c.hd.wheelbaseM) * (c.drift ? DRIFT_YAW : 1);   // rad/s
+  c.yr = yawRate(c.v, s, c.T.handling.wheelbaseM) * (c.drift ? DRIFT_YAW : 1);   // rad/s
   const h0 = c.h;
   if (c.loose > 0) { c.loose -= dt; c.spin *= Math.exp(-SPIN_DECAY * dt); } else c.spin = 0;
   c.h = wrap(c.h + (c.yr * c.spin > 0 ? (Math.abs(c.yr) > Math.abs(c.spin) ? c.yr : c.spin) : c.yr + c.spin) * dt);   // steering into the slide doesn't stack on the carried yaw; counter-steer cancels it
@@ -448,7 +441,7 @@ function drive(c, thr, steer, brake, dt, canDrift) {
     c.h = wrap(c.h - fix * k); c.vh = wrap(c.vh + fix * (1 - k));   // counter-steer catches the slide: the car straightens along its line instead of carving on
     c.slip = clamp(wrap(c.h - c.vh), -DRIFT_MAX_SLIP, DRIFT_MAX_SLIP); c.vh = wrap(c.h - c.slip); }
   else { c.vh = c.h; c.slip = 0; }
-  if (!c.drift && c.loose <= 0) { const p = rearPivotShift(h0, c.h, c.hd.wheelbaseM); c.x += p.dx; c.z += p.dz; }   // gripping, the car turns about its rear axle; sliding, the rear swings out instead
+  if (!c.drift && c.loose <= 0) { const p = rearPivotShift(h0, c.h, c.T.handling.wheelbaseM); c.x += p.dx; c.z += p.dz; }   // gripping, the car turns about its rear axle; sliding, the rear swings out instead
   c.x += Math.sin(c.vh) * c.v * dt; c.z -= Math.cos(c.vh) * c.v * dt;
   c.x = clamp(c.x, -HALF + 4, HALF - 4); c.z = clamp(c.z, -HALF + 4, HALF - 4);
   if (collide(c, 1.5)) { c.v *= Math.pow(0.02, dt); c.drift = c.loose = c.boost = 0; }     // a wall ends the slide, and the turbo with it (charged or firing)
@@ -949,5 +942,5 @@ $('go').addEventListener('click', e => { started = true; $('intro').hidden = tru
 resize(); requestAnimationFrame(frame);
 
 // ---------- test hook: read-only state for the smoke tests (tests/e2e), so they do not have to read pixels ----------
-window.__joyride = { state: () => { const n = nearestCar(); return { started, x: player.x, z: player.z, y: player.y, yaw: camYaw, inCar, car: pcar ? pcar.type : null, near: n ? n.mode : null, speed: pcar ? pcar.v : 0, drift: pcar ? pcar.drift : 0, boost: pcar ? pcar.boost : 0, charge: pcar ? pcar.charge : 0, loose: pcar ? pcar.loose : 0, flickDir: pcar ? pcar.flickDir : 0, stars, cats: cats.length, treats, ownCat: !!colony.owned, vehicle: displayCar ? vehicleVisuals.state(displayCar) : null, nearSelectedVehicle: n === displayCar, activeVehicle: pcar ? vehicleVisuals.state(pcar) : null, body: pcar ? bodyMotion.state(pcar) : null, wheelbase: pcar ? pcar.hd.wheelbaseM : 0, traffic: cars.filter(c => c.mode === 'ai').map(c => ({ type: c.type, vehicle: vehicleVisuals.state(c) })) }; } };
+window.__joyride = { state: () => { const n = nearestCar(); return { started, x: player.x, z: player.z, y: player.y, yaw: camYaw, inCar, car: pcar ? pcar.type : null, near: n ? n.mode : null, speed: pcar ? pcar.v : 0, drift: pcar ? pcar.drift : 0, boost: pcar ? pcar.boost : 0, charge: pcar ? pcar.charge : 0, loose: pcar ? pcar.loose : 0, flickDir: pcar ? pcar.flickDir : 0, stars, cats: cats.length, treats, ownCat: !!colony.owned, vehicle: displayCar ? vehicleVisuals.state(displayCar) : null, nearSelectedVehicle: n === displayCar, activeVehicle: pcar ? vehicleVisuals.state(pcar) : null, body: pcar ? bodyMotion.state(pcar) : null, wheelbase: pcar ? pcar.T.handling.wheelbaseM : 0, traffic: cars.filter(c => c.mode === 'ai').map(c => ({ type: c.type, vehicle: vehicleVisuals.state(c) })) }; } };
 })();

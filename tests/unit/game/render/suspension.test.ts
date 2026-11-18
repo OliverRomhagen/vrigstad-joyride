@@ -1,28 +1,20 @@
 import { describe, expect, it } from 'vitest';
-import { restingBody, stepBody, SUSPENSION, suspensionFor, type BodyForces } from '../../../../src/game/render/suspension';
+import { restingBody, stepBody, type BodyForces } from '../../../../src/game/render/suspension';
+import { type CarType, VEHICLE_SPECS } from '../../../../src/game/sim/vehicle-spec';
 
-const run = (forces: BodyForces, seconds: number, type = 'volvo', dt = 1 / 60) => {
+const run = (forces: BodyForces, seconds: number, type: CarType = 'volvo', dt = 1 / 60) => {
   const state = restingBody(),
-    s = suspensionFor(type);
+    s = VEHICLE_SPECS[type].suspension;
   for (let t = 0; t < seconds; t += dt) stepBody(state, forces, s, dt);
   return state;
 };
-
-describe('suspensionFor', () => {
-  it('layers a model override on its type', () => {
-    const impala = suspensionFor('volvo', 'impala1970');
-    expect(impala.freqHz).toBeLessThan(SUSPENSION.volvo.freqHz);
-    expect(impala.maxPitchRad).toBe(SUSPENSION.volvo.maxPitchRad);
-    expect(suspensionFor('volvo', 'volvo240')).toBe(SUSPENSION.volvo);
-  });
-});
 
 describe('stepBody', () => {
   it('rests level with no forces', () => {
     expect(run({ lateral: 0, longitudinal: 0, vertical: 0 }, 2)).toEqual(restingBody());
   });
   it('settles at the static roll and pitch the forces ask for', () => {
-    const s = SUSPENSION.volvo,
+    const s = VEHICLE_SPECS.volvo.suspension,
       b = run({ lateral: 5, longitudinal: -10, vertical: 0 }, 6);
     expect(b.roll).toBeCloseTo(s.maxRollRad * Math.tanh((5 * s.rollPerAcc) / s.maxRollRad), 4);
     expect(b.pitch).toBeCloseTo(s.maxPitchRad * Math.tanh((-10 * s.pitchPerAcc) / s.maxPitchRad), 4);
@@ -30,8 +22,8 @@ describe('stepBody', () => {
     expect(b.pitch).toBeLessThan(0); // braking dips the nose
   });
   it('never passes the soft limit however hard the force', () => {
-    for (const type of Object.keys(SUSPENSION)) {
-      const s = SUSPENSION[type],
+    for (const type of Object.keys(VEHICLE_SPECS) as CarType[]) {
+      const s = VEHICLE_SPECS[type].suspension,
         b = run({ lateral: 400, longitudinal: 400, vertical: 400 }, 3, type);
       expect(Math.abs(b.roll)).toBeLessThanOrEqual(s.maxRollRad * 1.5);
       expect(Math.abs(b.pitch)).toBeLessThanOrEqual(s.maxPitchRad * 1.5);
@@ -39,8 +31,8 @@ describe('stepBody', () => {
     }
   });
   it('comes back to rest after a jolt, and the tractor rocks longer than the police car', () => {
-    const settle = (type: string) => {
-      const s = suspensionFor(type),
+    const settle = (type: CarType) => {
+      const s = VEHICLE_SPECS[type].suspension,
         b = restingBody();
       stepBody(b, { lateral: 0, longitudinal: 30, vertical: 0 }, s, 0.05);
       let last = 0;

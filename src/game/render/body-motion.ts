@@ -1,5 +1,6 @@
 import type * as THREE from 'three';
-import { restingBody, stepBody, type BodyForces, type BodyState, type Suspension } from './suspension';
+import type { Suspension } from '../sim/vehicle-spec';
+import { restingBody, stepBody, type BodyForces, type BodyState } from './suspension';
 
 // Reads only what the simulation already has: position, heading and speed. The ride height comes from the
 // mesh, which placeCar puts on the ground.
