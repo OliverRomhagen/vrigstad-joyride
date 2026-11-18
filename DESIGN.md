@@ -21,7 +21,7 @@ An open, easy-to-get-into and above all fun game, for (almost) everyone. And a g
 
 The routes mix: B with A's care for detail (a LEGO-made world with Borderlands guns) is one option, A with C's mayhem another.
 
-Leaning, to discuss: **B with A's care**. Rocket launchers that *ballar ur*, a minigun on the EPA-traktor, enemies that are over the top rather than people you feel bad about. Grimmer or more realistic play would belong in mods.
+Leaning, to discuss: **B with A's care**. Rocket launchers that *ballar ur*, a minigun on the EPA-traktor, enemies that are over the top rather than people you feel bad about. Grimmer or more realistic play would belong in mods: if the base game stays softer than you'd like, a "Gore and Guns" mod pack is the way to get it (#17).
 
 ## Modes
 
