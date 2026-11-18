@@ -1,6 +1,8 @@
 // @ts-nocheck
 // Moved as-is from the single-file prototype (#44); it gets types as it is split into modules.
 import * as THREE from 'three';
+import { pickVariant, vehicleDefinition } from './render/vehicle-registry';
+import { VehicleVisuals } from './render/vehicle-visuals';
 import D from '../../data/vrigstad.json';
 import { BUILDING_CELL_M as BC, BuildingIndex } from '../world/buildings';
 import { ROAD_WIDTH_M as ROAD_W } from '../world/data';
@@ -15,6 +17,7 @@ import { nodeKey, ROAD_CELL_M as RC, RoadNetwork } from '../world/roads';
 import { LEGACY_LIGHT } from '../world/three-legacy';
 import { treeSpots } from '../world/trees';
 import { Water } from '../world/water';
+import { CAT_ADOPT_PETS, CatColony } from './cats';
 import { Hud } from './hud';
 
 (function () {
@@ -324,6 +327,10 @@ function personParts(shirt, pants, hair, arms) {     // arms: separate meshes th
 
 // ---------- cars ----------
 const cars = [], police = [];
+const vehicleVisuals = new VehicleVisuals(coarse);
+const modelRnd = makeRnd(240);                 // own stream: which model a car wears doesn't shift the world's rolls
+const selectedVehicle = vehicleDefinition(new URLSearchParams(location.search).get('vehicle'));
+let displayCar = null;
 const _f = new THREE.Vector3(), _r = new THREE.Vector3(), _m = new THREE.Matrix4();
 function placeCar(c) {
   const n = normalAt(c.x, c.z);
@@ -331,14 +338,17 @@ function placeCar(c) {
   _m.makeBasis(_r, n, _f.negate()); c.mesh.quaternion.setFromRotationMatrix(_m);
   c.mesh.position.set(c.x, groundAt(c.x, c.z) - (c.wet ? 0.55 : 0), c.z);
   if (c.slip) c.mesh.rotateZ(c.slip * DRIFT_ROLL);           // lean out of the slide
+  vehicleVisuals.sync(c);
 }
-function addCar(type, x, z, h, mode) {
-  const T = TYPES[type], mesh = new THREE.Mesh(carGeo(type, pick(T.cols)), carMat); mesh.castShadow = true; blob(mesh, 2.8, 5.8);
-  if (type === 'polis') { const bar = new THREE.Mesh(barGeo, barMat); bar.position.set(0, 1.62, 0.2); mesh.add(bar); }
+function addCar(type, x, z, h, mode, assetId = pickVariant(type, modelRnd())) {
+  const T = TYPES[type], color = pick(T.cols), fallback = new THREE.Mesh(carGeo(type, color), carMat), mesh = assetId ? new THREE.Group() : fallback;
+  fallback.castShadow = true; if (assetId) mesh.add(fallback); blob(mesh, 2.8, 5.8);
+  if (type === 'polis') { const bar = new THREE.Mesh(barGeo, barMat); bar.position.set(0, 1.62, 0.2); fallback.add(bar); }
   const c = { type, T, mesh, x, z, h, vh: h, v: 0, slip: 0, drift: 0, charge: 0, yr: 0, spin: 0, loose: 0, flickDir: 0, flickT: 9, boost: 0, mode, wet: false, owned: false, blocked: 0, ghost: 0, stuck: 0, rev: 0, revSteer: 1 };
-  scene.add(mesh); cars.push(c); placeCar(c); return c;
+  scene.add(mesh); cars.push(c); placeCar(c); if (assetId) { vehicleVisuals.attach(c, assetId, fallback, color); } return c;
 }
-function removeCar(c) { scene.remove(c.mesh); const i = cars.indexOf(c); if (i >= 0) cars.splice(i, 1); }
+function carName(c) { return vehicleVisuals.definition(c)?.name || c.T.name; }
+function removeCar(c) { vehicleVisuals.dispose(c); scene.remove(c.mesh); const i = cars.indexOf(c); if (i >= 0) cars.splice(i, 1); }
 const civType = () => { const r = rnd(); return r < 0.45 ? 'volvo' : r < 0.75 ? 'saab' : r < 0.9 ? 'epa' : 'traktor'; };
 // parked cars along streets and driveways
 (function () {
@@ -547,81 +557,76 @@ function updateNpcs(T, dt) {
   for (const n of npcs) updateNpc(n, dt);
 }
 
-// ---------- cats: lounge by the house walls, wander a little, bolt from cars and running feet ----------
-const CAT_MAX = coarse ? 8 : 14, CAT_NEAR = 150, CAT_FAR = 210;   // count around the player; spawn / despawn radius (m)
-const CAT_WALK = 0.7, CAT_RUN = 6.5, CAT_PET_M = 1.6;               // m/s, m/s, reach to pet (m)
-const CAT_SCARE_CAR_M = 12, CAT_SCARE_RUN_M = 5;                    // a moving car / sprinting player closer than this sends it running
-// [coat, ears and paws, chest and muzzle (optional)]
-const CAT_COLS = [['#d9822b', '#f0e0c8'], ['#1e1e20', '#1e1e20'], ['#7d7f84', '#e8e4dc'], ['#ece9e2', '#ece9e2'], ['#8a6a48', '#3f3226'], ['#1e1e20', '#ece9e2', '#ece9e2']];
-const CAT_PET_OK = 0.5, CAT_PET_TREAT_OK = 0.75;   // chance a pet goes well, without / with a treat
-const CAT_SCRATCH_S = 5, CAT_PET_S = 3;            // after a scratch / a good pet the cat can't be petted for this long (s), so E can't be spammed for better odds
+// ---------- cats: lounge by the house walls, wander a little, bolt from cars and running feet (src/game/cats.ts) ----------
 const TREAT_BAG = 3, TREAT_MAX = 9;                                  // treats per bag from the kiosk; how many fit in your pockets
-// \n puts each speaker on their own line in the toast: the cat first, then the player
-const CAT_PET = ['”Mjau.”\n”Ja du ä la en go kisse, du.”', '”Prrrrr…”\n”Hör på’n, han spinner som en EPA-traktor!”', '”Kiss kiss kiss… nämen kom hit då, lilla vän.”',
-  '”Där ja, bakom örona. Dä gillar du, va?”'];
-const CAT_SCRATCH = ['Dä kommer svida ett tag.', 'Dä kommer synas i mårra.', 'Din lilla skitkatt!'].map(t => '”AJAJAJ! Kattafan rev mä! ' + t + '”');
-const CAT_BOLT = ['”Nä men vart ska du? Kom tebaks!”', '”Mjäu!”\n”Jaha, där sprang du. Dä va la dä då.”', '”Du behöver inte springa iväg! Ja ä la inte farli, din lilla fjant!”'];
 let treats = 0;
-const cats = [], catRnd = makeRnd(9094), catPick = a => a[Math.floor(catRnd() * a.length)];
-const catGeo = c => geoCache['cat' + c] || (geoCache['cat' + c] = boxGeo([[0.2, 0.17, 0.42, 0, 0.2, 0, c[0]], [0.17, 0.15, 0.15, 0, 0.31, -0.25, c[0]],
-  [0.05, 0.06, 0.03, -0.05, 0.41, -0.26, c[1]], [0.05, 0.06, 0.03, 0.05, 0.41, -0.26, c[1]], [0.03, 0.03, 0.01, -0.04, 0.33, -0.33, '#c8d24a'], [0.03, 0.03, 0.01, 0.04, 0.33, -0.33, '#c8d24a'],
-  [0.05, 0.13, 0.05, -0.07, 0.06, -0.15, c[1]], [0.05, 0.13, 0.05, 0.07, 0.06, -0.15, c[1]], [0.05, 0.13, 0.05, -0.07, 0.06, 0.15, c[1]], [0.05, 0.13, 0.05, 0.07, 0.06, 0.15, c[1]],
-  [0.04, 0.3, 0.04, 0, 0.4, 0.22, c[0]], ...(c[2] ? [[0.14, 0.12, 0.02, 0, 0.21, -0.215, c[2]], [0.09, 0.05, 0.01, 0, 0.27, -0.33, c[2]]] : [])]));
-// a spot just outside a random wall of a house in the cell around (x, z)
-function spawnCat(T, minD) {
-  for (let t = 0; t < 10; t++) {
-    const ang = catRnd() * Math.PI * 2, dist = minD + catRnd() * (CAT_NEAR - minD), l = bGrid.get(Math.floor((T.x + Math.sin(ang) * dist) / BC) + ',' + Math.floor((T.z + Math.cos(ang) * dist) / BC));
-    if (!l) continue;
-    const p = bPolys[catPick(l)].p, i = Math.floor(catRnd() * p.length / 2) * 2, j = (i + 2) % p.length, ex = p[j] - p[i], ez = p[j + 1] - p[i + 1], len = Math.hypot(ex, ez); if (len < 2) continue;
-    const s = catRnd(), mx = p[i] + ex * s, mz = p[i + 1] + ez * s, out = 0.6 + catRnd() * 1.4; let nx = ez / len, nz = -ex / len;
-    if (inPoly(p, mx + nx * 0.3, mz + nz * 0.3)) { nx = -nx; nz = -nz; }
-    const o = { x: mx + nx * out, z: mz + nz * out }; collide(o, 0.3);
-    if (Math.abs(o.x) > HALF - 10 || Math.abs(o.z) > HALF - 10 || inWater(o.x, o.z) || Math.hypot(o.x - T.x, o.z - T.z) < minD) continue;
-    const mesh = new THREE.Mesh(catGeo(catPick(CAT_COLS)), paintMat); mesh.castShadow = true; mesh.rotation.order = 'YXZ'; mesh.scale.setScalar(1.1 + catRnd() * 0.25); blob(mesh, 0.32, 0.55);
-    const k = { x: o.x, z: o.z, h: Math.atan2(nx, -nz), want: 0, state: 'sit', t: 3 + catRnd() * 15, nope: 0, phase: 0, mesh }; k.want = k.h;
-    scene.add(mesh); cats.push(k); return;
-  }
-}
-function updateCat(k, dt) {
-  let fx = 0, fz = 0;
-  for (const c of cars) if (Math.abs(c.v) > 2) { const dx = k.x - c.x, dz = k.z - c.z, d = Math.hypot(dx, dz); if (d < CAT_SCARE_CAR_M && d > 0.01) { fx += dx / d; fz += dz / d; } }
-  if (!inCar && !inside && (joy.on ? player.speed > 7.5 : keys.run && player.speed > 6)) {   // the stick passes 6 m/s on a normal push, so only a full push counts
-    const dx = k.x - player.x, dz = k.z - player.z, d = Math.hypot(dx, dz); if (d < CAT_SCARE_RUN_M && d > 0.01) { fx += dx / d; fz += dz / d; } }
-  if (fx || fz) { k.state = 'flee'; k.t = 1.5 + catRnd(); k.want = Math.atan2(fx, -fz); }
-  k.t -= dt; if (k.nope > 0) k.nope -= dt;
-  if (k.t <= 0) { if (k.state === 'sit') { k.state = 'walk'; k.t = 2 + catRnd() * 4; k.want = catRnd() * Math.PI * 2; } else { k.state = 'sit'; k.t = 4 + catRnd() * 16; } }
-  const sp = k.state === 'flee' ? CAT_RUN : k.state === 'walk' ? CAT_WALK : 0;
-  k.h = wrap(k.h + wrap(k.want - k.h) * Math.min(1, dt * (sp > 1 ? 10 : 3)));
-  if (sp) { const nx = k.x + Math.sin(k.h) * sp * dt, nz = k.z - Math.cos(k.h) * sp * dt;
-    if (inWater(nx, nz)) k.want = wrap(k.h + Math.PI); else { k.x = clamp(nx, -HALF + 2, HALF - 2); k.z = clamp(nz, -HALF + 2, HALF - 2); }
-    if (collide(k, 0.25) && k.state === 'walk') k.want = wrap(k.h + (catRnd() < 0.5 ? 1.6 : -1.6));
-    k.phase += sp * dt * 9; }
-  k.mesh.position.set(k.x, groundAt(k.x, k.z) + (sp ? Math.abs(Math.sin(k.phase)) * 0.03 : 0), k.z); k.mesh.rotation.y = -k.h;
-  k.mesh.rotation.x += ((k.state === 'sit' ? 0.3 : 0) - k.mesh.rotation.x) * Math.min(1, dt * 4);   // sitting: front up, rear down
-}
-let catT = 0, catX = 1e9, catZ = 1e9;
-function updateCats(T, dt) {
-  catT -= dt;
-  if (catT <= 0) { catT = 0.5;
-    const jump = Math.hypot(T.x - catX, T.z - catZ) > 120; catX = T.x; catZ = T.z;
-    for (let i = cats.length - 1; i >= 0; i--) if (Math.hypot(cats[i].x - T.x, cats[i].z - T.z) > CAT_FAR) { scene.remove(cats[i].mesh); cats.splice(i, 1); }
-    for (let i = 0; i < (jump ? 30 : 2) && cats.length < CAT_MAX; i++) spawnCat(T, jump ? 4 : 80);
-  }
-  for (const k of cats) updateCat(k, dt);
-}
-// E goes to the closer of a cat and a place, so a cat sitting by the kiosk or a safehouse door can still be petted
-function catFirst(kt, pl) { return !!kt && (!pl || kmenu.hidden && Math.hypot(kt.x - player.x, kt.z - player.z) < Math.hypot(pl.x - player.x, pl.z - player.z)); }
-function nearCat() { if (inCar || inside) return null; let best = null, bd = CAT_PET_M;
-  for (const k of cats) { const d = Math.hypot(k.x - player.x, k.z - player.z); if (d < bd && k.state !== 'flee' && k.nope <= 0) { bd = d; best = k; } } return best; }
-// a treat goes into the cat whatever happens next
-function petCat(k) {
-  const treat = treats > 0, r = catRnd(), pre = treat ? '”Här, en godisbit.”\n' : '';
-  if (treat) { treats--; drawTreats(); }
-  k.want = Math.atan2(player.x - k.x, -(player.z - k.z));
-  if (r < (treat ? CAT_PET_TREAT_OK : CAT_PET_OK)) { k.state = 'sit'; k.t = 6 + catRnd() * 6; k.nope = CAT_PET_S; toast(pre + catPick(CAT_PET), 3); }
-  else if (catRnd() < 0.5) { k.state = 'sit'; k.t = 3 + catRnd() * 4; k.nope = CAT_SCRATCH_S; toast(pre + catPick(CAT_SCRATCH), 3.5); }
-  else { k.state = 'flee'; k.t = 2 + catRnd(); k.want = Math.atan2(k.x - player.x, -(k.z - player.z)); toast(pre + catPick(CAT_BOLT), 3); }
-}
+// the getters are read when the cats use them, so they can name things declared further down
+const colony = new CatColony({ scene, buildings, inWater, groundAt, half: HALF, coarse, wrap, geoCache, boxGeo, paintMat, blob, cars, toast,
+  get player() { return player; }, get keys() { return keys; }, get joy() { return joy; }, get kmenu() { return kmenu; }, get inCar() { return inCar; }, get pcar() { return pcar; }, get inside() { return inside; },
+  useTreat() { if (treats <= 0) return false; treats--; drawTreats(); return true; } });
+const { cats } = colony, updateCats = colony.update.bind(colony), catFirst = colony.catFirst.bind(colony), nearCat = colony.nearest.bind(colony);
+// a good pet that makes a cat ready to be adopted asks whether it comes home with you
+const CAT_MENU_M = 4;   // a cat's menu (the adopt question, or your own cat's) closes when you get further than this from it (m), or it bolts, or you get in a car
+const nearMenuCat = k => () => !inCar && k.state !== 'flee' && Math.hypot(k.x - player.x, k.z - player.z) < CAT_MENU_M;
+function petCat(k) { const ready = colony.pet(k); showHeart(k); if (ready) openMenu('adopt', '”Ska du följa mä hem, kisse?”', [['adopt', 'Ja, adoptera'], ['no', 'Nä, inte nu']], c => { if (c === 'adopt') { colony.adopt(k); showHeart(k); } else colony.decline(k); drawPets(); }, nearMenuCat(k)); }
+// your own cat: E opens its menu rather than petting it straight away; Ge godis shows only while you have treats
+function openOwnCat(k) {
+  openMenu('cat', '”' + esc(k.name) + '”', [['pet', 'Klappa'], ...(treats ? [['treat', 'Ge godis']] : []), ['play', 'Leka'], ['home', 'Skicka hem'], ['no', 'Stäng']], c => {
+    if (c === 'pet') petCat(k); else if (c === 'treat') { if (colony.treat(k)) showHeart(k); } else if (c === 'play') colony.play(k); else if (c === 'home') colony.sendHome(); }, nearMenuCat(k)); }
+// ---------- your pets: P (or the Pets button) calls them, sends them home or sets them free ----------
+// One entry per pet you own; only the cat so far. Another kind of pet adds its own entry here, and the menu then lists them first.
+function myPets() { return colony.owned ? [{ name: colony.owned.name, home: colony.home, rename: n => colony.rename(n), call: () => colony.call(inCar ? pcar : player), sendHome: () => colony.sendHome(), free: () => colony.setFree() }] : []; }
+function openPets() { const ps = myPets(); if (!ps.length) return; if (ps.length === 1) { openPet(ps[0]); return; }
+  openMenu('pets', '”Dina djur”', [...ps.map((p, i) => ['p' + i, esc(p.name) + (p.home ? ' (hemma)' : '')]), ['no', 'Stäng']], k => { if (k !== 'no') openPet(ps[+k.slice(1)]); }); }
+function openPet(p) {
+  openMenu('pets', '”' + esc(p.name) + (p.home ? ' ä hemma.”' : '”'), [p.home ? ['call', 'Ropa hit'] : ['home', 'Skicka hem'], ['name', 'Byt namn'], ['free', 'Släpp fri'], ['no', 'Stäng']], k => {
+    if (k === 'call') p.call(); else if (k === 'home') p.sendHome(); else if (k === 'name') openRename(p);
+    else if (k === 'free') openMenu('pets', '”Ska du släppa ' + esc(p.name) + ' fri? Dä går inte å ångra.”', [['yes', 'Ja, släpp fri'], ['no', 'Nä']], c => { if (c === 'yes') { p.free(); drawPets(); } }); }); }
+// naming a pet: a text field in the menu; Enter saves, Esc cancels, and game keys don't fire while you type
+const esc = t => t.replace(/[&<>"']/g, c => '&#' + c.charCodeAt(0) + ';');
+let nameIn = null;
+function openRename(p) {
+  openMenu('pets', '”Va ska ' + esc(p.name) + ' heta?”', [['ok', 'Spara'], ['no', 'Avbryt']], k => { const n = nameIn.value; nameIn = null; if (k === 'ok' && n.trim()) toast('”' + p.rename(n) + '. Dä ä ett fint namn, dä.”', 2.5); });
+  nameIn = document.createElement('input'); nameIn.type = 'text'; nameIn.value = p.name; nameIn.setAttribute('aria-label', 'Name');
+  nameIn.autocomplete = 'off'; nameIn.spellcheck = false; kmenu.querySelector('p').after(nameIn); nameIn.focus(); nameIn.select(); }
+function drawPets() { $('pets').hidden = !colony.owned; }
+// ---------- the adopt heart: hovers over a stray once it has had a good pet, a third fuller for each good pet in a row ----------
+// A sprite in the scene, so it shrinks with distance and hides behind walls like the cat does.
+const HEART_BROKE_S = 0.8, HEART_ADOPT_S = 2;   // a broken streak wobbles the empty heart / an adopted cat shows a full one this long (s) before it goes
+const HEART_M = 0.42, HEART_Y = 0.9, HEART_POP_S = 0.35;   // heart size and height of its middle over the cat's feet (m); how long a new or fuller heart pops (s)
+const HEART_PATH = 'M12 21s-7.5-4.6-10-9.2C.3 8.4 2.3 4 6.4 4c2.2 0 3.8 1.3 5.6 3.3C13.8 5.3 15.4 4 17.6 4 21.7 4 23.7 8.4 22 11.8 19.5 16.4 12 21 12 21z';
+const calm = matchMedia('(prefers-reduced-motion: reduce)').matches;
+// one material per fill (0 to 3 thirds), drawn once on a canvas: a light outline, and the pink fill clipped from the bottom.
+// With its 2-unit stroke the heart spans y 3 to 22 of its 24-unit box, so the fill line is measured on that.
+const heartMats = [0, 1, 2, 3].map(n => {
+  const cv = document.createElement('canvas'); cv.width = cv.height = 120; const g = cv.getContext('2d'), p = new Path2D(HEART_PATH);
+  g.setTransform(4, 0, 0, 4, 12, 12);   // 12 px of margin: room for the stroke and its shadow
+  g.lineWidth = 2; g.lineJoin = 'round';
+  g.shadowColor = 'rgba(0, 0, 0, .55)'; g.shadowBlur = 6; g.strokeStyle = '#f4f1e6'; g.stroke(p); g.shadowColor = 'transparent';
+  if (n) { g.save(); g.beginPath(); g.rect(-2, n >= CAT_ADOPT_PETS ? -2 : 3 + 19 * (1 - n / CAT_ADOPT_PETS), 28, 28); g.clip(); g.fillStyle = g.strokeStyle = '#e8506a'; g.fill(p); g.stroke(p); g.restore(); }
+  const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace;
+  return new THREE.SpriteMaterial({ map: t, depthWrite: false, fog: false, toneMapped: false });   // the HUD's colours, not the scene's light
+});
+const hearts = new Map();   // cat -> { s: its sprite, t: s until it goes (Infinity while the streak lasts), age: s since the last pet, broke: its own wobbling material }
+// after a pet: a new or fuller heart pops, a broken streak wobbles the empty one away, while pets count towards adopting; your own cat pops a full one each pet or treat, a small love signal
+function showHeart(k) { let h = hearts.get(k); const full = colony.owned === k, pets = full ? CAT_ADOPT_PETS : k.pets;
+  if (!h) { if (!pets || colony.owned && !full) return; h = { s: new THREE.Sprite(heartMats[0]), t: 0, age: 0, broke: null }; h.s.renderOrder = 1; scene.add(h.s); hearts.set(k, h); }
+  h.t = full ? HEART_ADOPT_S : pets ? Infinity : HEART_BROKE_S; h.age = 0;
+  if (h.broke) { h.broke.dispose(); h.broke = null; }
+  if (!pets) h.broke = heartMats[0].clone();   // a copy to wobble, sharing the texture, so two broken hearts don't wobble as one
+  h.s.material = h.broke || heartMats[Math.min(pets, CAT_ADOPT_PETS)]; }
+function drawHearts(dt) {
+  if (!hearts.size) return;
+  for (const [k, h] of hearts) {
+    h.t -= dt; h.age += dt;
+    // gone: done showing, despawned or sent home, a no to adopting, or another cat adopted (pets stop counting then)
+    if (h.t <= 0 || !k.mesh.parent || h.t === Infinity && !k.pets || colony.owned && colony.owned !== k) { scene.remove(h.s); if (h.broke) h.broke.dispose(); hearts.delete(k); continue; }
+    k.mesh.getWorldPosition(h.s.position); h.s.position.y += HEART_Y; h.s.visible = k.mesh.visible;
+    const a = calm ? 1 : Math.min(1, h.age / HEART_POP_S);
+    h.s.scale.setScalar(HEART_M * (h.broke ? 1 : 0.4 + 0.6 * a + Math.sin(a * Math.PI) * 0.35));   // pops up past its size and settles
+    if (h.broke) h.broke.rotation = calm ? 0 : Math.sin(h.age * 40) * 0.35 * (1 - h.age / HEART_BROKE_S);
+  } }
+$('pets').addEventListener('click', () => { if (menuKind === 'pets') closeMenu(); else openPets(); canvas.focus(); });   // from the kiosk or adopt menu too
 function buyTreats() {
   if (treats >= TREAT_MAX) { toast('”Nämen, du har ju fickera fulla redan!”', 2.5); return; }
   treats = Math.min(TREAT_MAX, treats + TREAT_BAG); drawTreats(); toast('”En påse kattgodis, varsågo. Kattera ä tôcka i dä.”', 4);
@@ -635,7 +640,7 @@ const player = { x: HOME.x, z: HOME.z, y: 0, vy: 0, h: 0, speed: 0, phase: 0, me
 collide(player, 0.6); scene.add(player.mesh);
 let jumpQ = false;   // set by a fresh Space / Jump press on foot, used up by the next frame: a held key (braking, then getting out) never jumps, a tap between frames isn't lost
 const jumpOk = () => !inCar && !inside && bigT <= 0;   // queue only where a jump can start, so a press inside a safehouse or under Gripen! can't fire as it ends
-(function () { const o = { x: player.x + 7, z: player.z + 3 }; collide(o, 2.6); addCar('volvo', o.x, o.z, 0.6, 'parked'); })();
+(function () { const o = { x: player.x + 7, z: player.z + 3 }; collide(o, 2.6); displayCar = addCar(selectedVehicle?.archetype || 'volvo', o.x, o.z, 0.6, 'parked', selectedVehicle?.id ?? 'volvo240'); })();
 let inCar = false, pcar = null, stars = 0, evade = 0, bustT = 0, stolen = 0, ramCool = 0, started = false, bigT = 0;
 let inside = null, hideT = 0, trissT = 0, trissN = 0, trissWon = 0, trissLast = '';
 const peds = [], trissLog = [];
@@ -675,13 +680,19 @@ function addPlace(kind, name, x, z, color) {
   addFootprint([x - 1.5, z - 1.1, x + 1.5, z - 1.1, x + 1.5, z + 1.1, x - 1.5, z + 1.1]);
   addPlace('kiosk', 'Kiosken', x, z + 2.3, 0xf2c230);
 })();
-// one lucka, several things to buy: E opens a small menu (1 / 2 / Esc, or tap), walking away closes it
+// small menus on one plate (the kiosk's one lucka, adopting a cat): number keys / Esc, or tap; walking away closes it
 const kmenu = $('kmenu');
-let relock = false;                                             // the kiosk menu needs the cursor: free it while the menu is open, and take it back after
-function openKiosk() { kmenu.hidden = false; relock = locked(); if (relock) document.exitPointerLock(); }
-function closeKiosk() { kmenu.hidden = true; if (relock) { relock = false; lockMouse(); } }
-function kioskPick(k) { closeKiosk(); if (k === 'triss') scratch(); else if (k === 'treats') buyTreats(); }
-kmenu.addEventListener('click', e => { const b = e.target.closest('button'); if (b) { kioskPick(b.dataset.k); canvas.focus(); } });
+let relock = false;                                             // a menu needs the cursor: free it while the menu is open, and take it back after
+let menuKind = null, menuPick = null, menuStay = null;          // which menu is open, what a choice does, what keeps it open (checked 4 times a second; none: stays open)
+// items are [key, label]; the 'no' item is last and gets Esc
+function openMenu(kind, title, items, pick, stay = null) {
+  nameIn = null; kmenu.innerHTML = '<p id="kmenu-t">' + title + '</p>' + items.map(([k, label], i) => '<button type="button" data-k="' + k + '"><kbd>' + (k === 'no' ? 'Esc' : k === 'ok' ? 'Enter' : i + 1) + '</kbd>' + label + '</button>').join('');
+  menuKind = kind; menuPick = pick; menuStay = stay; if (kmenu.hidden) { relock = locked(); if (relock) document.exitPointerLock(); } kmenu.hidden = false; }
+function closeMenu() { kmenu.hidden = true; nameIn = null; menuKind = menuPick = menuStay = null; if (relock) { relock = false; lockMouse(); } }
+// a choice can open the next menu (a pet's "are you sure?"): then the menu stays up, and the cursor stays free
+function menuChoose(k) { const pick = menuPick; menuPick = null; if (pick) pick(k); if (!menuPick) closeMenu(); }
+const openKiosk = () => openMenu('kiosk', '”Va ska dä va?”', [['triss', 'Trisslott'], ['treats', 'Kattgodis (3 st)'], ['no', 'Nä tack']], k => { if (k === 'triss') scratch(); else if (k === 'treats') buyTreats(); }, () => nearPlace()?.kind === 'kiosk');
+kmenu.addEventListener('click', e => { const b = e.target.closest('button'); if (b) { menuChoose(b.dataset.k); canvas.focus(); } });
 function nearPlace() { if (inCar) return null; for (const p of places) if (Math.hypot(p.x - player.x, p.z - player.z) < 2.2) return p; return null; }
 function enterHouse(p) {
   if (police.some(c => Math.hypot(c.x - p.x, c.z - p.z) < SAFE_SEEN)) { toast('The police can see you. Get further ahead of them before you go inside.', 3); return; }
@@ -715,7 +726,11 @@ let camYaw = 0.6, camPitch = 0.34, lookOff = 0, lookIdle = 9;
 const keys = {}, joy = { x: 0, y: 0, on: false };
 const KEYMAP = { KeyW: 'up', ArrowUp: 'up', KeyS: 'down', ArrowDown: 'down', KeyA: 'left', ArrowLeft: 'left', KeyD: 'right', ArrowRight: 'right', Space: 'brake', ShiftLeft: 'run', ShiftRight: 'run' };
 addEventListener('keydown', e => { if (!started) return; const k = KEYMAP[e.code];
-  if (!kmenu.hidden && /^(Digit|Numpad)[12]$|^Escape$/.test(e.code)) { kioskPick(e.code === 'Escape' ? 'no' : e.code.endsWith('1') ? 'triss' : 'treats'); return; }
+  if (nameIn && e.target === nameIn) { if (e.isComposing) return; if (e.code === 'Enter' || e.code === 'NumpadEnter' || e.code === 'Escape') { e.preventDefault(); menuChoose(e.code === 'Escape' ? 'no' : 'ok'); canvas.focus(); } return; }   // typing a name
+  if (!kmenu.hidden) { const n = /^(?:Digit|Numpad)([1-9])$/.exec(e.code), b = n && kmenu.querySelectorAll('button')[+n[1] - 1];
+    if (e.code === 'Escape' || b && b.dataset.k !== 'no') { e.preventDefault(); menuChoose(e.code === 'Escape' ? 'no' : b.dataset.k); return; }
+    if ((e.code === 'Enter' || e.code === 'NumpadEnter') && !kmenu.contains(e.target) && kmenu.querySelector('[data-k="ok"]')) { e.preventDefault(); menuChoose('ok'); return; } }   // Enter is labelled on Spara, so it saves wherever focus is
+  if (e.code === 'KeyP' && !e.repeat && colony.owned) { if (menuKind === 'pets') closeMenu(); else openPets(); return; }
   if (kmenu.contains(e.target)) return;                       // Enter / Space on a focused menu button: let the button's own click handle it
   if (k) { keys[k] = true; e.preventDefault(); if (k === 'brake' && !e.repeat && jumpOk()) jumpQ = true; } else if ((e.code === 'KeyE' || e.code === 'KeyF' || e.code === 'Enter') && !e.repeat) action(); else if (e.code === 'KeyR') respawn(); });
 addEventListener('keyup', e => { const k = KEYMAP[e.code]; if (k) keys[k] = false; });
@@ -771,9 +786,10 @@ function nearestCar() { let best = null, bd = 4.4;
 function action() {
   if (!started || bigT > 0) return;
   if (inside) { leaveHouse(); return; }
+  if (!kmenu.hidden) { closeMenu(); return; }
   const pl = nearPlace(), kt = nearCat();
-  if (catFirst(kt, pl)) { petCat(kt); return; }
-  if (pl) { if (pl.kind === 'safe') enterHouse(pl); else if (kmenu.hidden) openKiosk(); else closeKiosk(); return; }
+  if (catFirst(kt, pl)) { if (kt.owned) openOwnCat(kt); else petCat(kt); return; }
+  if (pl) { if (pl.kind === 'safe') enterHouse(pl); else openKiosk(); return; }
   if (inCar) {
     if (Math.abs(pcar.v) > 3) { toast('Slow down before you get out.', 2); return; }
     player.x = pcar.x - Math.cos(pcar.h) * 2; player.z = pcar.z - Math.sin(pcar.h) * 2; player.h = pcar.h; collide(player, 0.5);
@@ -783,11 +799,11 @@ function action() {
   if (c.mode === 'ai') {
     const p = personParts(pick(['#b5463a', '#3f6b8a', '#5c7a4a', '#7a5a8a']), '#3a3a3a');
     p.position.set(c.x - Math.cos(c.h) * 2.2, 0, c.z - Math.sin(c.h) * 2.2); p.position.y = groundAt(p.position.x, p.position.z); p.ttl = 14; scene.add(p); peds.push(p);
-    toast(pick(['”Hörru! Det där är min bil!”', '”Men va fan gör du?!”', '”Polisen! Han tar min ' + c.T.name + '!”']) + ' The driver calls the police.');
+    toast(pick(['”Hörru! Det där är min bil!”', '”Men va fan gör du?!”', '”Polisen! Han tar ' + (vehicleVisuals.definition(c)?.spokenName || 'min ' + c.T.name) + '!”']) + ' The driver calls the police.');
     addStar(); spawnTraffic(player);
   } else if (!c.owned) {
-    if (police.length || rnd() < 0.35) addStar('A neighbour saw you take the ' + c.T.name + ' and called the police.');
-    else toast(c.type === 'epa' ? 'EPA-traktor: legally limited to 30 km/h. Good luck outrunning anyone.' : 'You took the ' + c.T.name + '. Nobody noticed.');
+    if (police.length || rnd() < 0.35) addStar('A neighbour saw you take the ' + carName(c) + ' and called the police.');
+    else toast(c.type === 'epa' ? 'EPA-traktor: legally limited to 30 km/h. Good luck outrunning anyone.' : 'You took the ' + carName(c) + '. Nobody noticed.');
   }
   if (!c.owned) { c.owned = true; stolen++; $('count').textContent = 'Cars stolen: ' + stolen; }
   c.mode = 'player'; c.vh = c.h; c.slip = c.drift = c.boost = c.loose = 0; pcar = c; inCar = true; player.y = player.vy = 0; player.mesh.visible = false; lookOff = 0; camYaw = c.h;
@@ -850,6 +866,7 @@ function frame(now) {
   }
   updateDriftFx(inCar ? pcar : null);
   const T = inCar ? pcar : player;
+  vehicleVisuals.update(T, dt);
   for (const c of cars) if (c.mode === 'ai') updateTraffic(c, dt, T);
   updateNpcs(T, dt);
   updateCats(T, dt);
@@ -878,20 +895,21 @@ function frame(now) {
   dome.position.copy(camera.position);
 
   // HUD
+  drawHearts(dt);
   hud.update(dt);
   signT -= dt; if (signT <= 0) { signT = 0.25; updateSign(T);
     const pr = $('prompt'), pl = started && !inside ? nearPlace() : null, kt = started ? nearCat() : null, c = started && !inCar && !inside ? nearestCar() : null;
     $('hide').hidden = !inside;
-    if (!kmenu.hidden && (!pl || pl.kind !== 'kiosk')) closeKiosk();
+    if (menuStay && !menuStay()) closeMenu();
     if (inside) { $('hide').innerHTML = stars ? 'Lying low<b>' + Math.floor(Math.ceil(Math.max(0, hideT)) / 60) + ':' + String(Math.ceil(Math.max(0, hideT)) % 60).padStart(2, '0') + '</b>' : 'Safehouse · ' + inside.name;
       pr.hidden = false; pr.innerHTML = '<kbd>E</kbd>Go outside'; }
-    else if (catFirst(kt, pl)) { pr.hidden = false; pr.innerHTML = '<kbd>E</kbd>Pet the cat' + (treats ? ' (offer a treat)' : ''); }
+    else if (catFirst(kt, pl)) { pr.hidden = !kmenu.hidden; pr.innerHTML = '<kbd>E</kbd>' + (kt.owned ? 'Hang out with ' + esc(kt.name) : 'Pet the cat' + (treats ? ' (offer a treat)' : '')); }
     else if (pl) { pr.hidden = !kmenu.hidden; pr.innerHTML = '<kbd>E</kbd>' + (pl.kind === 'safe' ? 'Go inside the safehouse' : 'Handla i kiosken'); }
     else if (inCar && !coarse) { pr.hidden = Math.abs(pcar.v) > 3; pr.innerHTML = '<kbd>E</kbd>Get out'; }
-    else if (c) { pr.hidden = false; pr.innerHTML = '<kbd>E</kbd>' + (c.owned ? 'Get in the ' : 'Steal the ') + c.T.name; }
+    else if (c) { pr.hidden = false; pr.innerHTML = '<kbd>E</kbd>' + (c.owned ? 'Get in the ' : 'Steal the ') + carName(c); }
     else pr.hidden = true;
     const bl = inCar ? 'Brake' : 'Jump'; if ($('p-brake').textContent !== bl) $('p-brake').textContent = bl;
-    $('speed').hidden = !inCar; if (inCar) { $('kmh').textContent = Math.round(Math.abs(pcar.v) * 3.6); $('carname').textContent = pcar.T.name; } }
+    $('speed').hidden = !inCar; if (inCar) { $('kmh').textContent = Math.round(Math.abs(pcar.v) * 3.6); $('carname').textContent = carName(pcar); } }
   drawMini(T);
   renderer.render(scene, camera);
 }
@@ -901,5 +919,5 @@ $('go').addEventListener('click', e => { started = true; $('intro').hidden = tru
 resize(); requestAnimationFrame(frame);
 
 // ---------- test hook: read-only state for the smoke tests (tests/e2e), so they do not have to read pixels ----------
-window.__joyride = { state: () => { const n = nearestCar(); return { started, x: player.x, z: player.z, y: player.y, yaw: camYaw, inCar, car: pcar ? pcar.type : null, near: n ? n.mode : null, speed: pcar ? pcar.v : 0, drift: pcar ? pcar.drift : 0, boost: pcar ? pcar.boost : 0, charge: pcar ? pcar.charge : 0, loose: pcar ? pcar.loose : 0, flickDir: pcar ? pcar.flickDir : 0, stars, cats: cats.length, treats }; } };
+window.__joyride = { state: () => { const n = nearestCar(); return { started, x: player.x, z: player.z, y: player.y, yaw: camYaw, inCar, car: pcar ? pcar.type : null, near: n ? n.mode : null, speed: pcar ? pcar.v : 0, drift: pcar ? pcar.drift : 0, boost: pcar ? pcar.boost : 0, charge: pcar ? pcar.charge : 0, loose: pcar ? pcar.loose : 0, flickDir: pcar ? pcar.flickDir : 0, stars, cats: cats.length, treats, ownCat: !!colony.owned, vehicle: displayCar ? vehicleVisuals.state(displayCar) : null, nearSelectedVehicle: n === displayCar, activeVehicle: pcar ? vehicleVisuals.state(pcar) : null, traffic: cars.filter(c => c.mode === 'ai').map(c => ({ type: c.type, vehicle: vehicleVisuals.state(c) })) }; } };
 })();

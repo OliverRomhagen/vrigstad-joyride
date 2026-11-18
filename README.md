@@ -88,6 +88,8 @@ gh release create v0.1.0 --generate-notes
 
 `--generate-notes` builds the changelog from merged PR titles, so keep those titles descriptive.
 
+Publishing a release also announces it in the Discord server: a repository webhook (Settings → Webhooks) posts `release` events to the channel's Discord webhook URL with `/github` appended. The URL is a secret, so it lives only in the webhook settings.
+
 ## Known simplifications
 
 - Building heights are guessed from footprint size; the source data has none.
