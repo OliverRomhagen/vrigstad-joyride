@@ -62,7 +62,7 @@ Refresh the map data with `tools/fetch.sh` and then `npm run data` if you want t
 
 ## Tests
 
-A small Playwright suite in `tests/e2e/` smoke-tests the built pages: both load without console errors, Start shows the HUD, and the player can walk and get into the parked Volvo at Torget. It needs Node, and runs on every pull request.
+A small Playwright suite in `tests/e2e/` smoke-tests the built pages: both load without console errors, Start shows the HUD, and the player can walk and get into the parked Volvo at Torget. It needs Node, and runs on every pull request that touches more than docs and repo settings.
 
 ```sh
 npm install
