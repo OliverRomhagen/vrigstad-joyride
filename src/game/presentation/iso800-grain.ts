@@ -9,9 +9,22 @@ const COARSE_GRID_SIZE = 64;
 const FINE_CONTRAST = 40;
 const COARSE_CONTRAST = 18;
 const TEXTURE_ALPHA = 176;
+export const GRAIN_UPDATES_PER_SECOND = 12;
+const GRAIN_SEQUENCE_LENGTH = 97;
+
+// Uncorrelated jumps of two independently positioned repetitions produce boiling,
+// rather than a texture drifting in a direction. CSS interpolates no positions.
+export function grainKeyframes(): Keyframe[] {
+  const random = makeRnd(801);
+  return Array.from({ length: GRAIN_SEQUENCE_LENGTH }, () => ({
+    backgroundPosition: `${Math.floor(random() * 256)}px ${Math.floor(random() * 256)}px, ${Math.floor(random() * 362)}px ${Math.floor(random() * 362)}px`,
+    easing: 'steps(1, end)',
+  }));
+}
 
 export function grainEnabled(search: string) {
-  return new URLSearchParams(search).get('grain')?.trim().toLowerCase() !== 'off';
+  const value = new URLSearchParams(search).get('grain')?.trim().toLowerCase();
+  return value === 'on' || value === 'iso800' || value === 'subtle' || value === 'strong';
 }
 
 // A separate seeded stream keeps the photograph fixed without consuming game RNG.
@@ -45,6 +58,19 @@ export function grainPixels() {
 /** Renderer-independent final presentation, including HTML HUD and menus. */
 export class FilmGrain {
   private readonly layer?: HTMLDivElement;
+  private motion?: MediaQueryList;
+  private animation?: Animation;
+  private readonly updateMotion = () => {
+    if (!this.layer || !this.motion) return;
+    this.animation?.cancel();
+    this.animation = undefined;
+    if (!this.motion.matches) {
+      this.animation = this.layer.animate(grainKeyframes(), {
+        duration: GRAIN_SEQUENCE_LENGTH / GRAIN_UPDATES_PER_SECOND * 1000,
+        iterations: Infinity,
+      });
+    }
+  };
 
   constructor(host: HTMLElement, search = location.search) {
     if (!grainEnabled(search)) return;
@@ -60,7 +86,8 @@ export class FilmGrain {
     layer.id = 'iso800-grain';
     layer.setAttribute('aria-hidden', 'true');
     // Two transparent repetitions at different scales avoid an obvious tile grid.
-    // They are rasterized once, not regenerated or moved on game frames or resize.
+    // Only their discrete offsets change; the repeated backgrounds always fill
+    // the viewport and retain their CSS-pixel scale through resize.
     Object.assign(layer.style, {
       position: 'fixed', inset: '0', zIndex: '2147483647',
       pointerEvents: 'none', userSelect: 'none',
@@ -71,9 +98,16 @@ export class FilmGrain {
     });
     host.append(layer);
     this.layer = layer;
+    this.motion = matchMedia('(prefers-reduced-motion: reduce)');
+    this.motion.addEventListener('change', this.updateMotion);
+    this.updateMotion();
   }
 
   dispose() {
+    this.motion?.removeEventListener('change', this.updateMotion);
+    this.animation?.cancel();
+    this.animation = undefined;
+    this.motion = undefined;
     this.layer?.remove();
   }
 }
