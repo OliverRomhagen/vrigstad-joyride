@@ -8,6 +8,7 @@ import { nodeKey, ROAD_CELL_M as RC, type RoadLine, type RoadNetwork } from '../
 // Each 50 m cell gets a density (0..1): how built-up the cell and its neighbours are, plus a boost near named places.
 // NPC_ZONES hand-tunes spots on top of that (m multiplies the density within r metres).
 const NPC_ZONES = [{ x: -8.9, z: 30.1, r: 80, m: 1.8 }];       // Torget
+const NPC_MAX = 42, NPC_MAX_COARSE = 26;                       // count around the player in the busiest places; on a touch screen
 const NPC_NEAR = 200, NPC_FAR = 250;                           // spawn / despawn radius around the player (m)
 const SHIRTS = ['#b5463a', '#3f6b8a', '#5c7a4a', '#7a5a8a', '#d8d4c8', '#2b3a55', '#c9862f', '#8c1c1c', '#4d4a48'],
   PANTS = ['#3a3a3a', '#2b3a55', '#4a4038', '#5a6470', '#23272b'], HAIR = ['#5a4632', '#2a2320', '#c9a560', '#8a8580', '#7a3f22'];
@@ -56,7 +57,7 @@ export class Crowd {
 
   constructor(g: CrowdDeps) {
     this.g = g;
-    this.max = g.coarse ? 26 : 42;
+    this.max = g.coarse ? NPC_MAX_COARSE : NPC_MAX;
     this.R = g.roads.lines;
     this.collide = g.buildings.collide.bind(g.buildings);
     const { dens, wnodes, walkGrid } = this, cnt = new Map<string, number>();
