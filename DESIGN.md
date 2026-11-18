@@ -4,6 +4,10 @@ What kind of game Vrigstad Joyride is, and the choices that shape the features. 
 
 Like the decisions in ARCHITECTURE.md, each section is short and settled. Change one in a PR, so the team sees it.
 
+## The aim
+
+An open, easy-to-get-into and above all fun game, for (almost) everyone. And a game that's fun to make: if a feature stops being fun to build, that's worth saying.
+
 ## Form: how rough the game gets
 
 *Open: the team picks a route here.* Whatever we pick, some things hold: the humour is affectionate toward Vrigstad (AGENTS.md, "Language and tone"), it has detail and love (little jokes and local in-jokes, things that reward poking around, #115), and it isn't a children's game: adult humour and the funny Småland kind of swearing belong.
@@ -32,6 +36,16 @@ Three modes, each playable alone or with friends:
 - **Playing together isn't a mode.** It's a layer (#1) that lets friends join any mode. Co-op quests are Story with friends.
 - **A mode is a set of rules over the same simulation**: which systems run, the win and lose conditions, which save it uses. Not a separate game. It builds on the app-flow state machine (#63) and the sim split (#49).
 - **Minigames live inside every mode**, not in a mode of their own.
+
+### Activities: a mode within a mode
+
+An activity is a smaller set of rules that takes over for a while, inside any mode, and can change how the game plays: less action, different goals. Ideas:
+
+- **A case:** a mystery to solve, in the spirit of noir detective stories, Mansions of Madness and Cluedo. Question people (#37), find clues, accuse someone. Dark and raw, sometimes ironic, against a cosy village.
+- **A party night:** Mario Party-style, friends play a board of short minigames around the village (the trisslott, bowling, the arcade; #86).
+- **Races, cops and robbers:** Versus mode is a playlist of competitive activities.
+
+The tone of an activity can differ from the rest of the game: a case can be darker than driving around.
 
 ## Saves
 
