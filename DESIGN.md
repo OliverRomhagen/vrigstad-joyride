@@ -33,6 +33,8 @@ Stylised and more or less low-poly, in the direction of Borderlands' cel-shaded 
 
 Photographic touches (grain #124, colour grading #140) stay optional extras, not the default look.
 
+**Effects are slottable, Lego-style.** Each visual effect is isolated in its own module and turned on or off with one switch, without touching the rest of the game. Then trying a look costs nothing, and dropping it costs nothing either.
+
 ## Modes
 
 Three modes, each playable alone or with friends:
