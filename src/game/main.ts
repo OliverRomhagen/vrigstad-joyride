@@ -350,7 +350,7 @@ function addCar(type, x, z, h, mode, assetId = pickVariant(type, modelRnd())) {
   const T = TYPES[type], color = pick(T.cols), fallback = new THREE.Mesh(carGeo(type, color), carMat), mesh = assetId ? new THREE.Group() : fallback;
   fallback.castShadow = true; if (assetId) mesh.add(fallback); blob(mesh, 2.8, 5.8);
   if (type === 'polis') { const bar = new THREE.Mesh(barGeo, barMat); bar.position.set(0, 1.62, 0.2); fallback.add(bar); }
-  const c = { type, T, mesh, x, z, h, vh: h, v: 0, slip: 0, drift: 0, charge: 0, yr: 0, spin: 0, loose: 0, flickDir: 0, flickT: 9, boost: 0, mode, wet: false, owned: false, blocked: 0, ghost: 0, stuck: 0, rev: 0, revSteer: 1, dmg: 0, hitAt: -9, body: fallback, model: !!assetId };
+  const c = { type, T, mesh, x, z, h, vh: h, v: 0, slip: 0, drift: 0, charge: 0, yr: 0, spin: 0, loose: 0, flickDir: 0, flickT: 9, boost: 0, mode, wet: false, owned: false, blocked: 0, ghost: 0, stuck: 0, rev: 0, revSteer: 1, dmg: 0, hitAt: -9, body: fallback };
   scene.add(mesh); cars.push(c); placeCar(c); if (assetId) { vehicleVisuals.attach(c, assetId, fallback, color); } return c;
 }
 function carName(c) { return vehicleVisuals.definition(c)?.name || c.T.name; }
@@ -568,7 +568,7 @@ function crackGlass(c) {
   const lv = crackLevel(c.dmg); if (!lv) return;
   if (c.crack !== lv) { if (!c.crackMesh) { c.crackMesh = new THREE.Mesh(crackGeo(c.type), CRACK_MATS[lv]); c.body.add(c.crackMesh); }
     c.crackMesh.material = CRACK_MATS[lv]; if (c.modelCrack) for (const m of c.modelCrack) m.material = CRACK_MATS[lv]; c.crack = lv; }
-  if (c.model && !c.modelCrack && c.mesh.getObjectByName('glass_envelope')) { c.modelCrack = [];   // the model has loaded
+  if (!c.modelCrack && vehicleVisuals.loaded(c) && c.mesh.getObjectByName('glass_envelope')) { c.modelCrack = [];
     c.mesh.traverse(o => { if (o.isMesh && o.name.startsWith('glass_')) c.modelCrack.push(o); });
     c.modelCrack = c.modelCrack.map(gl => { const m = new THREE.Mesh(modelCrackGeo(gl.geometry), CRACK_MATS[lv]); gl.add(m); return m; }); }
 }
@@ -705,7 +705,7 @@ const puffs = Array.from({ length: SMOKE_N }, () => { const p = new THREE.Sprite
   p.visible = false; p.age = 0; scene.add(p); return p; });
 let puffI = 0;
 function updateSmoke(dt, T) {
-  for (const c of cars) { if (c.crack && c.model && !c.modelCrack) crackGlass(c);   // its model may have loaded since the crash
+  for (const c of cars) { if (c.crack && !c.modelCrack && vehicleVisuals.loaded(c)) crackGlass(c);   // its model may have loaded since the crash; one that failed never does
     const lv = smokeLevel(c.dmg); if (!lv || c.wet || Math.abs(c.x - T.x) > SMOKE_NEAR_M || Math.abs(c.z - T.z) > SMOKE_NEAR_M) continue;
     c.smokeT = (c.smokeT || 0) + dt * SMOKE_RATE[lv];
     for (; c.smokeT >= 1; c.smokeT--) { const p = puffs[puffI]; puffI = (puffI + 1) % SMOKE_N;   // a ring: the oldest puff goes first
