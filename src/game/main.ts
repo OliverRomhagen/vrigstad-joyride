@@ -838,7 +838,7 @@ function spawnPolice() {
 function clearWanted() { stars = 0; evade = 0; bustT = 0; for (const p of police) removeCar(p); police.length = 0; drawStars(); $('stars').classList.remove('evading'); }
 function respawn() { leaveHouse(); if (inCar) { pcar.mode = 'idle'; pcar.v = pcar.slip = pcar.drift = pcar.boost = 0; placeCar(pcar); pcar = null; inCar = false; player.mesh.visible = true; }
   player.x = HOME.x; player.z = HOME.z; player.y = player.vy = 0; jumpQ = false; collide(player, 0.6); }
-function bigScreen(title, msg) { $('big-t').textContent = title; $('big-p').textContent = msg; bigT = 3; $('big').hidden = false; }
+function bigScreen(title, msg) { $('big-t').textContent = title; $('big-p').textContent = msg; bigT = 3; $('big').hidden = false; hud.hideToast(); }   // the big screen replaces any line from the same moment
 function busted() { clearWanted(); respawn(); health.hp = HP_MAX; drawHealth(); bigScreen('Gripen!', 'Busted. The police drop you off at Torget.'); }
 // health at zero: with the police after you it's Gripen!, otherwise you come to at the nearest safehouse, or Torget
 function knockedOut() {

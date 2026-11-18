@@ -41,6 +41,8 @@ export class Hud {
 
   toast(msg: string, secs?: number, cls?: string) { const t = this.g.$('toast'); t.textContent = msg; t.className = 'plate' + (cls ? ' ' + cls : ''); t.hidden = false; t.style.opacity = '1'; this.toastT = secs || 3.5; }
 
+  hideToast() { this.toastT = 0; this.g.$('toast').hidden = true; }
+
   /** Fades the toast out at the end of its time. */
   update(dt: number) { const { $ } = this.g; if (this.toastT > 0) { this.toastT -= dt; if (this.toastT <= 0.3) $('toast').style.opacity = '0'; if (this.toastT <= 0) $('toast').hidden = true; } }
 
