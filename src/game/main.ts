@@ -730,6 +730,7 @@ function updateSmoke(dt, T) {
 }
 
 // ---------- låt det regna: an easter egg, L throws RAIN_KR in the air as banknotes that flutter down around you ----------
+const cashRnd = makeRnd(1000);                               // own stream for the banknotes and the confetti, so they don't shift the world's rolls
 const RAIN_N = 48, RAIN_CALM_N = 12, RAIN_R_M = 4.5;          // notes in the pool; how many with reduced motion; how far around you they fall (m)
 const RAIN_TOP_M = 2.5, RAIN_TOP_SPREAD_M = 2.5;             // they start 2.5–5 m above the ground
 const RAIN_FALL_MS = 0.9, RAIN_FALL_SPREAD_MS = 0.6;         // and fall at 0.9–1.5 m/s, swaying: down in 2–5 s
@@ -757,10 +758,10 @@ function makeItRain() {
 function dropBills(o) {
   const n = calmMotion.matches ? RAIN_CALM_N : RAIN_N;
   for (let i = 0; i < n; i++) { const b = bills[billI]; billI = (billI + 1) % RAIN_N;   // a ring: the oldest note goes first
-    const a = fxRnd() * Math.PI * 2, d = Math.sqrt(fxRnd()) * RAIN_R_M, x = o.x + Math.sin(a) * d, z = o.z + Math.cos(a) * d;   // sqrt: evenly over the disc
-    b.position.set(x, groundAt(x, z) + RAIN_TOP_M + fxRnd() * RAIN_TOP_SPREAD_M, z); b.rotation.set(fxRnd() * 6.3, fxRnd() * 6.3, fxRnd() * 6.3);
-    b.vy = RAIN_FALL_MS + fxRnd() * RAIN_FALL_SPREAD_MS; b.sway = 0.4 + fxRnd() * 0.5; b.phase = fxRnd() * 6.3;
-    b.sx = (fxRnd() - 0.5) * 6; b.sy = (fxRnd() - 0.5) * 4; b.sz = (fxRnd() - 0.5) * 6; b.lieT = -1; b.material.opacity = 1; b.visible = true; }
+    const a = cashRnd() * Math.PI * 2, d = Math.sqrt(cashRnd()) * RAIN_R_M, x = o.x + Math.sin(a) * d, z = o.z + Math.cos(a) * d;   // sqrt: evenly over the disc
+    b.position.set(x, groundAt(x, z) + RAIN_TOP_M + cashRnd() * RAIN_TOP_SPREAD_M, z); b.rotation.set(cashRnd() * 6.3, cashRnd() * 6.3, cashRnd() * 6.3);
+    b.vy = RAIN_FALL_MS + cashRnd() * RAIN_FALL_SPREAD_MS; b.sway = 0.4 + cashRnd() * 0.5; b.phase = cashRnd() * 6.3;
+    b.sx = (cashRnd() - 0.5) * 6; b.sy = (cashRnd() - 0.5) * 4; b.sz = (cashRnd() - 0.5) * 6; b.lieT = -1; b.material.opacity = 1; b.visible = true; }
 }
 function updateRain(dt) {
   for (const b of bills) { if (!b.visible) continue;
@@ -774,7 +775,7 @@ function updateRain(dt) {
 // trisslott: the vinstplan is in economy.ts; the temper gets worse with every losing ticket scratched inside the window
 const TRISS_WINDOW = 25;          // s
 const TRISS_BIG_KR = 10_000;     // a win this big gets the big toast, and banknotes rain down too
-const confetti = new Confetti($('confetti'), fxRnd);   // fired on every win, more for a bigger one
+const confetti = new Confetti($('confetti'), cashRnd);   // fired on every win, more for a bigger one
 const TRISS = [
   ['Järnspikar, ingen vinst denna gång heller.', 'Äsch, dä va la synd.', 'Nä, inget dänna gången heller.', 'Jaja, nästa lott så.'],
   ['Men jösses, inte ett öre!', 'Tusan hakar, en nitlott te!', 'Dä här börjar likna lurendrejeri.', 'Sjutton gubbar, nu får dä la ändå vända!'],
