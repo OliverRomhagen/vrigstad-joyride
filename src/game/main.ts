@@ -794,10 +794,7 @@ const drawStars = hud.drawStars.bind(hud), drawMini = hud.drawMini.bind(hud), up
 let laterLine = null;
 const sayLater = line => { laterLine = line; };
 drawStars();
-// the health bar, and the car's damage bar on the speed plate while driving
-function meter(id, v, bad) { const el = $(id), n = Math.round(v); if (el.getAttribute('aria-valuenow') === String(n)) return;
-  el.setAttribute('aria-valuenow', n); el.querySelector('b').style.width = n + '%'; el.classList.toggle('bad', bad); }
-function drawHealth() { meter('hp', health.hp, health.hp < LOW_HP); if (inCar) meter('dmg', pcar.dmg, pcar.dmg >= 50); }
+function drawHealth() { hud.drawHealth(health.hp, inCar ? pcar.dmg : null); }
 let signT = 0, blink = false, blinkT = 0;
 
 // ---------- stealing, police, getting caught ----------
