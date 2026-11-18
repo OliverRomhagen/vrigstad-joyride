@@ -7,3 +7,5 @@ node_modules/
 test-results/
 playwright-report/
 dist/
+docs/.obsidian/*
+!docs/.obsidian/app.json
