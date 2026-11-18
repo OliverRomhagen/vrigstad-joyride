@@ -90,17 +90,19 @@ Other maps sit next to Vrigstad, mainly in Sandbox:
 
 A map is content (where things are, who's there); a mod changes rules (what things do). A map can carry its own quests and characters without being a mod.
 
-## Experiments
+## Lab
 
-Some ideas are worth trying without promising them. An experiment:
+Some ideas are worth trying without promising them. They go in the lab, and their issues carry the `lab` label. A lab experiment:
 
-- is **opt-in**, behind a setting marked *experimentellt*, and the game works the same without it;
+- is **opt-in**, switched on under *Lab* in the menu, and the game works the same without it;
 - **can't break determinism or the rules**: anything non-deterministic (such as an AI model) only proposes, and ordinary game rules decide what happens;
 - reports in its PR what it costs (download size, speed, which devices) and whether it's good enough to keep.
 
+An experiment ends one of two ways. **Keep**: it leaves the lab, loses the label and becomes an ordinary feature, on by default. **Drop**: its issue is closed as not planned and its code is removed.
+
 The first candidate is talking to NPCs with speech-to-text and a small language model running in the browser on WebGPU: for example, talking your way out of *Gripen!*. Scripted voice lines don't need this: they are generated from text at build time and shipped as plain audio (#132).
 
-More ideas for experiments, from the first brainstorm:
+More ideas for the lab, from the first brainstorm:
 
 - **Shouting:** the microphone's volume alone scares off cats, horses and protesters (#127). No AI needed.
 - **Dialect minigame:** say "inte för allt smör i Småland" and speech-to-text scores it (#142).
