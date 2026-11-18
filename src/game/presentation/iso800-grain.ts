@@ -2,7 +2,7 @@ import { makeRnd } from '../../world/random';
 
 // Strength is compositor opacity; scale is CSS pixels per fine grain sample,
 // independent of the renderer's resolution and device pixel ratio.
-export const ISO800_STRENGTH = 0.52;
+export const ISO800_STRENGTH = 0.40;
 export const ISO800_SCALE_PX = 1;
 export const GRAIN_TILE_SIZE = 256;
 const COARSE_GRID_SIZE = 64;
@@ -60,6 +60,7 @@ export class FilmGrain {
   private readonly layer?: HTMLDivElement;
   private motion?: MediaQueryList;
   private animation?: Animation;
+  private moving = false;
   private readonly updateMotion = () => {
     if (!this.layer || !this.motion) return;
     this.animation?.cancel();
@@ -69,6 +70,7 @@ export class FilmGrain {
         duration: GRAIN_SEQUENCE_LENGTH / GRAIN_UPDATES_PER_SECOND * 1000,
         iterations: Infinity,
       });
+      if (!this.moving) this.animation.pause();
     }
   };
 
@@ -101,6 +103,14 @@ export class FilmGrain {
     this.motion = matchMedia('(prefers-reduced-motion: reduce)');
     this.motion.addEventListener('change', this.updateMotion);
     this.updateMotion();
+  }
+
+  /** The render host supplies camera motion without exposing scene objects. */
+  setMoving(moving: boolean) {
+    if (moving === this.moving) return;
+    this.moving = moving;
+    if (moving) this.animation?.play();
+    else this.animation?.pause();
   }
 
   dispose() {

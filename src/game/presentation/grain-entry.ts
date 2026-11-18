@@ -1,5 +1,5 @@
 import { FilmGrain } from './iso800-grain';
 
 // A body-level sibling covers the WebGL canvas and every DOM game overlay.
-// It deliberately has no dependency on the Three.js scene or game loop.
-new FilmGrain(document.body);
+// The host supplies only a motion flag; the effect owns its animation resources.
+export const filmGrain = new FilmGrain(document.body);
