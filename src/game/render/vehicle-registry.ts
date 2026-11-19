@@ -74,11 +74,18 @@ export const VEHICLES = [
   },
 ] as const;
 export type VehicleId = (typeof VEHICLES)[number]['id'];
-export const vehicleDefinition = (id: string | null) => VEHICLES.find((v) => v.id === id);
+export const vehicleDefinition = (id: string | null) => VEHICLES.find(v => v.id === id);
 // The models each simulation type can wear, with relative weights; every model is in the world.
 export const VEHICLE_VARIANTS: Readonly<Record<string, readonly (readonly [VehicleId, number])[]>> = {
-  volvo: [['volvo240', 4], ['impala1970', 1]],
-  saab: [['saab900', 3], ['xc70', 2], ['micra-k11', 2]],
+  volvo: [
+    ['volvo240', 4],
+    ['impala1970', 1],
+  ],
+  saab: [
+    ['saab900', 3],
+    ['xc70', 2],
+    ['micra-k11', 2],
+  ],
   epa: [['duett-epa', 1]],
   polis: [['xc70-police', 1]],
 };

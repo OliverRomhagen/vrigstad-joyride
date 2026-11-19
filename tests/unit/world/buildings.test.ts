@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { BuildingKind } from '../../../src/world/data';
 import { BuildingIndex, forEachBuilding, roofParts } from '../../../src/world/buildings';
+import { BuildingKind } from '../../../src/world/data';
 import { pointInPolygon } from '../../../src/world/polygon';
 import { makeWorld, square } from './fixture';
 
@@ -45,9 +45,15 @@ describe('addFootprint', () => {
 
   it('files an outline in every cell its bounds touch', () => {
     const index = new BuildingIndex(makeWorld());
-    index.addFootprint(square(38, 38, 4));   // straddles the cell corner at (40, 40)
+    index.addFootprint(square(38, 38, 4)); // straddles the cell corner at (40, 40)
     // each circle overlaps one corner of the outline and stays inside a single 40 m cell, so it only finds it through that cell
-    for (const [x, z] of [[37.5, 37.5], [42.5, 37.5], [37.5, 42.5], [42.5, 42.5]]) expect(index.collide({ x, z }, 1)).toBe(true);
+    for (const [x, z] of [
+      [37.5, 37.5],
+      [42.5, 37.5],
+      [37.5, 42.5],
+      [42.5, 42.5],
+    ])
+      expect(index.collide({ x, z }, 1)).toBe(true);
   });
 });
 
@@ -79,7 +85,7 @@ describe('roofParts', () => {
   });
 
   it('caps how high a wide roof rises', () => {
-    const wide = outline.map((v) => ({ x: v.x * 4, z: v.z * 4 }));
+    const wide = outline.map(v => ({ x: v.x * 4, z: v.z * 4 }));
     expect(roofParts(wide, [0, 12, 40, 12, 12], 0).yAt({ x: 20, z: 12 })).toBeCloseTo(5);
   });
 });
@@ -96,7 +102,9 @@ describe('forEachBuilding', () => {
       ],
     });
     const seen: { kind: number; lo: number; hi: number; base: number; top: number; area: number }[] = [];
-    forEachBuilding(world, slope, ({ building, lo, hi, base, top, area }) => seen.push({ kind: building.k, lo, hi, base, top, area }));
+    forEachBuilding(world, slope, ({ building, lo, hi, base, top, area }) =>
+      seen.push({ kind: building.k, lo, hi, base, top, area }),
+    );
     expect(seen).toHaveLength(2);
     expect(seen[0]).toMatchObject({ kind: BuildingKind.OTHER, area: 100 });
     expect(seen[0].lo).toBeCloseTo(1);
@@ -111,8 +119,15 @@ describe('forEachBuilding', () => {
     const reversed: number[] = [];
     for (let i = p.length - 2; i >= 0; i -= 2) reversed.push(p[i], p[i + 1]);
     const windings: number[] = [];
-    forEachBuilding(makeWorld({ b: [{ p, h: 3, k: BuildingKind.OTHER }, { p: reversed, h: 3, k: BuildingKind.OTHER }] }), slope, (s) =>
-      windings.push(s.winding),
+    forEachBuilding(
+      makeWorld({
+        b: [
+          { p, h: 3, k: BuildingKind.OTHER },
+          { p: reversed, h: 3, k: BuildingKind.OTHER },
+        ],
+      }),
+      slope,
+      s => windings.push(s.winding),
     );
     expect(windings).toEqual([1, -1]);
   });

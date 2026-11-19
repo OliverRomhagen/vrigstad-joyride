@@ -1,8 +1,8 @@
 import { readFileSync } from 'node:fs';
-import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import * as THREE from 'three';
-import { GLTFLoader, type GLTF } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
+import { type GLTF, GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { VehicleVisuals } from '../../../src/game/render/vehicle-visuals';
 import '../../../src/world/three-legacy';
 
@@ -18,9 +18,7 @@ function car(x = 0) {
   return { mesh, fallback, x, z: 0, h: 0 };
 }
 async function settle(assets: VehicleVisuals, cars: ReturnType<typeof car>[]) {
-  await vi.waitFor(() =>
-    expect(cars.every((c) => assets.state(c)?.status !== 'loading')).toBe(true),
-  );
+  await vi.waitFor(() => expect(cars.every(c => assets.state(c)?.status !== 'loading')).toBe(true));
 }
 function mesh(root: THREE.Object3D, name: string) {
   const node = root.getObjectByName(name);
@@ -29,7 +27,7 @@ function mesh(root: THREE.Object3D, name: string) {
   return node as THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>;
 }
 beforeEach(() => {
-  vi.spyOn(GLTFLoader.prototype, 'loadAsync').mockImplementation((url) => parse(url));
+  vi.spyOn(GLTFLoader.prototype, 'loadAsync').mockImplementation(url => parse(url));
 });
 afterEach(() => {
   vi.restoreAllMocks();
@@ -99,9 +97,8 @@ test('police retain authored paint and their real beacon meshes flash', async ()
   assets.paint(c, '#ff0000');
   expect(mesh(c.mesh, 'body').material).toBe(paint);
   const beacons: THREE.MeshStandardMaterial[] = [];
-  c.mesh.traverse((node) => {
-    if (node instanceof THREE.Mesh && /^lamp_(blue_module|police_grille)/.test(node.name))
-      beacons.push(node.material);
+  c.mesh.traverse(node => {
+    if (node instanceof THREE.Mesh && /^lamp_(blue_module|police_grille)/.test(node.name)) beacons.push(node.material);
   });
   expect(beacons).toHaveLength(5);
   assets.update(focus, 0.22);
@@ -111,7 +108,7 @@ test('police retain authored paint and their real beacon meshes flash', async ()
 });
 
 test('failed nearest models leave capacity for the healthy fourth model', async () => {
-  vi.mocked(GLTFLoader.prototype.loadAsync).mockImplementation(async (url) => {
+  vi.mocked(GLTFLoader.prototype.loadAsync).mockImplementation(async url => {
     if (url.endsWith('micra-k11.glb')) throw new Error('Expected missing asset');
     return parse(url);
   });
@@ -124,7 +121,7 @@ test('failed nearest models leave capacity for the healthy fourth model', async 
   assets.update(focus, 0.4);
   await settle(assets, cars);
   expect(assets.state(cars[3])?.detailed).toBe(true);
-  expect(cars.slice(0, 3).every((c) => assets.state(c)?.fallback)).toBe(true);
+  expect(cars.slice(0, 3).every(c => assets.state(c)?.fallback)).toBe(true);
 });
 
 test.each([
@@ -133,12 +130,12 @@ test.each([
 ])('detail cap $limit and range culling', async ({ coarse, limit }) => {
   const assets = new VehicleVisuals(coarse),
     cars = Array.from({ length: 9 }, (_, i) => car(i + 1));
-  cars.forEach((c) => assets.attach(c, 'volvo240', c.fallback));
+  cars.forEach(c => assets.attach(c, 'volvo240', c.fallback));
   assets.update(focus, 0.4);
   await settle(assets, cars);
-  expect(cars.filter((c) => assets.state(c)?.detailed)).toHaveLength(limit);
+  expect(cars.filter(c => assets.state(c)?.detailed)).toHaveLength(limit);
   assets.update({ x: 1000, z: 0 }, 0.4);
-  expect(cars.every((c) => assets.state(c)?.fallback)).toBe(true);
+  expect(cars.every(c => assets.state(c)?.fallback)).toBe(true);
 });
 
 test('reparenting preserves inherited uniform wheel scale', async () => {
@@ -165,9 +162,7 @@ test('reparenting preserves inherited uniform wheel scale', async () => {
   assets.attach(c, 'volvo240', c.fallback);
   assets.update(focus, 0.4);
   await settle(assets, [c]);
-  const bounds = new THREE.Box3().setFromObject(
-    c.mesh.children.find((node) => node !== c.fallback)!,
-  );
+  const bounds = new THREE.Box3().setFromObject(c.mesh.children.find(node => node !== c.fallback)!);
   expect(bounds.min.distanceTo(expected.min)).toBeLessThan(1e-8);
   expect(bounds.max.distanceTo(expected.max)).toBeLessThan(1e-8);
 });
@@ -176,7 +171,7 @@ test('disposing an instance during loading cannot resurrect its visual', async (
   let finish!: (model: GLTF) => void;
   vi.mocked(GLTFLoader.prototype.loadAsync).mockImplementation(
     () =>
-      new Promise((resolve) => {
+      new Promise(resolve => {
         finish = resolve;
       }),
   );

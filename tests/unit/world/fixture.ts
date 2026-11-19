@@ -6,4 +6,13 @@ export function makeWorld(overrides: Partial<WorldData> = {}): WorldData {
 }
 
 /** An axis-aligned square outline, as a flat [x, z, ...] array. */
-export const square = (x0: number, z0: number, side: number) => [x0, z0, x0 + side, z0, x0 + side, z0 + side, x0, z0 + side];
+export const square = (x0: number, z0: number, side: number) => [
+  x0,
+  z0,
+  x0 + side,
+  z0,
+  x0 + side,
+  z0 + side,
+  x0,
+  z0 + side,
+];
