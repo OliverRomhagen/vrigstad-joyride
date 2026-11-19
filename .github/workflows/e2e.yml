@@ -17,11 +17,30 @@ permissions:
   contents: read
 
 jobs:
+  # The smoke tests run in Playwright's image, which has the browser and its system packages, instead of installing them on
+  # every run (that took from half a minute to eight). Its tag must match the locked Playwright, so read it from the lock file.
+  playwright:
+    name: Playwright version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.lock.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: package-lock.json
+          sparse-checkout-cone-mode: false
+      - id: lock
+        run: echo "version=$(jq -r '.packages["node_modules/@playwright/test"].version' package-lock.json)" >> "$GITHUB_OUTPUT"
+
   smoke:
     name: Smoke tests (Playwright)
+    needs: playwright
     runs-on: ubuntu-latest
+    container: mcr.microsoft.com/playwright:v${{ needs.playwright.outputs.version }}-noble
     timeout-minutes: 15
     steps:
+      # The image has no Python: tools/process.py and the test server need it.
+      - run: apt-get update -qq && apt-get install -y -qq --no-install-recommends python3
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
@@ -33,7 +52,6 @@ jobs:
       - run: npm run build
       # The built pages are not committed (#45): fail if a merge brought one back.
       - run: test -z "$(git ls-files index.html map.html)"
-      - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e
       # Screenshots of both pages, plus a trace of any failed test. Not pixel-diffed: headless WebGL output varies.
       - uses: actions/upload-artifact@v4
