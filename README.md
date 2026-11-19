@@ -36,6 +36,8 @@ Three houses are safehouses, shown as green houses on the minimap and marked wit
 
 The kiosk on Torget sells trisslotter. One in a thousand wins, and the more losing tickets you scratch in a row, the worse your language gets.
 
+Add `?debug` to the address (for example `index.html?debug`) to see frame times, what the renderer draws and which build you're playing, with any uncaught errors in a red box. On a phone, a screenshot of it makes a good bug report. The frame graph has lines at 60 and 30 fps; *work* is the time the game's own code takes per frame, so a slow frame with little work points at the GPU or the browser.
+
 ## How it is built
 
 Contributors (human or agent): read [AGENTS.md](AGENTS.md) for conventions, including how tickets are filed, labelled and linked, and [ARCHITECTURE.md](ARCHITECTURE.md) for the structure and where it's heading.

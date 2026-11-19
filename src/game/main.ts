@@ -6,6 +6,8 @@ import { DriftFx } from './render/drift-fx';
 import { pickVariant, vehicleDefinition } from './render/vehicle-registry';
 import { VehicleVisuals } from './render/vehicle-visuals';
 import D from '../../data/vrigstad.json';
+import { debugOn } from '../debug/frame-stats';
+import { DebugOverlay } from '../debug/overlay';
 import { BUILDING_CELL_M as BC, BuildingIndex } from '../world/buildings';
 import { ROAD_WIDTH_M as ROAD_W } from '../world/data';
 import { Heightfield } from '../world/heightfield';
@@ -32,6 +34,8 @@ const wrap = a => { while (a > Math.PI) a -= 2 * Math.PI; while (a < -Math.PI) a
 // seeded streams: rnd() drives the world and gameplay; side systems get their own stream so they don't shift its rolls
 const rnd = makeRnd(57355);
 const pick = a => a[Math.floor(rnd() * a.length)];
+// ?debug: frame times, renderer counts, the build and uncaught errors over the game (src/debug/); built first, so it sees start-up errors
+const debug = debugOn(location.search) ? new DebugOverlay($('stage'), __BUILD__) : null;
 
 // ---------- terrain height (matches the mesh triangles exactly) ----------
 // the world's queries are bound once, so the code below calls them as plain functions
@@ -706,6 +710,7 @@ addEventListener('resize', resize); if (window.ResizeObserver) new ResizeObserve
 let last = performance.now();
 function frame(now) {
   requestAnimationFrame(frame);
+  const work0 = debug ? performance.now() : 0;
   const dt = clamp((now - last) / 1000, 0, 0.05); last = now;
   const mx = started ? clamp((keys.right ? 1 : 0) - (keys.left ? 1 : 0) + joy.x, -1, 1) : 0, my = started ? clamp((keys.up ? 1 : 0) - (keys.down ? 1 : 0) + joy.y, -1, 1) : 0;
   if (bigT > 0) { bigT -= dt; if (bigT <= 0) $('big').hidden = true; }
@@ -782,6 +787,7 @@ function frame(now) {
     $('speed').hidden = !inCar; if (inCar) { $('kmh').textContent = Math.round(Math.abs(pcar.v) * 3.6); $('carname').textContent = carName(pcar); } }
   drawMini(T);
   renderer.render(scene, camera);
+  if (debug) { const t = performance.now(); debug.frame(t, t - work0, renderer.info); }
 }
 $('go').addEventListener('click', e => { started = true; $('intro').hidden = true; camYaw = 0.6; camPitch = 0.34; canvas.focus();
   if (e.pointerType ? e.pointerType === 'mouse' : !coarse) lockMouse();   // by how Start was pressed: a tap on a touchscreen laptop shouldn't lock
@@ -789,5 +795,5 @@ $('go').addEventListener('click', e => { started = true; $('intro').hidden = tru
 resize(); requestAnimationFrame(frame);
 
 // ---------- test hook: read-only state for the smoke tests (tests/e2e), so they do not have to read pixels ----------
-window.__joyride = { state: () => { const n = nearestCar(); return { started, x: player.x, z: player.z, y: player.y, yaw: camYaw, inCar, car: pcar ? pcar.type : null, near: n ? n.mode : null, speed: pcar ? pcar.v : 0, drift: pcar ? pcar.drift : 0, boost: pcar ? pcar.boost : 0, charge: pcar ? pcar.charge : 0, loose: pcar ? pcar.loose : 0, flickDir: pcar ? pcar.flickDir : 0, stars, cats: cats.length, treats, ownCat: !!colony.owned, vehicle: displayCar ? vehicleVisuals.state(displayCar) : null, nearSelectedVehicle: n === displayCar, activeVehicle: pcar ? vehicleVisuals.state(pcar) : null, traffic: cars.filter(c => c.mode === 'ai').map(c => ({ type: c.type, vehicle: vehicleVisuals.state(c) })) }; } };
+window.__joyride = { state: () => { const n = nearestCar(); return { started, build: __BUILD__, debug: !!debug, x: player.x, z: player.z, y: player.y, yaw: camYaw, inCar, car: pcar ? pcar.type : null, near: n ? n.mode : null, speed: pcar ? pcar.v : 0, drift: pcar ? pcar.drift : 0, boost: pcar ? pcar.boost : 0, charge: pcar ? pcar.charge : 0, loose: pcar ? pcar.loose : 0, flickDir: pcar ? pcar.flickDir : 0, stars, cats: cats.length, treats, ownCat: !!colony.owned, vehicle: displayCar ? vehicleVisuals.state(displayCar) : null, nearSelectedVehicle: n === displayCar, activeVehicle: pcar ? vehicleVisuals.state(pcar) : null, traffic: cars.filter(c => c.mode === 'ai').map(c => ({ type: c.type, vehicle: vehicleVisuals.state(c) })) }; } };
 })();

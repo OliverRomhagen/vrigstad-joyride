@@ -45,9 +45,28 @@ test.describe('game (index.html)', () => {
     await page.goto('/index.html');
     await expect(page.locator('#intro')).toBeVisible();
     await expectWebGL(page);
-    expect(await state(page)).toMatchObject({ started: false, inCar: false });
+    expect(await state(page)).toMatchObject({ started: false, inCar: false, debug: false });
+    await expect(page.locator('#debug')).toHaveCount(0);
     await page.screenshot({ path: testInfo.outputPath('game-intro.png') });
     expect(errors).toEqual([]);
+  });
+
+  test('?debug shows frame times, the build, and uncaught errors on screen', async ({ page }, testInfo) => {
+    const errors = watchErrors(page);
+    await page.goto('/index.html?debug');
+    await expect(page.locator('#intro')).toBeVisible();
+    const { build, debug } = await state(page);
+    expect(debug).toBe(true);
+    expect(build).toMatch(/^([0-9a-f]{7,}|unknown)$/);
+    await expect(page.locator('#debug-stats')).toContainText(/\d+ fps · worst [\d.]+ ms/);
+    await expect(page.locator('#debug-stats')).toContainText(/\d+ calls · \d+k tris/);
+    await expect(page.locator('#debug-stats')).toContainText('build ' + build);
+    await expect(page.locator('#debug-errors')).toBeEmpty();
+    expect(errors).toEqual([]);
+    // an error thrown outside the game shows in the red box; twice counts up
+    await page.evaluate(() => { for (let i = 0; i < 2; i++) setTimeout(() => { throw new Error('smoke test boom'); }); });
+    await expect(page.locator('#debug-errors')).toContainText(/^2× .*smoke test boom/);
+    await page.screenshot({ path: testInfo.outputPath('game-debug.png') });
   });
 
   test('Start hides the intro and shows the HUD', async ({ page }) => {
