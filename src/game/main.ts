@@ -783,9 +783,10 @@ const TRISS = [
   ['Fan i helvete, dä ä ju bedrägeri!', 'Satans jävla skitlotter!', 'Jävlar i min lilla låda, ge mej en te!', 'Helvetes förbannade skrapskit, ja ska anmäla hela Svenska Spel!']
 ];
 function scratch() { if (trissT > 0) return; if (!pay(wallet, TRISS_KR)) { toast(broke(TRISS_KR), 3); return; } drawKr(); trissT = 0.9; toast('Skrap, skrap, skrap…', 1.5); }
+const trissRnd = makeRnd(2000);                              // own stream for the scratch, which changes the wallet: deterministic like other gameplay
 function trissResult() {
   trissN++;
-  const kr = trissPrize(Math.random());
+  const kr = trissPrize(trissRnd());
   if (kr) { earn(wallet, kr); drawKr(); trissWon++; trissWonKr += kr;
     if (!calmMotion.matches) confetti.burst(confettiCount(kr)); if (kr >= TRISS_BIG_KR) dropBills(player); trissLog.length = 0;
     if (kr >= TRISS_BIG_KR) toast('”VINST! Dä va som sjutton, ja visste väl dä!” You won ' + fmtKr(kr) + ' on a trisslott. That never happens.', 8, 'win');
