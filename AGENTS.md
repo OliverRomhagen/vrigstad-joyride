@@ -16,7 +16,7 @@ npm test                    # unit tests (Vitest), once
 npm run build               # production build into dist/ (index.html, map.html)
 npm run preview             # serve the built dist/ locally
 npx playwright install chromium   # once, for the smoke tests
-npm run test:e2e            # Playwright smoke tests against the built pages in dist/; build first
+npm run test:e2e            # Playwright smoke tests against the built pages in dist/; build first. Before a commit, run only yours (see Tests)
 npm run data                # rebuild data/vrigstad.json from data/raw/ (Python standard library only); run npm run build after, the data is built into the pages
 tools/fetch.sh              # re-download OSM + elevation (rarely needed; hits public APIs)
 ```
@@ -105,6 +105,7 @@ Until the migration reaches a given rule, don't make the existing code worse in 
 - **Unit tests** (Vitest, [#52](https://github.com/OliverRomhagen/vrigstad-joyride/issues/52)): game rules and pure helpers such as height lookup, driving model, wanted level, police AI and spatial queries. Write them for new gameplay rules; use the seeded RNG for deterministic scenarios. They live in `tests/unit/`, mirroring `src/`, and run in CI on every PR that changes more than docs, labels, issue forms, agent files or other workflows (`.github/workflows/unit.yml`). Build test worlds small and by hand (`tests/unit/world/fixture.ts`), not from `data/vrigstad.json`, so each expected value can be worked out.
 - **No pixel-diff tests.** Headless WebGL output varies. Assert on state exposed through the test hook instead, and attach screenshots to the PR when visuals change.
 - The smoke tests live in `tests/e2e/` and run in CI on every PR that changes more than docs, labels, issue forms, agent files or other workflows (`.github/workflows/e2e.yml`), which also fails if the committed `data/vrigstad.json` is stale and uploads screenshots of both pages as the `e2e-screenshots` artifact. They read game state from `window.__joyride.state()` (defined at the end of `src/game/main.ts`); add a field there when a new smoke step needs one, and keep the hook read-only.
+- **Before a commit**, run `npm run check` and `npm test` in full: they take seconds. The smoke tests render WebGL in software and keep every core busy for minutes, so run only the ones for what you changed, plus the ones that load the page and get into the Volvo, on one or two workers, after a build, since they test `dist/`: `npm run build && npx playwright test -g "kiosk|loads with no console errors|gets you in" --workers=2`. CI runs the whole suite on every PR. Until #49 splits `src/game/main.ts`, a change there can break another feature's test, so a red CI run after a green subset is expected now and then, not a reason to run everything locally.
 - Most gameplay still lives in `src/game/main.ts`, out of the unit tests' reach until #49 splits it: test changes there in a browser too, and describe what you did in the PR.
 
 ## Data and coordinates
