@@ -8,11 +8,21 @@ Like the decisions in ARCHITECTURE.md, each section is short and settled. Change
 
 An open, easy-to-get-into and above all fun game, for (almost) everyone. And a game that's fun to make: if a feature stops being fun to build, that's worth saying.
 
-## Form: how rough the game gets
+## Form: the core we start from
 
-*Open: the team picks a route here.* Whatever we pick, some things hold: the humour is affectionate toward Vrigstad (AGENTS.md, "Language and tone"), it has detail and love (little jokes and local in-jokes, things that reward poking around, #115), and it isn't a children's game: adult humour and the funny Småland kind of swearing belong.
+We don't pin the game to one style. We agree on its core, and features are checked against it:
 
-| Route | Touchstone | Violence | What it gives us | What it costs |
+- **Charming:** affectionate toward Vrigstad (AGENTS.md, "Language and tone"), with detail and love: little jokes and local in-jokes, things that reward poking around (#115).
+- **Fun:** easy to get into, and nothing taken too seriously. It isn't a children's game, though: adult humour and the funny Småland kind of swearing belong.
+- **Exciting to play:** chases, fights and challenges with real stakes and skill, that feel good on the controls. Charm alone isn't enough.
+
+*Open: does this core hold?* How rough a given feature gets, and what form guns take (#17), follows from it case by case, rather than from one style picked up front.
+
+### Touchstones
+
+Other games are rough or soft in different ways. They're references to borrow from, not routes to choose between:
+
+| Flavour | Touchstone | Violence | What it gives us | What it costs |
 |---|---|---|---|---|
 | **A. Toy box** | LEGO games | Slapstick: shoves, snowballs, knockdowns, no real weapons | Charm, a broad audience, little risk around a real village | Less edge; guns (#17) don't fit |
 | **B. Witty and rough** | Borderlands | Over-the-top guns that feel good to fire; you shoot people, but nothing is taken seriously | Fun combat, guns on your car, humour with teeth | Needs combat, enemies and damage (#80); harder to keep the affection for a real place |
@@ -20,11 +30,11 @@ An open, easy-to-get-into and above all fun game, for (almost) everyone. And a g
 | **D. Crime satire** | GTA, Saints Row | Realistic-ish crime and violence | Familiar open-world loop | Clashes with a real village and its people; the tone we've been avoiding |
 | **E. Genre pastiche** | Red Dead Revolver | Staged and stylised: duels, slow-motion shots, villains straight out of a film | The violence quotes a genre (spaghetti western, noir), so it isn't aimed at the real village; a strong look made from few assets | The genre has to be clear in every part, or it reads as plain violence; one genre can wear thin |
 
-The routes mix: B with A's care for detail (a LEGO-made world with Borderlands guns) is one option, A with C's mayhem another, and E can be the flavour of an activity (a western duel, a noir case) in any of the others.
+They mix: A's care for detail with B's guns (a LEGO-made world with Borderlands guns), C's mayhem in a sandbox toggle, E as the flavour of an activity (a western duel, a noir case).
 
-### The same moments, route by route
+### The same moments, five ways
 
-The touchstones are other games; these are the same Vrigstad moments, played through each route:
+The same Vrigstad moments, played each way, to show what each one would mean here:
 
 | Moment | A. Toy box | B. Witty and rough | C. Chaos sandbox | D. Crime satire | E. Genre pastiche |
 |---|---|---|---|---|---|
@@ -35,7 +45,7 @@ The touchstones are other games; these are the same Vrigstad moments, played thr
 
 ### What we'd borrow
 
-The routes set the tone; mechanics can be borrowed from any game, whichever route wins. Each has a cost in a browser game that runs on phones:
+Mechanics can be borrowed from any of them, as long as they serve the core. Each has a cost in a browser game that runs on phones:
 
 | From | Mechanic | Why it fits | Cost |
 |---|---|---|---|
@@ -49,7 +59,7 @@ The routes set the tone; mechanics can be borrowed from any game, whichever rout
 
 Add a row for your favourite: a game, one mechanic, why it fits.
 
-Leaning, to discuss: **B with A's care**. Rocket launchers that *ballar ur*, a minigun on the EPA-traktor, enemies that are over the top rather than people you feel bad about. Grimmer or more realistic play would belong in mods: if the base game stays softer than you'd like, a "Gore and Guns" mod pack is the way to get it (#17).
+Where we start, to discuss: **A's charm with B's excitement**. Rocket launchers that *ballar ur*, a minigun on the EPA-traktor, enemies that are over the top rather than people you feel bad about. Grimmer or more realistic play would belong in mods: if the base game stays softer than you'd like, a "Gore and Guns" mod pack is the way to get it (#17).
 
 ## Look: stylised, not photoreal
 

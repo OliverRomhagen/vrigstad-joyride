@@ -118,7 +118,7 @@ Until the migration reaches a given rule, don't make the existing code worse in 
 - UI text, code, comments, commits and issues: **English**.
 - What people in the game *say* (NPC lines, police, shouts) is **Swedish**, informal and local. Real place and street names keep their Swedish spelling (Torget, Slättsjön, Gästgivaregatan).
 - The humour is affectionate toward Vrigstad. Real *places* are fine. Real, identifiable people (see #9) only with the maintainers' explicit go-ahead, and never in a mean or embarrassing way.
-- How rough the game gets (humour, swearing, violence) is set in "Form" in [DESIGN.md](DESIGN.md).
+- How rough the game gets (humour, swearing, violence) follows from the core in "Form" in [DESIGN.md](DESIGN.md).
 
 ## Glossary
 
