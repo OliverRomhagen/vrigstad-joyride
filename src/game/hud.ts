@@ -3,6 +3,7 @@
 import type { Label } from '../world/data';
 import type { RoadNetwork } from '../world/roads';
 import { LOW_HP } from './health';
+import { MAX_STARS } from './police';
 
 const MR = 210;   // the minimap shows this far around the player (m)
 const BAD_DAMAGE = 50;   // the damage bar turns red from this much car damage (0–100)
@@ -58,7 +59,7 @@ export class Hud {
   update(dt: number) { const { $ } = this.g; if (this.toastT > 0) { this.toastT -= dt; if (this.toastT <= 0.3) $('toast').style.opacity = '0'; if (this.toastT <= 0) $('toast').hidden = true; } }
 
   drawStars() { const el = this.g.$('stars'); el.textContent = '';
-    for (let i = 0; i < 3; i++) { const s = document.createElement(i < this.g.stars ? 'b' : 'span'); s.textContent = '★'; el.appendChild(s); } }
+    for (let i = 0; i < MAX_STARS; i++) { const s = document.createElement(i < this.g.stars ? 'b' : 'span'); s.textContent = '★'; el.appendChild(s); } }
 
   /** T is where the player (or their car) is, and its heading `h`. */
   drawMini(T: Point & { h: number }) {

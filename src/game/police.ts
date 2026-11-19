@@ -1,5 +1,5 @@
 // The wanted level and the police: stars, police cars that chase you, losing them, lying low and getting caught.
-// Moved from src/game/main.ts (#177); main.ts passes in the cars, the roads and what the HUD shows. No three.js or DOM here.
+// Moved from src/game/main.ts (#177); main.ts passes in car spawning, removal and the driving model, the roads, the seeded rolls and what the HUD shows. No three.js or DOM here.
 import { clamp } from '../world/math';
 import type { RoadNetwork } from '../world/roads';
 import { wrecked } from './health';
