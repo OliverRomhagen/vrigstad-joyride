@@ -74,7 +74,7 @@ export function topSpeedShare(dmg: number) {
 export const smokeLevel = (dmg: number) => (dmg >= BLACK_SMOKE_AT ? 2 : dmg >= SMOKE_AT ? 1 : 0);
 
 /** 0 whole glass, then 1–3 as more of it cracks (CRACK_AT). */
-export const crackLevel = (dmg: number) => CRACK_AT.filter((d) => dmg >= d).length;
+export const crackLevel = (dmg: number) => (dmg >= CRACK_AT[2] ? 3 : dmg >= CRACK_AT[1] ? 2 : dmg >= CRACK_AT[0] ? 1 : 0);   // no filter: updateSmoke asks for every car every frame
 
 export interface Crashable extends Damageable {
   hitAt: number;   // clock (s) of the car's last hit, for CRASH_COOL_S
@@ -86,12 +86,14 @@ export interface CrashHit<C extends Crashable> {
   smokeUp: boolean;   // this hit made it smoke more, short of wrecking it
 }
 
+const NO_HITS: never[] = [];   // shared: a slow scrape along a wall calls crashCars every frame of contact
+
 /** A crash at this impact speed (m/s) of car a into car b, or into a wall when b is null, at clock nowS (s).
  * Damages each car not hit in the last CRASH_COOL_S (each keeps its own, so ramming a car that was just hit still damages yours)
  * and says what changed for it; empty when nothing took damage. */
 export function crashCars<C extends Crashable>(nowS: number, impact: number, a: C, b: C | null): CrashHit<C>[] {
   const d = crashDamage(impact);
-  if (d <= 0) return [];
+  if (d <= 0) return NO_HITS;
   const hits: CrashHit<C>[] = [];
   for (const car of b ? [a, b] : [a]) {
     if (nowS - car.hitAt < CRASH_COOL_S) continue;

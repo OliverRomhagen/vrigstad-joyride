@@ -690,7 +690,7 @@ function eat(n, order, reply) {
 kmenu.addEventListener('click', e => { const b = e.target.closest('button'); if (b) { menuChoose(b.dataset.k); canvas.focus(); } });
 function nearPlace() { if (inCar) return null; for (const p of places) if (Math.hypot(p.x - player.x, p.z - player.z) < 2.2) return p; return null; }
 function enterHouse(p) {
-  if (police.some(c => Math.hypot(c.x - p.x, c.z - p.z) < SAFE_SEEN)) { toast('The police can see you. Get further ahead of them before you go inside.', 3); return; }
+  if (police.some(c => !wrecked(c) && Math.hypot(c.x - p.x, c.z - p.z) < SAFE_SEEN)) { toast('The police can see you. Get further ahead of them before you go inside.', 3); return; }
   inside = p; hideT = SAFE_SECS; player.x = p.x; player.z = p.z; player.speed = 0; player.mesh.visible = false;
   toast(stars ? 'You slip inside. Stay put for a minute and the police give up.' : 'Home sweet home. Nobody is looking for you.');
 }
@@ -851,7 +851,9 @@ function hurtPlayer(n) { if (n <= 0) return; const was = health.hp;
   hurt(health, n); drawHealth();
   if (was >= LOW_HP && health.hp < LOW_HP && health.hp > 0) sayLater('”Ja behöver nog en korv me brö.”'); }   // a hint at the kiosk
 function updatePolice(c, dt, T, tv) {
-  const dx = T.x - c.x, dz = T.z - c.z, d = Math.hypot(dx, dz), diff = wrap(Math.atan2(dx, -dz) - c.h);
+  const dx = T.x - c.x, dz = T.z - c.z, d = Math.hypot(dx, dz);
+  if (wrecked(c)) { drive(c, 0, 0, false, dt); return d; }   // a wreck only rolls to a stop: no chasing, and no stuck rolls from rnd()
+  const diff = wrap(Math.atan2(dx, -dz) - c.h);
   let thr = Math.abs(diff) < 1.1 ? 1 : 0.45, steer = clamp(diff * 2.2, -1, 1), brake = false;
   if (d < 9) { thr = 0; brake = c.v > Math.max(1, tv); }
   if (c.rev > 0) { c.rev -= dt; thr = -1; steer = c.revSteer; brake = false; }
