@@ -18,8 +18,36 @@ An open, easy-to-get-into and above all fun game, for (almost) everyone. And a g
 | **B. Witty and rough** | Borderlands | Over-the-top guns that feel good to fire; you shoot people, but nothing is taken seriously | Fun combat, guns on your car, humour with teeth | Needs combat, enemies and damage (#80); harder to keep the affection for a real place |
 | **C. Chaos sandbox** | Goat Simulator | Physics mayhem with no stakes | Cheap to build, very shareable moments | Thin story and progression |
 | **D. Crime satire** | GTA, Saints Row | Realistic-ish crime and violence | Familiar open-world loop | Clashes with a real village and its people; the tone we've been avoiding |
+| **E. Genre pastiche** | Red Dead Revolver | Staged and stylised: duels, slow-motion shots, villains straight out of a film | The violence quotes a genre (spaghetti western, noir), so it isn't aimed at the real village; a strong look made from few assets | The genre has to be clear in every part, or it reads as plain violence; one genre can wear thin |
 
-The routes mix: B with A's care for detail (a LEGO-made world with Borderlands guns) is one option, A with C's mayhem another.
+The routes mix: B with A's care for detail (a LEGO-made world with Borderlands guns) is one option, A with C's mayhem another, and E can be the flavour of an activity (a western duel, a noir case) in any of the others.
+
+### The same moments, route by route
+
+The touchstones are other games; these are the same Vrigstad moments, played through each route:
+
+| Moment | A. Toy box | B. Witty and rough | C. Chaos sandbox | D. Crime satire | E. Genre pastiche |
+|---|---|---|---|---|---|
+| You steal the EPA-traktor and the police come | A chase; *Gripen!* is a comic arrest | A chase where both sides shoot, and the tractor has a minigun | The tractor flips, the police car lands in Slättsjön, no one minds | A chase with a realistic arrest and a fine | A chase scored like a western; the sheriff wants you on the poster |
+| You hit a pedestrian | They tumble, get up and shake a fist | They fly, swear in Småland dialect and get up | They ragdoll across Torget, and that's the joke | They're hurt, and a star is added | As in A: the genre is in the set pieces, not the traffic |
+| Someone at the kiosk wants revenge | A snowball fight | A shootout with an over-the-top boss | Whatever the physics makes of it | A fight with real weapons | High noon on Torget: a quick-draw duel |
+| What a weapon is | A snowball, a water pistol, a shove | A silly gun with a silly name that feels great to fire | Anything you can throw | A gun | A revolver, and a showdown to use it |
+
+### What we'd borrow
+
+The routes set the tone; mechanics can be borrowed from any game, whichever route wins. Each has a cost in a browser game that runs on phones:
+
+| From | Mechanic | Why it fits | Cost |
+|---|---|---|---|
+| Red Dead Revolver | Dead Eye: slow motion, mark targets, then fire them all at once | Shooting about timing and style rather than aim; marking works with a finger on a phone | Slow motion has to fit the deterministic sim (#49) |
+| Red Dead Revolver | Duels: a staged, timed showdown | A ready-made activity, and an ending for a quest | Small: a camera, a timer, one input |
+| Red Dead Revolver | A strong look over detail: film grain and a colour grade on simple scenes, short missions | How a PS2-era game did a lot with little; gives grain (#124) and grading (#140) a job | Low: post effects, already slottable |
+| Borderlands | Outlines; weapons with silly names and stats | The look in "Look" (#206); humour in every pickup | Outlines cost a render pass on phones (#72) |
+| LEGO games | Things that break into pieces; collectibles everywhere | Rewards poking around (#115) | Many small physics objects |
+| Goat Simulator | Ragdolls and physics without stakes | Shareable moments for little authoring | Physics on phones; it can swamp the story |
+| GTA | Wanted stars | Already in the game | None |
+
+Add a row for your favourite: a game, one mechanic, why it fits.
 
 Leaning, to discuss: **B with A's care**. Rocket launchers that *ballar ur*, a minigun on the EPA-traktor, enemies that are over the top rather than people you feel bad about. Grimmer or more realistic play would belong in mods: if the base game stays softer than you'd like, a "Gore and Guns" mod pack is the way to get it (#17).
 
