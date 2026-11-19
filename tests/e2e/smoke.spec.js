@@ -23,10 +23,14 @@ async function getInVolvo(page) {
   await page.keyboard.down('KeyD');
   await expect.poll(async () => (await state(page)).near, { intervals: [50] }).not.toBeNull();
   await page.keyboard.up('KeyD');
-  // The parked Volvo, not AI traffic passing through Torget (that would be a carjack and a star).
-  await expect.poll(async () => (await state(page)).near).toBe('parked');
-  await expect(page.locator('#prompt')).toHaveText('ESteal the Volvo 240');
-  await page.keyboard.press('KeyE');
+  // The parked Volvo, not AI traffic passing through Torget (that would be a carjack and a star). Check the nearest car
+  // and press E in one browser task: E acts in its keydown handler, so no frame can bring a passing car closer in between.
+  await expect.poll(() => page.evaluate(() => {
+    if (window.__joyride.state().near !== 'parked') return null;
+    const prompt = document.getElementById('prompt').textContent;
+    if (prompt === 'ESteal the Volvo 240') for (const type of ['keydown', 'keyup']) document.body.dispatchEvent(new KeyboardEvent(type, { code: 'KeyE', bubbles: true }));
+    return prompt;
+  })).toBe('ESteal the Volvo 240');
   await expect.poll(async () => (await state(page)).inCar).toBe(true);
 }
 
