@@ -67,6 +67,7 @@ A small Playwright suite in `tests/e2e/` smoke-tests the built pages: both load 
 ```sh
 npm install
 npx playwright install chromium   # once
+npm run build                     # the tests run against the built pages in dist/
 npm run test:e2e
 ```
 
