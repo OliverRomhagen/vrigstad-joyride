@@ -1,17 +1,35 @@
 {
-  "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
+  "$schema": "https://biomejs.dev/schemas/2.6.8/schema.json",
   "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
   "files": {
-    // The pages (src/*.html and the two single-file scripts) keep their dense hand-formatted style until #49 splits them (AGENTS.md, Code style);
-    // formatting them now would conflict with every open feature branch. tools/trailer is its own package.
-    "includes": ["**", "!**/*.md", "!src/*.html", "!src/game/main.ts", "!src/map/main.ts", "!data", "!tools/trailer"]
+    // The HTML pages keep their hand-formatted style until #177 splits them (AGENTS.md, Code style). tools/trailer is its
+    // own package. The workflows stay out because check.yml skips PRs that only change .github/, so a workflow edit could
+    // merge unformatted and fail on main.
+    "includes": ["**", "!**/*.md", "!src/*.html", "!data", "!tools/trailer", "!.github"]
   },
-  "formatter": { "indentStyle": "space", "indentWidth": 2, "lineWidth": 120 },
+  // Indent style and width come from .editorconfig, so editors and Biome can't disagree.
+  "formatter": { "useEditorconfig": true, "lineWidth": 120 },
   "javascript": { "formatter": { "quoteStyle": "single", "arrowParentheses": "asNeeded" } },
   "linter": {
     "rules": {
-      // `if (!list) map.set(k, (list = []))` is the idiom for grouping into a Map here.
-      "suspicious": { "noAssignInExpressions": "off" }
+      // Recommended only warns on these, and warnings don't fail `biome check`.
+      "correctness": { "noUnusedVariables": "error", "noUnusedImports": "error" }
     }
-  }
+  },
+  "overrides": [
+    {
+      // The two single-file scripts keep their dense style until #177 splits them, so only formatting is off. These rules
+      // still run: @ts-nocheck hides undeclared names from tsc, and a split that moves a name out of main.ts while another
+      // branch still uses it would otherwise only fail at runtime.
+      "includes": ["src/game/main.ts", "src/map/main.ts"],
+      "formatter": { "enabled": false },
+      "assist": { "enabled": false },
+      "linter": {
+        "rules": {
+          "recommended": false,
+          "correctness": { "noUndeclaredVariables": "error", "noUnusedImports": "error" }
+        }
+      }
+    }
+  ]
 }
