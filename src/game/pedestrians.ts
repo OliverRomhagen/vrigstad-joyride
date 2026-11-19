@@ -10,6 +10,7 @@ import { nodeKey, ROAD_CELL_M as RC, type RoadLine, type RoadNetwork } from '../
 const NPC_ZONES = [{ x: -8.9, z: 30.1, r: 80, m: 1.8 }];       // Torget
 const NPC_MAX = 42, NPC_MAX_COARSE = 26;                       // count around the player in the busiest places; on a touch screen
 const NPC_NEAR = 200, NPC_FAR = 250;                           // spawn / despawn radius around the player (m)
+const LOST_RUN = 2;                                            // back on their feet off their path, they run back to it at this many times their walking speed
 const SHIRTS = ['#b5463a', '#3f6b8a', '#5c7a4a', '#7a5a8a', '#d8d4c8', '#2b3a55', '#c9862f', '#8c1c1c', '#4d4a48'],
   PANTS = ['#3a3a3a', '#2b3a55', '#4a4038', '#5a6470', '#23272b'], HAIR = ['#5a4632', '#2a2320', '#c9a560', '#8a8580', '#7a3f22'];
 
@@ -18,7 +19,11 @@ type Point = { x: number; z: number };
 export type PersonMesh = THREE.Object3D & { legs: THREE.Object3D[] };
 /** Where a pedestrian is on the walk graph: road ri, from vertex a towards a + dir, t metres along; the same shape as a car's. */
 export interface Npc extends Point { ri: number; a: number; dir: number; t: number; side: number; speed: number; idle: number; walk: number;
-  h: number; phase: number; first: boolean; mesh: PersonMesh }
+  h: number; phase: number; first: boolean; look: Look; mesh: PersonMesh;
+  down?: boolean;   // knocked over: something else (the ragdoll lab experiment) moves and draws them until it clears this
+  lost?: boolean }  // back on their feet off their path: they run back to it rather than snap
+/** What a pedestrian wears, as personParts in main.ts takes it. */
+export interface Look { shirt: string; pants: string; hair: string }
 
 /** What the pedestrians read from the rest of the game. The getters are read when used, so main.ts can declare those later. */
 export interface CrowdDeps {
@@ -35,6 +40,8 @@ export interface CrowdDeps {
   /** moves a walker on to the next segment at a junction of `graph` */
   advance(n: Npc, graph: Map<string, number[]>): void;
   cars: readonly Point[];
+  /** a car drives into n: true takes n out of the crowd's hands (n.down) instead of pushing them aside. Unset, everyone is pushed. */
+  readonly hit?: ((n: Npc, car: Point) => boolean) | null;
   readonly player: Point;
   readonly inCar: boolean;
 }
@@ -84,13 +91,16 @@ export class Crowd {
       const l = this.walkGrid.get(Math.floor(x / RC) + ',' + Math.floor(z / RC)); if (!l || rnd() > this.densAt(x, z)) continue;
       const i = Math.floor(rnd() * l.length / 2) * 2, ri = l[i], fwd = rnd() < 0.5, a = fwd ? l[i + 1] : l[i + 1] + 1;
       const n: Npc = { ri, a, dir: fwd ? 1 : -1, t: rnd() * this.segLen(R[ri], l[i + 1], l[i + 1] + 1), side: rnd() < 0.5 ? 1 : -1, speed: 1.05 + rnd() * 0.45,
-        idle: rnd() < 0.3 ? 2 + rnd() * 10 : 0, walk: 10 + rnd() * 30, x: 0, z: 0, h: 0, phase: 0, first: true, mesh: personParts(pick(SHIRTS), pick(PANTS), pick(HAIR)) };
+        idle: rnd() < 0.3 ? 2 + rnd() * 10 : 0, walk: 10 + rnd() * 30, x: 0, z: 0, h: 0, phase: 0, first: true, ...this.dress(pick(SHIRTS), pick(PANTS), pick(HAIR)) };
       n.mesh.scale.setScalar(0.92 + rnd() * 0.14); scene.add(n.mesh); this.npcs.push(n); return;
     }
   }
 
+  private dress(shirt: string, pants: string, hair: string) { return { look: { shirt, pants, hair }, mesh: this.g.personParts(shirt, pants, hair) }; }
+
   private updateNpc(n: Npc, dt: number) {
-    const { rnd, advance, cars, player, inCar, groundAt, wrap } = this.g, { R } = this;
+    if (n.down) return;
+    const { rnd, advance, cars, hit, player, inCar, groundAt, wrap } = this.g, { R } = this;
     const d0 = this.densAt(n.x, n.z);
     if (n.idle > 0) { n.idle -= dt; n.phase *= 0.8; }
     else { n.t += n.speed * dt; n.phase += n.speed * dt * 2.1; n.walk -= dt;
@@ -98,13 +108,18 @@ export class Crowd {
     let r = R[n.ri], L = this.segLen(r, n.a, n.a + n.dir);
     for (let g = 0; n.t >= L && g < 8; g++) { n.t -= L; advance(n, this.wnodes); r = R[n.ri]; L = this.segLen(r, n.a, n.a + n.dir); }
     const A = r.p[n.a], B = r.p[n.a + n.dir], dx = (B[0] - A[0]) / L, dz = (B[1] - A[1]) / L, off = r.c <= 3 ? (ROAD_W[r.c] / 2 + 0.8) * n.side : 0;
-    const k = n.first ? 1 : Math.min(1, dt * 4);
-    n.x += (A[0] + dx * n.t - dz * off - n.x) * k; n.z += (A[1] + dz * n.t + dx * off - n.z) * k;
-    for (const c of cars) { const ex = n.x - c.x, ez = n.z - c.z, d = Math.hypot(ex, ez); if (d < 2.3 && d > 0.01) { n.x += ex / d * (2.3 - d); n.z += ez / d * (2.3 - d); } }
+    const k = n.first ? 1 : Math.min(1, dt * 4), px = A[0] + dx * n.t - dz * off, pz = A[1] + dz * n.t + dx * off;
+    let rx = 0, rz = 0;
+    if (n.lost) { const ex = px - n.x, ez = pz - n.z, d = Math.hypot(ex, ez), s = n.speed * LOST_RUN * dt;
+      if (d <= s) { n.lost = false; n.x = px; n.z = pz; } else { rx = ex / d; rz = ez / d; n.x += rx * s; n.z += rz * s; n.phase += s * 2.1; } }
+    else { n.x += (px - n.x) * k; n.z += (pz - n.z) * k; }
+    for (const c of cars) { const ex = n.x - c.x, ez = n.z - c.z, d = Math.hypot(ex, ez); if (d < 2.3 && d > 0.01) {
+      if (hit && hit(n, c)) { n.down = true; return; }
+      n.x += ex / d * (2.3 - d); n.z += ez / d * (2.3 - d); } }
     if (!inCar) { const ex = n.x - player.x, ez = n.z - player.z, d = Math.hypot(ex, ez); if (d < 0.75 && d > 0.01) { n.x += ex / d * (0.75 - d); n.z += ez / d * (0.75 - d); } }
     this.collide(n, 0.35);
     // walking: face the way along the path; standing around: glance at the player when they come close
-    const ph = Math.hypot(player.x - n.x, player.z - n.z), want = n.idle > 0 ? (ph < 8 ? Math.atan2(player.x - n.x, -(player.z - n.z)) : n.h) : Math.atan2(dx, -dz);
+    const ph = Math.hypot(player.x - n.x, player.z - n.z), want = rx || rz ? Math.atan2(rx, -rz) : n.idle > 0 ? (ph < 8 ? Math.atan2(player.x - n.x, -(player.z - n.z)) : n.h) : Math.atan2(dx, -dz);
     n.h = n.first ? want : wrap(n.h + wrap(want - n.h) * Math.min(1, dt * 5)); n.first = false;
     const sw = Math.sin(n.phase) * 0.6; n.mesh.legs[0].rotation.x = sw; n.mesh.legs[1].rotation.x = -sw;
     n.mesh.position.set(n.x, groundAt(n.x, n.z), n.z); n.mesh.rotation.y = -n.h;

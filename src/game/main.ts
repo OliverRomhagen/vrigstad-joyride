@@ -587,8 +587,13 @@ const driftFx = new DriftFx({ scene, groundAt, profiles: PROFILES, turboAt: TURB
 // ---------- pedestrians: walk the streets and footpaths, now and then stop for a while (src/game/pedestrians.ts) ----------
 // the getters are read when the pedestrians use them, so they can name things declared further down
 const crowd = new Crowd({ scene, roads, buildings, labels: D.labels, groundAt, coarse, wrap, rnd, pick, personParts, advance, cars,
-  get player() { return player; }, get inCar() { return inCar; } });
+  get player() { return player; }, get inCar() { return inCar; }, get hit() { return ragdolls && ragdolls.hit; } });
 const updateNpcs = crowd.update.bind(crowd);
+
+// ---------- lab: ragdolls, people your car knocks over fly and tumble, then get up (?lab=ragdoll, src/lab/ragdoll/) ----------
+let ragdolls = null;
+if (lab.on('ragdoll')) import('../lab/ragdoll').then(m => { ragdolls = new m.Ragdolls({ scene, world: { groundAt, collide }, crowd, coarse, geoCache, boxGeo, paintMat,
+  get pcar() { return inCar ? pcar : null; } }); });
 
 // ---------- cats: lounge by the house walls, wander a little, bolt from cars and running feet (src/game/cats.ts) ----------
 const TREAT_BAG = 3, TREAT_MAX = 9;                                  // treats per bag from the kiosk; how many fit in your pockets
@@ -872,6 +877,7 @@ function frame(now) {
   updateSmoke(dt, T);
   for (const c of cars) if (c.mode === 'ai') updateTraffic(c, dt, T);
   updateNpcs(T, dt);
+  if (ragdolls) ragdolls.update(dt);
   updateCats(T, dt);
   if (wanted.update(dt, T, player.speed)) {
     blinkT += dt; if (blinkT > 0.22) { blinkT = 0; blink = !blink; barMat.color.copy(blink ? BAR_RED : BAR_BLUE); }
@@ -920,5 +926,5 @@ $('go').addEventListener('click', e => { started = true; $('intro').hidden = tru
 resize(); requestAnimationFrame(frame);
 
 // ---------- test hook: read-only state for the smoke tests (tests/e2e), so they do not have to read pixels ----------
-window.__joyride = { state: () => { const n = nearestCar(); return { started, lab: lab.list(), x: player.x, z: player.z, y: player.y, yaw: camYaw, inCar, car: pcar ? pcar.type : null, near: n ? n.mode : null, speed: pcar ? pcar.v : 0, drift: pcar ? pcar.drift : 0, boost: pcar ? pcar.boost : 0, charge: pcar ? pcar.charge : 0, loose: pcar ? pcar.loose : 0, flickDir: pcar ? pcar.flickDir : 0, stars: wanted.stars, cats: cats.length, treats, hp: health.hp, carDmg: pcar ? pcar.dmg : null, ownCat: !!colony.owned, vehicle: displayCar ? vehicleVisuals.state(displayCar) : null, nearSelectedVehicle: n === displayCar, activeVehicle: pcar ? vehicleVisuals.state(pcar) : null, traffic: cars.filter(c => c.mode === 'ai').map(c => ({ type: c.type, vehicle: vehicleVisuals.state(c) })) }; } };
+window.__joyride = { state: () => { const n = nearestCar(); return { started, lab: lab.list(), ragdolls: ragdolls ? ragdolls.count : null, x: player.x, z: player.z, y: player.y, yaw: camYaw, inCar, car: pcar ? pcar.type : null, near: n ? n.mode : null, speed: pcar ? pcar.v : 0, drift: pcar ? pcar.drift : 0, boost: pcar ? pcar.boost : 0, charge: pcar ? pcar.charge : 0, loose: pcar ? pcar.loose : 0, flickDir: pcar ? pcar.flickDir : 0, stars: wanted.stars, cats: cats.length, treats, hp: health.hp, carDmg: pcar ? pcar.dmg : null, ownCat: !!colony.owned, vehicle: displayCar ? vehicleVisuals.state(displayCar) : null, nearSelectedVehicle: n === displayCar, activeVehicle: pcar ? vehicleVisuals.state(pcar) : null, traffic: cars.filter(c => c.mode === 'ai').map(c => ({ type: c.type, vehicle: vehicleVisuals.state(c) })) }; } };
 })();

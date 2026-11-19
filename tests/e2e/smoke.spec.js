@@ -40,6 +40,17 @@ test.describe('game (index.html)', () => {
   // Take the lock away, so every run uses the drag fallback that touch and lock-refusing browsers get.
   test.beforeEach(async ({ page }) => { await page.addInitScript(() => { HTMLCanvasElement.prototype.requestPointerLock = undefined; }); });
 
+  test('the ragdoll lab loads only when ?lab=ragdoll asks for it', async ({ page }) => {
+    const errors = watchErrors(page);
+    await page.goto('/index.html?lab=ragdoll');
+    await page.locator('#go').click();
+    await expect.poll(async () => (await state(page)).ragdolls).toBe(0);   // loaded, nobody knocked over yet
+    expect((await state(page)).lab).toEqual(['ragdoll']);
+    await page.goto('/index.html');
+    expect(await state(page)).toMatchObject({ lab: [], ragdolls: null });
+    expect(errors).toEqual([]);
+  });
+
   test('loads with no console errors, a WebGL canvas and the default fleet, and Start shows the HUD', async ({ page }, testInfo) => {
     const errors = watchErrors(page);
     await page.goto('/index.html');
