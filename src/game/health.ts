@@ -75,3 +75,44 @@ export const smokeLevel = (dmg: number) => (dmg >= BLACK_SMOKE_AT ? 2 : dmg >= S
 
 /** 0 whole glass, then 1–3 as more of it cracks (CRACK_AT). */
 export const crackLevel = (dmg: number) => CRACK_AT.filter((d) => dmg >= d).length;
+
+export interface Crashable extends Damageable {
+  hitAt: number;   // clock (s) of the car's last hit, for CRASH_COOL_S
+}
+
+export interface CrashHit<C extends Crashable> {
+  car: C;
+  wrecked: boolean;   // this hit wrecked it
+  smokeUp: boolean;   // this hit made it smoke more, short of wrecking it
+}
+
+/** A crash at this impact speed (m/s) of car a into car b, or into a wall when b is null, at clock nowS (s).
+ * Damages each car not hit in the last CRASH_COOL_S (each keeps its own, so ramming a car that was just hit still damages yours)
+ * and says what changed for it; empty when nothing took damage. */
+export function crashCars<C extends Crashable>(nowS: number, impact: number, a: C, b: C | null): CrashHit<C>[] {
+  const d = crashDamage(impact);
+  if (d <= 0) return [];
+  const hits: CrashHit<C>[] = [];
+  for (const car of b ? [a, b] : [a]) {
+    if (nowS - car.hitAt < CRASH_COOL_S) continue;
+    car.hitAt = nowS;
+    const smoke = smokeLevel(car.dmg), w = damageCar(car, d);
+    hits.push({ car, wrecked: w, smokeUp: !w && smokeLevel(car.dmg) > smoke });
+  }
+  return hits;
+}
+
+export interface Spot {
+  x: number;
+  z: number;
+}
+
+/** Where a knocked-out player comes to: the nearest safehouse, if one is nearer than home. */
+export function wakeSpot<S extends Spot & { kind: string }>(x: number, z: number, home: Spot, places: readonly S[]): S | Spot {
+  let spot: S | Spot = home, best = Math.hypot(x - home.x, z - home.z);
+  for (const p of places) {
+    const d = Math.hypot(x - p.x, z - p.z);
+    if (p.kind === 'safe' && d < best) { best = d; spot = p; }
+  }
+  return spot;
+}

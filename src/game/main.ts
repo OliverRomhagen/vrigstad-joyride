@@ -23,7 +23,7 @@ import { CAT_ADOPT_PETS, CatColony } from './cats';
 import { Hud } from './hud';
 import { Crowd } from './pedestrians';
 import { Pets } from './pets';
-import { CAT_SCRATCH_HP, crackLevel, LOW_HP, CRASH_COOL_S, crashDamage, damageCar, driverHurt, HP_MAX, heal, hurt, KORV_HP, impactSpeed, newHealth, regen, RULLE_HP, runOverHurt, smokeLevel, topSpeedShare, wrecked } from './health';
+import { CAT_SCRATCH_HP, crackLevel, LOW_HP, CRASH_COOL_S, crashCars, crashDamage, driverHurt, HP_MAX, heal, hurt, KORV_HP, impactSpeed, newHealth, regen, RULLE_HP, runOverHurt, smokeLevel, topSpeedShare, wakeSpot, wrecked } from './health';
 
 (function () {
 'use strict';
@@ -464,19 +464,17 @@ function drive(c, thr, steer, brake, dt, canDrift) {
   placeCar(c);
 }
 
-// one hit: both cars take the damage, and the player too if they're in one. A car takes no new hit for CRASH_COOL_S, as contact lasts several frames;
-// each car keeps its own cooldown, so ramming a car that was just hit still damages yours
+// one hit: both cars take the damage (crashCars in health.ts), and the player too if they're in one. This only adds what you hear and feel;
+// the glass cracks in updateSmoke
 const POLICE_WRECK_SEEN_M = 80;                // "the police car is wrecked" only when it happens this close to the camera
 function crash(c, o, impact) {
-  const d = crashDamage(impact); if (d <= 0) return;
-  const hit = (o ? [c, o] : [c]).filter(k => clockS - k.hitAt >= CRASH_COOL_S); if (!hit.length) return;
+  const hits = crashCars(clockS, impact, c, o); if (!hits.length) return;
   let said = false;   // one line per crash: wrecked, then smoke, then the crash itself
-  for (const k of hit) { k.hitAt = clockS; const smoke = smokeLevel(k.dmg); if (damageCar(k, d)) {
-    if (k === pcar) { const cat = catAboard(); toast((cat ? '”Ut, ' + cat.name + '! Den här bilen ä slut.”\n”Mjäu.”' : pickLine(WRECK_LINES)) + ' The car is wrecked. Get out and find another.', 4); said = true; }
-    else if (k.mode === 'police' && Math.hypot(k.x - camera.position.x, k.z - camera.position.z) < POLICE_WRECK_SEEN_M) { toast('The police car is wrecked.', 3); said = true; } }
-    else if (k === pcar && smokeLevel(k.dmg) > smoke) { toast(SMOKE_LINES[smokeLevel(k.dmg)], 3); said = true; }
-    crackGlass(k); }
-  if (hit.includes(pcar)) { const n = driverHurt(impact); hurtPlayer(n); shake(d);
+  for (const { car: k, wrecked: w, smokeUp } of hits) {
+    if (w && k === pcar) { const cat = catAboard(); toast((cat ? '”Ut, ' + cat.name + '! Den här bilen ä slut.”\n”Mjäu.”' : pickLine(WRECK_LINES)) + ' The car is wrecked. Get out and find another.', 4); said = true; }
+    else if (w && k.mode === 'police' && Math.hypot(k.x - camera.position.x, k.z - camera.position.z) < POLICE_WRECK_SEEN_M) { toast('The police car is wrecked.', 3); said = true; }
+    else if (smokeUp && k === pcar) { toast(SMOKE_LINES[smokeLevel(k.dmg)], 3); said = true; } }
+  if (hits.some(h => h.car === pcar)) { const n = driverHurt(impact); hurtPlayer(n); shake(crashDamage(impact));
     const cat = catAboard();   // with your cat along, any real crash is about the cat; without, only one that hurts you
     if ((n > 0 || cat) && !said && clockS - crashLineAt > CRASH_LINE_S) { crashLineAt = clockS; toast(cat ? '”Förlåt, ' + cat.name + '! Ä du hel?”\n”Fräs!”' : pickLine(CRASH_LINES), 2.5); } }
 }
@@ -706,7 +704,7 @@ const puffs = Array.from({ length: SMOKE_N }, () => { const p = new THREE.Sprite
   p.visible = false; p.age = 0; scene.add(p); return p; });
 let puffI = 0;
 function updateSmoke(dt, T) {
-  for (const c of cars) { if (c.crack && !c.modelCrack && vehicleVisuals.loaded(c)) crackGlass(c);   // its model may have loaded since the crash; one that failed never does
+  for (const c of cars) { const cl = crackLevel(c.dmg); if (cl && (c.crack !== cl || !c.modelCrack && vehicleVisuals.loaded(c))) crackGlass(c);   // after a crash, and once its model loads; one that failed never does
     const lv = smokeLevel(c.dmg); if (!lv || c.wet || Math.abs(c.x - T.x) > SMOKE_NEAR_M || Math.abs(c.z - T.z) > SMOKE_NEAR_M) continue;
     c.smokeT = (c.smokeT || 0) + dt * SMOKE_RATE[lv];
     for (; c.smokeT >= 1; c.smokeT--) { const p = puffs[puffI]; puffI = (puffI + 1) % SMOKE_N;   // a ring: the oldest puff goes first
@@ -843,8 +841,7 @@ function busted() { clearWanted(); respawn(); health.hp = HP_MAX; drawHealth(); 
 // health at zero: with the police after you it's Gripen!, otherwise you come to at the nearest safehouse, or Torget
 function knockedOut() {
   if (stars) { busted(); return; }
-  let spot = { x: HOME.x, z: HOME.z, name: null }, best = Math.hypot(player.x - HOME.x, player.z - HOME.z);
-  for (const p of places) { const d = Math.hypot(player.x - p.x, player.z - p.z); if (p.kind === 'safe' && d < best) { best = d; spot = p; } }
+  const spot = wakeSpot(player.x, player.z, HOME, places);
   respawn(); player.x = spot.x; player.z = spot.z; collide(player, 0.6); health.hp = HP_MAX; drawHealth();
   bigScreen('Däckad!', 'Knocked out. You come to ' + (spot.name ? 'at the safehouse on ' + spot.name : 'at Torget') + '.'); sayLater(pickLine(WAKE_LINES));
 }
