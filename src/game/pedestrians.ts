@@ -11,6 +11,7 @@ const NPC_ZONES = [{ x: -8.9, z: 30.1, r: 80, m: 1.8 }];       // Torget
 const NPC_MAX = 42, NPC_MAX_COARSE = 26;                       // count around the player in the busiest places; on a touch screen
 const NPC_NEAR = 200, NPC_FAR = 250;                           // spawn / despawn radius around the player (m)
 const LOST_RUN = 2;                                            // back on their feet off their path, they run back to it at this many times their walking speed
+export const LOST_MAX_S = 8;                                   // and if they're not there after this long (s), a house is in the way: they're put on it
 const SHIRTS = ['#b5463a', '#3f6b8a', '#5c7a4a', '#7a5a8a', '#d8d4c8', '#2b3a55', '#c9862f', '#8c1c1c', '#4d4a48'],
   PANTS = ['#3a3a3a', '#2b3a55', '#4a4038', '#5a6470', '#23272b'], HAIR = ['#5a4632', '#2a2320', '#c9a560', '#8a8580', '#7a3f22'];
 
@@ -21,7 +22,7 @@ export type PersonMesh = THREE.Object3D & { legs: THREE.Object3D[] };
 export interface Npc extends Point { ri: number; a: number; dir: number; t: number; side: number; speed: number; idle: number; walk: number;
   h: number; phase: number; first: boolean; look: Look; mesh: PersonMesh;
   down?: boolean;   // knocked over: something else (the ragdoll lab experiment) moves and draws them until it clears this
-  lost?: boolean }  // back on their feet off their path: they run back to it rather than snap
+  lost?: number }   // back on their feet off their path: they run back to it rather than snap, for at most this many more seconds
 /** What a pedestrian wears, as personParts in main.ts takes it. */
 export interface Look { shirt: string; pants: string; hair: string }
 
@@ -110,8 +111,8 @@ export class Crowd {
     const A = r.p[n.a], B = r.p[n.a + n.dir], dx = (B[0] - A[0]) / L, dz = (B[1] - A[1]) / L, off = r.c <= 3 ? (ROAD_W[r.c] / 2 + 0.8) * n.side : 0;
     const k = n.first ? 1 : Math.min(1, dt * 4), px = A[0] + dx * n.t - dz * off, pz = A[1] + dz * n.t + dx * off;
     let rx = 0, rz = 0;
-    if (n.lost) { const ex = px - n.x, ez = pz - n.z, d = Math.hypot(ex, ez), s = n.speed * LOST_RUN * dt;
-      if (d <= s) { n.lost = false; n.x = px; n.z = pz; } else { rx = ex / d; rz = ez / d; n.x += rx * s; n.z += rz * s; n.phase += s * 2.1; } }
+    if (n.lost) { const ex = px - n.x, ez = pz - n.z, d = Math.hypot(ex, ez), s = n.speed * LOST_RUN * dt; n.lost -= dt;
+      if (d <= s || n.lost <= 0) { n.lost = 0; n.x = px; n.z = pz; } else { rx = ex / d; rz = ez / d; n.x += rx * s; n.z += rz * s; n.phase += s * 2.1; } }
     else { n.x += (px - n.x) * k; n.z += (pz - n.z) * k; }
     for (const c of cars) { const ex = n.x - c.x, ez = n.z - c.z, d = Math.hypot(ex, ez); if (d < 2.3 && d > 0.01) {
       if (hit && hit(n, c)) { n.down = true; return; }

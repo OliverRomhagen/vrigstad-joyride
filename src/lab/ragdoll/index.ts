@@ -2,7 +2,7 @@
 // and runs back to where they were walking. The physics is in ./ragdoll.ts; this file draws it and hands people back to the crowd.
 // No stars yet: the lab can't change the rules (DESIGN.md, "Lab"). That's for when it leaves the lab.
 import * as THREE from 'three';
-import type { Npc } from '../../game/pedestrians';
+import { LOST_MAX_S, type Npc } from '../../game/pedestrians';
 import { makeRnd } from '../../world/random';
 import {
   HEAD, type HitCar, knockOver, L_FOOT, L_HAND, L_HIP, L_SHOULDER, type Pusher, R_FOOT, R_HAND, R_HIP, R_SHOULDER, type Ragdoll,
@@ -59,7 +59,7 @@ export class Ragdolls {
   readonly hit = (n: Npc, car: { x: number; z: number }): boolean => {
     const pcar = this.g.pcar;
     if (car !== pcar || !pcar || this.bodies.length >= this.max) return false;
-    const r = knockOver(n, pcar, this.g.world, this.rnd());
+    const r = knockOver(n, pcar, this.g.world, this.rnd(), n.mesh.scale.x);
     if (!r) return false;
     n.mesh.visible = false;
     this.bodies.push(this.dress(n, r));
@@ -80,7 +80,9 @@ export class Ragdolls {
       for (let s = 0; s < steps; s++) stepRagdoll(b.r, world, pushers);
       if (b.r.state === 'done') {
         const { x, z } = ragdollCentre(b.r), n = b.npc;
-        n.x = x; n.z = z; n.h = b.r.h; n.idle = 0; n.down = false; n.lost = true; n.mesh.visible = true;
+        n.x = x; n.z = z; n.h = b.r.h; n.idle = 0; n.down = false; n.lost = LOST_MAX_S; n.mesh.visible = true;
+        // the crowd moved on before this, so its mesh is still where it was hit: put it where they stand, or it shows there for a frame
+        n.mesh.position.set(x, world.groundAt(x, z), z); n.mesh.rotation.y = -n.h;
         scene.remove(b.group); this.bodies.splice(i, 1); continue;
       }
       this.sync(b);
@@ -91,7 +93,7 @@ export class Ragdolls {
   private dress(npc: Npc, r: Ragdoll): Body {
     const { shirt, pants, hair } = npc.look, part = (key: string, parts: BoxPart[]) => {
       const m = new THREE.Mesh(this.g.geoCache[key] || (this.g.geoCache[key] = this.g.boxGeo(parts)), this.g.paintMat);
-      m.castShadow = true; return m;
+      m.castShadow = true; m.scale.setScalar(r.s); return m;
     };
     const torso = part('rag-torso' + shirt, [[0.5, 0.65, 0.28, 0, 0, 0, shirt]]);
     const head = part('rag-head' + hair, [[0.27, 0.27, 0.27, 0, 0, 0, SKIN], [0.29, 0.1, 0.29, 0, 0.16, 0, hair]]);

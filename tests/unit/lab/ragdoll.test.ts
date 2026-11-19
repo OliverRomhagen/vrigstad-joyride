@@ -37,6 +37,21 @@ describe('knockOver', () => {
     expect(knockOver(person, car(HIT_MIN_MS + 0.1), flat, 0.5)).not.toBeNull();
   });
 
+  it('misses someone beside or behind the car, who is only pushed aside', () => {
+    // 1.6 m to the side of a car about 1.8 m wide: inside the crowd's 2.3 m push circle, but clear of the bumper
+    expect(knockOver({ x: 1.6, z: -1, h: 0 }, car(12), flat, 0.5)).toBeNull();
+    expect(knockOver({ x: 0.5, z: 1, h: 0 }, car(12), flat, 0.5)).toBeNull();
+    expect(knockOver({ x: 1, z: -2, h: 0 }, car(12), flat, 0.5)).not.toBeNull();
+  });
+
+  it('is as big as the pedestrian it replaces', () => {
+    const r = knockOver(person, car(12), flat, 0.5, 0.9) as Ragdoll;
+    expect(r.p[HEAD * 3 + 1]).toBeCloseTo(1.62 * 0.9);
+    run(r, 12);
+    expect(r.state).toBe('done');
+    expect(r.p[HEAD * 3 + 1]).toBeCloseTo(1.62 * 0.9);
+  });
+
   it('counts speed in reverse too, and throws them the way the car moves', () => {
     const r = knockOver({ x: 0, z: 2, h: 0 }, car(-8), flat, 0.5) as Ragdoll;
     run(r, 0.5);
@@ -97,6 +112,30 @@ describe('stepRagdoll', () => {
     // drive through from the south at 5 m/s: the car's circle sweeps over the body
     for (let z = before.z + 3, t = 0; t < 1.2; t += STEP_S, z -= 5 * STEP_S) stepRagdoll(r, flat, [{ x: before.x, z, r: 1.6 }]);
     expect(ragdollCentre(r).z).toBeLessThan(before.z - 1.5);
+  });
+
+  it('a car landing on the body moves it out without firing it off', () => {
+    const r = knockOver(person, car(6), flat, 0.5) as Ragdoll;
+    run(r, 3);
+    const c = ragdollCentre(r);
+    // the car's circle appears right on top of the body and stays there: it would move points up to 1.6 m at once
+    let fastest = 0;
+    for (let s = 0; s < 30; s++) {
+      stepRagdoll(r, flat, [{ x: c.x, z: c.z + 0.3, r: 1.6 }]);
+      for (let i = 0; i < POINTS * 3; i += 3) fastest = Math.max(fastest, Math.hypot(r.p[i] - r.q[i], r.p[i + 2] - r.q[i + 2]) / STEP_S);
+    }
+    expect(fastest).toBeLessThan(15);
+  });
+
+  it("doesn't get up while the car is still shoving them", () => {
+    const r = knockOver(person, car(6), flat, 0.5) as Ragdoll;
+    run(r, 3);
+    const c = ragdollCentre(r);
+    // the car creeps into the body at 1 m/s for longer than they'd lie
+    for (let t = 0, z = c.z + 1.6; t < 4; t += STEP_S, z -= STEP_S) stepRagdoll(r, flat, [{ x: c.x, z, r: 1.6 }]);
+    expect(r.state).toBe('lie');
+    run(r, 5);
+    expect(r.state).toBe('done');
   });
 
   it('is deterministic: the same hit plays out the same', () => {
