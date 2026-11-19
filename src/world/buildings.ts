@@ -133,7 +133,10 @@ export class BuildingIndex {
       for (let z = Math.floor(z0 / BUILDING_CELL_M); z <= Math.floor(z1 / BUILDING_CELL_M); z++) {
         const k = x + ',' + z;
         let list = this.grid.get(k);
-        if (!list) this.grid.set(k, (list = []));
+        if (!list) {
+          list = [];
+          this.grid.set(k, list);
+        }
         list.push(index);
       }
     }

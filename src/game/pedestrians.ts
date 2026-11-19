@@ -92,20 +92,26 @@ export class Crowd {
       for (const o of NPC_ZONES) if (Math.hypot(o.x - cx, o.z - cz) < o.r) d *= o.m;
       dens.set(k, Math.min(1, d));
     }
-    this.R.forEach((r, ri) =>
+    this.R.forEach((r, ri) => {
       r.p.forEach((p, vi) => {
         const k = nodeKey(p);
         let l = wnodes.get(k);
-        if (!l) wnodes.set(k, (l = []));
+        if (!l) {
+          l = [];
+          wnodes.set(k, l);
+        }
         l.push(ri, vi);
         if (!vi) return;
         const q = r.p[vi - 1],
           c = Math.floor((p[0] + q[0]) / 2 / RC) + ',' + Math.floor((p[1] + q[1]) / 2 / RC);
         let s = walkGrid.get(c);
-        if (!s) walkGrid.set(c, (s = []));
+        if (!s) {
+          s = [];
+          walkGrid.set(c, s);
+        }
         s.push(ri, vi - 1);
-      }),
-    );
+      });
+    });
   }
 
   private densAt(x: number, z: number) {

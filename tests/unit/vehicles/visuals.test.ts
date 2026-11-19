@@ -115,7 +115,9 @@ test('failed nearest models leave capacity for the healthy fourth model', async 
   vi.spyOn(console, 'warn').mockImplementation(() => {});
   const assets = new VehicleVisuals(true),
     cars = [1, 2, 3, 4].map(car);
-  cars.forEach((c, i) => assets.attach(c, i === 3 ? 'volvo240' : 'micra-k11', c.fallback));
+  cars.forEach((c, i) => {
+    assets.attach(c, i === 3 ? 'volvo240' : 'micra-k11', c.fallback);
+  });
   assets.update(focus, 0.4);
   await settle(assets, cars.slice(0, 3));
   assets.update(focus, 0.4);
@@ -130,7 +132,7 @@ test.each([
 ])('detail cap $limit and range culling', async ({ coarse, limit }) => {
   const assets = new VehicleVisuals(coarse),
     cars = Array.from({ length: 9 }, (_, i) => car(i + 1));
-  cars.forEach(c => assets.attach(c, 'volvo240', c.fallback));
+  for (const c of cars) assets.attach(c, 'volvo240', c.fallback);
   assets.update(focus, 0.4);
   await settle(assets, cars);
   expect(cars.filter(c => assets.state(c)?.detailed)).toHaveLength(limit);

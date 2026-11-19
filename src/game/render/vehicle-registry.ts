@@ -94,6 +94,9 @@ export function pickVariant(type: string, roll: number): VehicleId | undefined {
   const variants = VEHICLE_VARIANTS[type];
   if (!variants) return undefined;
   let left = roll * variants.reduce((sum, [, weight]) => sum + weight, 0);
-  for (const [id, weight] of variants) if ((left -= weight) < 0) return id;
+  for (const [id, weight] of variants) {
+    left -= weight;
+    if (left < 0) return id;
+  }
   return variants[variants.length - 1][0];
 }

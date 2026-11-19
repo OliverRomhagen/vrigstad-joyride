@@ -96,7 +96,7 @@ export class Input {
       this.ly = e.clientY;
       try {
         canvas.setPointerCapture(e.pointerId);
-      } catch (err) {}
+      } catch {}
       if (this.g.started && !this.g.menuOpen && e.pointerType === 'mouse') this.lockMouse();
     }); // the kiosk menu needs the cursor
     // Only the mouse takes the locked path: a finger dragging while the mouse holds the lock keeps drag speed. The locked mouse's
@@ -104,7 +104,7 @@ export class Input {
     canvas.addEventListener('pointermove', e => {
       const lk = this.locked() && e.pointerType === 'mouse';
       if (!lk && e.pointerId !== this.dragId) return;
-      let dx, dy;
+      let dx: number, dy: number;
       if (lk) {
         dx = clamp(e.movementX, -LOCK_MAX_PX, LOCK_MAX_PX) * LOCK_K;
         dy = clamp(e.movementY, -LOCK_MAX_PX, LOCK_MAX_PX) * LOCK_K;
@@ -142,7 +142,7 @@ export class Input {
       joy.on = true;
       try {
         joyEl.setPointerCapture(e.pointerId);
-      } catch (err) {}
+      } catch {}
       joyMove(e);
     });
     joyEl.addEventListener('pointermove', e => {
@@ -193,6 +193,6 @@ export class Input {
     try {
       const p = canvas.requestPointerLock();
       if (p && p.catch) p.catch(() => {});
-    } catch (err) {}
+    } catch {}
   }
 }

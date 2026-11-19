@@ -67,7 +67,10 @@ export class RoadNetwork {
           for (let z = z0; z <= z1; z++) {
             const k = x + ',' + z;
             let list = this.grid.get(k);
-            if (!list) this.grid.set(k, (list = []));
+            if (!list) {
+              list = [];
+              this.grid.set(k, list);
+            }
             list.push(a[0], a[1], b[0], b[1], ri);
           }
         }
@@ -80,7 +83,10 @@ export class RoadNetwork {
       r.p.forEach((p, vi) => {
         const k = nodeKey(p);
         let list = this.junctions.get(k);
-        if (!list) this.junctions.set(k, (list = []));
+        if (!list) {
+          list = [];
+          this.junctions.set(k, list);
+        }
         list.push(ri, vi);
       });
     });
