@@ -1,0 +1,62 @@
+name: release
+
+# Actions → release → Run workflow (or `gh workflow run release.yml -f bump=alpha`) tags main and publishes a release.
+# Publishing announces it in Discord through the repository webhook (README, "Releases").
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: 'alpha: next alpha (v0.1.0-alpha.3 → alpha.4). patch, minor, major: from the latest non-alpha release.'
+        type: choice
+        options: [alpha, patch, minor, major]
+        default: alpha
+
+permissions:
+  contents: write
+
+concurrency: release
+
+jobs:
+  release:
+    name: Tag and publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Only from main
+        if: github.ref != 'refs/heads/main'
+        run: echo "::error::Run the release from main, not $GITHUB_REF_NAME." && exit 1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0   # all tags, to find the latest version
+      - name: Next version
+        id: version
+        env:
+          BUMP: ${{ inputs.bump }}
+        run: |
+          # Tags are vMAJOR.MINOR.PATCH or vMAJOR.MINOR.PATCH-alpha.N (README, "Releases").
+          tags=$(git tag --list 'v*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+(-alpha\.[0-9]+)?$' || true)
+          final=$(echo "$tags" | grep -v -- '-alpha' | sort -V | tail -1); final=${final:-v0.0.0}
+          IFS=. read -r ma mi pa <<< "${final#v}"
+          case "$BUMP" in
+            major) next="v$((ma + 1)).0.0" ;;
+            minor) next="v$ma.$((mi + 1)).0" ;;
+            patch) next="v$ma.$mi.$((pa + 1))" ;;
+            alpha)
+              # the next alpha of the newest version with alphas after the latest release, else the first alpha of the next minor
+              base="v$ma.$((mi + 1)).0"
+              last=$(echo "$tags" | grep -- '-alpha' | sed 's/-alpha\./ /' | sort -V -k1,1 -k2,2n | tail -1)
+              if [ -n "$last" ] && [ "$(printf '%s\n%s\n' "${last% *}" "$final" | sort -V | tail -1)" != "$final" ]; then
+                next="${last% *}-alpha.$(( ${last#* } + 1 ))"
+              else
+                next="$base-alpha.1"
+              fi ;;
+          esac
+          if git rev-parse -q --verify "refs/tags/$next" >/dev/null; then echo "::error::$next already exists."; exit 1; fi
+          echo "Latest release: $final. Next: $next"
+          echo "tag=$next" >> "$GITHUB_OUTPUT"
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+          BUMP: ${{ inputs.bump }}
+        run: gh release create "$TAG" --target "$GITHUB_SHA" --title "$TAG" --generate-notes $([ "$BUMP" = alpha ] && echo --prerelease)

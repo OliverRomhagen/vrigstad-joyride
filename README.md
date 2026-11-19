@@ -76,17 +76,17 @@ A `feat` pull request gets a playable build at `https://oliverromhagen.github.io
 
 ## Releases
 
-Versions use semver tags (`vMAJOR.MINOR.PATCH`) on `main`. Bump the minor version for new features and the patch version for fixes.
+Versions use semver tags on `main`: `vMAJOR.MINOR.PATCH`, and `vMAJOR.MINOR.PATCH-alpha.N` for prereleases. Bump the minor version for new features and the patch version for fixes.
 
-To cut a release, from an up-to-date `main`:
+To cut a release, open **Actions → release → Run workflow** and pick what to bump, or from a terminal:
 
 ```sh
-git tag -a v0.1.0 -m "v0.1.0"
-git push origin v0.1.0
-gh release create v0.1.0 --generate-notes
+gh workflow run release.yml -f bump=alpha   # alpha (v0.1.0-alpha.3 → alpha.4), patch, minor or major
 ```
 
-`--generate-notes` builds the changelog from merged PR titles, so keep those titles descriptive.
+The workflow finds the next version from the existing tags, tags the latest `main` and publishes the release (alphas as prereleases). Anyone with write access can run it. `patch`, `minor` and `major` count from the latest release that isn't an alpha, so `minor` after `v0.1.0-alpha.3` releases `v0.1.0`.
+
+The release notes are generated from merged PR titles, so keep those titles descriptive.
 
 Publishing a release also announces it in the Discord server: a repository webhook (Settings → Webhooks) posts `release` events to the channel's Discord webhook URL with `/github` appended. The URL is a secret, so it lives only in the webhook settings.
 
