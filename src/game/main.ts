@@ -23,7 +23,9 @@ import { CAT_ADOPT_PETS, CatColony } from './cats';
 import { Hud } from './hud';
 import { Crowd } from './pedestrians';
 import { Pets } from './pets';
+import { Commands, parseKr, UsageError } from './commands';
 import { Confetti, confettiCount } from './confetti';
+import { DevConsole, isConsoleKey } from './devconsole';
 import { earn, fine, KORV_KR, newWallet, pay, RAIN_KR, RULLE_KR, TREATS_KR, TRISS_KR, trissPrize } from './economy';
 import { CAT_SCRATCH_HP, crackLevel, LOW_HP, CRASH_COOL_S, crashCars, crashDamage, driverHurt, HP_MAX, heal, hurt, KORV_HP, impactSpeed, newHealth, regen, RULLE_HP, runOverHurt, smokeLevel, topSpeedShare, wakeSpot, wrecked } from './health';
 
@@ -338,17 +340,8 @@ const cars = [], police = [];
 const vehicleVisuals = new VehicleVisuals(coarse);
 const modelRnd = makeRnd(240);                 // own stream: which model a car wears doesn't shift the world's rolls
 const selectedVehicle = vehicleDefinition(new URLSearchParams(location.search).get('vehicle'));
-// dev cheats: on with npm run dev, or with ?cheats on any build (preview links too). Typing MYNT adds CHEAT_KR.
-// A typed word, in letters the game doesn't use, so it can't go off by accident or set off anything else.
-const CHEATS = import.meta.env.DEV || new URLSearchParams(location.search).has('cheats'), CHEAT_KR = 1000;
-const CHEAT_WORD = 'MYNT', CHEAT_GAP_MS = 1000;   // the letters in order, at most this long apart, with no other key between
-let cheatTyped = '', cheatAt = 0;
-function cheatKey(code) {
-  const t = performance.now(), ch = code.startsWith('Key') ? code.slice(3) : '';
-  if (t - cheatAt > CHEAT_GAP_MS) cheatTyped = '';
-  cheatAt = t; cheatTyped = ch ? (cheatTyped + ch).slice(-CHEAT_WORD.length) : '';
-  if (cheatTyped === CHEAT_WORD) { cheatTyped = ''; earn(wallet, CHEAT_KR); drawKr(); toast('Cheat: +' + fmtKr(CHEAT_KR) + '.', 1.5); }
-}
+// dev mode (#218): on with npm run dev, or with ?dev on any build (preview links too). § or ` then opens the dev console.
+const DEV = import.meta.env.DEV || new URLSearchParams(location.search).has('dev');
 let displayCar = null;
 const _f = new THREE.Vector3(), _r = new THREE.Vector3(), _m = new THREE.Matrix4();
 function placeCar(c) {
@@ -688,7 +681,7 @@ let menuKind = null, menuPick = null, menuStay = null;          // which menu is
 // items are [key, label]; the 'no' item is last and gets Esc
 function openMenu(kind, title, items, pick, stay = null) {
   nameIn = null; kmenu.innerHTML = '<p id="kmenu-t">' + title + '</p>' + items.map(([k, label], i) => '<button type="button" data-k="' + k + '"><kbd>' + (k === 'no' ? 'Esc' : k === 'ok' ? 'Enter' : i + 1) + '</kbd>' + label + '</button>').join('');
-  menuKind = kind; menuPick = pick; menuStay = stay; if (kmenu.hidden) { relock = locked(); if (relock) document.exitPointerLock(); } kmenu.hidden = false; }
+  menuKind = kind; menuPick = pick; menuStay = stay; if (kmenu.hidden) { relock = locked() || conRelock; if (locked()) document.exitPointerLock(); } kmenu.hidden = false; devcon.close(); }   // the menu takes over the console's relock
 function closeMenu() { kmenu.hidden = true; nameIn = null; menuKind = menuPick = menuStay = null; if (relock) { relock = false; lockMouse(); } }
 // a choice can open the next menu (a pet's "are you sure?"): then the menu stays up, and the cursor stays free
 function menuChoose(k) { const pick = menuPick; menuPick = null; if (pick) pick(k); if (!menuPick) closeMenu(); }
@@ -804,7 +797,10 @@ let camYaw = 0.6, camPitch = 0.34, lookOff = 0, lookIdle = 9;
 // ---------- input ----------
 const keys = {}, joy = { x: 0, y: 0, on: false };
 const KEYMAP = { KeyW: 'up', ArrowUp: 'up', KeyS: 'down', ArrowDown: 'down', KeyA: 'left', ArrowLeft: 'left', KeyD: 'right', ArrowRight: 'right', Space: 'brake', ShiftLeft: 'run', ShiftRight: 'run' };
-addEventListener('keydown', e => { if (!started) return; const k = KEYMAP[e.code]; if (CHEATS && !e.repeat && kmenu.hidden) cheatKey(e.code);
+addEventListener('keydown', e => { if (!started) return; const k = KEYMAP[e.code];
+  // keys typed in the console stop there and never get here; with the console open and focus elsewhere (a click on its output, Tab), keys go back to it
+  if (devcon.isOpen) { e.preventDefault(); if ((isConsoleKey(e) || e.code === 'Escape') && !e.repeat) devcon.close(); else devcon.focus(); return; }   // the key that takes focus back isn't typed
+  if (DEV && !e.repeat && kmenu.hidden && isConsoleKey(e)) { e.preventDefault(); devcon.open(); return; }
   if (nameIn && e.target === nameIn) { if (e.isComposing) return; if (e.code === 'Enter' || e.code === 'NumpadEnter' || e.code === 'Escape') { e.preventDefault(); menuChoose(e.code === 'Escape' ? 'no' : 'ok'); canvas.focus(); } return; }   // typing a name
   if (!kmenu.hidden) { const n = /^(?:Digit|Numpad)([1-9])$/.exec(e.code), b = n && kmenu.querySelectorAll('button')[+n[1] - 1];
     if (e.code === 'Escape' || b && b.dataset.k !== 'no') { e.preventDefault(); menuChoose(e.code === 'Escape' ? 'no' : b.dataset.k); return; }
@@ -820,9 +816,9 @@ const LOCK_K = 0.4;   // a locked mouse turns this much less per pixel than a dr
 const LOCK_MAX_PX = 120;   // per event; some browsers report a huge movementX right after locking, which would spin the camera
 const locked = () => document.pointerLockElement === canvas;
 function lockMouse() { if (locked() || !canvas.requestPointerLock) return; try { const p = canvas.requestPointerLock(); if (p && p.catch) p.catch(() => {}); } catch (err) {} }
-document.addEventListener('pointerlockchange', () => { if (!locked() && started && kmenu.hidden && !hud.toasting) toast('Click the game to look around with the mouse again.', 3); });
+document.addEventListener('pointerlockchange', () => { if (!locked() && started && kmenu.hidden && !devcon.isOpen && !hud.toasting) toast('Click the game to look around with the mouse again.', 3); });
 let dragId = null, lx = 0, ly = 0;
-canvas.addEventListener('pointerdown', e => { dragId = e.pointerId; lx = e.clientX; ly = e.clientY; try { canvas.setPointerCapture(e.pointerId); } catch (err) {}
+canvas.addEventListener('pointerdown', e => { devcon.close(); dragId = e.pointerId; lx = e.clientX; ly = e.clientY; try { canvas.setPointerCapture(e.pointerId); } catch (err) {}
   if (started && kmenu.hidden && e.pointerType === 'mouse') lockMouse(); });   // the kiosk menu needs the cursor
 // Only the mouse takes the locked path: a finger dragging while the mouse holds the lock keeps drag speed. The locked mouse's
 // clientX is frozen, so it must not touch lx / ly, or the next touch move jumps.
@@ -864,6 +860,24 @@ function drawHealth() { hud.drawHealth(health.hp, inCar ? pcar.dmg : null); }
 // money on its plate, in Swedish style: 10 000 kr
 const fmtKr = n => n.toLocaleString('sv-SE') + ' kr';
 function drawKr() { $('kr').textContent = fmtKr(wallet.kr); }
+
+// ---------- dev console ----------
+// Each module's commands are registered here until main.ts is split up; a module that owns its state can register its own.
+const commands = new Commands();
+let conRelock = false;
+const devcon = new DevConsole({ root: $('devcon'), commands,
+  onOpen: () => { for (const k in keys) keys[k] = false; conRelock = locked(); if (conRelock) document.exitPointerLock(); },
+  onClose: () => { canvas.focus(); if (conRelock && kmenu.hidden) lockMouse(); conRelock = false; } });   // an open menu needs the cursor
+const MYNT_KR = 1000;   // what the mynt cheat adds
+function addKr(n) { if (n >= 0) earn(wallet, n); else pay(wallet, Math.min(-n, wallet.kr)); drawKr(); return 'Wallet: ' + fmtKr(wallet.kr) + '.'; }
+commands.register('kr', { usage: '<amount>', help: 'add kronor to your wallet; a negative amount takes them', run: a => addKr(parseKr(a[0])) });
+// adopt <pet>: a new random pet of that kind, right by you. Only cats so far; another kind of pet adds its entry here.
+const ADOPT = new Map([['cat', () => { if (colony.owned) return 'You already have a cat, ' + colony.owned.name + '. Set it free first (P).';
+  if (inCar) return 'Get out of the car first.';   // a cat made by the car would land inside it
+  const k = colony.spawnNear(player); colony.adopt(k); showHeart(k); drawPets(); return 'Adopted a cat.'; }]]);
+commands.register('adopt', { usage: '<' + [...ADOPT.keys()].join(' | ') + '>', help: 'adopt a new random pet of that kind',
+  run: a => { const f = a[0] && ADOPT.get(a[0].toLowerCase()); if (!f) throw new UsageError(a[0] ? 'No pet called ' + a[0] + '.' : ''); return f(); } });
+commands.register('mynt', { help: 'add ' + fmtKr(MYNT_KR) + ' to your wallet', run: () => addKr(MYNT_KR) });
 drawKr();
 const broke = kr => '”Dä blir ' + kr + ' kronor. Va, har du inga pengar? Nä, då blir dä inget.”';
 let signT = 0, blink = false, blinkT = 0;
@@ -1034,5 +1048,5 @@ $('go').addEventListener('click', e => { started = true; $('intro').hidden = tru
 resize(); requestAnimationFrame(frame);
 
 // ---------- test hook: read-only state for the smoke tests (tests/e2e), so they do not have to read pixels ----------
-window.__joyride = { state: () => { const n = nearestCar(); return { started, x: player.x, z: player.z, y: player.y, yaw: camYaw, inCar, car: pcar ? pcar.type : null, near: n ? n.mode : null, speed: pcar ? pcar.v : 0, drift: pcar ? pcar.drift : 0, boost: pcar ? pcar.boost : 0, charge: pcar ? pcar.charge : 0, loose: pcar ? pcar.loose : 0, flickDir: pcar ? pcar.flickDir : 0, stars, cats: cats.length, treats, kr: wallet.kr, bills: bills.filter(b => b.visible).length, confetti: confetti.live, hp: health.hp, carDmg: pcar ? pcar.dmg : null, ownCat: !!colony.owned, vehicle: displayCar ? vehicleVisuals.state(displayCar) : null, nearSelectedVehicle: n === displayCar, activeVehicle: pcar ? vehicleVisuals.state(pcar) : null, traffic: cars.filter(c => c.mode === 'ai').map(c => ({ type: c.type, vehicle: vehicleVisuals.state(c) })) }; } };
+window.__joyride = { state: () => { const n = nearestCar(); return { started, x: player.x, z: player.z, y: player.y, yaw: camYaw, inCar, car: pcar ? pcar.type : null, near: n ? n.mode : null, speed: pcar ? pcar.v : 0, drift: pcar ? pcar.drift : 0, boost: pcar ? pcar.boost : 0, charge: pcar ? pcar.charge : 0, loose: pcar ? pcar.loose : 0, flickDir: pcar ? pcar.flickDir : 0, stars, cats: cats.length, treats, kr: wallet.kr, bills: bills.filter(b => b.visible).length, confetti: confetti.live, devcon: devcon.isOpen, hp: health.hp, carDmg: pcar ? pcar.dmg : null, ownCat: !!colony.owned, vehicle: displayCar ? vehicleVisuals.state(displayCar) : null, nearSelectedVehicle: n === displayCar, activeVehicle: pcar ? vehicleVisuals.state(pcar) : null, traffic: cars.filter(c => c.mode === 'ai').map(c => ({ type: c.type, vehicle: vehicleVisuals.state(c) })) }; } };
 })();

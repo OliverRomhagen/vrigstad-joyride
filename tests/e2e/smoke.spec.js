@@ -274,23 +274,46 @@ test.describe('game (index.html)', () => {
     expect(errors).toEqual([]);
   });
 
-  test('with ?cheats, typing MYNT adds money (and L makes it rain); without it, or with another key between, it does nothing', async ({ page }) => {
-    const type = async keys => { for (const c of keys) await page.keyboard.press('Key' + c); };
+  test('with ?dev, the console opens with §, its keys never move the player, kr and mynt add money, adopt cat gives you a cat (and L makes it rain)', async ({ page }) => {
     await page.goto('/index.html');
     await page.locator('#go').click();
-    await type('MYNT');
-    expect(await state(page)).toMatchObject({ kr: 200 });
-    await page.goto('/index.html?cheats');
+    await page.keyboard.press('Backquote');                            // no dev mode: no console
+    expect(await state(page)).toMatchObject({ devcon: false });
+    await page.goto('/index.html?dev');
     await page.locator('#go').click();
-    await type('MYKNT');
-    expect(await state(page)).toMatchObject({ kr: 200 });
-    await type('MYNT');
-    await expect(page.locator('#kr')).toHaveText('1 200 kr');
+    const { x, z } = await state(page);
+    await page.keyboard.press('Backquote');
+    expect(await state(page)).toMatchObject({ devcon: true });
+    await page.keyboard.down('KeyW');                                  // held in the console: the player stays put
+    await page.waitForTimeout(400);
+    await page.keyboard.up('KeyW');
+    expect(await state(page)).toMatchObject({ x, z });
+    await page.locator('#devcon input').fill('');                      // the held W typed a w
+    await page.locator('#devcon').click({ position: { x: 4, y: 4 } }); // focus off the input, console still open: keys still don't reach the game
+    await page.keyboard.down('KeyW');
+    await page.waitForTimeout(400);
+    await page.keyboard.up('KeyW');
+    expect(await state(page)).toMatchObject({ x, z, devcon: true });
+    await page.keyboard.type('kr 500');
+    await page.keyboard.press('Enter');
+    await expect(page.locator('#kr')).toHaveText('700 kr');
+    await expect(page.locator('#devcon li').last()).toHaveText('Wallet: 700 kr.');
+    await page.keyboard.type('mynt');                                  // the old cheat word, now a command: 1 000 kr
+    await page.keyboard.press('Enter');
+    await expect(page.locator('#kr')).toHaveText('1 700 kr');
+    const run = async line => { await page.keyboard.type(line); await page.keyboard.press('Enter'); return page.locator('#devcon li').last(); };
+    await expect(await run('adopt dog')).toHaveText('No pet called dog. Usage: adopt <cat>');
+    await expect(await run('adopt cat')).toHaveText('Adopted a cat.');
+    expect(await state(page)).toMatchObject({ ownCat: true });
+    await expect(page.locator('#pets')).toBeVisible();
+    await expect(await run('adopt cat')).toHaveText('You already have a cat, Kisse. Set it free first (P).');
+    await page.keyboard.press('Escape');
+    expect(await state(page)).toMatchObject({ devcon: false });
     await page.keyboard.press('KeyL');                                 // låt det regna: 1 000 kr in the air
-    await expect(page.locator('#kr')).toHaveText('200 kr');
+    await expect(page.locator('#kr')).toHaveText('700 kr');
     expect((await state(page)).bills).toBeGreaterThan(0);
     await page.keyboard.press('KeyL');                                 // not enough left: nothing is taken
-    expect(await state(page)).toMatchObject({ kr: 200 });
+    expect(await state(page)).toMatchObject({ kr: 700 });
   });
 });
 
