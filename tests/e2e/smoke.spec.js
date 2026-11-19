@@ -36,21 +36,25 @@ test.describe('game (index.html)', () => {
   // Take the lock away, so every run uses the drag fallback that touch and lock-refusing browsers get.
   test.beforeEach(async ({ page }) => { await page.addInitScript(() => { HTMLCanvasElement.prototype.requestPointerLock = undefined; }); });
 
-  test('loads with no console errors and a WebGL canvas', async ({ page }, testInfo) => {
-    const errors = watchErrors(page);
-    await page.goto('/index.html');
-    await expect(page.locator('#intro')).toBeVisible();
-    await expectWebGL(page);
-    expect(await state(page)).toMatchObject({ started: false, inCar: false });
-    await page.screenshot({ path: testInfo.outputPath('game-intro.png') });
-    expect(errors).toEqual([]);
-  });
-
-  test('Start hides the intro and shows the HUD', async ({ page }) => {
+  test('loads with no console errors, a WebGL canvas and the default fleet, and Start shows the HUD', async ({ page }, testInfo) => {
     const errors = watchErrors(page);
     await page.goto('/index.html');
     await expect(page.locator('#intro')).toBeVisible();                 // covers the whole view, HUD included
-    expect(await state(page)).toMatchObject({ started: false });
+    await expectWebGL(page);
+    expect(await state(page)).toMatchObject({ started: false, inCar: false });
+
+    // The Blender fleet is on without URL parameters, and each traffic type only wears its own models.
+    await expect.poll(async () => (await state(page)).vehicle?.detailed).toBe(true);
+    const s = await state(page);
+    expect(s.vehicle.id).toBe('volvo240');
+    expect(s.traffic.length).toBeGreaterThan(0);
+    const fleet = { volvo: ['volvo240', 'impala1970'], saab: ['saab900', 'xc70', 'micra-k11'], epa: ['duett-epa'] };
+    for (const c of s.traffic) expect(fleet[c.type] ?? [null]).toContain(c.vehicle?.id ?? null);
+    await expect(page.getByRole('link', { name: 'CC BY 4.0' })).toBeVisible();
+    const notice = await page.request.get('/media/vehicles/NOTICE.txt');
+    expect(notice.ok()).toBe(true);
+    expect(await notice.text()).toContain('Vehicle models by Axel Tidehorn');
+    await page.screenshot({ path: testInfo.outputPath('game-intro.png') });
 
     await page.locator('#go').click();
     await expect(page.locator('#intro')).toBeHidden();
@@ -162,7 +166,7 @@ test.describe('game (index.html)', () => {
     expect(errors).toEqual([]);
   });
 
-  test('Space makes the player jump and land again', async ({ page }) => {
+  test('Space jumps once per press, a tap between two frames still jumps, and R mid-jump lands at Torget', async ({ page }) => {
     const errors = watchErrors(page);
     await page.goto('/index.html');
     await page.locator('#go').click();
@@ -180,15 +184,14 @@ test.describe('game (index.html)', () => {
     await frames(page, 10);
     expect(await state(page)).toMatchObject({ y: 0 });
     await page.keyboard.up('Space');
-    expect(errors).toEqual([]);
-  });
 
-  test('a tap between two frames still jumps', async ({ page }) => {
-    const errors = watchErrors(page);
-    await page.goto('/index.html');
-    await page.locator('#go').click();
-    await keysNow(page, [['keydown', 'Space'], ['keyup', 'Space']]);
+    await frames(page, 30);
+    await keysNow(page, [['keydown', 'Space'], ['keyup', 'Space']]);   // down and up between the same two frames
     await expect.poll(async () => (await state(page)).y, { intervals: [30] }).toBeGreaterThan(0.2);
+    await page.keyboard.press('KeyR');                            // still in the air: back on the ground at Torget
+    expect(await state(page)).toMatchObject({ y: 0 });
+    await frames(page, 5);
+    expect(await state(page)).toMatchObject({ y: 0 });
     expect(errors).toEqual([]);
   });
 
@@ -214,19 +217,6 @@ test.describe('game (index.html)', () => {
     await frames(page, 10);
     expect(await state(page)).toMatchObject({ inCar: false, y: 0 });
     await keysNow(page, [['keyup', 'Space']]);
-    expect(errors).toEqual([]);
-  });
-
-  test('R in the middle of a jump puts the player on the ground at Torget', async ({ page }) => {
-    const errors = watchErrors(page);
-    await page.goto('/index.html');
-    await page.locator('#go').click();
-    await page.keyboard.press('Space');
-    await expect.poll(async () => (await state(page)).y, { intervals: [30] }).toBeGreaterThan(0.2);
-    await page.keyboard.press('KeyR');
-    expect(await state(page)).toMatchObject({ y: 0 });
-    await frames(page, 5);
-    expect(await state(page)).toMatchObject({ y: 0 });
     expect(errors).toEqual([]);
   });
 
