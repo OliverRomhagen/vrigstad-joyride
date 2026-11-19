@@ -1,5 +1,6 @@
-// Lab flags: which opt-in experiments are switched on (DESIGN.md, "Lab"; #227).
+// Lab flags: which opt-in experiments are switched on (#227).
 // Gameplay asks a LabFlags, never the URL or storage, so the menu (#78) and the console (#218) can set the same flags later.
+// The game reads them once, at page load, so until experiments can start and stop while it runs, a change takes a reload.
 
 /** One experiment: its id in `?lab=`, an English name, and one line on what it costs. */
 export interface LabExperiment {

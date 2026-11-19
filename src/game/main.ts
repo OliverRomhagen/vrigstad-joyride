@@ -36,11 +36,6 @@ const wrap = a => { while (a > Math.PI) a -= 2 * Math.PI; while (a < -Math.PI) a
 const rnd = makeRnd(57355);
 const pick = a => a[Math.floor(rnd() * a.length)];
 
-// ---------- lab: opt-in experiments, switched on with ?lab=<id>,<id> (src/lab/) ----------
-// each one is imported only when its flag is on, so with everything off the game runs exactly as without the lab
-const lab = LabFlags.fromSearch(location.search);
-if (lab.on('hello')) import('../lab/hello').then(m => m.startHello());
-
 // ---------- terrain height (matches the mesh triangles exactly) ----------
 // the world's queries are bound once, so the code below calls them as plain functions
 const heightfield = new Heightfield(D), hAt = heightfield.heightAt.bind(heightfield);
@@ -89,6 +84,12 @@ sun.shadow.mapSize.set(2048, 2048);
 Object.assign(sun.shadow.camera, { left: -110, right: 110, top: 110, bottom: -110, near: 50, far: 800 });
 sun.shadow.bias = -0.0006; sun.shadow.normalBias = 0.05;
 scene.add(sun, sun.target);
+
+// ---------- lab: opt-in experiments, switched on with ?lab=<id>,<id> (src/lab/) ----------
+// each one is imported only when its flag is on, so with everything off the game runs exactly as without the lab;
+// after the WebGL check, so none starts behind the fail screen, and one that fails to load or start only warns
+const lab = LabFlags.fromSearch(location.search);
+if (lab.on('hello')) import('../lab/hello').then(m => m.startHello()).catch(err => console.warn('Lab: hello failed', err));
 
 // ---------- ground texture (also feeds the minimap) ----------
 const CW = (coarse || renderer.capabilities.maxTextureSize < 4096) ? 2048 : 4096, K = CW / S;
