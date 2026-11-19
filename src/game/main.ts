@@ -593,7 +593,7 @@ const updateNpcs = crowd.update.bind(crowd);
 // ---------- lab: ragdolls, people your car knocks over fly and tumble, then get up (?lab=ragdoll, src/lab/ragdoll/) ----------
 let ragdolls = null;
 if (lab.on('ragdoll')) import('../lab/ragdoll').then(m => { ragdolls = new m.Ragdolls({ scene, world: { groundAt, collide }, crowd, coarse, geoCache, boxGeo, paintMat,
-  get pcar() { return inCar ? pcar : null; } }); });
+  get pcar() { return inCar ? pcar : null; } }); }).catch(err => console.warn('Lab: ragdoll failed', err));
 
 // ---------- cats: lounge by the house walls, wander a little, bolt from cars and running feet (src/game/cats.ts) ----------
 const TREAT_BAG = 3, TREAT_MAX = 9;                                  // treats per bag from the kiosk; how many fit in your pockets

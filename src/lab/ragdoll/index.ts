@@ -1,6 +1,6 @@
 // Ragdolls (?lab=ragdoll; part of #35): a pedestrian hit by your car at speed flies, tumbles and lies still for a moment, then gets up
 // and runs back to where they were walking. The physics is in ./ragdoll.ts; this file draws it and hands people back to the crowd.
-// No stars yet: the lab can't change the rules (DESIGN.md, "Lab"). That's for when it leaves the lab.
+// No stars yet: the lab can't change the rules (#227). That's for when it leaves the lab.
 import * as THREE from 'three';
 import { LOST_MAX_S, type Npc } from '../../game/pedestrians';
 import { makeRnd } from '../../world/random';
