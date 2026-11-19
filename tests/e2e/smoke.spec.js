@@ -75,7 +75,7 @@ test.describe('game (index.html)', () => {
     expect(errors).toEqual([]);
   });
 
-  test('W moves the player, E next to the parked Volvo gets you in, and it drives on its wheels', async ({ page }, testInfo) => {
+  test('W moves the player, E next to the parked Volvo gets you in, it drives on its wheels, and a crash damages it', async ({ page }, testInfo) => {
     test.setTimeout(180_000); // the simulation caps dt while software WebGL advances slowly
     await page.setViewportSize({ width: 640, height: 360 }); // keep software WebGL affordable with detailed cars
     const errors = watchErrors(page);
@@ -109,6 +109,13 @@ test.describe('game (index.html)', () => {
     expect(wheels.slice(2).every(w => w.steer === 0)).toBe(true);   // only the front wheels steer
     expect(await page.evaluate(() => document.getElementById('gl').getContext('webgl2').getError())).toBe(0);
     await page.screenshot({ path: testInfo.outputPath('game-in-volvo.png') });
+
+    // Held straight on, the Volvo soon hits something hard enough to dent it: traffic crossing Torget, or the house past it.
+    await page.keyboard.down('KeyW');
+    await expect.poll(async () => (await state(page)).carDmg, { intervals: [100], timeout: 120_000 }).toBeGreaterThan(0);
+    await page.keyboard.up('KeyW');
+    await expect(page.locator('#dmg')).not.toHaveAttribute('aria-valuenow', '0');
+    await page.screenshot({ path: testInfo.outputPath('game-crash.png') });
     expect(errors).toEqual([]);
   });
 

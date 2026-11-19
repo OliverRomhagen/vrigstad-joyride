@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
-  crackLevel, crashDamage, DMG_MAX, damageCar, driverHurt, HP_MAX, heal, hurt, impactSpeed, LIMP_TOP, newHealth, REGEN_DELAY_S, REGEN_HP_S, regen,
-  runOverHurt, smokeLevel, topSpeedShare, wrecked,
+  CRASH_COOL_S, crackLevel, crashCars, crashDamage, DMG_MAX, damageCar, driverHurt, HP_MAX, heal, hurt, impactSpeed, LIMP_TOP, newHealth, REGEN_DELAY_S, REGEN_HP_S, regen,
+  runOverHurt, smokeLevel, topSpeedShare, wakeSpot, wrecked,
 } from '../../../src/game/health';
 
 describe('player health', () => {
@@ -107,5 +107,59 @@ describe('car damage', () => {
     expect(crackLevel(20)).toBe(1);
     expect(crackLevel(50)).toBe(2);
     expect(crackLevel(99)).toBe(3);
+  });
+});
+
+describe('crashes', () => {
+  const car = (dmg = 0) => ({ dmg, hitAt: -9 });
+  const HARD_MS = 27;   // 20 m/s over CRASH_MIN_MS: 45 damage
+
+  it('damages both cars in a hard hit, and only the car against a wall', () => {
+    const a = car(), b = car();
+    expect(crashCars(0, HARD_MS, a, b).map((h) => h.car)).toEqual([a, b]);
+    expect(a.dmg).toBe(45);
+    expect(b.dmg).toBe(45);
+    const c = car();
+    expect(crashCars(0, HARD_MS, c, null).map((h) => h.car)).toEqual([c]);
+  });
+
+  it('ignores a slow bump, which also leaves the cooldown alone', () => {
+    const a = car();
+    expect(crashCars(0, 7, a, null)).toEqual([]);
+    expect(a).toEqual(car());
+  });
+
+  it('gives each car its own cooldown', () => {
+    const a = car(), b = car();
+    crashCars(0, HARD_MS, a, null);
+    expect(crashCars(CRASH_COOL_S / 2, HARD_MS, a, b).map((h) => h.car)).toEqual([b]);   // a was just hit; b still takes it
+    expect(a.dmg).toBe(45);
+    expect(crashCars(CRASH_COOL_S, HARD_MS, a, null)).toHaveLength(1);
+    expect(a.dmg).toBe(90);
+  });
+
+  it('says when a hit makes a car smoke more, and when it wrecks it instead', () => {
+    const a = car(40);
+    expect(crashCars(0, HARD_MS, a, null)).toEqual([{ car: a, wrecked: false, smokeUp: true }]);   // 40 → 85: black smoke
+    expect(crashCars(1, HARD_MS, a, null)).toEqual([{ car: a, wrecked: true, smokeUp: false }]);
+    expect(crashCars(2, HARD_MS, a, null)).toEqual([{ car: a, wrecked: false, smokeUp: false }]);   // already wrecked
+  });
+});
+
+describe('waking up after a knock-out', () => {
+  const home = { x: 0, z: 0 };
+  const places = [
+    { x: 100, z: 0, kind: 'safe', name: 'Storgatan' },
+    { x: 30, z: 0, kind: 'kiosk', name: 'Kiosken' },
+    { x: -60, z: 0, kind: 'safe', name: 'Torggatan' },
+  ];
+
+  it('comes to at the nearest safehouse when it is nearer than home', () => {
+    expect(wakeSpot(90, 0, home, places)).toBe(places[0]);
+    expect(wakeSpot(-50, 0, home, places)).toBe(places[2]);
+  });
+
+  it('comes to at home when that is nearer, even with a kiosk closer still', () => {
+    expect(wakeSpot(25, 0, home, places)).toBe(home);
   });
 });
