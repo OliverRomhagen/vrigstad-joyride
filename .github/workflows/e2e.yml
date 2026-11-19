@@ -42,6 +42,8 @@ jobs:
       # The image has no Python: tools/process.py and the test server need it.
       - run: apt-get update -qq && apt-get install -y -qq --no-install-recommends python3
       - uses: actions/checkout@v4
+      # The container runs as root on a workspace the runner owns, and checkout trusts it only for its own git calls.
+      - run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - uses: actions/setup-node@v4
         with:
           node-version: lts/*
