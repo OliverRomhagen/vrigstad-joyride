@@ -59,6 +59,8 @@ test.describe('game (index.html)', () => {
     await expect(page.locator('#stars')).toHaveText('★★★');
     await expect(page.locator('#stars b')).toHaveCount(0);              // <b> is a lit star: none when not wanted
     await expect(page.locator('#mini')).toBeVisible();
+    await expect(page.locator('#hp')).toHaveAttribute('aria-valuenow', '100');   // full health
+    expect(await state(page)).toMatchObject({ hp: 100, carDmg: null });
 
     // The Blender fleet is on without URL parameters, and each traffic type only wears its own models.
     await expect.poll(async () => (await state(page)).vehicle?.detailed).toBe(true);
@@ -73,8 +75,8 @@ test.describe('game (index.html)', () => {
     expect(errors).toEqual([]);
   });
 
-  test('W moves the player, E next to the parked Volvo gets you in, and it drives on its wheels', async ({ page }, testInfo) => {
-    test.setTimeout(180_000); // the simulation caps dt while software WebGL advances slowly
+  test('W moves the player, E next to the parked Volvo gets you in, it drives on its wheels, and a crash damages it', async ({ page }, testInfo) => {
+    test.setTimeout(240_000); // the simulation caps dt while software WebGL advances slowly
     await page.setViewportSize({ width: 640, height: 360 }); // keep software WebGL affordable with detailed cars
     const errors = watchErrors(page);
     await page.goto('/index.html');
@@ -90,7 +92,8 @@ test.describe('game (index.html)', () => {
     await getInVolvo(page);
     await expect(page.locator('#speed')).toBeVisible();
     await expect(page.locator('#carname')).toHaveText('Volvo 240');
-    expect(await state(page)).toMatchObject({ inCar: true, car: 'volvo', stars: 0 });
+    await expect(page.locator('#dmg')).toHaveAttribute('aria-valuenow', '0');   // the car's damage bar, empty
+    expect(await state(page)).toMatchObject({ inCar: true, car: 'volvo', stars: 0, carDmg: 0 });
     // Every model shares the loader, materials and controller, and the unit tests decode each GLB, so one is driven here.
     await expect.poll(async () => (await state(page)).activeVehicle).toMatchObject({ id: 'volvo240', status: 'loaded', detailed: true });
     expect((await state(page)).activeVehicle.wheels).toHaveLength(4);
@@ -106,6 +109,13 @@ test.describe('game (index.html)', () => {
     expect(wheels.slice(2).every(w => w.steer === 0)).toBe(true);   // only the front wheels steer
     expect(await page.evaluate(() => document.getElementById('gl').getContext('webgl2').getError())).toBe(0);
     await page.screenshot({ path: testInfo.outputPath('game-in-volvo.png') });
+
+    // Held straight on, the Volvo soon hits something hard enough to dent it: traffic crossing Torget, or the house past it.
+    await page.keyboard.down('KeyW');
+    await expect.poll(async () => (await state(page)).carDmg, { intervals: [100], timeout: 90_000 }).toBeGreaterThan(0);   // inside the test's 240 s, so a miss fails here
+    await page.keyboard.up('KeyW');
+    await expect(page.locator('#dmg')).not.toHaveAttribute('aria-valuenow', '0');
+    await page.screenshot({ path: testInfo.outputPath('game-crash.png') });
     expect(errors).toEqual([]);
   });
 
@@ -227,7 +237,7 @@ test.describe('game (index.html)', () => {
     expect(errors).toEqual([]);
   });
 
-  test('cats are around, and the kiosk sells cat treats from its menu', async ({ page }, testInfo) => {
+  test('cats are around, and the kiosk sells cat treats and food from its menu', async ({ page }, testInfo) => {
     const errors = watchErrors(page);
     await page.goto('/index.html');
     await page.locator('#go').click();
@@ -252,6 +262,13 @@ test.describe('game (index.html)', () => {
     await page.keyboard.press('Escape');
     await expect(page.locator('#kmenu')).toBeHidden();
     expect(await state(page)).toMatchObject({ treats: 3 });
+
+    await page.keyboard.press('KeyE');                                 // food: at full health the kiosk won't sell it, and health stays full
+    await expect(page.locator('#kmenu')).toBeVisible();
+    await page.keyboard.press('Digit3');
+    await expect(page.locator('#kmenu')).toBeHidden();
+    await expect(page.locator('#toast')).toContainText('mätt');
+    expect(await state(page)).toMatchObject({ hp: 100 });
     expect(errors).toEqual([]);
   });
 });

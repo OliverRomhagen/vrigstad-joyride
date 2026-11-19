@@ -1,9 +1,11 @@
-// HUD: toasts, wanted stars, the minimap and the street sign. DOM over the canvas.
+// HUD: toasts, wanted stars, the health and damage bars, the minimap and the street sign. DOM over the canvas.
 // Moved from src/game/main.ts (#177); main.ts passes in what the HUD reads from the rest of the game.
 import type { Label } from '../world/data';
 import type { RoadNetwork } from '../world/roads';
+import { LOW_HP } from './health';
 
 const MR = 210;   // the minimap shows this far around the player (m)
+const BAD_DAMAGE = 50;   // the damage bar turns red from this much car damage (0–100)
 
 type Point = { x: number; z: number };
 
@@ -22,7 +24,7 @@ export interface HudDeps {
   readonly blink: boolean;               // the police lights' phase, so the minimap blinks with them
 }
 
-/** The HUD drawn over the canvas: shows toasts, the wanted stars, the minimap and the street sign. */
+/** The HUD drawn over the canvas: shows toasts, the wanted stars, the health and damage bars, the minimap and the street sign. */
 export class Hud {
   private readonly g: HudDeps;
   private readonly mctx: CanvasRenderingContext2D;
@@ -40,6 +42,17 @@ export class Hud {
   get toasting() { return this.toastT > 0; }
 
   toast(msg: string, secs?: number, cls?: string) { const t = this.g.$('toast'); t.textContent = msg; t.className = 'plate' + (cls ? ' ' + cls : ''); t.hidden = false; t.style.opacity = '1'; this.toastT = secs || 3.5; }
+
+  hideToast() { this.toastT = 0; this.g.$('toast').hidden = true; }
+
+  /** Sets the health bar, and the damage bar on the speed plate while driving (`carDamage` is null on foot). */
+  drawHealth(hp: number, carDamage: number | null) {
+    this.meter('hp', hp, hp < LOW_HP);
+    if (carDamage !== null) this.meter('dmg', carDamage, carDamage >= BAD_DAMAGE);
+  }
+
+  private meter(id: string, v: number, bad: boolean) { const el = this.g.$(id), n = String(Math.round(v)); if (el.getAttribute('aria-valuenow') === n) return;
+    el.setAttribute('aria-valuenow', n); (el.querySelector('b') as HTMLElement).style.width = n + '%'; el.classList.toggle('bad', bad); }
 
   /** Fades the toast out at the end of its time. */
   update(dt: number) { const { $ } = this.g; if (this.toastT > 0) { this.toastT -= dt; if (this.toastT <= 0.3) $('toast').style.opacity = '0'; if (this.toastT <= 0) $('toast').hidden = true; } }

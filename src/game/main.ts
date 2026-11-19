@@ -23,6 +23,7 @@ import { CAT_ADOPT_PETS, CatColony } from './cats';
 import { Hud } from './hud';
 import { Crowd } from './pedestrians';
 import { Pets } from './pets';
+import { CAT_SCRATCH_HP, crackLevel, LOW_HP, CRASH_COOL_S, crashCars, crashDamage, driverHurt, HP_MAX, heal, hurt, KORV_HP, impactSpeed, newHealth, regen, RULLE_HP, runOverHurt, smokeLevel, topSpeedShare, wakeSpot, wrecked } from './health';
 
 (function () {
 'use strict';
@@ -291,10 +292,11 @@ const PROFILES = {
 };
 PROFILES.polis = Object.assign({}, PROFILES.volvo, { extra: () => [[1.78, 0.2, 3.2, 0, 0.7, 0.2, '#1f4fa3'], [1.79, 0.08, 3.2, 0, 0.56, 0.2, '#f2d21f']] });
 const tyreGeo = new THREE.CylinderGeometry(0.32, 0.32, 0.24, 16).rotateZ(Math.PI / 2), hubGeo = new THREE.CylinderGeometry(0.17, 0.17, 0.26, 10).rotateZ(Math.PI / 2);
+const TRACTOR_CAB = { glass: [[0.05, 1.38], [1.45, 1.38], [1.45, 2.62], [0.25, 2.62], [0.05, 2.3]], gw: 1.35 };
 // tractor: big rear wheels, small front wheels, a sloped bonnet and a glass cab (same size as the old box model)
 function softTractor(c) {
   const parts = [[extrude([[-2.15, 0.78], [0.35, 0.78], [0.35, 1.52], [-1.85, 1.52], [-2.15, 1.3]], 0.95, 0.08), c],
-    [extrude([[0.05, 1.38], [1.45, 1.38], [1.45, 2.62], [0.25, 2.62], [0.05, 2.3]], 1.35, 0.05), GLASS],
+    [extrude(TRACTOR_CAB.glass, TRACTOR_CAB.gw, 0.05), GLASS],
     [extrude([[-0.02, 2.6], [1.52, 2.6], [1.52, 2.72], [-0.02, 2.72]], 1.45, 0.04), c],
     [new THREE.CylinderGeometry(0.06, 0.06, 0.7, 8).translate(0.3, 1.85, -1.6), '#333']];
   for (const x of [-1, 1]) {
@@ -348,7 +350,7 @@ function addCar(type, x, z, h, mode, assetId = pickVariant(type, modelRnd())) {
   const T = TYPES[type], color = pick(T.cols), fallback = new THREE.Mesh(carGeo(type, color), carMat), mesh = assetId ? new THREE.Group() : fallback;
   fallback.castShadow = true; if (assetId) mesh.add(fallback); blob(mesh, 2.8, 5.8);
   if (type === 'polis') { const bar = new THREE.Mesh(barGeo, barMat); bar.position.set(0, 1.62, 0.2); fallback.add(bar); }
-  const c = { type, T, mesh, x, z, h, vh: h, v: 0, slip: 0, drift: 0, charge: 0, yr: 0, spin: 0, loose: 0, flickDir: 0, flickT: 9, boost: 0, mode, wet: false, owned: false, blocked: 0, ghost: 0, stuck: 0, rev: 0, revSteer: 1 };
+  const c = { type, T, mesh, x, z, h, vh: h, v: 0, slip: 0, drift: 0, charge: 0, yr: 0, spin: 0, loose: 0, flickDir: 0, flickT: 9, boost: 0, mode, wet: false, owned: false, blocked: 0, ghost: 0, stuck: 0, rev: 0, revSteer: 1, dmg: 0, hitAt: -9, body: fallback };
   scene.add(mesh); cars.push(c); placeCar(c); if (assetId) { vehicleVisuals.attach(c, assetId, fallback, color); } return c;
 }
 function carName(c) { return vehicleVisuals.definition(c)?.name || c.T.name; }
@@ -395,7 +397,7 @@ function updateTraffic(c, dt, T) {
       if (fw > 0 && fw < 11 && Math.abs(-dx * fz + dz * fx) < 1.7) { blocked = true; break; } }
     if (!blocked && !inCar) { const dx = player.x - c.x, dz = player.z - c.z, fw = dx * fx + dz * fz; if (fw > 0 && fw < 9 && Math.abs(-dx * fz + dz * fx) < 1.8) blocked = true; } }
   c.blocked = blocked ? c.blocked + dt : 0; if (c.blocked > 6) { c.ghost = 3; c.blocked = 0; }
-  const target = blocked ? 0 : Math.min(c.T.max, [13.9, 11, 8.3][R[c.ri].c]);
+  const target = blocked || wrecked(c) ? 0 : Math.min(c.T.max * topSpeedShare(c.dmg), [13.9, 11, 8.3][R[c.ri].c]);
   c.v += clamp(target - c.v, -9 * dt, 3 * dt);
   c.t += c.v * dt;
   for (let g = 0; c.t >= L && g < 8; g++) { c.t -= L; advance(c); const q = R[c.ri]; A = q.p[c.a]; B = q.p[c.a + c.dir]; L = Math.max(0.01, Math.hypot(B[0] - A[0], B[1] - A[1])); }
@@ -420,6 +422,7 @@ const TURBO_AT = [1, 2.2], TURBO_S = [0.7, 1.3];   // s of sliding for a blue / 
 const TURBO_ACC = 14, TURBO_TOP = 1.2;         // m/s² of boost; top speed multiplier while boosting
 // shared driving model for the player and the police; only the player passes canDrift
 function drive(c, thr, steer, brake, dt, canDrift) {
+  if (wrecked(c)) { thr = 0; c.boost = 0; }   // the engine is dead: it only rolls to a stop
   const road = nearestRoad(c.x, c.z).d < 0.6; c.wet = inWater(c.x, c.z);
   if (c.drift) { if (!brake || c.v < DRIFT_KEEP_V || c.wet) { const t = c.charge > TURBO_AT[1] ? 1 : c.charge > TURBO_AT[0] ? 0 : -1;
       if (!brake && t >= 0) c.boost = TURBO_S[t]; c.drift = 0; c.loose = RECOVER_S; c.spin = c.yr; } }
@@ -434,7 +437,7 @@ function drive(c, thr, steer, brake, dt, canDrift) {
   else if (thr < 0) c.v += (c.v > 0.5 ? 20 : c.T.acc * 0.6) * thr * dt;
   else c.v -= Math.sign(c.v) * Math.min(Math.abs(c.v), (road ? 2 : 5) * dt);
   if (c.boost > 0) { c.boost -= dt; if (c.wet) c.boost = 0; }   // water puts the turbo out
-  const max = (c.wet ? 2.5 : c.T.max * (road ? 1 : c.T.off)) * (c.boost > 0 ? TURBO_TOP : 1);
+  const max = (c.wet ? 2.5 : c.T.max * (road ? 1 : c.T.off)) * (c.boost > 0 ? TURBO_TOP : 1) * topSpeedShare(c.dmg);
   if (c.boost > 0 && c.v < max) c.v = Math.min(max, c.v + TURBO_ACC * dt);   // only up to the limit, so it never cancels the overspeed braking below
   if (c.v > max) c.v = Math.max(max, c.v - 14 * dt);
   if (c.v < -7) c.v = -7;
@@ -449,13 +452,124 @@ function drive(c, thr, steer, brake, dt, canDrift) {
   else { c.vh = c.h; c.slip = 0; }
   c.x += Math.sin(c.vh) * c.v * dt; c.z -= Math.cos(c.vh) * c.v * dt;
   c.x = clamp(c.x, -HALF + 4, HALF - 4); c.z = clamp(c.z, -HALF + 4, HALF - 4);
-  if (collide(c, 1.5)) { c.v *= Math.pow(0.02, dt); c.drift = c.loose = c.boost = 0; }     // a wall ends the slide, and the turbo with it (charged or firing)
+  const vx = Math.sin(c.vh) * c.v, vz = -Math.cos(c.vh) * c.v, bx = c.x, bz = c.z;   // velocity and place before any hit: the push out gives the hit's normal
+  if (collide(c, 1.5)) { const nx = c.x - bx, nz = c.z - bz, L = Math.hypot(nx, nz); if (L > 1e-6) crash(c, null, impactSpeed(vx, vz, nx / L, nz / L));
+    c.v *= Math.pow(0.02, dt); c.drift = c.loose = c.boost = 0; }     // a wall ends the slide, and the turbo with it (charged or firing)
   for (const o of cars) { if (o === c) continue; const dx = c.x - o.x, dz = c.z - o.z, d = Math.hypot(dx, dz);
-    if (d < 2.7 && d > 0.01) { const push = 2.7 - d; c.x += dx / d * push; c.z += dz / d * push;
+    if (d < 2.7 && d > 0.01) { const push = 2.7 - d, oh = o.mode === 'ai' ? o.h : o.vh;   // traffic steers by h alone
+      crash(c, o, impactSpeed(vx - Math.sin(oh) * o.v, vz + Math.cos(oh) * o.v, dx / d, dz / d)); c.x += dx / d * push; c.z += dz / d * push;
       if (Math.abs(c.v) > 6 && c === pcar && o.mode === 'police' && ramCool <= 0) { ramCool = 6; addStar('Ramming a police car. That will not help.'); }
       if (o.mode === 'parked' || o.mode === 'idle') { o.x -= dx / d * push * 0.4; o.z -= dz / d * push * 0.4; placeCar(o); }
       c.v *= Math.pow(0.05, dt); } }
   placeCar(c);
+}
+
+// one hit: both cars take the damage (crashCars in health.ts), and the player too if they're in one. This only adds what you hear and feel;
+// the glass cracks in updateSmoke
+const POLICE_WRECK_SEEN_M = 80;                // "the police car is wrecked" only when it happens this close to the camera
+function crash(c, o, impact) {
+  const hits = crashCars(clockS, impact, c, o); if (!hits.length) return;
+  let said = false;   // one line per crash: wrecked, then smoke, then the crash itself
+  for (const { car: k, wrecked: w, smokeUp } of hits) {
+    if (w && k === pcar) { const cat = catAboard(); toast((cat ? '”Ut, ' + cat.name + '! Den här bilen ä slut.”\n”Mjäu.”' : pickLine(WRECK_LINES)) + ' The car is wrecked. Get out and find another.', 4); said = true; }
+    else if (w && k.mode === 'police' && Math.hypot(k.x - camera.position.x, k.z - camera.position.z) < POLICE_WRECK_SEEN_M) { toast('The police car is wrecked.', 3); said = true; }
+    else if (smokeUp && k === pcar) { toast(SMOKE_LINES[smokeLevel(k.dmg)], 3); said = true; } }
+  if (hits.some(h => h.car === pcar)) { const n = driverHurt(impact); hurtPlayer(n); shake(crashDamage(impact));
+    const cat = catAboard();   // with your cat along, any real crash is about the cat; without, only one that hurts you
+    if ((n > 0 || cat) && !said && clockS - crashLineAt > CRASH_LINE_S) { crashLineAt = clockS; toast(cat ? '”Förlåt, ' + cat.name + '! Ä du hel?”\n”Fräs!”' : pickLine(CRASH_LINES), 2.5); } }
+}
+// what you say about a crash (#213 moves these into a speech bubble over you); picked from their own random stream, so they don't shift the world's rolls
+const lineRnd = makeRnd(213), pickLine = a => a[Math.floor(lineRnd() * a.length)];
+const CRASH_LINE_S = 6;                        // at most one "that hurt" line this often (s)
+const CRASH_LINES = ['”AJ! Dä där kändes i nacken.”', '”Hoppsan. Dä där va inte meningen.”', '”Va fan, vem satte dit den där?!”'];
+const WRECK_LINES = ['”Nä, nu ä den kaputt.”', '”Dä va dä, den bilen.”', '”Den rullar inte mer, den.”'];
+const SMOKE_LINES = [null, '”Hörru, dä ryker ur motorn!”', '”Svart rök… dä ä inte bra, dä.”'];   // by smokeLevel
+let crashLineAt = -9;
+let runOverAt = -9;   // the player's own cooldown for being run over, apart from the cars' crash cooldowns
+// your cat riding in your car: then the lines are about it (you first, then the cat, each on their own line)
+const catAboard = () => colony.owned && colony.owned.ride === pcar ? colony.owned : null;
+const CAT_FAST_MS = 25, CAT_CALM_MS = 20;      // above ~90 km/h with your cat along you tell it to hold on; it can come again once you've been below ~72 km/h
+let catFastSaid = false;
+function catRideLines() { const cat = inCar && catAboard(), v = inCar ? Math.abs(pcar.v) : 0;
+  if (cat && v > CAT_FAST_MS && !catFastSaid) { catFastSaid = true; toast('”Håll i dä, ' + cat.name + '!”\n”MJAAAU!”', 2.5); }
+  else if (v < CAT_CALM_MS) catFastSaid = false; }
+
+// camera shake on a crash: a jolt that dies away, bigger for a harder hit; none with reduced motion
+const SHAKE_S = 0.45, SHAKE_MIN_M = 0.08, SHAKE_MAX_M = 0.5, SHAKE_PER_DMG_M = 1 / 150;   // s it lasts; camera offset (m) at the smallest and largest hit, and per point of car damage
+const calmMotion = matchMedia('(prefers-reduced-motion: reduce)');
+let shakeT = 0, shakeM = 0;
+const dmgRnd = makeRnd(808);                   // own stream for the shake and the smoke puffs, which roll every frame
+function shake(dmg) { if (calmMotion.matches) return; const m = Math.min(SHAKE_MAX_M, SHAKE_MIN_M + dmg * SHAKE_PER_DMG_M); if (shakeT <= 0 || m > shakeM) shakeM = m; shakeT = SHAKE_S; }
+
+// cracked glass: a crack texture laid over the windscreen and rear window (material 0) and the side windows (material 1), worse at each crackLevel
+const CRACK_OUT_M = 0.06;                      // how far the cracks sit outside the glass profile, past its bevel
+function crackTex(dense) {
+  const S = 256, cv = document.createElement('canvas'); cv.width = cv.height = S; const g = cv.getContext('2d'), r = makeRnd(dense ? 81 : 80);
+  g.lineCap = 'round';
+  for (let hit = 0; hit < (dense ? 4 : 1); hit++) {   // each hit: a star of jagged rays, and broken rings round its centre
+    const cx = S * (0.3 + r() * 0.4), cy = S * (0.3 + r() * 0.4), rays = dense ? 14 : 9;
+    g.strokeStyle = 'rgba(235,240,245,.9)'; g.lineWidth = dense ? 2.4 : 2;
+    for (let i = 0; i < rays; i++) { let a = (i / rays) * Math.PI * 2 + r() * 0.4, x = cx, y = cy; const L = S * (0.25 + r() * (dense ? 0.5 : 0.3));
+      g.beginPath(); g.moveTo(x, y); for (let d = 0; d < L; d += 14) { a += (r() - 0.5) * 0.5; x += Math.cos(a) * 14; y += Math.sin(a) * 14; g.lineTo(x, y); } g.stroke(); }
+    g.lineWidth = 1.5;
+    for (let k = 1; k <= (dense ? 3 : 2); k++) { const R = k * S * 0.06 * (1 + r() * 0.5);
+      for (let i = 0; i < rays; i++) if (r() < 0.7) { const a = (i / rays) * Math.PI * 2; g.beginPath(); g.arc(cx, cy, R * (0.9 + r() * 0.2), a, a + (Math.PI * 2) / rays * 0.8); g.stroke(); } }
+    g.fillStyle = 'rgba(235,240,245,.55)'; g.beginPath(); g.arc(cx, cy, dense ? 7 : 5, 0, Math.PI * 2); g.fill();
+  }
+  const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; return t;
+}
+const crackMat = d => new THREE.MeshBasicMaterial({ map: crackTex(d), transparent: true, depthWrite: false, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 });
+const CRACK_OFF = new THREE.MeshBasicMaterial({ visible: false }), CRACK_LIGHT = crackMat(false), CRACK_HEAVY = crackMat(true);
+const CRACK_MATS = [null, [CRACK_LIGHT, CRACK_OFF], [CRACK_HEAVY, CRACK_LIGHT], [CRACK_HEAVY, CRACK_HEAVY]];
+const CRACK_REAR = { saab: 2 };                // index of the glass profile's point where the rear window starts (default 1); the Saab's is its hatch
+const crackGeoCache = {};
+function crackGeo(t) {
+  if (crackGeoCache[t]) return crackGeoCache[t];
+  const P = t === 'traktor' ? TRACTOR_CAB : PROFILES[t], G = P.glass, n = G.length, pos = [], uv = [];
+  const cx = G.reduce((a, p) => a + p[0], 0) / n, cy = G.reduce((a, p) => a + p[1], 0) / n;   // profile x is the car's z (front is -z), profile y is height
+  const pane = (p, q) => {                     // a quad across the car over the profile edge p–q, pushed out away from the middle of the glass
+    let nx = q[1] - p[1], ny = p[0] - q[0]; const L = Math.hypot(nx, ny); nx /= L; ny /= L;
+    if (nx * ((p[0] + q[0]) / 2 - cx) + ny * ((p[1] + q[1]) / 2 - cy) < 0) { nx = -nx; ny = -ny; }
+    const e = (a, b, k) => [a[0] + (b[0] - a[0]) * k + nx * CRACK_OUT_M, a[1] + (b[1] - a[1]) * k + ny * CRACK_OUT_M], A = e(p, q, 0.08), B = e(p, q, 0.92), w = P.gw / 2 - 0.1;
+    pos.push(-w, A[1], A[0], w, A[1], A[0], w, B[1], B[0], -w, A[1], A[0], w, B[1], B[0], -w, B[1], B[0]); uv.push(0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1);
+  };
+  const ri = CRACK_REAR[t] || 1;
+  pane(G[n - 1], G[0]); pane(G[ri], G[ri + 1]);
+  const front = pos.length / 3;
+  const S = G.map(p => [cx + (p[0] - cx) * 0.88, cy + (p[1] - cy) * 0.88]);   // side windows: the profile shrunk a little, so the cracks stay off the pillars
+  const x0 = Math.min(...S.map(p => p[0])), x1 = Math.max(...S.map(p => p[0])), y0 = Math.min(...S.map(p => p[1])), y1 = Math.max(...S.map(p => p[1]));
+  const tri = THREE.ShapeUtils.triangulateShape(S.map(p => new THREE.Vector2(p[0], p[1])), []);
+  for (const side of [-1, 1]) for (const f of tri) for (const i of f) { pos.push(side * (P.gw / 2 + 0.015), S[i][1], S[i][0]); uv.push((S[i][0] - x0) / (x1 - x0), (S[i][1] - y0) / (y1 - y0)); }
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  g.addGroup(0, front, 0); g.addGroup(front, pos.length / 3 - front, 1);
+  return (crackGeoCache[t] = g);
+}
+// a car model (#176) cracks its own glass: each of its glass_ parts, with texture coordinates added, split like crackGeo into the panes
+// that face forwards or backwards (material 0) and the rest (material 1); the models' glass has no texture coordinates of its own
+const MODEL_GLASS_FLAT = 0.94;                 // glass whose normal is closer to straight up than this (about 20°) gets no cracks: a raked windscreen still does
+const modelCrackGeos = new WeakMap(), _ga = new THREE.Vector3(), _gb = new THREE.Vector3(), _gc = new THREE.Vector3();
+function modelCrackGeo(src) {
+  let g = modelCrackGeos.get(src); if (g) return g;
+  const s = src.index ? src.toNonIndexed() : src, P = s.attributes.position, pos = [[], []], uv = [[], []];
+  s.computeBoundingBox(); const { min: m, max: M } = s.boundingBox, w = M.x - m.x, h = M.y - m.y, l = M.z - m.z;
+  for (let i = 0; i < P.count; i += 3) {
+    _ga.fromBufferAttribute(P, i); _gb.fromBufferAttribute(P, i + 1); _gc.fromBufferAttribute(P, i + 2);
+    const n = _gc.sub(_gb).cross(_gb.clone().sub(_ga)).normalize(); if (Math.abs(n.y) > MODEL_GLASS_FLAT) continue;   // the glass's flat top, hidden under the roof
+    const k = Math.abs(n.z) > Math.abs(n.x) ? 0 : 1;   // the models face -z
+    for (let j = 0; j < 3; j++) { _ga.fromBufferAttribute(P, i + j); pos[k].push(_ga.x, _ga.y, _ga.z); uv[k].push(k ? (_ga.z - m.z) / l : (_ga.x - m.x) / w, (_ga.y - m.y) / h); }
+  }
+  g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute([...pos[0], ...pos[1]], 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute([...uv[0], ...uv[1]], 2));
+  g.addGroup(0, pos[0].length / 3, 0); g.addGroup(pos[0].length / 3, pos[1].length / 3, 1);
+  modelCrackGeos.set(src, g); return g;
+}
+// the procedural cracks go on the procedural body, so they hide with it when the model shows; the model, which loads later, gets its own
+function crackGlass(c) {
+  const lv = crackLevel(c.dmg); if (!lv) return;
+  if (c.crack !== lv) { if (!c.crackMesh) { c.crackMesh = new THREE.Mesh(crackGeo(c.type), CRACK_MATS[lv]); c.body.add(c.crackMesh); }
+    c.crackMesh.material = CRACK_MATS[lv]; if (c.modelCrack) for (const m of c.modelCrack) m.material = CRACK_MATS[lv]; c.crack = lv; }
+  if (!c.modelCrack && vehicleVisuals.loaded(c) && c.mesh.getObjectByName('glass_envelope')) { c.modelCrack = [];
+    c.mesh.traverse(o => { if (o.isMesh && o.name.startsWith('glass_')) c.modelCrack.push(o); });
+    c.modelCrack = c.modelCrack.map(gl => { const m = new THREE.Mesh(modelCrackGeo(gl.geometry), CRACK_MATS[lv]); gl.add(m); return m; }); }
 }
 
 // ---------- drift effects: sparks at the rear wheels, a flame while boosting, skid marks (src/game/render/drift-fx.ts) ----------
@@ -473,7 +587,7 @@ let treats = 0;
 // the getters are read when the cats use them, so they can name things declared further down
 const colony = new CatColony({ scene, buildings, inWater, groundAt, half: HALF, coarse, wrap, geoCache, boxGeo, paintMat, blob, cars, toast,
   get player() { return player; }, get keys() { return keys; }, get joy() { return joy; }, get kmenu() { return kmenu; }, get inCar() { return inCar; }, get pcar() { return pcar; }, get inside() { return inside; },
-  useTreat() { if (treats <= 0) return false; treats--; drawTreats(); return true; } });
+  useTreat() { if (treats <= 0) return false; treats--; drawTreats(); return true; }, scratched() { hurtPlayer(CAT_SCRATCH_HP); } });
 const { cats } = colony, updateCats = colony.update.bind(colony), catFirst = colony.catFirst.bind(colony), nearCat = colony.nearest.bind(colony);
 // a good pet that makes a cat ready to be adopted asks whether it comes home with you
 const CAT_MENU_M = 4;   // a cat's menu (the adopt question, or your own cat's) closes when you get further than this from it (m), or it bolts, or you get in a car
@@ -512,6 +626,8 @@ let jumpQ = false;   // set by a fresh Space / Jump press on foot, used up by th
 const jumpOk = () => !inCar && !inside && bigT <= 0;   // queue only where a jump can start, so a press inside a safehouse or under Gripen! can't fire as it ends
 (function () { const o = { x: player.x + 7, z: player.z + 3 }; collide(o, 2.6); displayCar = addCar(selectedVehicle?.archetype || 'volvo', o.x, o.z, 0.6, 'parked', selectedVehicle?.id ?? 'volvo240'); })();
 let inCar = false, pcar = null, stars = 0, evade = 0, bustT = 0, stolen = 0, ramCool = 0, started = false, bigT = 0;
+let clockS = 0;                                  // s of play, for hit cool-downs
+const health = newHealth();
 let inside = null, hideT = 0, trissT = 0, trissN = 0, trissWon = 0, trissLast = '';
 const peds = [], trissLog = [];
 
@@ -561,15 +677,43 @@ function openMenu(kind, title, items, pick, stay = null) {
 function closeMenu() { kmenu.hidden = true; nameIn = null; menuKind = menuPick = menuStay = null; if (relock) { relock = false; lockMouse(); } }
 // a choice can open the next menu (a pet's "are you sure?"): then the menu stays up, and the cursor stays free
 function menuChoose(k) { const pick = menuPick; menuPick = null; if (pick) pick(k); if (!menuPick) closeMenu(); }
-const openKiosk = () => openMenu('kiosk', '”Va ska dä va?”', [['triss', 'Trisslott'], ['treats', 'Kattgodis (3 st)'], ['no', 'Nä tack']], k => { if (k === 'triss') scratch(); else if (k === 'treats') buyTreats(); }, () => nearPlace()?.kind === 'kiosk');
+const openKiosk = () => openMenu('kiosk', '”Va ska dä va?”', [['triss', 'Trisslott'], ['treats', 'Kattgodis (3 st)'], ['korv', 'Korv me brö <small>+' + KORV_HP + ' health</small>'], ['vego', 'Vegokorv me brö'], ['rulle', 'Smålandsrulle <small>+' + RULLE_HP + ' health</small>'], ['no', 'Nä tack']], k => {
+  if (k === 'triss') scratch(); else if (k === 'treats') buyTreats(); else if (k === 'korv') eat(KORV_HP, '”En korv me brö, tack.”', '”Varsågod. Senap å ketchup ä på disken.”');
+  else if (k === 'vego') toast('”En vegokåv me brö, tack.”\n”Vegokåv? Nä vi ha ingen vegokåv! Den ligger i frysen.”', 4);   // always sold out
+  else if (k === 'rulle') eat(RULLE_HP, '”En smålandsrulle, tack.”', '”Varsågod, mos å räksallad å allt. Dä ä mat dä!”'); }, () => nearPlace()?.kind === 'kiosk');
+// food from the kiosk: free until there is money (#76)
+// \n puts each speaker on their own line in the toast: you order first, then the kiosk answers
+function eat(n, order, reply) {
+  if (health.hp >= HP_MAX) { toast(order + '\n”Du ser ju mätt ut, du. Kom tebaks när du ä hungrig.”', 3); return; }
+  heal(health, n); drawHealth(); toast(order + '\n' + reply + ' +' + n + ' health.', 3.5);
+}
 kmenu.addEventListener('click', e => { const b = e.target.closest('button'); if (b) { menuChoose(b.dataset.k); canvas.focus(); } });
 function nearPlace() { if (inCar) return null; for (const p of places) if (Math.hypot(p.x - player.x, p.z - player.z) < 2.2) return p; return null; }
 function enterHouse(p) {
-  if (police.some(c => Math.hypot(c.x - p.x, c.z - p.z) < SAFE_SEEN)) { toast('The police can see you. Get further ahead of them before you go inside.', 3); return; }
+  if (police.some(c => !wrecked(c) && Math.hypot(c.x - p.x, c.z - p.z) < SAFE_SEEN)) { toast('The police can see you. Get further ahead of them before you go inside.', 3); return; }
   inside = p; hideT = SAFE_SECS; player.x = p.x; player.z = p.z; player.speed = 0; player.mesh.visible = false;
   toast(stars ? 'You slip inside. Stay put for a minute and the police give up.' : 'Home sweet home. Nobody is looking for you.');
 }
 function leaveHouse() { if (!inside) return; inside = null; player.mesh.visible = true; $('hide').hidden = true; if (stars) toast('Back outside, and still wanted.', 2.5); }
+// ---------- car damage: smoke from the bonnet, grey past half damage and black when nearly wrecked ----------
+const SMOKE_N = 48, SMOKE_S = 1.8, SMOKE_NEAR_M = 140, SMOKE_RATE = [0, 8, 12];   // puffs in the pool; s each lasts; only cars this close smoke; puffs/s by smoke level
+const SMOKE_COLS = [null, col(0x7c7c78), col(0x2a2826)];
+const smokeTex = (() => { const cv = document.createElement('canvas'); cv.width = cv.height = 64; const g = cv.getContext('2d'), r = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+  r.addColorStop(0, 'rgba(255,255,255,1)'); r.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = r; g.fillRect(0, 0, 64, 64); return new THREE.CanvasTexture(cv); })();
+const puffs = Array.from({ length: SMOKE_N }, () => { const p = new THREE.Sprite(new THREE.SpriteMaterial({ map: smokeTex, transparent: true, depthWrite: false }));
+  p.visible = false; p.age = 0; scene.add(p); return p; });
+let puffI = 0;
+function updateSmoke(dt, T) {
+  for (const c of cars) { const cl = crackLevel(c.dmg); if (cl && (c.crack !== cl || !c.modelCrack && vehicleVisuals.loaded(c))) crackGlass(c);   // after a crash, and once its model loads; one that failed never does
+    const lv = smokeLevel(c.dmg); if (!lv || c.wet || Math.abs(c.x - T.x) > SMOKE_NEAR_M || Math.abs(c.z - T.z) > SMOKE_NEAR_M) continue;
+    c.smokeT = (c.smokeT || 0) + dt * SMOKE_RATE[lv];
+    for (; c.smokeT >= 1; c.smokeT--) { const p = puffs[puffI]; puffI = (puffI + 1) % SMOKE_N;   // a ring: the oldest puff goes first
+      const fwd = c.type === 'traktor' ? 1.4 : 1.7, x = c.x + Math.sin(c.h) * fwd + (dmgRnd() - 0.5) * 0.5, z = c.z - Math.cos(c.h) * fwd + (dmgRnd() - 0.5) * 0.5;
+      p.position.set(x, groundAt(x, z) + 1.1, z); p.age = 0; p.visible = true; p.material.color.copy(SMOKE_COLS[lv]); } }
+  for (const p of puffs) { if (!p.visible) continue; p.age += dt; const t = p.age / SMOKE_S; if (t >= 1) { p.visible = false; continue; }
+    p.position.y += dt * 1.3; p.scale.setScalar(0.6 + t * 2.4); p.material.opacity = 0.75 * (1 - t); }
+}
+
 // trisslott: one win in a thousand, and the temper gets worse with every losing ticket scratched inside the window
 const TRISS_ODDS = 0.001, TRISS_WINDOW = 25;
 const TRISS = [
@@ -647,7 +791,11 @@ const hud = new Hud({ $, ground: tex2d, P, K, roads, labels: D.labels, cars, pla
 // a declaration, not a bound const, so the sections above can pass toast on before the HUD exists
 function toast(msg, secs, cls) { hud.toast(msg, secs, cls); }
 const drawStars = hud.drawStars.bind(hud), drawMini = hud.drawMini.bind(hud), updateSign = hud.updateSign.bind(hud);
+// a line that waits for the toast and any big screen to clear, so it doesn't cut off what was just said
+let laterLine = null;
+const sayLater = line => { laterLine = line; };
 drawStars();
+function drawHealth() { hud.drawHealth(health.hp, inCar ? pcar.dmg : null); }
 let signT = 0, blink = false, blinkT = 0;
 
 // ---------- stealing, police, getting caught ----------
@@ -688,9 +836,24 @@ function spawnPolice() {
 function clearWanted() { stars = 0; evade = 0; bustT = 0; for (const p of police) removeCar(p); police.length = 0; drawStars(); $('stars').classList.remove('evading'); }
 function respawn() { leaveHouse(); if (inCar) { pcar.mode = 'idle'; pcar.v = pcar.slip = pcar.drift = pcar.boost = 0; placeCar(pcar); pcar = null; inCar = false; player.mesh.visible = true; }
   player.x = HOME.x; player.z = HOME.z; player.y = player.vy = 0; jumpQ = false; collide(player, 0.6); }
-function busted() { clearWanted(); respawn(); bigT = 3; $('big').hidden = false; }
+function bigScreen(title, msg) { $('big-t').textContent = title; $('big-p').textContent = msg; bigT = 3; $('big').hidden = false; hud.hideToast(); }   // the big screen replaces any line from the same moment
+function busted() { clearWanted(); respawn(); health.hp = HP_MAX; drawHealth(); bigScreen('Gripen!', 'Busted. The police drop you off at Torget.'); }
+// health at zero: with the police after you it's Gripen!, otherwise you come to at the nearest safehouse, or Torget
+function knockedOut() {
+  if (stars) { busted(); return; }
+  const spot = wakeSpot(player.x, player.z, HOME, places);
+  respawn(); player.x = spot.x; player.z = spot.z; collide(player, 0.6); health.hp = HP_MAX; drawHealth();
+  bigScreen('Däckad!', 'Knocked out. You come to ' + (spot.name ? 'at the safehouse on ' + spot.name : 'at Torget') + '.'); sayLater(pickLine(WAKE_LINES));
+}
+const WAKE_LINES = ['”Va hände? Ja minns ingenting.”', '”Aj, mitt huve…”'];
+function hurtPlayer(n) { if (n <= 0) return; const was = health.hp;
+  const el = $('hurt'); el.style.transition = 'none'; el.style.opacity = Math.min(1, 0.45 + n / 40); void el.offsetWidth; el.style.transition = ''; el.style.opacity = 0;   // a red flash that fades
+  hurt(health, n); drawHealth();
+  if (was >= LOW_HP && health.hp < LOW_HP && health.hp > 0) sayLater('”Ja behöver nog en korv me brö.”'); }   // a hint at the kiosk
 function updatePolice(c, dt, T, tv) {
-  const dx = T.x - c.x, dz = T.z - c.z, d = Math.hypot(dx, dz), diff = wrap(Math.atan2(dx, -dz) - c.h);
+  const dx = T.x - c.x, dz = T.z - c.z, d = Math.hypot(dx, dz);
+  if (wrecked(c)) { drive(c, 0, 0, false, dt); return d; }   // a wreck only rolls to a stop: no chasing, and no stuck rolls from rnd()
+  const diff = wrap(Math.atan2(dx, -dz) - c.h);
   let thr = Math.abs(diff) < 1.1 ? 1 : 0.45, steer = clamp(diff * 2.2, -1, 1), brake = false;
   if (d < 9) { thr = 0; brake = c.v > Math.max(1, tv); }
   if (c.rev > 0) { c.rev -= dt; thr = -1; steer = c.revSteer; brake = false; }
@@ -708,6 +871,8 @@ function frame(now) {
   requestAnimationFrame(frame);
   const dt = clamp((now - last) / 1000, 0, 0.05); last = now;
   const mx = started ? clamp((keys.right ? 1 : 0) - (keys.left ? 1 : 0) + joy.x, -1, 1) : 0, my = started ? clamp((keys.up ? 1 : 0) - (keys.down ? 1 : 0) + joy.y, -1, 1) : 0;
+  clockS += dt; if (started) regen(health, dt);
+  if (health.hp <= 0) knockedOut();   // here, not where the hit lands: that can be halfway through moving the car
   if (bigT > 0) { bigT -= dt; if (bigT <= 0) $('big').hidden = true; }
   if (ramCool > 0) ramCool -= dt;
   if (trissT > 0) { trissT -= dt; if (trissT <= 0) trissResult(); }
@@ -724,7 +889,9 @@ function frame(now) {
       player.h += wrap(Math.atan2(dx, -dz) - player.h) * Math.min(1, dt * 12); player.speed = sp; player.phase += sp * dt * 2.1;
     } else { player.speed = 0; player.phase *= 0.8; }
     collide(player, 0.5);
-    if (!inside) for (const c of cars) { const dx = player.x - c.x, dz = player.z - c.z, d = Math.hypot(dx, dz); if (d < 1.6 && d > 0.01) { player.x += dx / d * (1.6 - d); player.z += dz / d * (1.6 - d); } }
+    if (!inside) for (const c of cars) { const dx = player.x - c.x, dz = player.z - c.z, d = Math.hypot(dx, dz); if (d < 1.6 && d > 0.01) { player.x += dx / d * (1.6 - d); player.z += dz / d * (1.6 - d);
+      const a = c.mode === 'ai' ? c.h : c.vh, n = runOverHurt(impactSpeed(Math.sin(a) * c.v, -Math.cos(a) * c.v, -dx / d, -dz / d));   // the car's speed towards you
+      if (n > 0 && clockS - runOverAt >= CRASH_COOL_S) { runOverAt = clockS; hurtPlayer(n); shake(n); if (health.hp <= 0) break; } } }
     const wetNow = inWater(player.x, player.z);                // after this frame's move: take-off and wading depth follow where the player stands now
     if (player.y === 0 && jump && !wetNow && !inside && bigT <= 0) player.vy = JUMP_V;   // on foot, Space and the touch Brake button jump
     if (player.y > 0 || player.vy > 0) { player.y += (player.vy - GRAVITY * dt / 2) * dt; player.vy -= GRAVITY * dt; if (player.y <= 0) player.y = player.vy = 0; }   // exact for constant gravity: same hop at any frame rate
@@ -737,12 +904,14 @@ function frame(now) {
   updateDriftFx(inCar ? pcar : null);
   const T = inCar ? pcar : player;
   vehicleVisuals.update(T, dt);
+  updateSmoke(dt, T);
   for (const c of cars) if (c.mode === 'ai') updateTraffic(c, dt, T);
   updateNpcs(T, dt);
   updateCats(T, dt);
-  while (police.length < stars) spawnPolice();
+  let live = 0; for (const p of police) if (!wrecked(p)) live++;   // a wrecked police car is out of the chase: send a new one
+  for (; live < stars; live++) spawnPolice();
   if (stars > 0) {
-    let md = 1e9; for (const p of police) md = Math.min(md, updatePolice(p, dt, T, player.speed));
+    let md = 1e9; for (const p of police) { const d = updatePolice(p, dt, T, player.speed); if (!wrecked(p)) md = Math.min(md, d); }
     if (md > 170) { evade += dt; if (evade > 18) { clearWanted(); toast('You lost them.'); } } else evade = 0;
     $('stars').classList.toggle('evading', evade > 2);
     if (inside) { hideT -= dt; if (hideT <= 0) { clearWanted(); toast('The police gave up. The coast is clear.'); } }
@@ -761,13 +930,16 @@ function frame(now) {
   const cp = Math.cos(camPitch), cx = T.x - Math.sin(camYaw) * dist * cp, cz = T.z + Math.cos(camYaw) * dist * cp;
   camera.position.set(cx, Math.max(ty + 1.5 + dist * Math.sin(camPitch), hAt(cx, cz) + 0.8), cz);
   camera.lookAt(T.x, ty + 1.5, T.z);
+  if (shakeT > 0) { shakeT -= dt; const k = Math.max(0, shakeT / SHAKE_S) ** 2 * shakeM * 2;   // eases out, so the jolt fades instead of stopping dead
+    camera.position.x += (dmgRnd() - 0.5) * k; camera.position.y += (dmgRnd() - 0.5) * k; camera.position.z += (dmgRnd() - 0.5) * k; }
   sun.target.position.set(T.x, ty, T.z); sun.position.copy(sun.target.position).addScaledVector(SUN_DIR, 400);
   dome.position.copy(camera.position);
 
   // HUD
   drawHearts(dt);
   hud.update(dt);
-  signT -= dt; if (signT <= 0) { signT = 0.25; updateSign(T);
+  if (!hud.toasting && laterLine && bigT <= 0) { toast(laterLine, 3); laterLine = null; }
+  signT -= dt; if (signT <= 0) { signT = 0.25; updateSign(T); catRideLines();
     const pr = $('prompt'), pl = started && !inside ? nearPlace() : null, kt = started ? nearCat() : null, c = started && !inCar && !inside ? nearestCar() : null;
     $('hide').hidden = !inside;
     if (menuStay && !menuStay()) closeMenu();
@@ -776,10 +948,11 @@ function frame(now) {
     else if (catFirst(kt, pl)) { pr.hidden = !kmenu.hidden; pr.innerHTML = '<kbd>E</kbd>' + (kt.owned ? 'Hang out with ' + esc(kt.name) : 'Pet the cat' + (treats ? ' (offer a treat)' : '')); }
     else if (pl) { pr.hidden = !kmenu.hidden; pr.innerHTML = '<kbd>E</kbd>' + (pl.kind === 'safe' ? 'Go inside the safehouse' : 'Handla i kiosken'); }
     else if (inCar && !coarse) { pr.hidden = Math.abs(pcar.v) > 3; pr.innerHTML = '<kbd>E</kbd>Get out'; }
-    else if (c) { pr.hidden = false; pr.innerHTML = '<kbd>E</kbd>' + (c.owned ? 'Get in the ' : 'Steal the ') + carName(c); }
+    else if (c) { pr.hidden = false; pr.innerHTML = '<kbd>E</kbd>' + (c.owned ? 'Get in the ' : 'Steal the ') + carName(c) + (wrecked(c) ? ' (wrecked)' : ''); }
     else pr.hidden = true;
     const bl = inCar ? 'Brake' : 'Jump'; if ($('p-brake').textContent !== bl) $('p-brake').textContent = bl;
-    $('speed').hidden = !inCar; if (inCar) { $('kmh').textContent = Math.round(Math.abs(pcar.v) * 3.6); $('carname').textContent = carName(pcar); } }
+    $('speed').hidden = !inCar; if (inCar) { $('kmh').textContent = Math.round(Math.abs(pcar.v) * 3.6); $('carname').textContent = carName(pcar) + (wrecked(pcar) ? ' · wrecked' : ''); }
+    drawHealth(); }
   drawMini(T);
   renderer.render(scene, camera);
 }
@@ -789,5 +962,5 @@ $('go').addEventListener('click', e => { started = true; $('intro').hidden = tru
 resize(); requestAnimationFrame(frame);
 
 // ---------- test hook: read-only state for the smoke tests (tests/e2e), so they do not have to read pixels ----------
-window.__joyride = { state: () => { const n = nearestCar(); return { started, x: player.x, z: player.z, y: player.y, yaw: camYaw, inCar, car: pcar ? pcar.type : null, near: n ? n.mode : null, speed: pcar ? pcar.v : 0, drift: pcar ? pcar.drift : 0, boost: pcar ? pcar.boost : 0, charge: pcar ? pcar.charge : 0, loose: pcar ? pcar.loose : 0, flickDir: pcar ? pcar.flickDir : 0, stars, cats: cats.length, treats, ownCat: !!colony.owned, vehicle: displayCar ? vehicleVisuals.state(displayCar) : null, nearSelectedVehicle: n === displayCar, activeVehicle: pcar ? vehicleVisuals.state(pcar) : null, traffic: cars.filter(c => c.mode === 'ai').map(c => ({ type: c.type, vehicle: vehicleVisuals.state(c) })) }; } };
+window.__joyride = { state: () => { const n = nearestCar(); return { started, x: player.x, z: player.z, y: player.y, yaw: camYaw, inCar, car: pcar ? pcar.type : null, near: n ? n.mode : null, speed: pcar ? pcar.v : 0, drift: pcar ? pcar.drift : 0, boost: pcar ? pcar.boost : 0, charge: pcar ? pcar.charge : 0, loose: pcar ? pcar.loose : 0, flickDir: pcar ? pcar.flickDir : 0, stars, cats: cats.length, treats, hp: health.hp, carDmg: pcar ? pcar.dmg : null, ownCat: !!colony.owned, vehicle: displayCar ? vehicleVisuals.state(displayCar) : null, nearSelectedVehicle: n === displayCar, activeVehicle: pcar ? vehicleVisuals.state(pcar) : null, traffic: cars.filter(c => c.mode === 'ai').map(c => ({ type: c.type, vehicle: vehicleVisuals.state(c) })) }; } };
 })();

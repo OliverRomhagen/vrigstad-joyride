@@ -186,6 +186,10 @@ export class VehicleVisuals {
       for (const beacon of view.beacons)
         beacon.emissiveIntensity = view.selected && Math.floor(this.time / 0.22) % 2 ? 1.8 : 0;
   }
+  /** Whether the car's detailed model has loaded (false while loading, if it failed, or for a car without one). */
+  loaded(car: Car) {
+    return this.records.get(car)?.status === 'loaded';
+  }
   definition(car: Car) {
     return this.records.get(car)?.definition;
   }
