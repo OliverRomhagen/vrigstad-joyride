@@ -18,6 +18,7 @@ npm run preview             # serve the built dist/ locally
 npx playwright install chromium   # once, for the smoke tests
 npm run test:e2e            # Playwright smoke tests against the built pages in dist/; build first
 npm run data                # rebuild data/vrigstad.json from data/raw/ (Python standard library only); run npm run build after, the data is built into the pages
+npm run data:report         # what the streetscape rules infer from data/vrigstad.json (the second half of the coverage report)
 tools/fetch.sh              # re-download OSM + elevation (rarely needed; hits public APIs)
 ```
 
@@ -104,6 +105,7 @@ Until the migration reaches a given rule, don't make the existing code worse in 
 - **Smoke tests** (Playwright, [#43](https://github.com/OliverRomhagen/vrigstad-joyride/issues/43)): the pages load without console errors, Start works, the player can move and get into a car. Every PR keeps them green. When you add a major feature, add one smoke step for it.
 - **Unit tests** (Vitest, [#52](https://github.com/OliverRomhagen/vrigstad-joyride/issues/52)): game rules and pure helpers such as height lookup, driving model, wanted level, police AI and spatial queries. Write them for new gameplay rules; use the seeded RNG for deterministic scenarios. They live in `tests/unit/`, mirroring `src/`, and run in CI on every PR that changes more than docs, labels, issue forms, agent files or other workflows (`.github/workflows/unit.yml`). Build test worlds small and by hand (`tests/unit/world/fixture.ts`), not from `data/vrigstad.json`, so each expected value can be worked out.
 - **No pixel-diff tests.** Headless WebGL output varies. Assert on state exposed through the test hook instead, and attach screenshots to the PR when visuals change.
+- For review screenshots, `?at=x,z,yaw,pitch` starts the player at (x, z) looking that way, and `?debug=streetscape` tints the streetscape by its evidence (mapped, derived, inferred).
 - The smoke tests live in `tests/e2e/` and run in CI on every PR that changes more than docs, labels, issue forms, agent files or other workflows (`.github/workflows/e2e.yml`), which also fails if the committed `data/vrigstad.json` is stale and uploads screenshots of both pages as the `e2e-screenshots` artifact. They read game state from `window.__joyride.state()` (defined at the end of `src/game/main.ts`); add a field there when a new smoke step needs one, and keep the hook read-only.
 - Most gameplay still lives in `src/game/main.ts`, out of the unit tests' reach until #49 splits it: test changes there in a browser too, and describe what you did in the PR.
 
