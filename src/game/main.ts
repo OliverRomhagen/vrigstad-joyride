@@ -397,7 +397,7 @@ function updateTraffic(c, dt, T) {
       if (fw > 0 && fw < 11 && Math.abs(-dx * fz + dz * fx) < 1.7) { blocked = true; break; } }
     if (!blocked && !inCar) { const dx = player.x - c.x, dz = player.z - c.z, fw = dx * fx + dz * fz; if (fw > 0 && fw < 9 && Math.abs(-dx * fz + dz * fx) < 1.8) blocked = true; } }
   c.blocked = blocked ? c.blocked + dt : 0; if (c.blocked > 6) { c.ghost = 3; c.blocked = 0; }
-  const target = blocked ? 0 : Math.min(c.T.max, [13.9, 11, 8.3][R[c.ri].c]);
+  const target = blocked || wrecked(c) ? 0 : Math.min(c.T.max * topSpeedShare(c.dmg), [13.9, 11, 8.3][R[c.ri].c]);
   c.v += clamp(target - c.v, -9 * dt, 3 * dt);
   c.t += c.v * dt;
   for (let g = 0; c.t >= L && g < 8; g++) { c.t -= L; advance(c); const q = R[c.ri]; A = q.p[c.a]; B = q.p[c.a + c.dir]; L = Math.max(0.01, Math.hypot(B[0] - A[0], B[1] - A[1])); }
@@ -908,9 +908,10 @@ function frame(now) {
   for (const c of cars) if (c.mode === 'ai') updateTraffic(c, dt, T);
   updateNpcs(T, dt);
   updateCats(T, dt);
-  while (police.length < stars) spawnPolice();
+  let live = 0; for (const p of police) if (!wrecked(p)) live++;   // a wrecked police car is out of the chase: send a new one
+  for (; live < stars; live++) spawnPolice();
   if (stars > 0) {
-    let md = 1e9; for (const p of police) md = Math.min(md, updatePolice(p, dt, T, player.speed));
+    let md = 1e9; for (const p of police) { const d = updatePolice(p, dt, T, player.speed); if (!wrecked(p)) md = Math.min(md, d); }
     if (md > 170) { evade += dt; if (evade > 18) { clearWanted(); toast('You lost them.'); } } else evade = 0;
     $('stars').classList.toggle('evading', evade > 2);
     if (inside) { hideT -= dt; if (hideT <= 0) { clearWanted(); toast('The police gave up. The coast is clear.'); } }
