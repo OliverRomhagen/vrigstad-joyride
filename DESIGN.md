@@ -18,6 +18,8 @@ We don't pin the game to one style. We agree on its core, and features are check
 
 *Open: does this core hold?* How rough a given feature gets, and what form guns take (#17), follows from it case by case, rather than from one style picked up front.
 
+Once we agree, this section collapses to the core and the borrow list; the comparison tables below stay in the history of this file.
+
 ### Touchstones
 
 Other games are rough or soft in different ways. They're references to borrow from, not routes to choose between:
