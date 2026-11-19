@@ -94,6 +94,15 @@ describe('Wanted', () => {
     expect(toasts).toContain('The police gave up. The coast is clear.');
   });
 
+  it('says only that you lost them when the safehouse timer runs out in the same frame', () => {
+    const { w, toasts, world } = wanted();
+    w.addStar(); w.update(0.01, target, 0);   // the police car is 300 m away
+    world.lyingLow = true; w.lieLow(0.005); w.evade = 18;
+    w.update(0.01, target, 0);
+    expect(w.stars).toBe(0);
+    expect(toasts).toEqual(['You lost them.']);
+  });
+
   it('backs a stuck police car out, then drives at you again', () => {
     const { w, driven } = wanted();
     w.addStar(); w.update(0.01, target, 0);

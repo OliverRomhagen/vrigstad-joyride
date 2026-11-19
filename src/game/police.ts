@@ -57,7 +57,7 @@ export class Wanted {
     for (; live < this.stars; live++) this.spawn(target);
     if (this.stars <= 0) return false;
     let md = 1e9; for (const p of this.police) { const d = this.chase(p, dt, target, speed); if (!wrecked(p)) md = Math.min(md, d); }
-    if (md > EVADE_DIST_M) { this.evade += dt; if (this.evade > EVADE_S) { this.clear(); this.g.toast('You lost them.'); } } else this.evade = 0;
+    if (md > EVADE_DIST_M) { this.evade += dt; if (this.evade > EVADE_S) { this.clear(); this.g.toast('You lost them.'); return true; } } else this.evade = 0;   // lost: the safehouse timer mustn't clear them again
     this.g.showEvading(this.evade > EVADE_SHOW_S);
     if (this.g.lyingLow) { this.hideLeft -= dt; if (this.hideLeft <= 0) { this.clear(); this.g.toast('The police gave up. The coast is clear.'); } }
     else if (md < BUST_DIST_M && speed < BUST_SPEED_MS) { this.bust += dt; if (this.bust > BUST_S) { this.clear(); this.g.caught(); } } else this.bust = Math.max(0, this.bust - dt);
