@@ -76,7 +76,7 @@ test.describe('game (index.html)', () => {
   });
 
   test('W moves the player, E next to the parked Volvo gets you in, it drives on its wheels, and a crash damages it', async ({ page }, testInfo) => {
-    test.setTimeout(180_000); // the simulation caps dt while software WebGL advances slowly
+    test.setTimeout(240_000); // the simulation caps dt while software WebGL advances slowly
     await page.setViewportSize({ width: 640, height: 360 }); // keep software WebGL affordable with detailed cars
     const errors = watchErrors(page);
     await page.goto('/index.html');
@@ -112,7 +112,7 @@ test.describe('game (index.html)', () => {
 
     // Held straight on, the Volvo soon hits something hard enough to dent it: traffic crossing Torget, or the house past it.
     await page.keyboard.down('KeyW');
-    await expect.poll(async () => (await state(page)).carDmg, { intervals: [100], timeout: 120_000 }).toBeGreaterThan(0);
+    await expect.poll(async () => (await state(page)).carDmg, { intervals: [100], timeout: 90_000 }).toBeGreaterThan(0);   // inside the test's 240 s, so a miss fails here
     await page.keyboard.up('KeyW');
     await expect(page.locator('#dmg')).not.toHaveAttribute('aria-valuenow', '0');
     await page.screenshot({ path: testInfo.outputPath('game-crash.png') });
