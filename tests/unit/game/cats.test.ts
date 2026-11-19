@@ -32,6 +32,7 @@ function colony(water: (x: number, z: number) => boolean = () => false) {
     get pcar() { return drive.pcar; },
     inside: null,
     useTreat: () => { if (pockets.treats <= 0) return false; pockets.treats--; return true; },
+    scratched: () => {},
   };
   const c = new CatColony(deps);
   const cat: Cat = { x: 1, z: 0, h: 0, want: 0, state: 'sit', t: 5, nope: 0, phase: 0, mesh: new THREE.Mesh(), epa: null, hop: null, ride: null, pets: 0, owned: false, name: 'Kisse' };

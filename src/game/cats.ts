@@ -68,6 +68,7 @@ export interface CatDeps {
   blob(parent: THREE.Object3D, w: number, l: number): void;
   cars: readonly CatCar[];
   toast(msg: string, secs: number): void;
+  scratched(): void;   // the player loses a little health
   readonly player: Point & { speed: number };
   readonly keys: Record<string, boolean | undefined>;
   readonly joy: { on: boolean };
@@ -129,7 +130,7 @@ export class CatColony {
     if (k.owned || r < (treat ? CAT_PET_TREAT_OK : CAT_PET_OK)) { k.state = 'sit'; k.t = 6 + this.rnd() * 6; k.nope = CAT_PET_S; toast(pre + this.pick(k.owned ? CAT_PET_OWN : CAT_PET).replace('{n}', () => k.name), 3);
       if (k.owned) return false; k.pets++; return !this.owned && k.pets >= CAT_ADOPT_PETS; }
     k.pets = 0;   // it has to be good in a row
-    if (this.rnd() < 0.5) { k.state = 'sit'; k.t = 3 + this.rnd() * 4; k.nope = CAT_SCRATCH_S; toast(pre + this.pick(CAT_SCRATCH), 3.5); }
+    if (this.rnd() < 0.5) { k.state = 'sit'; k.t = 3 + this.rnd() * 4; k.nope = CAT_SCRATCH_S; toast(pre + this.pick(CAT_SCRATCH), 3.5); this.g.scratched(); }
     else { k.state = 'flee'; k.t = 2 + this.rnd(); k.want = Math.atan2(k.x - player.x, -(k.z - player.z)); toast(pre + this.pick(CAT_BOLT), 3); }
     return false;
   }

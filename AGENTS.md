@@ -4,7 +4,7 @@ Instructions for AI coding agents (and a quick start for humans) working on Vrig
 
 ## The project in one paragraph
 
-A browser open-world driving game set in the real village of Vrigstad, Sweden, built from OpenStreetMap data and elevation tiles, plus a 3D map of the same area. Rendering is three.js. The codebase is in transition from a single-file prototype to a modular Vite + TypeScript app; the plan is tracked in [#61](https://github.com/OliverRomhagen/vrigstad-joyride/issues/61). The build is Vite ([#44](https://github.com/OliverRomhagen/vrigstad-joyride/issues/44)), but the code is only starting to split: the game is still mostly one file, `src/game/main.ts`, and the map another, `src/map/main.ts`, both reading the world's data and queries from `src/world/` ([#48](https://github.com/OliverRomhagen/vrigstad-joyride/issues/48)).
+A browser open-world driving game set in the real village of Vrigstad, Sweden, built from OpenStreetMap data and elevation tiles, plus a 3D map of the same area. Rendering is three.js. The codebase is in transition from a single-file prototype to a modular Vite + TypeScript app; the plan is tracked in [#61](https://github.com/OliverRomhagen/vrigstad-joyride/issues/61). The build is Vite ([#44](https://github.com/OliverRomhagen/vrigstad-joyride/issues/44)), and the code is splitting into modules ([#177](https://github.com/OliverRomhagen/vrigstad-joyride/issues/177)): the HUD, cats, pets, pedestrians and the police have their own files in `src/game/`, but cars, the player, places, input and the main loop are still in `src/game/main.ts`. The map is one file, `src/map/main.ts`. Both read the world's data and queries from `src/world/` ([#48](https://github.com/OliverRomhagen/vrigstad-joyride/issues/48)).
 
 ## Commands
 
@@ -17,7 +17,7 @@ npm test                    # unit tests (Vitest), once
 npm run build               # production build into dist/ (index.html, map.html)
 npm run preview             # serve the built dist/ locally
 npx playwright install chromium   # once, for the smoke tests
-npm run test:e2e            # Playwright smoke tests against the built pages in dist/; build first
+npm run test:e2e            # Playwright smoke tests against the built pages in dist/; build first. Before a commit, run only yours (see Tests)
 npm run data                # rebuild data/vrigstad.json from data/raw/ (Python standard library only); run npm run build after, the data is built into the pages
 tools/fetch.sh              # re-download OSM + elevation (rarely needed; hits public APIs)
 ```
@@ -71,7 +71,7 @@ GitHub issues are the backlog: every bug, idea and piece of work is one issue.
 ### Several agents at once
 
 - One branch (and worktree) per agent and task. Bring your branch up to date with `main` before opening a PR and again before merging.
-- Until #44 splits the code, every feature edits `src/game/main.ts`, so expect conflicts. Keep changes in their own section of the file where you can.
+- Until #177 finishes splitting the code, most features edit `src/game/main.ts`, so expect conflicts. Keep changes in their own section of the file where you can.
 - Say how you tested in the PR, and be honest about what wasn't tested ("not played by hand on a phone").
 
 ## Code style
@@ -106,7 +106,8 @@ Until the migration reaches a given rule, don't make the existing code worse in 
 - **Unit tests** (Vitest, [#52](https://github.com/OliverRomhagen/vrigstad-joyride/issues/52)): game rules and pure helpers such as height lookup, driving model, wanted level, police AI and spatial queries. Write them for new gameplay rules; use the seeded RNG for deterministic scenarios. They live in `tests/unit/`, mirroring `src/`, and run in CI on every PR that changes more than docs, labels, issue forms, agent files or other workflows (`.github/workflows/unit.yml`). Build test worlds small and by hand (`tests/unit/world/fixture.ts`), not from `data/vrigstad.json`, so each expected value can be worked out.
 - **No pixel-diff tests.** Headless WebGL output varies. Assert on state exposed through the test hook instead, and attach screenshots to the PR when visuals change.
 - The smoke tests live in `tests/e2e/` and run in CI on every PR that changes more than docs, labels, issue forms, agent files or other workflows (`.github/workflows/e2e.yml`), which also fails if the committed `data/vrigstad.json` is stale and uploads screenshots of both pages as the `e2e-screenshots` artifact. They read game state from `window.__joyride.state()` (defined at the end of `src/game/main.ts`); add a field there when a new smoke step needs one, and keep the hook read-only.
-- Most gameplay still lives in `src/game/main.ts`, out of the unit tests' reach until #49 splits it: test changes there in a browser too, and describe what you did in the PR.
+- **Before a commit**, run `npm run check` and `npm test` in full: they take seconds. The smoke tests render WebGL in software and keep every core busy for minutes, so run only the ones for what you changed, plus the ones that load the page and get into the Volvo, on one or two workers, after a build, since they test `dist/`: `npm run build && npx playwright test -g "kiosk|loads with no console errors|gets you in" --workers=2`. CI runs the whole suite on every PR. Until #177 splits `src/game/main.ts`, a change there can break another feature's test, so a red CI run after a green subset is expected now and then, not a reason to run everything locally.
+- Much of the gameplay still lives in `src/game/main.ts`, out of the unit tests' reach until #177 moves it into modules: test changes there in a browser too, and describe what you did in the PR.
 
 ## Data and coordinates
 
