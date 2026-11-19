@@ -473,7 +473,7 @@ function crash(c, o, impact) {
   let said = false;   // one line per crash: wrecked, then smoke, then the crash itself
   for (const k of hit) { k.hitAt = clockS; const smoke = smokeLevel(k.dmg); if (damageCar(k, d)) {
     if (k === pcar) { const cat = catAboard(); toast((cat ? '”Ut, ' + cat.name + '! Den här bilen ä slut.”\n”Mjäu.”' : pickLine(WRECK_LINES)) + ' The car is wrecked. Get out and find another.', 4); said = true; }
-    else if (k.mode === 'police' && Math.hypot(k.x - camera.position.x, k.z - camera.position.z) < POLICE_WRECK_SEEN_M) toast('The police car is wrecked.', 3); }
+    else if (k.mode === 'police' && Math.hypot(k.x - camera.position.x, k.z - camera.position.z) < POLICE_WRECK_SEEN_M) { toast('The police car is wrecked.', 3); said = true; } }
     else if (k === pcar && smokeLevel(k.dmg) > smoke) { toast(SMOKE_LINES[smokeLevel(k.dmg)], 3); said = true; }
     crackGlass(k); }
   if (hit.includes(pcar)) { const n = driverHurt(impact); hurtPlayer(n); shake(d);
@@ -487,6 +487,7 @@ const CRASH_LINES = ['”AJ! Dä där kändes i nacken.”', '”Hoppsan. Dä d�
 const WRECK_LINES = ['”Nä, nu ä den kaputt.”', '”Dä va dä, den bilen.”', '”Den rullar inte mer, den.”'];
 const SMOKE_LINES = [null, '”Hörru, dä ryker ur motorn!”', '”Svart rök… dä ä inte bra, dä.”'];   // by smokeLevel
 let crashLineAt = -9;
+let runOverAt = -9;   // the player's own cooldown for being run over, apart from the cars' crash cooldowns
 // your cat riding in your car: then the lines are about it (you first, then the cat, each on their own line)
 const catAboard = () => colony.owned && colony.owned.ride === pcar ? colony.owned : null;
 const CAT_FAST_MS = 25, CAT_CALM_MS = 20;      // above ~90 km/h with your cat along you tell it to hold on; it can come again once you've been below ~72 km/h
@@ -891,7 +892,7 @@ function frame(now) {
     collide(player, 0.5);
     if (!inside) for (const c of cars) { const dx = player.x - c.x, dz = player.z - c.z, d = Math.hypot(dx, dz); if (d < 1.6 && d > 0.01) { player.x += dx / d * (1.6 - d); player.z += dz / d * (1.6 - d);
       const a = c.mode === 'ai' ? c.h : c.vh, n = runOverHurt(impactSpeed(Math.sin(a) * c.v, -Math.cos(a) * c.v, -dx / d, -dz / d));   // the car's speed towards you
-      if (n > 0 && clockS - c.hitAt >= CRASH_COOL_S) { c.hitAt = clockS; hurtPlayer(n); shake(n); if (health.hp <= 0) break; } } }
+      if (n > 0 && clockS - runOverAt >= CRASH_COOL_S) { runOverAt = clockS; hurtPlayer(n); shake(n); if (health.hp <= 0) break; } } }
     const wetNow = inWater(player.x, player.z);                // after this frame's move: take-off and wading depth follow where the player stands now
     if (player.y === 0 && jump && !wetNow && !inside && bigT <= 0) player.vy = JUMP_V;   // on foot, Space and the touch Brake button jump
     if (player.y > 0 || player.vy > 0) { player.y += (player.vy - GRAVITY * dt / 2) * dt; player.vy -= GRAVITY * dt; if (player.y <= 0) player.y = player.vy = 0; }   // exact for constant gravity: same hop at any frame rate
