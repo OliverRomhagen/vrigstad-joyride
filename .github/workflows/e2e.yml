@@ -29,14 +29,24 @@ jobs:
         with:
           sparse-checkout: package-lock.json
           sparse-checkout-cone-mode: false
+      # jq prints null for a missing entry, which would pull an image tagged vnull.
       - id: lock
-        run: echo "version=$(jq -r '.packages["node_modules/@playwright/test"].version' package-lock.json)" >> "$GITHUB_OUTPUT"
+        run: |
+          version=$(jq -r '.packages["node_modules/@playwright/test"].version // empty' package-lock.json)
+          if [ -z "$version" ]; then
+            echo "::error file=package-lock.json::No node_modules/@playwright/test entry in package-lock.json; run npm install."
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
 
   smoke:
     name: Smoke tests (Playwright)
     needs: playwright
     runs-on: ubuntu-latest
-    container: mcr.microsoft.com/playwright:v${{ needs.playwright.outputs.version }}-noble
+    container:
+      image: mcr.microsoft.com/playwright:v${{ needs.playwright.outputs.version }}-noble
+      # Docker's default 64 MB /dev/shm can crash Chromium; Playwright's Docker docs recommend the host's IPC namespace.
+      options: --ipc=host
     timeout-minutes: 15
     steps:
       # The image has no Python: tools/process.py and the test server need it.
