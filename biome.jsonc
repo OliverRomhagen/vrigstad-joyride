@@ -3,9 +3,9 @@
   "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
   "files": {
     // The HTML pages keep their hand-formatted style until #177 splits them (AGENTS.md, Code style). tools/trailer is its
-    // own package. The workflows stay out because check.yml skips PRs that only change .github/, so a workflow edit could
+    // own package. .github and .claude stay out because check.yml skips PRs that only change them, so such an edit could
     // merge unformatted and fail on main.
-    "includes": ["**", "!**/*.md", "!src/*.html", "!data", "!tools/trailer", "!.github"]
+    "includes": ["**", "!**/*.md", "!src/*.html", "!data", "!tools/trailer", "!.github", "!.claude"]
   },
   // Indent style and width come from .editorconfig, so editors and Biome can't disagree.
   "formatter": { "useEditorconfig": true, "lineWidth": 120 },
