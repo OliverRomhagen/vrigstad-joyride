@@ -1,0 +1,45 @@
+name: analyze
+
+on:
+  pull_request:
+    # Skip PRs that only change docs, labels, issue forms, agent files or other workflows, as e2e.yml does; keep the
+    # two filters the same. Later patterns win, so this workflow's own file still runs it. main runs it on every push.
+    paths:
+      - '**'
+      - '!**/*.md'
+      - '!.claude/**'
+      - '!.github/**'
+      - '.github/workflows/analyze.yml'
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    # Fallow (#107), configured in fallow.toml. Once Biome's `npm run lint` lands (#181), the gate moves into it and
+    # this job can go.
+    name: Analyze (npm run analyze)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # the hotspots weigh complexity by git churn, which a shallow clone doesn't have
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: lts/*
+          cache: npm
+      - run: npm ci
+      # The gate: unused files, exports and dependencies, circular imports, architecture boundaries, sim purity.
+      # Annotations put each finding on its line in the PR diff, with no write token, so they show on fork PRs too
+      # (SARIF to code scanning would need security-events: write, which fork PRs don't get).
+      - run: npm run analyze -- --format github-annotations
+      # Reading passes: copied code and complexity hotspots, for the log; they never fail the job. To gate on them later,
+      # give `fallow dupes` a `--threshold` (the most duplication allowed, in percent) and run `fallow health` without
+      # `--hotspots`, which fails on every function over its complexity limits (`[health]` in fallow.toml), then drop
+      # continue-on-error.
+      - run: npm run analyze:report
+        if: ${{ !cancelled() }}
+        continue-on-error: true

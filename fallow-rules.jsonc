@@ -1,0 +1,25 @@
+// Fallow rule pack (fallow.toml loads it): simulation and world code stay free of three.js and the DOM
+// (ARCHITECTURE.md, rule 2), so their rules can run in Node, in a worker or on a server.
+{
+  "version": 1,
+  "name": "joyride",
+  "rules": [
+    {
+      "id": "no-three",
+      "kind": "banned-import",
+      "specifiers": ["three"],
+      "zones": ["sim", "world"],
+      // Exceptions: cats and pedestrians still build their own meshes. Drop each once #177 moves them into render/.
+      "exclude": ["src/game/cats.ts", "src/game/pedestrians.ts"],
+      "message": "Keep three.js in src/game/render/ or src/world/mesh/; sim and world code is plain data and functions."
+    },
+    {
+      "id": "no-dom",
+      "kind": "banned-call",
+      // Calls only: a property read such as `window.innerWidth` isn't a call, so this catches most DOM use, not all of it.
+      "callees": ["document.*", "window.*", "localStorage.*", "sessionStorage.*", "requestAnimationFrame", "*.addEventListener"],
+      "zones": ["sim", "world", "world-mesh"],
+      "message": "Simulation doesn't touch the DOM: input arrives as intents, and the HUD reads state."
+    }
+  ]
+}

@@ -1,0 +1,72 @@
+# Fallow (#107): the static gate behind `npm run analyze`. AGENTS.md (Tests) says what each pass checks.
+# Fallow finds the Vite, Vitest and Playwright entry points itself; this file adds only what it can't see, the
+# architecture rules, and today's exceptions. Shrink the exceptions; don't grow them.
+# package.json pins Fallow exactly: it is young, and `fallow dead-code` checking cycles, boundaries and the rule pack is
+# due to move to `fallow architecture` in a later major version, so an upgrade must add that command to `analyze`.
+
+# Loaded in ways Fallow can't follow:
+# - src/map/main.ts is map.html's script, and tools/build.mjs builds map.html, but Fallow's Vite plugin finds only index.html.
+# - tools/trailer/rig.js reads inpage.js with fs.readFileSync and runs it in the page.
+entry = ["src/map/main.ts", "tools/trailer/inpage.js"]
+
+# The world/mesh builders free what they made in dispose() (ARCHITECTURE.md), even when a page never unmounts them.
+# This applies to every class, so an unused dispose() anywhere goes unreported.
+usedClassMembers = ["dispose"]
+
+# Simulation must not import three.js or call into the DOM (ARCHITECTURE.md, rule 2).
+rulePacks = ["fallow-rules.jsonc"]
+
+# Exceptions: exported, but only used in their own file. Un-export them, or use them in a test, then drop the entry.
+[[ignoreExports]]
+file = "src/game/health.ts"
+exports = ["CRASH_MIN_MS", "CRASH_DMG_PER_MS", "HURT_MIN_MS", "HURT_HP_PER_MS", "RUN_OVER_MIN_MS", "RUN_OVER_HP_PER_MS", "SMOKE_AT", "BLACK_SMOKE_AT", "LIMP_AT", "CRACK_AT"]
+
+[[ignoreExports]]
+file = "src/game/cats.ts"
+exports = ["CAT_NAME", "CAT_NAME_MAX"]
+
+# Rule-pack findings only warn by default; make them fail the gate like the rest.
+[rules]
+policy-violation = "error"
+
+# Layers, from ARCHITECTURE.md. A file belongs to the first zone that matches it.
+[boundaries]
+# src/world/: the world's data and queries, shared by both pages. Its three.js code lives only in mesh/ and three-legacy.ts.
+[[boundaries.zones]]
+name = "world-mesh"
+patterns = ["src/world/mesh/**", "src/world/three-legacy.ts"]
+
+[[boundaries.zones]]
+name = "world"
+patterns = ["src/world/**"]
+
+# Game rules as plain data: src/game/sim/ once #177 makes it; until then, the modules that are already rules.
+[[boundaries.zones]]
+name = "sim"
+patterns = ["src/game/sim/**", "src/game/health.ts", "src/game/police.ts", "src/game/pets.ts", "src/game/cats.ts", "src/game/pedestrians.ts"]
+
+[[boundaries.zones]]
+name = "render"
+patterns = ["src/game/render/**"]
+
+# Everything else in src/: each page's main.ts, the HUD, input, the lab. It may import anything (it has no rule), but
+# the zones above may not import it.
+[[boundaries.zones]]
+name = "page"
+patterns = ["src/**"]
+
+[[boundaries.rules]]
+from = "world"
+allow = ["world"]
+
+[[boundaries.rules]]
+from = "world-mesh"
+allow = ["world", "world-mesh"]
+
+[[boundaries.rules]]
+from = "sim"
+allow = ["sim", "world"]
+
+[[boundaries.rules]]
+from = "render"
+allow = ["render", "sim", "world", "world-mesh"]
