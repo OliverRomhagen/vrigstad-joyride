@@ -13,13 +13,18 @@ const JOY_RADIUS_PX = 44;  // the joystick knob's travel; full deflection there
 export type Key = 'up' | 'down' | 'left' | 'right' | 'brake' | 'run';
 /** The touch joystick: x right, y up, each -1..1; `on` while a finger holds it. */
 export interface Joy { x: number; y: number; on: boolean }
+/** The parts of a page element the input uses, so a test can pass a stub. */
+export interface InputElement extends Pick<HTMLElement, 'addEventListener' | 'setPointerCapture' | 'hidden'> {
+  readonly style: Pick<CSSStyleDeclaration, 'transform'>;
+  getBoundingClientRect(): Pick<DOMRect, 'left' | 'top' | 'width' | 'height'>;
+}
 
 /** What the input reads from and calls in the rest of the game. The getters are read when used, so main.ts can declare them later. */
 export interface InputDeps {
   win: EventTarget;                      // window: keys, focus loss and the first touch
-  doc: EventTarget & { readonly pointerLockElement: Element | null };
-  canvas: HTMLCanvasElement;
-  $(id: string): HTMLElement;            // the joystick, its knob, the touch pad and its buttons
+  doc: EventTarget & { readonly pointerLockElement: object | null };
+  canvas: Pick<HTMLCanvasElement, 'addEventListener' | 'setPointerCapture'> & { requestPointerLock?(): Promise<void> | undefined };   // older browsers return nothing, or lack the lock
+  $(id: string): InputElement;            // the joystick, its knob, the touch pad and its buttons
   coarse: boolean;                       // a touchscreen: show the touch controls from the start
   readonly started: boolean;
   readonly menuOpen: boolean;            // the kiosk / pet menu needs the cursor
@@ -69,7 +74,7 @@ export class Input {
     joyEl.addEventListener('pointermove', e => { if (e.pointerId === this.joyId) joyMove(e); });
     const joyEnd = (e: PointerEvent) => { if (e.pointerId !== this.joyId) return; this.joyId = null; joy.on = false; joy.x = joy.y = 0; knob.style.transform = ''; };
     joyEl.addEventListener('pointerup', joyEnd); joyEl.addEventListener('pointercancel', joyEnd);
-    const hold = (el: HTMLElement, k: Key) => { el.addEventListener('pointerdown', e => { keys[k] = true; e.preventDefault(); });
+    const hold = (el: InputElement, k: Key) => { el.addEventListener('pointerdown', e => { keys[k] = true; e.preventDefault(); });
       for (const t of ['pointerup', 'pointercancel', 'pointerleave']) el.addEventListener(t, () => { keys[k] = false; }); };
     hold($('p-brake'), 'brake'); $('p-brake').addEventListener('pointerdown', () => this.g.jump());
     $('p-act').addEventListener('click', () => this.g.action());

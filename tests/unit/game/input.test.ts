@@ -16,13 +16,13 @@ function fire(target: EventTarget, type: string, props: Record<string, unknown> 
 
 function input(opts: { coarse?: boolean; started?: boolean; menuKey?: (e: KeyboardEvent) => boolean } = {}) {
   const win = new EventTarget(), els: Record<string, Stub> = {};
-  const doc = Object.assign(new EventTarget(), { pointerLockElement: null as Element | null });
-  const canvas = Object.assign(stub(), { locks: 0, requestPointerLock() { canvas.locks++; } });
+  const doc = Object.assign(new EventTarget(), { pointerLockElement: null as object | null });
+  const canvas = Object.assign(stub(), { locks: 0, requestPointerLock() { canvas.locks++; return undefined; } });
   const calls: string[] = [], looks: [number, number][] = [];
   const game = { started: opts.started ?? true, menuOpen: false };
   const deps: InputDeps = {
-    win, doc, canvas: canvas as unknown as HTMLCanvasElement,
-    $: id => (els[id] ??= stub()) as unknown as HTMLElement,
+    win, doc, canvas,
+    $: id => (els[id] ??= stub()),
     coarse: opts.coarse ?? false,
     get started() { return game.started; },
     get menuOpen() { return game.menuOpen; },
@@ -85,7 +85,7 @@ describe('Input', () => {
 
   it('turns a locked mouse slower per pixel, and caps the jump some browsers report right after locking', () => {
     const { canvas, doc, looks } = input();
-    doc.pointerLockElement = canvas as unknown as Element;
+    doc.pointerLockElement = canvas;
     fire(canvas, 'pointermove', { pointerId: 1, movementX: 10, movementY: -500, pointerType: 'mouse' });
     expect(looks).toEqual([[4, -48]]);
   });
