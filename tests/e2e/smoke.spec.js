@@ -59,6 +59,24 @@ test.describe('game (index.html)', () => {
     expect(errors).toEqual([]);
   });
 
+  test('builds the streetscape and reports it on the hook, also in the debug view', async ({ page }, testInfo) => {
+    const errors = watchErrors(page);
+    await page.goto('/index.html?debug=streetscape');
+    await expectWebGL(page);
+    const { streetscape: s } = await state(page);
+    // every count is there; what is mapped depends on the OSM snapshot, but the centre always gets inferred pavement
+    for (const k of ['mapped', 'derived', 'inferred']) expect(s.sidewalkM[k]).toBeGreaterThanOrEqual(0);
+    expect(s.sidewalkM.inferred).toBeGreaterThan(0);
+    for (const k of ['parkingAreas', 'crossings', 'meshes', 'triangles']) expect(s[k]).toBeGreaterThanOrEqual(0);
+    expect(s.streetTrees).toEqual({ mapped: expect.any(Number), inferred: expect.any(Number) });
+    expect(s.meshes).toBeGreaterThan(0);
+    expect(s.debug).toBe(true);
+    await page.locator('#go').click();
+    await frames(page, 5);
+    await page.screenshot({ path: testInfo.outputPath('game-streetscape-debug.png') });
+    expect(errors).toEqual([]);
+  });
+
   test('Start hides the intro and shows the HUD', async ({ page }) => {
     const errors = watchErrors(page);
     await page.goto('/index.html');
@@ -92,7 +110,12 @@ test.describe('game (index.html)', () => {
     await getInVolvo(page);
     await expect(page.locator('#speed')).toBeVisible();
     await expect(page.locator('#carname')).toHaveText('Volvo 240');
-    expect(await state(page)).toMatchObject({ inCar: true, car: 'volvo', stars: 0 });
+    const s = await state(page);
+    expect(s).toMatchObject({ inCar: true, car: 'volvo' });
+    // a neighbour sees a parked car taken on rnd() < 0.35, so whether this one does depends on how many rolls the world
+    // took before it: any change to world generation can flip it (AGENTS.md rule 5). A carjack would be a star for
+    // sure, but getInVolvo already made sure the car was a parked one.
+    expect(s.stars).toBeLessThanOrEqual(1);
     await page.screenshot({ path: testInfo.outputPath('game-in-volvo.png') });
     expect(errors).toEqual([]);
   });

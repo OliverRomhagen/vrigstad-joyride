@@ -2,7 +2,7 @@
 // Moved from src/game/main.ts (#177); main.ts passes in what the pedestrians read from the rest of the game.
 import type * as THREE from 'three';
 import type { BuildingIndex } from '../world/buildings';
-import { ROAD_WIDTH_M as ROAD_W, type Label } from '../world/data';
+import type { Label } from '../world/data';
 import { nodeKey, ROAD_CELL_M as RC, type RoadLine, type RoadNetwork } from '../world/roads';
 
 // Each 50 m cell gets a density (0..1): how built-up the cell and its neighbours are, plus a boost near named places.
@@ -27,6 +27,8 @@ export interface CrowdDeps {
   buildings: Pick<BuildingIndex, 'footprints' | 'collide'>;
   labels: readonly Label[];
   groundAt(x: number, z: number): number;
+  /** how far from road ri's centre line people walk on `side` (-1 left, +1 right of the road's own direction) (m) */
+  walkOffset(ri: number, side: -1 | 1): number;
   coarse: boolean;                       // touch screen: fewer pedestrians
   wrap(a: number): number;
   rnd(): number;                         // the game's seeded stream, so the rolls stay in the order they were
@@ -90,14 +92,14 @@ export class Crowd {
   }
 
   private updateNpc(n: Npc, dt: number) {
-    const { rnd, advance, cars, player, inCar, groundAt, wrap } = this.g, { R } = this;
+    const { rnd, advance, cars, player, inCar, groundAt, walkOffset, wrap } = this.g, { R } = this;
     const d0 = this.densAt(n.x, n.z);
     if (n.idle > 0) { n.idle -= dt; n.phase *= 0.8; }
     else { n.t += n.speed * dt; n.phase += n.speed * dt * 2.1; n.walk -= dt;
       if (n.walk <= 0) { n.idle = 3 + rnd() * 12; n.walk = 12 + rnd() * 40 * (1.2 - d0); } }    // busy places: shorter walks between stops
     let r = R[n.ri], L = this.segLen(r, n.a, n.a + n.dir);
     for (let g = 0; n.t >= L && g < 8; g++) { n.t -= L; advance(n, this.wnodes); r = R[n.ri]; L = this.segLen(r, n.a, n.a + n.dir); }
-    const A = r.p[n.a], B = r.p[n.a + n.dir], dx = (B[0] - A[0]) / L, dz = (B[1] - A[1]) / L, off = r.c <= 3 ? (ROAD_W[r.c] / 2 + 0.8) * n.side : 0;
+    const A = r.p[n.a], B = r.p[n.a + n.dir], dx = (B[0] - A[0]) / L, dz = (B[1] - A[1]) / L, off = r.c <= 3 ? walkOffset(n.ri, (n.side * n.dir) as -1 | 1) * n.side : 0;   // side of travel times direction: the road's own side
     const k = n.first ? 1 : Math.min(1, dt * 4);
     n.x += (A[0] + dx * n.t - dz * off - n.x) * k; n.z += (A[1] + dz * n.t + dx * off - n.z) * k;
     for (const c of cars) { const ex = n.x - c.x, ez = n.z - c.z, d = Math.hypot(ex, ez); if (d < 2.3 && d > 0.01) { n.x += ex / d * (2.3 - d); n.z += ez / d * (2.3 - d); } }
