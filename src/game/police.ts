@@ -56,19 +56,18 @@ export class Wanted {
     let live = 0; for (const p of this.police) if (!wrecked(p)) live++;
     for (; live < this.stars; live++) this.spawn(target);
     if (this.stars <= 0) return false;
-    const { toast } = this.g;
     let md = 1e9; for (const p of this.police) { const d = this.chase(p, dt, target, speed); if (!wrecked(p)) md = Math.min(md, d); }
-    if (md > EVADE_DIST_M) { this.evade += dt; if (this.evade > EVADE_S) { this.clear(); toast('You lost them.'); } } else this.evade = 0;
+    if (md > EVADE_DIST_M) { this.evade += dt; if (this.evade > EVADE_S) { this.clear(); this.g.toast('You lost them.'); } } else this.evade = 0;
     this.g.showEvading(this.evade > EVADE_SHOW_S);
-    if (this.g.lyingLow) { this.hideLeft -= dt; if (this.hideLeft <= 0) { this.clear(); toast('The police gave up. The coast is clear.'); } }
+    if (this.g.lyingLow) { this.hideLeft -= dt; if (this.hideLeft <= 0) { this.clear(); this.g.toast('The police gave up. The coast is clear.'); } }
     else if (md < BUST_DIST_M && speed < BUST_SPEED_MS) { this.bust += dt; if (this.bust > BUST_S) { this.clear(); this.g.caught(); } } else this.bust = Math.max(0, this.bust - dt);
     return true;
   }
 
   private spawn(T: Point) {
-    const { roads: { lines: R, driveable }, pick } = this.g; let spot: [number, number] | null = null;
-    for (let t = 0; t < SPAWN_TRIES && !spot; t++) { const r = R[pick(driveable)], p = pick(r.p), d = Math.hypot(p[0] - T.x, p[1] - T.z); if (d > SPAWN_MIN_M && d < SPAWN_MAX_M) spot = p; }
-    if (!spot) spot = pick(R[pick(driveable)].p);
+    const { lines: R, driveable } = this.g.roads, g = this.g; let spot: [number, number] | null = null;
+    for (let t = 0; t < SPAWN_TRIES && !spot; t++) { const r = R[g.pick(driveable)], p = g.pick(r.p), d = Math.hypot(p[0] - T.x, p[1] - T.z); if (d > SPAWN_MIN_M && d < SPAWN_MAX_M) spot = p; }
+    if (!spot) spot = g.pick(R[g.pick(driveable)].p);
     this.police.push(this.g.spawnCar(spot[0], spot[1], Math.atan2(T.x - spot[0], -(T.z - spot[1]))));
   }
 

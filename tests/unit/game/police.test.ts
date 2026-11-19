@@ -4,7 +4,7 @@ import { MAX_STARS, type PoliceCar, Wanted, type WantedDeps } from '../../../src
 import { makeRnd } from '../../../src/world/random';
 import type { RoadNetwork } from '../../../src/world/roads';
 
-// One straight road along the x axis, 300 m east of the target at the origin, so a police car spawns at its far end (between 200 and 480 m away).
+// A road that is a single point 300 m east of the target at the origin, inside the 200–480 m spawn ring, so every police car spawns there.
 // The police don't move unless a test moves them: `drive` only records what it was asked.
 function wanted() {
   const rnd = makeRnd(1);
@@ -52,7 +52,9 @@ describe('Wanted', () => {
     w.addStar();
     run(w, 3);
     expect(world.evading).toBe(true);
-    run(w, 16, 0, () => w.stars === 0);
+    run(w, 14.9);
+    expect(w.stars).toBe(1);   // still wanted just before 18 s
+    run(w, 1.2, 0, () => w.stars === 0);
     expect(w.stars).toBe(0);
     expect(w.police).toHaveLength(0);
     expect(world.removed).toBe(1);
@@ -63,6 +65,7 @@ describe('Wanted', () => {
   it('starts evading over when a police car comes within 170 m', () => {
     const { w } = wanted();
     w.addStar(); run(w, 10);
+    expect(w.evade).toBeGreaterThan(9);
     w.police[0].x = 100; w.update(0.01, target, 0);
     expect(w.evade).toBe(0);
   });
