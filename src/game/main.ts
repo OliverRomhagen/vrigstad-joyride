@@ -24,6 +24,7 @@ import { Hud } from './hud';
 import { Crowd } from './pedestrians';
 import { Pets } from './pets';
 import { CAT_SCRATCH_HP, crackLevel, LOW_HP, CRASH_COOL_S, crashCars, crashDamage, driverHurt, HP_MAX, heal, hurt, KORV_HP, impactSpeed, newHealth, regen, RULLE_HP, runOverHurt, smokeLevel, topSpeedShare, wakeSpot, wrecked } from './health';
+import { Wanted } from './police';
 
 (function () {
 'use strict';
@@ -332,7 +333,7 @@ function personParts(shirt, pants, hair, arms) {     // arms: separate meshes th
 }
 
 // ---------- cars ----------
-const cars = [], police = [];
+const cars = [];
 const vehicleVisuals = new VehicleVisuals(coarse);
 const modelRnd = makeRnd(240);                 // own stream: which model a car wears doesn't shift the world's rolls
 const selectedVehicle = vehicleDefinition(new URLSearchParams(location.search).get('vehicle'));
@@ -458,7 +459,7 @@ function drive(c, thr, steer, brake, dt, canDrift) {
   for (const o of cars) { if (o === c) continue; const dx = c.x - o.x, dz = c.z - o.z, d = Math.hypot(dx, dz);
     if (d < 2.7 && d > 0.01) { const push = 2.7 - d, oh = o.mode === 'ai' ? o.h : o.vh;   // traffic steers by h alone
       crash(c, o, impactSpeed(vx - Math.sin(oh) * o.v, vz + Math.cos(oh) * o.v, dx / d, dz / d)); c.x += dx / d * push; c.z += dz / d * push;
-      if (Math.abs(c.v) > 6 && c === pcar && o.mode === 'police' && ramCool <= 0) { ramCool = 6; addStar('Ramming a police car. That will not help.'); }
+      if (Math.abs(c.v) > 6 && c === pcar && o.mode === 'police' && ramCool <= 0) { ramCool = 6; wanted.addStar('Ramming a police car. That will not help.'); }
       if (o.mode === 'parked' || o.mode === 'idle') { o.x -= dx / d * push * 0.4; o.z -= dz / d * push * 0.4; placeCar(o); }
       c.v *= Math.pow(0.05, dt); } }
   placeCar(c);
@@ -625,11 +626,15 @@ collide(player, 0.6); scene.add(player.mesh);
 let jumpQ = false;   // set by a fresh Space / Jump press on foot, used up by the next frame: a held key (braking, then getting out) never jumps, a tap between frames isn't lost
 const jumpOk = () => !inCar && !inside && bigT <= 0;   // queue only where a jump can start, so a press inside a safehouse or under Gripen! can't fire as it ends
 (function () { const o = { x: player.x + 7, z: player.z + 3 }; collide(o, 2.6); displayCar = addCar(selectedVehicle?.archetype || 'volvo', o.x, o.z, 0.6, 'parked', selectedVehicle?.id ?? 'volvo240'); })();
-let inCar = false, pcar = null, stars = 0, evade = 0, bustT = 0, stolen = 0, ramCool = 0, started = false, bigT = 0;
+let inCar = false, pcar = null, stolen = 0, ramCool = 0, started = false, bigT = 0;
 let clockS = 0;                                  // s of play, for hit cool-downs
 const health = newHealth();
-let inside = null, hideT = 0, trissT = 0, trissN = 0, trissWon = 0, trissLast = '';
+let inside = null, trissT = 0, trissN = 0, trissWon = 0, trissLast = '';
 const peds = [], trissLog = [];
+const wanted = new Wanted({ roads, rnd, pick, wrap, removeCar, drive, toast,
+  spawnCar: (x, z, h) => addCar('polis', x, z, h, 'police'),
+  drawStars: () => drawStars(), showEvading: on => $('stars').classList.toggle('evading', on), caught: () => busted(),
+  get lyingLow() { return !!inside; } });
 
 // ---------- places: safehouses (lie low to lose your stars) and the trisslott kiosk ----------
 const SAFE_SECS = 60, SAFE_SEEN = 60;            // seconds inside to lose the stars; police closer than this (m) see you go in
@@ -690,11 +695,11 @@ function eat(n, order, reply) {
 kmenu.addEventListener('click', e => { const b = e.target.closest('button'); if (b) { menuChoose(b.dataset.k); canvas.focus(); } });
 function nearPlace() { if (inCar) return null; for (const p of places) if (Math.hypot(p.x - player.x, p.z - player.z) < 2.2) return p; return null; }
 function enterHouse(p) {
-  if (police.some(c => !wrecked(c) && Math.hypot(c.x - p.x, c.z - p.z) < SAFE_SEEN)) { toast('The police can see you. Get further ahead of them before you go inside.', 3); return; }
-  inside = p; hideT = SAFE_SECS; player.x = p.x; player.z = p.z; player.speed = 0; player.mesh.visible = false;
-  toast(stars ? 'You slip inside. Stay put for a minute and the police give up.' : 'Home sweet home. Nobody is looking for you.');
+  if (wanted.police.some(c => !wrecked(c) && Math.hypot(c.x - p.x, c.z - p.z) < SAFE_SEEN)) { toast('The police can see you. Get further ahead of them before you go inside.', 3); return; }
+  inside = p; wanted.lieLow(SAFE_SECS); player.x = p.x; player.z = p.z; player.speed = 0; player.mesh.visible = false;
+  toast(wanted.stars ? 'You slip inside. Stay put for a minute and the police give up.' : 'Home sweet home. Nobody is looking for you.');
 }
-function leaveHouse() { if (!inside) return; inside = null; player.mesh.visible = true; $('hide').hidden = true; if (stars) toast('Back outside, and still wanted.', 2.5); }
+function leaveHouse() { if (!inside) return; inside = null; player.mesh.visible = true; $('hide').hidden = true; if (wanted.stars) toast('Back outside, and still wanted.', 2.5); }
 // ---------- car damage: smoke from the bonnet, grey past half damage and black when nearly wrecked ----------
 const SMOKE_N = 48, SMOKE_S = 1.8, SMOKE_NEAR_M = 140, SMOKE_RATE = [0, 8, 12];   // puffs in the pool; s each lasts; only cars this close smoke; puffs/s by smoke level
 const SMOKE_COLS = [null, col(0x7c7c78), col(0x2a2826)];
@@ -787,7 +792,7 @@ if (coarse) showTouch(); else addEventListener('touchstart', showTouch, { once: 
 // ---------- HUD (src/game/hud.ts) ----------
 // the getters are read when the HUD uses them, so they can name things that change during play
 const hud = new Hud({ $, ground: tex2d, P, K, roads, labels: D.labels, cars, places,
-  get stars() { return stars; }, get pcar() { return pcar; }, get blink() { return blink; } });
+  get stars() { return wanted.stars; }, get pcar() { return pcar; }, get blink() { return blink; } });
 // a declaration, not a bound const, so the sections above can pass toast on before the HUD exists
 function toast(msg, secs, cls) { hud.toast(msg, secs, cls); }
 const drawStars = hud.drawStars.bind(hud), drawMini = hud.drawMini.bind(hud), updateSign = hud.updateSign.bind(hud);
@@ -798,7 +803,7 @@ drawStars();
 function drawHealth() { hud.drawHealth(health.hp, inCar ? pcar.dmg : null); }
 let signT = 0, blink = false, blinkT = 0;
 
-// ---------- stealing, police, getting caught ----------
+// ---------- stealing and getting caught (the wanted level and the police: src/game/police.ts) ----------
 function nearestCar() { let best = null, bd = 4.4;
   for (const c of cars) { if (c.mode === 'police') continue; const d = Math.hypot(c.x - player.x, c.z - player.z); if (d < bd) { bd = d; best = c; } } return best; }
 function action() {
@@ -818,29 +823,21 @@ function action() {
     const p = personParts(pick(['#b5463a', '#3f6b8a', '#5c7a4a', '#7a5a8a']), '#3a3a3a');
     p.position.set(c.x - Math.cos(c.h) * 2.2, 0, c.z - Math.sin(c.h) * 2.2); p.position.y = groundAt(p.position.x, p.position.z); p.ttl = 14; scene.add(p); peds.push(p);
     toast(pick(['”Hörru! Det där är min bil!”', '”Men va fan gör du?!”', '”Polisen! Han tar ' + (vehicleVisuals.definition(c)?.spokenName || 'min ' + c.T.name) + '!”']) + ' The driver calls the police.');
-    addStar(); spawnTraffic(player);
+    wanted.addStar(); spawnTraffic(player);
   } else if (!c.owned) {
-    if (police.length || rnd() < 0.35) addStar('A neighbour saw you take the ' + carName(c) + ' and called the police.');
+    if (wanted.police.length || rnd() < 0.35) wanted.addStar('A neighbour saw you take the ' + carName(c) + ' and called the police.');
     else toast(c.type === 'epa' ? 'EPA-traktor: legally limited to 30 km/h. Good luck outrunning anyone.' : 'You took the ' + carName(c) + '. Nobody noticed.');
   }
   if (!c.owned) { c.owned = true; stolen++; $('count').textContent = 'Cars stolen: ' + stolen; }
   c.mode = 'player'; c.vh = c.h; c.slip = c.drift = c.boost = c.loose = 0; pcar = c; inCar = true; player.y = player.vy = 0; player.mesh.visible = false; lookOff = 0; camYaw = c.h;
 }
-function addStar(msg) { if (stars < 3) stars++; evade = 0; drawStars(); if (msg) toast(msg); }
-function spawnPolice() {
-  const T = inCar ? pcar : player; let spot = null;
-  for (let t = 0; t < 60 && !spot; t++) { const r = R[pick(driveable)], p = pick(r.p), d = Math.hypot(p[0] - T.x, p[1] - T.z); if (d > 200 && d < 480) spot = p; }
-  if (!spot) spot = pick(R[pick(driveable)].p);
-  const c = addCar('polis', spot[0], spot[1], Math.atan2(T.x - spot[0], -(T.z - spot[1])), 'police'); police.push(c);
-}
-function clearWanted() { stars = 0; evade = 0; bustT = 0; for (const p of police) removeCar(p); police.length = 0; drawStars(); $('stars').classList.remove('evading'); }
 function respawn() { leaveHouse(); if (inCar) { pcar.mode = 'idle'; pcar.v = pcar.slip = pcar.drift = pcar.boost = 0; placeCar(pcar); pcar = null; inCar = false; player.mesh.visible = true; }
   player.x = HOME.x; player.z = HOME.z; player.y = player.vy = 0; jumpQ = false; collide(player, 0.6); }
 function bigScreen(title, msg) { $('big-t').textContent = title; $('big-p').textContent = msg; bigT = 3; $('big').hidden = false; hud.hideToast(); }   // the big screen replaces any line from the same moment
-function busted() { clearWanted(); respawn(); health.hp = HP_MAX; drawHealth(); bigScreen('Gripen!', 'Busted. The police drop you off at Torget.'); }
+function busted() { respawn(); health.hp = HP_MAX; drawHealth(); bigScreen('Gripen!', 'Busted. The police drop you off at Torget.'); }
 // health at zero: with the police after you it's Gripen!, otherwise you come to at the nearest safehouse, or Torget
 function knockedOut() {
-  if (stars) { busted(); return; }
+  if (wanted.stars) { wanted.clear(); busted(); return; }   // Gripen! expects the stars cleared
   const spot = wakeSpot(player.x, player.z, HOME, places);
   respawn(); player.x = spot.x; player.z = spot.z; collide(player, 0.6); health.hp = HP_MAX; drawHealth();
   bigScreen('Däckad!', 'Knocked out. You come to ' + (spot.name ? 'at the safehouse on ' + spot.name : 'at Torget') + '.'); sayLater(pickLine(WAKE_LINES));
@@ -850,17 +847,6 @@ function hurtPlayer(n) { if (n <= 0) return; const was = health.hp;
   const el = $('hurt'); el.style.transition = 'none'; el.style.opacity = Math.min(1, 0.45 + n / 40); void el.offsetWidth; el.style.transition = ''; el.style.opacity = 0;   // a red flash that fades
   hurt(health, n); drawHealth();
   if (was >= LOW_HP && health.hp < LOW_HP && health.hp > 0) sayLater('”Ja behöver nog en korv me brö.”'); }   // a hint at the kiosk
-function updatePolice(c, dt, T, tv) {
-  const dx = T.x - c.x, dz = T.z - c.z, d = Math.hypot(dx, dz);
-  if (wrecked(c)) { drive(c, 0, 0, false, dt); return d; }   // a wreck only rolls to a stop: no chasing, and no stuck rolls from rnd()
-  const diff = wrap(Math.atan2(dx, -dz) - c.h);
-  let thr = Math.abs(diff) < 1.1 ? 1 : 0.45, steer = clamp(diff * 2.2, -1, 1), brake = false;
-  if (d < 9) { thr = 0; brake = c.v > Math.max(1, tv); }
-  if (c.rev > 0) { c.rev -= dt; thr = -1; steer = c.revSteer; brake = false; }
-  else if (Math.abs(c.v) < 0.8 && d > 9) { c.stuck += dt; if (c.stuck > 1.1) { c.stuck = 0; c.rev = 1.3; c.revSteer = rnd() < 0.5 ? 1 : -1; } } else c.stuck = 0;
-  drive(c, thr, steer, brake, dt);
-  return d;
-}
 
 // ---------- main loop ----------
 function resize() { const w = canvas.clientWidth, h = canvas.clientHeight; if (!w || !h) return;
@@ -908,14 +894,7 @@ function frame(now) {
   for (const c of cars) if (c.mode === 'ai') updateTraffic(c, dt, T);
   updateNpcs(T, dt);
   updateCats(T, dt);
-  let live = 0; for (const p of police) if (!wrecked(p)) live++;   // a wrecked police car is out of the chase: send a new one
-  for (; live < stars; live++) spawnPolice();
-  if (stars > 0) {
-    let md = 1e9; for (const p of police) { const d = updatePolice(p, dt, T, player.speed); if (!wrecked(p)) md = Math.min(md, d); }
-    if (md > 170) { evade += dt; if (evade > 18) { clearWanted(); toast('You lost them.'); } } else evade = 0;
-    $('stars').classList.toggle('evading', evade > 2);
-    if (inside) { hideT -= dt; if (hideT <= 0) { clearWanted(); toast('The police gave up. The coast is clear.'); } }
-    else if (md < 7.5 && player.speed < 2.5) { bustT += dt; if (bustT > 1.6) busted(); } else bustT = Math.max(0, bustT - dt);
+  if (wanted.update(dt, T, player.speed)) {
     blinkT += dt; if (blinkT > 0.22) { blinkT = 0; blink = !blink; barMat.color.copy(blink ? BAR_RED : BAR_BLUE); }
   }
   for (let i = peds.length - 1; i >= 0; i--) { const p = peds[i]; p.ttl -= dt; p.rotation.y = -Math.atan2(T.x - p.position.x, -(T.z - p.position.z));
@@ -943,7 +922,7 @@ function frame(now) {
     const pr = $('prompt'), pl = started && !inside ? nearPlace() : null, kt = started ? nearCat() : null, c = started && !inCar && !inside ? nearestCar() : null;
     $('hide').hidden = !inside;
     if (menuStay && !menuStay()) closeMenu();
-    if (inside) { $('hide').innerHTML = stars ? 'Lying low<b>' + Math.floor(Math.ceil(Math.max(0, hideT)) / 60) + ':' + String(Math.ceil(Math.max(0, hideT)) % 60).padStart(2, '0') + '</b>' : 'Safehouse · ' + inside.name;
+    if (inside) { $('hide').innerHTML = wanted.stars ? 'Lying low<b>' + Math.floor(Math.ceil(Math.max(0, wanted.hideLeft)) / 60) + ':' + String(Math.ceil(Math.max(0, wanted.hideLeft)) % 60).padStart(2, '0') + '</b>' : 'Safehouse · ' + inside.name;
       pr.hidden = false; pr.innerHTML = '<kbd>E</kbd>Go outside'; }
     else if (catFirst(kt, pl)) { pr.hidden = !kmenu.hidden; pr.innerHTML = '<kbd>E</kbd>' + (kt.owned ? 'Hang out with ' + esc(kt.name) : 'Pet the cat' + (treats ? ' (offer a treat)' : '')); }
     else if (pl) { pr.hidden = !kmenu.hidden; pr.innerHTML = '<kbd>E</kbd>' + (pl.kind === 'safe' ? 'Go inside the safehouse' : 'Handla i kiosken'); }
@@ -962,5 +941,5 @@ $('go').addEventListener('click', e => { started = true; $('intro').hidden = tru
 resize(); requestAnimationFrame(frame);
 
 // ---------- test hook: read-only state for the smoke tests (tests/e2e), so they do not have to read pixels ----------
-window.__joyride = { state: () => { const n = nearestCar(); return { started, x: player.x, z: player.z, y: player.y, yaw: camYaw, inCar, car: pcar ? pcar.type : null, near: n ? n.mode : null, speed: pcar ? pcar.v : 0, drift: pcar ? pcar.drift : 0, boost: pcar ? pcar.boost : 0, charge: pcar ? pcar.charge : 0, loose: pcar ? pcar.loose : 0, flickDir: pcar ? pcar.flickDir : 0, stars, cats: cats.length, treats, hp: health.hp, carDmg: pcar ? pcar.dmg : null, ownCat: !!colony.owned, vehicle: displayCar ? vehicleVisuals.state(displayCar) : null, nearSelectedVehicle: n === displayCar, activeVehicle: pcar ? vehicleVisuals.state(pcar) : null, traffic: cars.filter(c => c.mode === 'ai').map(c => ({ type: c.type, vehicle: vehicleVisuals.state(c) })) }; } };
+window.__joyride = { state: () => { const n = nearestCar(); return { started, x: player.x, z: player.z, y: player.y, yaw: camYaw, inCar, car: pcar ? pcar.type : null, near: n ? n.mode : null, speed: pcar ? pcar.v : 0, drift: pcar ? pcar.drift : 0, boost: pcar ? pcar.boost : 0, charge: pcar ? pcar.charge : 0, loose: pcar ? pcar.loose : 0, flickDir: pcar ? pcar.flickDir : 0, stars: wanted.stars, cats: cats.length, treats, hp: health.hp, carDmg: pcar ? pcar.dmg : null, ownCat: !!colony.owned, vehicle: displayCar ? vehicleVisuals.state(displayCar) : null, nearSelectedVehicle: n === displayCar, activeVehicle: pcar ? vehicleVisuals.state(pcar) : null, traffic: cars.filter(c => c.mode === 'ai').map(c => ({ type: c.type, vehicle: vehicleVisuals.state(c) })) }; } };
 })();
