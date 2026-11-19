@@ -319,6 +319,11 @@ interface CornerPlan {
   liftB: number;
   /** the bigger road's class: the wedge is drawn as that road */
   cls: RoadClass;
+  /**
+   * a half corner: arm b has no sidewalk on this side, so the corner turns into it and ramps down there. Its end on
+   * b's curb line, and the outer point as deep as arm a's strip.
+   */
+  stub: { inner: V2; outer: V2 } | null;
 }
 
 /**
@@ -437,12 +442,15 @@ export function buildStreetscape(inp: StreetscapeInputs): StreetscapeLayout {
       const nB: V2 = [B.d[1], -B.d[0]];
       const K = intersect([J[0] + nA[0] * A.half, J[1] + nA[1] * A.half], A.d, [J[0] + nB[0] * B.half, J[1] + nB[1] * B.half], B.d);
       if (!K) continue;
-      const depthA = stripA ? depthOf(A.ri, sideA) : 0;
-      const depthB = stripB ? depthOf(B.ri, sideB) : 0;
+      const filleted = theta >= (MIN_CORNER_DEG * Math.PI) / 180;
+      // a half corner: the arm without a sidewalk gets a stub as deep as the other's, so the corner rounds into it
+      let depthA = stripA ? depthOf(A.ri, sideA) : 0;
+      let depthB = stripB ? depthOf(B.ri, sideB) : 0;
+      if (filleted && !stripA) depthA = depthB;
+      if (filleted && !stripB) depthB = depthA;
       const sin = Math.sin(theta);
       const cos = Math.cos(theta);
       const R = lines[A.ri].c <= RoadClass.SECONDARY || lines[B.ri].c <= RoadClass.SECONDARY ? FILLET_MAJOR_M : FILLET_STREET_M;
-      const filleted = stripA && stripB && theta >= (MIN_CORNER_DEG * Math.PI) / 180;
       // how far past K each strip must start so it clears the other arm's strip (or curb line), plus the fillet
       const clearA = (depthB + Math.max(0, depthA * cos)) / sin + 0.2;
       const clearB = (depthA + Math.max(0, depthB * cos)) / sin + 0.2;
@@ -468,7 +476,18 @@ export function buildStreetscape(inp: StreetscapeInputs): StreetscapeLayout {
           [J[0] + nB[0] * (B.half + depthB), J[1] + nB[1] * (B.half + depthB)],
           B.d,
         );
-        plans.push({ a: { ri: A.ri, side: sideA, s: endA }, b: { ri: B.ri, side: sideB, s: endB }, k: K, kOuter, liftA: roadLiftM(lines[A.ri].c), liftB: roadLiftM(lines[B.ri].c), cls: Math.min(lines[A.ri].c, lines[B.ri].c) as RoadClass });
+        const a = { ri: A.ri, side: sideA, s: endA };
+        const b = { ri: B.ri, side: sideB, s: endB };
+        const cls = Math.min(lines[A.ri].c, lines[B.ri].c) as RoadClass;
+        if (stripA && stripB) plans.push({ a, b, k: K, kOuter, liftA: roadLiftM(lines[A.ri].c), liftB: roadLiftM(lines[B.ri].c), cls, stub: null });
+        else {
+          // keep the real strip as a; the stub ends on the other arm's curb line, past K by the same clearance a strip would need
+          const [real, other, n, d, aOther, depth] = stripA ? [a, b, nB, B.d, aB, depthA] : [b, a, nA, A.d, aA, depthB];
+          const inner: V2 = [K[0] + d[0] * aOther, K[1] + d[1] * aOther];
+          const stub = { inner, outer: [inner[0] + n[0] * depth, inner[1] + n[1] * depth] as V2 };
+          const liftReal = roadLiftM(lines[real.ri].c);
+          plans.push({ a: real, b: other, k: K, kOuter, liftA: liftReal, liftB: roadLiftM(lines[other.ri].c), cls, stub });
+        }
       }
     }
   }
@@ -708,7 +727,17 @@ export function buildStreetscape(inp: StreetscapeInputs): StreetscapeLayout {
   for (const plan of plans) {
     const a = endKey(plan.a.ri, plan.a.side, plan.a.s);
     const b = endKey(plan.b.ri, plan.b.side, plan.b.s);
-    if (runEnds.has(a) && runEnds.has(b)) cornerEnds.add(a).add(b);
+    if (!plan.stub) {
+      if (runEnds.has(a) && runEnds.has(b)) cornerEnds.add(a).add(b);
+      continue;
+    }
+    // a stub needs clear ground: no building, water or other road where it would stand
+    const { inner, outer } = plan.stub;
+    const blocked = [inner, outer, lerp2(inner, outer, 0.5)].some(
+      ([x, z]) => buildingAt(x, z) || inWater(x, z) || inOtherCarriageway(plan.b.ri, x, z) || inOtherCarriageway(plan.a.ri, x, z),
+    );
+    if (runEnds.has(a) && !blocked) cornerEnds.add(a);
+    else plan.stub = null; // the strip ramps down on its own, as before
   }
   for (const r of runs) emitRun(r.ri, r.side, r.run, r.rs, r.L);
 
@@ -887,22 +916,32 @@ export function buildStreetscape(inp: StreetscapeInputs): StreetscapeLayout {
   const corners: Corner[] = [];
   for (const plan of plans) {
     const ea = ends.get(endKey(plan.a.ri, plan.a.side, plan.a.s));
-    const eb = ends.get(endKey(plan.b.ri, plan.b.side, plan.b.s));
-    if (!ea || !eb) continue; // a strip was trimmed short of its corner: it keeps its end cap, and the corner is skipped
+    const stub = plan.stub;
+    // a stub's end is lowered: the corner ramps down as it turns into the street without a sidewalk
+    const eb = stub
+      ? { inner: stub.inner, outer: stub.outer, curb: LOWERED_CURB_M, innerY: heightfield.heightAt(stub.inner[0], stub.inner[1]) + plan.liftB }
+      : ends.get(endKey(plan.b.ri, plan.b.side, plan.b.s));
+    if (!ea || !eb || (stub && !cornerEnds.has(endKey(plan.a.ri, plan.a.side, plan.a.s)))) continue; // trimmed short of its corner: the strip keeps its ramped end
     const ka = plan.k;
     const ko = plan.kOuter ?? lerp2(ea.outer, eb.outer, 0.5);
     const srcA = sideSpec(plan.a.ri, plan.a.side).source;
-    const srcB = sideSpec(plan.b.ri, plan.b.side).source;
+    const srcB = stub ? srcA : sideSpec(plan.b.ri, plan.b.side).source;
     // a corner is as good as its weaker arm's evidence
     const source = SOURCES[Math.max(SOURCES.indexOf(srcA), SOURCES.indexOf(srcB))];
     const src = SOURCES.indexOf(source);
     const surf = sideSpec(plan.a.ri, plan.a.side).surface;
     const pts: { e: number[]; t0: number[]; t1: number[]; t3: number[]; g3: number[]; inner: V2; out: V2 }[] = [];
+    // a stub keeps the full curb round the bend and ramps down over its last RAMP_M of curb line
+    const curve = Array.from({ length: CORNER_SEGMENTS + 1 }, (_, k) => bezier(ea.inner, ka, eb.inner, k / CORNER_SEGMENTS));
+    const toEnd = curve.map(() => 0);
+    for (let k = CORNER_SEGMENTS - 1; k >= 0; k--) toEnd[k] = toEnd[k + 1] + Math.hypot(curve[k + 1][0] - curve[k][0], curve[k + 1][1] - curve[k][1]);
     for (let k = 0; k <= CORNER_SEGMENTS; k++) {
       const t = k / CORNER_SEGMENTS;
-      const inner = bezier(ea.inner, ka, eb.inner, t);
+      const inner = curve[k];
       const out = bezier(ea.outer, ko, eb.outer, t);
-      const curb = ea.curb + (eb.curb - ea.curb) * t;
+      const curb = stub
+        ? Math.min(ea.curb, LOWERED_CURB_M + ((ea.curb - LOWERED_CURB_M) * toEnd[k]) / RAMP_M)
+        : ea.curb + (eb.curb - ea.curb) * t;
       const lift = plan.liftA + (plan.liftB - plan.liftA) * t;
       // the ends sit exactly on the strips' end heights; in between, the same formula as the strips
       const roadY = k === 0 ? ea.innerY : k === CORNER_SEGMENTS ? eb.innerY : heightfield.heightAt(inner[0], inner[1]) + lift;
@@ -931,6 +970,14 @@ export function buildStreetscape(inp: StreetscapeInputs): StreetscapeLayout {
       quad(surface, a.t3, a.g3, b.g3, b.t3, out, Part.SKIRT, src, surf, 0);
       // the wedge between the curb's curve and the corner the two ribbons leave open, at road level
       tri(roadPatches[plan.cls], kp, a.e, b.e, [0, 1, 0], Part.ROAD, src, Surface.ASPHALT, 0);
+    }
+    if (stub) {
+      // the stub's end cap, so it never shows an open edge
+      const p = pts[pts.length - 1];
+      const along = [p.inner[0] - pts[pts.length - 2].inner[0], 0, p.inner[1] - pts[pts.length - 2].inner[1]];
+      const below = (q: number[]) => [q[0], Math.min(heightfield.heightAt(q[0], q[2]) - SKIRT_BELOW_M, q[1]), q[2]];
+      quad(surface, below(p.t0), p.t0, p.t1, below(p.t1), along, Part.SKIRT, src, surf, 0);
+      quad(surface, below(p.t1), p.t1, p.t3, below(p.t3), along, Part.SKIRT, src, surf, 0);
     }
     const inner: number[] = [];
     const outer: number[] = [];

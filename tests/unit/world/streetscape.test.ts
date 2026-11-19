@@ -202,6 +202,29 @@ describe('buildStreetscape: junctions', () => {
     }
   });
 
+  it('rounds a half junction into the street without a sidewalk, and ramps it down there', () => {
+    // the stem runs south; its left (east, +x) side has no sidewalk
+    const { data, layout } = build({ r: [street([-150, 0, 0, 0, 150, 0]), street([0, 0, 0, 150], { sw: [SideState.ABSENT, SideState.PRESENT] })] });
+    expect(layout.corners).toHaveLength(2);
+    const half = layout.corners.find((c) => c.inner[0] > 0 && c.inner[c.inner.length - 2] > 0)!;
+    expect(half).toBeDefined();
+    const heights = new Map(curbHeights(layout.surface).map((c) => [c.x + ',' + c.z, c.h]));
+    // the main road's strip runs into the corner at full height; the corner's far end, on the stem, is lowered
+    expect(heights.get(half.inner.slice(0, 2).join())).toBeCloseTo(CURB_RESIDENTIAL_M, 9);
+    expect(heights.get(half.inner.slice(-2).join())).toBeCloseTo(LOWERED_CURB_M, 9);
+    // the stub stands on the stem's curb line, outside both carriageways
+    const [sx, sz] = half.inner.slice(-2);
+    expect(sx).toBeCloseTo(ROAD_WIDTH_M[RoadClass.STREET] / 2, 6);
+    expect(sz).toBeGreaterThan(ROAD_WIDTH_M[RoadClass.STREET] / 2);
+    for (const { v, part } of triangles(layout.surface)) {
+      if (!TOPS.includes(part)) continue;
+      const [x, , z] = centroid(v);
+      expect(carriagewayDistance(data, x, z)).toBeGreaterThan(0);
+      expect(normal(v)[1]).toBeGreaterThan(0);
+    }
+    expectLooseEndsRamped(layout);
+  });
+
   it('fillets all four corners of a crossroads', () => {
     const { data, layout } = build({ r: [street([-150, 0, 0, 0, 150, 0]), street([0, -150, 0, 0, 0, 150])] });
     expect(layout.corners).toHaveLength(4);
