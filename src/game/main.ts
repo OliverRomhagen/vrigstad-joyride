@@ -738,6 +738,7 @@ const TRISS = [
 function scratch() { if (trissT > 0) return; trissT = 0.9; toast('Skrap, skrap, skrap…', 1.5); }
 function trissResult() {
   trissN++;
+  // biome-ignore lint/plugin/no-math-random: the known exception in AGENTS.md (rule 5); a ticket's luck isn't world state to replay
   if (Math.random() < TRISS_ODDS) { trissWon++; trissLog.length = 0; toast('”VINST! Dä va som sjutton, ja visste väl dä!” You won on a trisslott. That never happens.', 8, 'win'); }
   else {
     const t = performance.now() / 1000; while (trissLog.length && t - trissLog[0] > TRISS_WINDOW) trissLog.shift(); trissLog.push(t);

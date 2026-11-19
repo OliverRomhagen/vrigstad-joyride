@@ -18,6 +18,32 @@
       "style": { "noNonNullAssertion": "off", "useTemplate": "off" }
     }
   },
+  // The architecture rules in AGENTS.md that a linter can check.
+  "plugins": [
+    // Rule 5: seeded randomness in the game and the world. The map page isn't gameplay, and neither are tools and tests.
+    { "path": "./tools/biome/no-math-random.grit", "includes": ["src/**", "!src/map/**"] },
+    // Rule 3: only the input module reads keys, mouse and touch. The map page has its own camera controls, and the menus
+    // and HUD are UI, which takes DOM events by design (rule 4). src/game/main.ts still holds the menus until #177.
+    // Rule 2: a listener on any object, such as an element passed in, which noRestrictedGlobals (below) can't see. Same
+    // paths and exceptions as that override.
+    {
+      "path": "./tools/biome/no-dom-listeners.grit",
+      "includes": [
+        "src/world/**",
+        "src/game/**",
+        "!src/game/render/**",
+        "!src/game/main.ts",
+        "!src/game/hud.ts",
+        "!src/game/input.ts",
+        "!src/game/cats.ts",
+        "!src/game/pets.ts"
+      ]
+    },
+    {
+      "path": "./tools/biome/intents-not-keys.grit",
+      "includes": ["src/game/**", "src/world/**", "!src/game/main.ts", "!src/game/input.ts", "!src/game/hud.ts"]
+    }
+  ],
   "overrides": [
     {
       // The two single-file scripts keep their dense style until #177 splits them, so only formatting is off. These rules
@@ -30,6 +56,89 @@
         "rules": {
           "recommended": false,
           "correctness": { "noUndeclaredVariables": "error", "noUnusedVariables": "error", "noUnusedImports": "error" }
+        }
+      }
+    },
+    {
+      // Rule 2: the world, and the simulation, know nothing about the page, so they run in Node, a worker or a server.
+      // These are fallow.toml's world, world-mesh and sim zones: all of src/world/, and src/game/ outside render/ and the
+      // page modules. Keep the lists the same. Fallow checks the imports between our own files; this override and the
+      // next check the page's globals and three.js, which Fallow can't see.
+      // Exceptions: cats and pets still get HUD elements from main.ts (`kmenu`, the Pets button); drop each once its
+      // HUD part moves into the HUD and it reads state instead (rule 4).
+      "includes": [
+        "src/world/**",
+        "src/game/**",
+        "!src/game/render/**",
+        "!src/game/main.ts",
+        "!src/game/hud.ts",
+        "!src/game/input.ts",
+        "!src/game/cats.ts",
+        "!src/game/pets.ts"
+      ],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedGlobals": {
+              "level": "error",
+              "options": {
+                // Biome 2.6.8 doesn't print these values; its message names the global and the option instead.
+                "deniedGlobals": {
+                  "window": "rule 2",
+                  "self": "rule 2",
+                  "document": "rule 2",
+                  "globalThis": "rule 2",
+                  "navigator": "rule 2",
+                  "location": "rule 2",
+                  "localStorage": "rule 2",
+                  "sessionStorage": "rule 2",
+                  "fetch": "rule 2",
+                  "requestAnimationFrame": "rule 2",
+                  "cancelAnimationFrame": "rule 2",
+                  "addEventListener": "rule 2",
+                  "removeEventListener": "rule 2",
+                  "HTMLElement": "rule 2",
+                  "HTMLCanvasElement": "rule 2",
+                  "Image": "rule 2",
+                  "AudioContext": "rule 2"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      // Rule 2 for imports: three.js stays in src/game/render/ and the world's three.js side (src/world/mesh/,
+      // three-legacy.ts). Exceptions: cats build their own meshes, and pedestrians add theirs to the scene; drop each once
+      // #177 moves that into render/.
+      "includes": [
+        "src/world/**",
+        "!src/world/mesh/**",
+        "!src/world/three-legacy.ts",
+        "src/game/**",
+        "!src/game/render/**",
+        "!src/game/main.ts",
+        "!src/game/hud.ts",
+        "!src/game/input.ts",
+        "!src/game/cats.ts",
+        "!src/game/pedestrians.ts"
+      ],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": ["three", "three/**"],
+                    "message": "Keep three.js in src/game/render/ or src/world/mesh/; sim and world code is plain data and functions (rule 2)."
+                  }
+                ]
+              }
+            }
+          }
         }
       }
     }

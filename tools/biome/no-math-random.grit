@@ -1,0 +1,8 @@
+// AGENTS.md, architecture rule 5: gameplay uses the seeded rnd() or its own makeRnd(seed) stream (src/world/random.ts),
+// so tests, replays and multiplayer see the same rolls. Matching the member expression, not only the call, also catches
+// `const roll = Math.random`.
+language js
+
+`Math.random` as $random where {
+  register_diagnostic(span=$random, message="Use the seeded rnd() or a makeRnd(seed) stream from src/world/random.ts, not Math.random() (AGENTS.md, architecture rule 5).", severity="error")
+}
