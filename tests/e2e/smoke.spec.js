@@ -64,7 +64,9 @@ test.describe('game (index.html)', () => {
     expect(errors).toEqual([]);
   });
 
-  test('W moves the player, and E next to the parked Volvo gets you in', async ({ page }, testInfo) => {
+  test('W moves the player, E next to the parked Volvo gets you in, and it drives on its wheels', async ({ page }, testInfo) => {
+    test.setTimeout(180_000); // the simulation caps dt while software WebGL advances slowly
+    await page.setViewportSize({ width: 640, height: 360 }); // keep software WebGL affordable with detailed cars
     const errors = watchErrors(page);
     await page.goto('/index.html');
     await page.locator('#go').click();
@@ -80,6 +82,20 @@ test.describe('game (index.html)', () => {
     await expect(page.locator('#speed')).toBeVisible();
     await expect(page.locator('#carname')).toHaveText('Volvo 240');
     expect(await state(page)).toMatchObject({ inCar: true, car: 'volvo', stars: 0 });
+    // Every model shares the loader, materials and controller, and the unit tests decode each GLB, so one is driven here.
+    await expect.poll(async () => (await state(page)).activeVehicle).toMatchObject({ id: 'volvo240', status: 'loaded', detailed: true });
+    expect((await state(page)).activeVehicle.wheels).toHaveLength(4);
+    const parked = await state(page);
+    await page.keyboard.down('KeyW');
+    await page.keyboard.down('KeyD');
+    await expect.poll(async () => (await state(page)).activeVehicle.wheels.slice(0, 2).some(w => Math.abs(w.steer) > 0.001)).toBe(true);
+    await expect.poll(async () => { const s = await state(page); return Math.hypot(s.x - parked.x, s.z - parked.z); }).toBeGreaterThan(2);
+    await page.keyboard.up('KeyW');
+    await page.keyboard.up('KeyD');
+    const { activeVehicle: { wheels } } = await state(page);
+    expect(wheels.some(w => Math.abs(w.spin) > 0.1)).toBe(true);
+    expect(wheels.slice(2).every(w => w.steer === 0)).toBe(true);   // only the front wheels steer
+    expect(await page.evaluate(() => document.getElementById('gl').getContext('webgl2').getError())).toBe(0);
     await page.screenshot({ path: testInfo.outputPath('game-in-volvo.png') });
     expect(errors).toEqual([]);
   });
@@ -90,12 +106,7 @@ test.describe('game (index.html)', () => {
     const errors = watchErrors(page);
     await page.goto('/index.html');
     await page.locator('#go').click();
-    await page.keyboard.down('KeyD');                             // into the parked Volvo, as in the test above
-    await expect.poll(async () => (await state(page)).near, { intervals: [50] }).not.toBeNull();
-    await page.keyboard.up('KeyD');
-    await expect.poll(async () => (await state(page)).near).toBe('parked');
-    await page.keyboard.press('KeyE');
-    await expect.poll(async () => (await state(page)).inCar).toBe(true);
+    await getInVolvo(page);
 
     await page.keyboard.down('KeyW');
     await expect.poll(async () => (await state(page)).speed, { intervals: [50], timeout: 60_000 }).toBeGreaterThan(9);
@@ -121,12 +132,7 @@ test.describe('game (index.html)', () => {
     const errors = watchErrors(page);
     await page.goto('/index.html');
     await page.locator('#go').click();
-    await page.keyboard.down('KeyD');                             // into the parked Volvo, as in the tests above
-    await expect.poll(async () => (await state(page)).near, { intervals: [50] }).not.toBeNull();
-    await page.keyboard.up('KeyD');
-    await expect.poll(async () => (await state(page)).near).toBe('parked');
-    await page.keyboard.press('KeyE');
-    await expect.poll(async () => (await state(page)).inCar).toBe(true);
+    await getInVolvo(page);
 
     await page.keyboard.down('KeyW');
     await expect.poll(async () => (await state(page)).speed, { intervals: [50], timeout: 60_000 }).toBeGreaterThan(9);
