@@ -21,6 +21,7 @@ import { treeSpots } from '../world/trees';
 import { Water } from '../world/water';
 import { CAT_ADOPT_PETS, CatColony } from './cats';
 import { Hud } from './hud';
+import { Input } from './input';
 import { Crowd } from './pedestrians';
 import { Pets } from './pets';
 import { CAT_SCRATCH_HP, crackLevel, LOW_HP, CRASH_COOL_S, crashCars, crashDamage, driverHurt, HP_MAX, heal, hurt, KORV_HP, impactSpeed, newHealth, regen, RULLE_HP, runOverHurt, smokeLevel, topSpeedShare, wakeSpot, wrecked } from './health';
@@ -678,8 +679,8 @@ let menuKind = null, menuPick = null, menuStay = null;          // which menu is
 // items are [key, label]; the 'no' item is last and gets Esc
 function openMenu(kind, title, items, pick, stay = null) {
   nameIn = null; kmenu.innerHTML = '<p id="kmenu-t">' + title + '</p>' + items.map(([k, label], i) => '<button type="button" data-k="' + k + '"><kbd>' + (k === 'no' ? 'Esc' : k === 'ok' ? 'Enter' : i + 1) + '</kbd>' + label + '</button>').join('');
-  menuKind = kind; menuPick = pick; menuStay = stay; if (kmenu.hidden) { relock = locked(); if (relock) document.exitPointerLock(); } kmenu.hidden = false; }
-function closeMenu() { kmenu.hidden = true; nameIn = null; menuKind = menuPick = menuStay = null; if (relock) { relock = false; lockMouse(); } }
+  menuKind = kind; menuPick = pick; menuStay = stay; if (kmenu.hidden) { relock = input.locked(); if (relock) document.exitPointerLock(); } kmenu.hidden = false; }
+function closeMenu() { kmenu.hidden = true; nameIn = null; menuKind = menuPick = menuStay = null; if (relock) { relock = false; input.lockMouse(); } }
 // a choice can open the next menu (a pet's "are you sure?"): then the menu stays up, and the cursor stays free
 function menuChoose(k) { const pick = menuPick; menuPick = null; if (pick) pick(k); if (!menuPick) closeMenu(); }
 const openKiosk = () => openMenu('kiosk', '”Va ska dä va?”', [['triss', 'Trisslott'], ['treats', 'Kattgodis (3 st)'], ['korv', 'Korv me brö <small>+' + KORV_HP + ' health</small>'], ['vego', 'Vegokorv me brö'], ['rulle', 'Smålandsrulle <small>+' + RULLE_HP + ' health</small>'], ['no', 'Nä tack']], k => {
@@ -741,53 +742,24 @@ function trissResult() {
 }
 let camYaw = 0.6, camPitch = 0.34, lookOff = 0, lookIdle = 9;
 
-// ---------- input ----------
-const keys = {}, joy = { x: 0, y: 0, on: false };
-const KEYMAP = { KeyW: 'up', ArrowUp: 'up', KeyS: 'down', ArrowDown: 'down', KeyA: 'left', ArrowLeft: 'left', KeyD: 'right', ArrowRight: 'right', Space: 'brake', ShiftLeft: 'run', ShiftRight: 'run' };
-addEventListener('keydown', e => { if (!started) return; const k = KEYMAP[e.code];
-  if (nameIn && e.target === nameIn) { if (e.isComposing) return; if (e.code === 'Enter' || e.code === 'NumpadEnter' || e.code === 'Escape') { e.preventDefault(); menuChoose(e.code === 'Escape' ? 'no' : 'ok'); canvas.focus(); } return; }   // typing a name
+// ---------- input: keys, mouse look and the touch controls (src/game/input.ts) ----------
+// the menus see each key first: typing a pet's name, the menu's number keys and Esc, P for your pets
+function menuKey(e) {
+  if (nameIn && e.target === nameIn) { if (e.isComposing) return true; if (e.code === 'Enter' || e.code === 'NumpadEnter' || e.code === 'Escape') { e.preventDefault(); menuChoose(e.code === 'Escape' ? 'no' : 'ok'); canvas.focus(); } return true; }   // typing a name
   if (!kmenu.hidden) { const n = /^(?:Digit|Numpad)([1-9])$/.exec(e.code), b = n && kmenu.querySelectorAll('button')[+n[1] - 1];
-    if (e.code === 'Escape' || b && b.dataset.k !== 'no') { e.preventDefault(); menuChoose(e.code === 'Escape' ? 'no' : b.dataset.k); return; }
-    if ((e.code === 'Enter' || e.code === 'NumpadEnter') && !kmenu.contains(e.target) && kmenu.querySelector('[data-k="ok"]')) { e.preventDefault(); menuChoose('ok'); return; } }   // Enter is labelled on Spara, so it saves wherever focus is
-  if (e.code === 'KeyP' && !e.repeat && colony.owned) { if (menuKind === 'pets') closeMenu(); else openPets(); return; }
-  if (kmenu.contains(e.target)) return;                       // Enter / Space on a focused menu button: let the button's own click handle it
-  if (k) { keys[k] = true; e.preventDefault(); if (k === 'brake' && !e.repeat && jumpOk()) jumpQ = true; } else if ((e.code === 'KeyE' || e.code === 'KeyF' || e.code === 'Enter') && !e.repeat) action(); else if (e.code === 'KeyR') respawn(); });
-addEventListener('keyup', e => { const k = KEYMAP[e.code]; if (k) keys[k] = false; });
-addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
-// mouse look: a click on the game locks the pointer, and the mouse then turns the camera with no button held. Esc frees the cursor.
-// Touch, and a mouse in a browser that refuses the lock, turn the camera by dragging.
-const LOCK_K = 0.4;   // a locked mouse turns this much less per pixel than a drag: it travels much further
-const LOCK_MAX_PX = 120;   // per event; some browsers report a huge movementX right after locking, which would spin the camera
-const locked = () => document.pointerLockElement === canvas;
-function lockMouse() { if (locked() || !canvas.requestPointerLock) return; try { const p = canvas.requestPointerLock(); if (p && p.catch) p.catch(() => {}); } catch (err) {} }
-document.addEventListener('pointerlockchange', () => { if (!locked() && started && kmenu.hidden && !hud.toasting) toast('Click the game to look around with the mouse again.', 3); });
-let dragId = null, lx = 0, ly = 0;
-canvas.addEventListener('pointerdown', e => { dragId = e.pointerId; lx = e.clientX; ly = e.clientY; try { canvas.setPointerCapture(e.pointerId); } catch (err) {}
-  if (started && kmenu.hidden && e.pointerType === 'mouse') lockMouse(); });   // the kiosk menu needs the cursor
-// Only the mouse takes the locked path: a finger dragging while the mouse holds the lock keeps drag speed. The locked mouse's
-// clientX is frozen, so it must not touch lx / ly, or the next touch move jumps.
-canvas.addEventListener('pointermove', e => { const lk = locked() && e.pointerType === 'mouse'; if (!lk && e.pointerId !== dragId) return;
-  let dx, dy;
-  if (lk) { dx = clamp(e.movementX, -LOCK_MAX_PX, LOCK_MAX_PX) * LOCK_K; dy = clamp(e.movementY, -LOCK_MAX_PX, LOCK_MAX_PX) * LOCK_K; }
-  else { dx = e.clientX - lx; dy = e.clientY - ly; lx = e.clientX; ly = e.clientY; }
-  if (inCar) { lookOff = wrap(lookOff + dx * 0.006); lookIdle = 0; } else camYaw = wrap(camYaw + dx * 0.006);
-  camPitch = clamp(camPitch + dy * 0.004, 0.06, 1.25); });
-const endDrag = e => { if (e.pointerId === dragId) dragId = null; };
-canvas.addEventListener('pointerup', endDrag); canvas.addEventListener('pointercancel', endDrag);
-const joyEl = $('joy'), knob = $('knob'); let joyId = null;
-function joyMove(e) { const r = joyEl.getBoundingClientRect(); let dx = e.clientX - r.left - r.width / 2, dy = e.clientY - r.top - r.height / 2;
-  const L = Math.hypot(dx, dy), m = 44; if (L > m) { dx *= m / L; dy *= m / L; }
-  joy.x = dx / m; joy.y = -dy / m; knob.style.transform = 'translate(' + dx + 'px,' + dy + 'px)'; }
-joyEl.addEventListener('pointerdown', e => { joyId = e.pointerId; joy.on = true; try { joyEl.setPointerCapture(e.pointerId); } catch (err) {} joyMove(e); });
-joyEl.addEventListener('pointermove', e => { if (e.pointerId === joyId) joyMove(e); });
-const joyEnd = e => { if (e.pointerId !== joyId) return; joyId = null; joy.on = false; joy.x = joy.y = 0; knob.style.transform = ''; };
-joyEl.addEventListener('pointerup', joyEnd); joyEl.addEventListener('pointercancel', joyEnd);
-const hold = (el, k) => { el.addEventListener('pointerdown', e => { keys[k] = true; e.preventDefault(); });
-  for (const t of ['pointerup', 'pointercancel', 'pointerleave']) el.addEventListener(t, () => { keys[k] = false; }); };
-hold($('p-brake'), 'brake'); $('p-brake').addEventListener('pointerdown', () => { if (jumpOk()) jumpQ = true; });
-$('p-act').addEventListener('click', () => action());
-function showTouch() { $('joy').hidden = false; $('pad').hidden = false; }
-if (coarse) showTouch(); else addEventListener('touchstart', showTouch, { once: true, passive: true });
+    if (e.code === 'Escape' || b && b.dataset.k !== 'no') { e.preventDefault(); menuChoose(e.code === 'Escape' ? 'no' : b.dataset.k); return true; }
+    if ((e.code === 'Enter' || e.code === 'NumpadEnter') && !kmenu.contains(e.target) && kmenu.querySelector('[data-k="ok"]')) { e.preventDefault(); menuChoose('ok'); return true; } }   // Enter is labelled on Spara, so it saves wherever focus is
+  if (e.code === 'KeyP' && !e.repeat && colony.owned) { if (menuKind === 'pets') closeMenu(); else openPets(); return true; }
+  return kmenu.contains(e.target);                            // Enter / Space on a focused menu button: let the button's own click handle it
+}
+const input = new Input({ win: window, doc: document, canvas, $, coarse, menuKey,
+  get started() { return started; }, get menuOpen() { return !kmenu.hidden; },
+  action: () => action(), respawn: () => respawn(),
+  jump: () => { if (jumpOk()) jumpQ = true; },   // queue only where a jump can start (see jumpOk)
+  look: (dx, dy) => { if (inCar) { lookOff = wrap(lookOff + dx * 0.006); lookIdle = 0; } else camYaw = wrap(camYaw + dx * 0.006);
+    camPitch = clamp(camPitch + dy * 0.004, 0.06, 1.25); },
+  lockLost: () => { if (!hud.toasting) toast('Click the game to look around with the mouse again.', 3); } });
+const { keys, joy } = input;
 
 // ---------- HUD (src/game/hud.ts) ----------
 // the getters are read when the HUD uses them, so they can name things that change during play
@@ -903,7 +875,7 @@ function frame(now) {
   // camera
   let dist, ty = groundAt(T.x, T.z);
   if (!started) { camYaw = wrap(camYaw + dt * 0.07); dist = 46; camPitch = 0.42; }
-  else if (inCar) { lookIdle += dt; if (lookIdle > 1.2 && dragId === null) lookOff *= Math.pow(0.02, dt);
+  else if (inCar) { lookIdle += dt; if (lookIdle > 1.2 && !input.dragging) lookOff *= Math.pow(0.02, dt);
     camYaw += wrap(pcar.h - pcar.slip * 0.6 + lookOff - camYaw) * Math.min(1, dt * 4.5); dist = 10 + Math.abs(pcar.v) * 0.09; }
   else dist = inside ? 15 : 6.2;
   const cp = Math.cos(camPitch), cx = T.x - Math.sin(camYaw) * dist * cp, cz = T.z + Math.cos(camYaw) * dist * cp;
@@ -936,7 +908,7 @@ function frame(now) {
   renderer.render(scene, camera);
 }
 $('go').addEventListener('click', e => { started = true; $('intro').hidden = true; camYaw = 0.6; camPitch = 0.34; canvas.focus();
-  if (e.pointerType ? e.pointerType === 'mouse' : !coarse) lockMouse();   // by how Start was pressed: a tap on a touchscreen laptop shouldn't lock
+  if (e.pointerType ? e.pointerType === 'mouse' : !coarse) input.lockMouse();   // by how Start was pressed: a tap on a touchscreen laptop shouldn't lock
   toast('Find a car and press E to take it. Occupied cars always get you a wanted star.', 5); });
 resize(); requestAnimationFrame(frame);
 
