@@ -6,6 +6,7 @@ const PORT = Number(process.env.E2E_PORT) || 8043;
 
 export default defineConfig({
   testDir: 'tests/e2e',
+  fullyParallel: true,              // every test loads its own page, so spread them over the workers, not one file per worker
   timeout: 120_000,                 // headless WebGL (SwiftShader in CI) renders only a few frames a second
   expect: { timeout: 30_000 },
   forbidOnly: !!process.env.CI,

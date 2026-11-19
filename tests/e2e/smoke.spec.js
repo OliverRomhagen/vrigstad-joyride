@@ -1,20 +1,7 @@
 // Smoke tests for the built pages. They assert on the DOM and on the window.__joyride test hook, never on pixels:
 // headless WebGL output varies between machines. The screenshots are attached for humans to look at.
 import { test, expect } from '@playwright/test';
-
-// Collects console errors and uncaught exceptions from the moment the page starts loading.
-function watchErrors(page) {
-  const errors = [];
-  page.on('console', m => {
-    if (m.type() !== 'error') return;
-    // A CDN or font outage is not our bug; failed loads from our own origin still count.
-    const url = m.location().url;
-    if (m.text().startsWith('Failed to load resource') && url && new URL(url).origin !== new URL(page.url()).origin) return;
-    errors.push(m.text());
-  });
-  page.on('pageerror', e => errors.push(String(e)));
-  return errors;
-}
+import { watchErrors } from './render-helpers.js';
 
 // True when the page itself gave #gl a WebGL context. A canvas keeps one context type for life, so asking for '2d'
 // returns null only if a WebGL context already exists. (Asking for 'webgl' here would create one and always pass.)
