@@ -192,7 +192,7 @@ export class Input {
     if (this.locked() || !canvas.requestPointerLock) return;
     try {
       const p = canvas.requestPointerLock();
-      if (p && p.catch) p.catch(() => {});
+      if (p?.catch) p.catch(() => {});
     } catch {}
   }
 }

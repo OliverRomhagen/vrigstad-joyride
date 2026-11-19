@@ -350,7 +350,7 @@ test.describe('game with the pointer locked (faked)', () => {
         changed();
         return Promise.resolve();
       };
-      Document.prototype.exitPointerLock = function () {
+      Document.prototype.exitPointerLock = () => {
         el = null;
         changed();
       };

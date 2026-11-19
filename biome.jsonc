@@ -12,8 +12,10 @@
   "javascript": { "formatter": { "quoteStyle": "single", "arrowParentheses": "asNeeded" } },
   "linter": {
     "rules": {
-      // Recommended only warns on these, and warnings don't fail `biome check`.
-      "correctness": { "noUnusedVariables": "error", "noUnusedImports": "error" }
+      // Recommended only warns on these; `biome check --error-on-warnings` (package.json) fails on the rest too.
+      "correctness": { "noUnusedVariables": "error", "noUnusedImports": "error" },
+      // `getObjectByName(...)!` and string `+` are the house style in the dense code; flagging them is only noise.
+      "style": { "noNonNullAssertion": "off", "useTemplate": "off" }
     }
   },
   "overrides": [
@@ -27,7 +29,7 @@
       "linter": {
         "rules": {
           "recommended": false,
-          "correctness": { "noUndeclaredVariables": "error", "noUnusedImports": "error" }
+          "correctness": { "noUndeclaredVariables": "error", "noUnusedVariables": "error", "noUnusedImports": "error" }
         }
       }
     }
