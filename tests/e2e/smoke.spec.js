@@ -46,20 +46,10 @@ test.describe('game (index.html)', () => {
     await expect(page.locator('#intro')).toBeVisible();                 // covers the whole view, HUD included
     await expectWebGL(page);
     expect(await state(page)).toMatchObject({ started: false, inCar: false });
-
-    // The Blender fleet is on without URL parameters, and each traffic type only wears its own models.
-    await expect.poll(async () => (await state(page)).vehicle?.detailed).toBe(true);
-    const s = await state(page);
-    expect(s.vehicle.id).toBe('volvo240');
-    expect(s.traffic.length).toBeGreaterThan(0);
-    const fleet = { volvo: ['volvo240', 'impala1970'], saab: ['saab900', 'xc70', 'micra-k11'], epa: ['duett-epa'] };
-    for (const c of s.traffic) expect(fleet[c.type] ?? [null]).toContain(c.vehicle?.id ?? null);
-    await expect(page.getByRole('link', { name: 'CC BY 4.0' })).toBeVisible();
-    const notice = await page.request.get('/media/vehicles/NOTICE.txt');
-    expect(notice.ok()).toBe(true);
-    expect(await notice.text()).toContain('Vehicle models by Axel Tidehorn');
+    await expect(page.getByRole('link', { name: 'CC BY 4.0' })).toBeVisible(); // in the intro, so before Start
     await page.screenshot({ path: testInfo.outputPath('game-intro.png') });
 
+    // Start and the HUD come before the fleet details, so a fleet failure can't hide a broken Start.
     await page.locator('#go').click();
     await expect(page.locator('#intro')).toBeHidden();
     expect(await state(page)).toMatchObject({ started: true });
@@ -69,6 +59,17 @@ test.describe('game (index.html)', () => {
     await expect(page.locator('#stars')).toHaveText('★★★');
     await expect(page.locator('#stars b')).toHaveCount(0);              // <b> is a lit star: none when not wanted
     await expect(page.locator('#mini')).toBeVisible();
+
+    // The Blender fleet is on without URL parameters, and each traffic type only wears its own models.
+    await expect.poll(async () => (await state(page)).vehicle?.detailed).toBe(true);
+    const s = await state(page);
+    expect(s.vehicle.id).toBe('volvo240');
+    expect(s.traffic.length).toBeGreaterThan(0);
+    const fleet = { volvo: ['volvo240', 'impala1970'], saab: ['saab900', 'xc70', 'micra-k11'], epa: ['duett-epa'] };
+    for (const c of s.traffic) expect(fleet[c.type] ?? [null]).toContain(c.vehicle?.id ?? null);
+    const notice = await page.request.get('/media/vehicles/NOTICE.txt');
+    expect(notice.ok()).toBe(true);
+    expect(await notice.text()).toContain('Vehicle models by Axel Tidehorn');
     expect(errors).toEqual([]);
   });
 
@@ -171,6 +172,8 @@ test.describe('game (index.html)', () => {
   });
 
   test('Space jumps once per press, a tap between two frames still jumps, and R mid-jump lands at Torget', async ({ page }) => {
+    test.setTimeout(180_000); // three jump phases in one test, and software WebGL advances slowly in CI
+    await page.setViewportSize({ width: 640, height: 360 }); // keep software WebGL affordable with detailed cars
     const errors = watchErrors(page);
     await page.goto('/index.html');
     await page.locator('#go').click();
