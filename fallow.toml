@@ -45,7 +45,7 @@ patterns = ["src/game/main.ts", "src/game/hud.ts", "src/game/input.ts", "src/gam
 name = "render"
 patterns = ["src/game/render/**"]
 
-# Game rules as plain data: everything else in src/game/, src/game/sim/ once #177 makes it, so a new module is checked
+# Game rules as plain data: everything else in src/game/, src/game/sim/ once #49 moves the rules there, so a new module is checked
 # from its first commit. A new page module goes in the page list above instead.
 [[boundaries.zones]]
 name = "sim"

@@ -109,7 +109,7 @@
     },
     {
       // The world's three.js side may import it. Exceptions: cats build their own meshes, and pedestrians add theirs to the
-      // scene; drop each once #177 moves that into render/.
+      // scene; drop each once #49 moves that into render/.
       "includes": ["src/world/mesh/**", "src/world/three-legacy.ts", "src/game/cats.ts", "src/game/pedestrians.ts"],
       "linter": { "rules": { "style": { "noRestrictedImports": "off" } } }
     },
