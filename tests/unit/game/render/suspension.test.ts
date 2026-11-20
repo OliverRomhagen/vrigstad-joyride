@@ -5,7 +5,7 @@ import { type CarType, VEHICLE_SPECS } from '../../../../src/game/sim/vehicle-sp
 const run = (forces: BodyForces, seconds: number, type: CarType = 'volvo', dt = 1 / 60) => {
   const state = restingBody(),
     s = VEHICLE_SPECS[type].suspension;
-  for (let t = 0; t < seconds; t += dt) stepBody(state, forces, s, dt);
+  for (let i = Math.round(seconds / dt); i > 0; i--) stepBody(state, forces, s, dt); // count steps: summed dt drifts
   return state;
 };
 

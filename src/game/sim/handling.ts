@@ -28,8 +28,10 @@ export function approach(current: number, target: number, responseS: number, dt:
 /**
  * How far the car's centre moves when its heading turns from hOld to hNew around the rear axle, which sits
  * rearAxleM behind the centre. Only the front wheels steer, so the rear ones roll straight and the car turns
- * about a point on the rear axle's line. Heading 0 faces −z; x east, z south.
+ * about a point on the rear axle's line. Heading 0 faces −z; x east, z south. Writes into out (called every frame).
  */
-export function rearPivotShift(hOld: number, hNew: number, rearAxleM: number) {
-  return { dx: (Math.sin(hNew) - Math.sin(hOld)) * rearAxleM, dz: -(Math.cos(hNew) - Math.cos(hOld)) * rearAxleM };
+export function rearPivotShift(hOld: number, hNew: number, rearAxleM: number, out: { dx: number; dz: number }) {
+  out.dx = (Math.sin(hNew) - Math.sin(hOld)) * rearAxleM;
+  out.dz = -(Math.cos(hNew) - Math.cos(hOld)) * rearAxleM;
+  return out;
 }

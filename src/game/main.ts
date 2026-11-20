@@ -427,6 +427,7 @@ const CATCH = 0.8;                             // share of the grip that swings 
 const TURBO_AT = [1, 2.2], TURBO_S = [0.7, 1.3];   // s of sliding for a blue / an orange spark; how long each boost lasts (s)
 const TURBO_ACC = 14, TURBO_TOP = 1.2;         // m/s² of boost; top speed multiplier while boosting
 // shared driving model for the player and the police; only the player passes canDrift
+const _pivot = { dx: 0, dz: 0 };   // rearPivotShift writes here: no allocation per car per frame
 function drive(c, thr, steer, brake, dt, canDrift) {
   c.thr = thr = Math.abs(thr - c.thr) < 0.02 ? thr : approach(c.thr, thr, c.T.handling.throttleResponseS, dt); c.st = approach(c.st, steer, c.T.handling.steerResponseS, dt);   // weight: speed and heading answer a little late
   if (wrecked(c)) { thr = c.thr = 0; c.boost = 0; }   // the engine is dead: it only rolls to a stop
@@ -458,7 +459,7 @@ function drive(c, thr, steer, brake, dt, canDrift) {
     c.h = wrap(c.h - fix * k); c.vh = wrap(c.vh + fix * (1 - k));   // counter-steer catches the slide: the car straightens along its line instead of carving on
     c.slip = clamp(wrap(c.h - c.vh), -DRIFT_MAX_SLIP, DRIFT_MAX_SLIP); c.vh = wrap(c.h - c.slip); }
   else { c.vh = c.h; c.slip = 0; }
-  if (!c.drift && c.loose <= 0) { const p = rearPivotShift(h0, c.h, c.T.handling.rearAxleM); c.x += p.dx; c.z += p.dz; }   // gripping, the car turns about its rear axle; sliding, the rear swings out instead
+  if (!c.drift && c.loose <= 0) { const p = rearPivotShift(h0, c.h, c.T.handling.rearAxleM, _pivot); c.x += p.dx; c.z += p.dz; }   // gripping, the car turns about its rear axle; sliding, the rear swings out instead
   c.x += Math.sin(c.vh) * c.v * dt; c.z -= Math.cos(c.vh) * c.v * dt;
   c.x = clamp(c.x, -HALF + 4, HALF - 4); c.z = clamp(c.z, -HALF + 4, HALF - 4);
   const vx = Math.sin(c.vh) * c.v, vz = -Math.cos(c.vh) * c.v, bx = c.x, bz = c.z;   // velocity and place before any hit: the push out gives the hit's normal

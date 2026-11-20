@@ -4,7 +4,7 @@ import { BodyMotion } from '../../../../src/game/render/body-motion';
 import { VEHICLE_SPECS } from '../../../../src/game/sim/vehicle-spec';
 
 const setup = () => {
-  const car = { mesh: new THREE.Group(), x: 0, z: 0, h: 0, v: 0 },
+  const car = { mesh: new THREE.Group(), mode: 'player', x: 0, z: 0, h: 0, vh: 0, v: 0 },
     node = new THREE.Group(),
     motion = new BodyMotion();
   motion.add(car, VEHICLE_SPECS.volvo.suspension, node);
@@ -28,22 +28,48 @@ describe('BodyMotion', () => {
     const { car, motion } = setup();
     car.v = 12;
     for (let i = 0; i < 30; i++) {
+      car.h = car.vh += 1 * dt;
+      motion.update(car, dt);
+    }
+    expect(motion.state(car)!.roll).toBeGreaterThan(0.02);
+  });
+  it('leans by the direction of travel, not the nose: a drift catch that swings only the nose is no corner', () => {
+    const { car, motion } = setup();
+    car.v = 12;
+    for (let i = 0; i < 30; i++) {
+      car.h += 1 * dt; // the nose swings, the car keeps its line
+      motion.update(car, dt);
+    }
+    expect(motion.state(car)!.roll).toBe(0);
+  });
+  it('steers traffic by h, which is all advance() turns', () => {
+    const { car, motion } = setup();
+    car.mode = 'ai';
+    car.v = 12;
+    for (let i = 0; i < 30; i++) {
       car.h += 1 * dt;
       motion.update(car, dt);
     }
     expect(motion.state(car)!.roll).toBeGreaterThan(0.02);
   });
+  it('takes a sudden drop into water as a reset, not a bump', () => {
+    const { car, motion } = setup();
+    car.mesh.position.y = -0.55;
+    motion.update(car, dt);
+    motion.update(car, dt);
+    expect(motion.state(car)!.heave).toBe(0);
+  });
   it('rests level after a teleport, and when the camera is far away', () => {
     const { car, node, motion } = setup();
     car.v = 12;
     for (let i = 0; i < 10; i++) {
-      car.h += dt;
+      car.h = car.vh += dt;
       motion.update(car, dt);
     }
     car.x = 500;
     motion.update(car, dt);
     expect(motion.state(car)).toEqual({ roll: 0, pitch: 0, heave: 0 });
-    car.h += 0.5;
+    car.h = car.vh += 0.5;
     motion.update({ x: 0, z: 0 }, dt);
     expect(node.rotation.z).toBe(0);
   });

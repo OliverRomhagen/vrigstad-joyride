@@ -37,7 +37,7 @@ describe('rearPivotShift', () => {
     const r = 1.5, // an axle well off the middle, like the Duett's
       h0 = 0.4,
       h1 = 0.55;
-    const p = rearPivotShift(h0, h1, r);
+    const p = rearPivotShift(h0, h1, r, { dx: 0, dz: 0 });
     // rear axle = centre − forward · r, forward = (sin h, −cos h)
     const rear0 = { x: -Math.sin(h0) * r, z: Math.cos(h0) * r };
     const rear1 = { x: p.dx - Math.sin(h1) * r, z: p.dz + Math.cos(h1) * r };
@@ -45,7 +45,7 @@ describe('rearPivotShift', () => {
     expect(rear1.z).toBeCloseTo(rear0.z, 10);
   });
   it('moves the centre into a right turn when facing north', () => {
-    expect(rearPivotShift(0, 0.1, 1.3).dx).toBeGreaterThan(0);
-    expect(rearPivotShift(0.3, 0.3, 1.3)).toEqual({ dx: 0, dz: -0 });
+    expect(rearPivotShift(0, 0.1, 1.3, { dx: 0, dz: 0 }).dx).toBeGreaterThan(0);
+    expect(rearPivotShift(0.3, 0.3, 1.3, { dx: 0, dz: 0 })).toEqual({ dx: 0, dz: -0 });
   });
 });

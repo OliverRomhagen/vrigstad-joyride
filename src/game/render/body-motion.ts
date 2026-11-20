@@ -1,17 +1,20 @@
 import type * as THREE from 'three';
+import { clamp, wrap } from '../../world/math';
 import type { Suspension } from '../sim/vehicle-spec';
 import { type BodyForces, type BodyState, restingBody, stepBody } from './suspension';
 
-// Reads only what the simulation already has: position, heading and speed. The ride height comes from the
-// mesh, which placeCar puts on the ground.
-type Car = { mesh: THREE.Object3D; x: number; z: number; h: number; v: number };
+// Reads only what the simulation already has: position, direction of travel and speed. The ride height comes
+// from the mesh, which placeCar puts on the ground. Traffic ('ai') steers by h alone; drive() keeps vh for the rest.
+type Car = { mesh: THREE.Object3D; mode: string; x: number; z: number; h: number; vh: number; v: number };
+const travel = (car: Car) => (car.mode === 'ai' ? car.h : car.vh);
 type Entry = {
+  car: Car;
   suspension: Suspension;
   state: BodyState;
   nodes: THREE.Object3D[]; // the sprung parts: they tilt, the wheels and blob shadow stay put
   x: number;
   z: number;
-  h: number;
+  h: number; // direction of travel, rad
   v: number;
   y: number;
   vy: number;
@@ -19,10 +22,10 @@ type Entry = {
 };
 const ACTIVE_RANGE_M = 150, // further away, bodies rest level: nobody sees them rock
   TELEPORT_M = 20, // a jump this far in one frame is a respawn or a reset, not a drive
+  DROP_M = 0.5, // nor is a step this big in ride height: placeCar sinks a car 0.55 m into water at once
   MAX_FORCE_MS2 = 40; // a wall stops a car in one frame; don't let that one frame fling the body
 
-const wrap = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
-const clampForce = (a: number) => Math.max(-MAX_FORCE_MS2, Math.min(MAX_FORCE_MS2, a));
+const clampForce = (a: number) => clamp(a, -MAX_FORCE_MS2, MAX_FORCE_MS2);
 const _forces: BodyForces = { lateral: 0, longitudinal: 0, vertical: 0 };
 
 // Rendering only: tilts each car's sprung nodes from how the car moved since the last frame.
@@ -30,12 +33,13 @@ export class BodyMotion {
   private readonly entries = new Map<Car, Entry>();
   add(car: Car, suspension: Suspension, ...nodes: THREE.Object3D[]) {
     this.entries.set(car, {
+      car,
       suspension,
       state: restingBody(),
       nodes,
       x: car.x,
       z: car.z,
-      h: car.h,
+      h: travel(car),
       v: car.v,
       y: 0,
       vy: 0,
@@ -54,28 +58,30 @@ export class BodyMotion {
   }
   update(focus: { x: number; z: number }, dt: number) {
     if (dt <= 0) return;
-    for (const [car, e] of this.entries) {
-      const y = car.mesh.position.y,
+    for (const e of this.entries.values()) {
+      const car = e.car,
+        y = car.mesh.position.y,
         vy = (y - e.y) / dt;
       if (
         e.fresh ||
         Math.hypot(car.x - e.x, car.z - e.z) > TELEPORT_M ||
+        Math.abs(y - e.y) > DROP_M ||
         Math.hypot(car.x - focus.x, car.z - focus.z) > ACTIVE_RANGE_M
       ) {
         const st = e.state,
-          level = !st.roll && !st.pitch && !st.heave && !st.rollV && !st.pitchV && !st.heaveV;
+          isLevel = !st.roll && !st.pitch && !st.heave && !st.rollV && !st.pitchV && !st.heaveV;
         st.roll = st.rollV = st.pitch = st.pitchV = st.heave = st.heaveV = 0; // in place: no allocation per car per frame
         e.vy = 0;
-        if (level && !e.fresh) {
+        if (isLevel && !e.fresh) {
           e.x = car.x;
           e.z = car.z;
-          e.h = car.h;
+          e.h = travel(car);
           e.v = car.v;
           e.y = y;
           continue; // already resting level: nothing to write to its nodes
         }
       } else {
-        _forces.lateral = clampForce((car.v * wrap(car.h - e.h)) / dt); // centripetal: v × yaw rate
+        _forces.lateral = clampForce((car.v * wrap(travel(car) - e.h)) / dt); // centripetal: v × turn rate of the travel, not the nose
         _forces.longitudinal = clampForce((car.v - e.v) / dt);
         _forces.vertical = clampForce((vy - e.vy) / dt);
         stepBody(e.state, _forces, e.suspension, dt);
@@ -84,7 +90,7 @@ export class BodyMotion {
       e.fresh = false;
       e.x = car.x;
       e.z = car.z;
-      e.h = car.h;
+      e.h = travel(car);
       e.v = car.v;
       e.y = y;
       this.apply(e);

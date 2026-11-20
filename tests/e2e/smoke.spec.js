@@ -28,7 +28,7 @@ const keysNow = (page, events) =>
   }, events);
 
 // From Start, walks to the parked car next to Torget (the Volvo 240, or the model `?vehicle=` picks) and gets in.
-async function getInVolvo(page, name = 'Volvo 240') {
+async function getInParkedCar(page, name = 'Volvo 240') {
   // With the camera as Start leaves it, the parked Volvo is about 7 m to the player's right.
   // Release D as soon as any car is in reach, so a slow runner can't walk past it between polls.
   await page.keyboard.down('KeyD');
@@ -119,7 +119,7 @@ test.describe('game (index.html)', () => {
     await page.keyboard.up('KeyW');
     await page.keyboard.press('KeyR'); // back to the spawn point at Torget
 
-    await getInVolvo(page);
+    await getInParkedCar(page);
     await expect(page.locator('#speed')).toBeVisible();
     await expect(page.locator('#carname')).toHaveText('Volvo 240');
     await expect(page.locator('#dmg')).toHaveAttribute('aria-valuenow', '0'); // the car's damage bar, empty
@@ -168,7 +168,7 @@ test.describe('game (index.html)', () => {
     const errors = watchErrors(page);
     await page.goto('/index.html');
     await page.locator('#go').click();
-    await getInVolvo(page);
+    await getInParkedCar(page);
 
     await page.keyboard.down('KeyW');
     await expect.poll(async () => (await state(page)).speed, { intervals: [50], timeout: 60_000 }).toBeGreaterThan(9);
@@ -204,7 +204,7 @@ test.describe('game (index.html)', () => {
     const errors = watchErrors(page);
     await page.goto('/index.html');
     await page.locator('#go').click();
-    await getInVolvo(page);
+    await getInParkedCar(page);
 
     await page.keyboard.down('KeyW');
     await expect.poll(async () => (await state(page)).speed, { intervals: [50], timeout: 60_000 }).toBeGreaterThan(9);
@@ -226,7 +226,7 @@ test.describe('game (index.html)', () => {
     // the Impala's 3.02 m differs from its type's 2.65 m, so this fails if the model's wheelbase is ignored
     await page.goto('/index.html?vehicle=impala1970');
     await page.locator('#go').click();
-    await getInVolvo(page, 'Chevrolet Impala 1970 hardtop');
+    await getInParkedCar(page, 'Chevrolet Impala 1970 hardtop');
     expect((await state(page)).wheelbase).toBeCloseTo(3.02, 2);
     await page.keyboard.down('KeyW');
     await expect
@@ -297,7 +297,7 @@ test.describe('game (index.html)', () => {
     const errors = watchErrors(page);
     await page.goto('/index.html');
     await page.locator('#go').click();
-    await getInVolvo(page);
+    await getInParkedCar(page);
 
     // Space held for a few car frames, then E.
     await keysNow(page, [['keydown', 'Space']]);

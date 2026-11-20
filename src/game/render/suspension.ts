@@ -1,6 +1,7 @@
 // The body's movement on its springs: roll in corners, squat and dive under throttle and brakes, a bounce over
 // bumps. Purely visual; the driving model never reads it. Pure data and functions, no three.js.
 // Each type's spring settings are in sim/vehicle-spec.ts.
+import { clamp } from '../../world/math';
 import type { Suspension } from '../sim/vehicle-spec';
 
 /** Spring state per axis: offset and its rate. Plain data, so it can be reset or snapshotted. */
@@ -33,8 +34,8 @@ export function stepBody(state: BodyState, forces: BodyForces, s: Suspension, dt
     state.heave += state.heaveV * h;
   }
   // Clamp, so a jolt (a wall, a teleport the caller missed) can't flip the body over.
-  state.roll = Math.max(-s.maxRollRad * 1.5, Math.min(s.maxRollRad * 1.5, state.roll));
-  state.pitch = Math.max(-s.maxPitchRad * 1.5, Math.min(s.maxPitchRad * 1.5, state.pitch));
-  state.heave = Math.max(-s.maxHeaveM * 1.5, Math.min(s.maxHeaveM * 1.5, state.heave));
+  state.roll = clamp(state.roll, -s.maxRollRad * 1.5, s.maxRollRad * 1.5);
+  state.pitch = clamp(state.pitch, -s.maxPitchRad * 1.5, s.maxPitchRad * 1.5);
+  state.heave = clamp(state.heave, -s.maxHeaveM * 1.5, s.maxHeaveM * 1.5);
   return state;
 }
