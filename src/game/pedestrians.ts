@@ -16,6 +16,25 @@ const SHIRTS = ['#b5463a', '#3f6b8a', '#5c7a4a', '#7a5a8a', '#d8d4c8', '#2b3a55'
   PANTS = ['#3a3a3a', '#2b3a55', '#4a4038', '#5a6470', '#23272b'],
   HAIR = ['#5a4632', '#2a2320', '#c9a560', '#8a8580', '#7a3f22'];
 
+// Drive into someone and they come after you: run you down on foot and shove you.
+const MAD_HIT_MS = 4; // the player's car hitting a pedestrian faster than this (m/s, ~15 km/h) makes them angry
+export const MAD_S = 20; // how long they stay angry after the last hit (s)
+const MAD_RUN_MS = 5.5; // their chase speed (m/s): faster than your walk (4.6), slower than your sprint (8)
+export const MAD_GIVE_UP_M = 60; // they give up when you get this far away
+const SHOVE_REACH_M = 1.1,
+  SHOVE_PUSH_M = 1.6,
+  SHOVE_COOL_S = 1.5; // on foot within reach: pushes you this far, then waits this long before the next shove
+export const SHOVE_HP = 5; // health a shove takes
+const BACK_MS = 2.5,
+  BACK_S = 10; // calmed down: walk back to their path at this speed (m/s), for at most this long before sliding back as before
+const MAD_LINES = [
+    '”Aj! Va fan gör du?!”',
+    '”Hörru! Kör du på folk, din dåre?!”',
+    '”Kom hit, så ska du få se!”',
+    '”Ja ska ta dej, din fähund!”',
+  ],
+  SHOVE_LINES = ['”Ta dä, din bilbuse!”', '”Där fick du!”', '”Lär dej köra, för fan!”'];
+
 type Point = { x: number; z: number };
 /** A person's mesh, as personParts in main.ts builds it. */
 export type PersonMesh = THREE.Object3D & { legs: THREE.Object3D[] };
@@ -32,6 +51,9 @@ export interface Npc extends Point {
   h: number;
   phase: number;
   first: boolean;
+  mad: number; // s left chasing the player
+  cool: number; // s until they can shove again
+  back: number; // s left walking back to their path after a chase
   mesh: PersonMesh;
 }
 
@@ -50,8 +72,11 @@ export interface CrowdDeps {
   /** moves a walker on to the next segment at a junction of `graph` */
   advance(n: Npc, graph: Map<string, number[]>): void;
   cars: readonly Point[];
-  readonly player: Point;
+  readonly player: Point; // an angry pedestrian shoves it
   readonly inCar: boolean;
+  readonly pcar: (Point & { v: number }) | null; // the car the player drives
+  toast(msg: string): void;
+  hurtPlayer(hp: number): void;
 }
 
 /** The pedestrians around the player: a crowd as busy as the area, walking the streets and paths. */
@@ -150,6 +175,9 @@ export class Crowd {
         h: 0,
         phase: 0,
         first: true,
+        mad: 0,
+        cool: 0,
+        back: 0,
         mesh: personParts(pick(SHIRTS), pick(PANTS), pick(HAIR)),
       };
       n.mesh.scale.setScalar(0.92 + rnd() * 0.14);
@@ -160,10 +188,16 @@ export class Crowd {
   }
 
   private updateNpc(n: Npc, dt: number) {
-    const { rnd, advance, cars, player, inCar, groundAt, wrap } = this.g,
+    const { rnd, pick, advance, cars, player, inCar, pcar, groundAt, wrap, toast, hurtPlayer } = this.g,
       { R } = this;
-    const d0 = this.densAt(n.x, n.z);
-    if (n.idle > 0) {
+    const d0 = this.densAt(n.x, n.z),
+      mad = n.mad > 0;
+    if (mad) {
+      // chasing: their place on the path waits for them
+      n.mad -= dt;
+      n.cool -= dt;
+      n.phase += MAD_RUN_MS * dt * 2.1;
+    } else if (n.idle > 0) {
       n.idle -= dt;
       n.phase *= 0.8;
     } else {
@@ -188,9 +222,42 @@ export class Crowd {
       dx = (B[0] - A[0]) / L,
       dz = (B[1] - A[1]) / L,
       off = r.c <= 3 ? (ROAD_W[r.c] / 2 + 0.8) * n.side : 0;
-    const k = n.first ? 1 : Math.min(1, dt * 4);
-    n.x += (A[0] + dx * n.t - dz * off - n.x) * k;
-    n.z += (A[1] + dz * n.t + dx * off - n.z) * k;
+    const px = A[0] + dx * n.t - dz * off,
+      pz = A[1] + dz * n.t + dx * off; // their spot on the path
+    if (mad) {
+      const ex = player.x - n.x,
+        ez = player.z - n.z,
+        d = Math.hypot(ex, ez);
+      if (d > MAD_GIVE_UP_M) n.mad = 0;
+      else if (d > SHOVE_REACH_M) {
+        const s = Math.min(d - SHOVE_REACH_M, MAD_RUN_MS * dt) / d;
+        n.x += ex * s;
+        n.z += ez * s;
+      } else if (!inCar && n.cool <= 0 && d > 0.01) {
+        n.cool = SHOVE_COOL_S;
+        player.x += (ex / d) * SHOVE_PUSH_M;
+        player.z += (ez / d) * SHOVE_PUSH_M;
+        hurtPlayer(SHOVE_HP);
+        toast(pick(SHOVE_LINES));
+      }
+      if (n.mad <= 0) n.back = BACK_S;
+    } else if (n.back > 0) {
+      n.back -= dt;
+      const ex = px - n.x,
+        ez = pz - n.z,
+        d = Math.hypot(ex, ez),
+        s = Math.min(d, BACK_MS * dt);
+      if (d < 0.3) n.back = 0;
+      else {
+        n.x += (ex / d) * s;
+        n.z += (ez / d) * s;
+        n.phase += BACK_MS * dt * 2.1;
+      }
+    } else {
+      const k = n.first ? 1 : Math.min(1, dt * 4);
+      n.x += (px - n.x) * k;
+      n.z += (pz - n.z) * k;
+    }
     for (const c of cars) {
       const ex = n.x - c.x,
         ez = n.z - c.z,
@@ -198,6 +265,11 @@ export class Crowd {
       if (d < 2.3 && d > 0.01) {
         n.x += (ex / d) * (2.3 - d);
         n.z += (ez / d) * (2.3 - d);
+        if (c === pcar && Math.abs(pcar.v) > MAD_HIT_MS) {
+          if (n.mad <= 0) toast(pick(MAD_LINES));
+          n.mad = MAD_S;
+          n.back = 0;
+        }
       }
     }
     if (!inCar) {
@@ -210,9 +282,19 @@ export class Crowd {
       }
     }
     this.collide(n, 0.35);
-    // walking: face the way along the path; standing around: glance at the player when they come close
+    // walking: face the way along the path; standing around: glance at the player when they come close; angry: glare at the player; going back: face the path
     const ph = Math.hypot(player.x - n.x, player.z - n.z),
-      want = n.idle > 0 ? (ph < 8 ? Math.atan2(player.x - n.x, -(player.z - n.z)) : n.h) : Math.atan2(dx, -dz);
+      atPlayer = Math.atan2(player.x - n.x, -(player.z - n.z)),
+      want =
+        n.mad > 0
+          ? atPlayer
+          : n.back > 0
+            ? Math.atan2(px - n.x, -(pz - n.z))
+            : n.idle > 0
+              ? ph < 8
+                ? atPlayer
+                : n.h
+              : Math.atan2(dx, -dz);
     n.h = n.first ? want : wrap(n.h + wrap(want - n.h) * Math.min(1, dt * 5));
     n.first = false;
     const sw = Math.sin(n.phase) * 0.6;
