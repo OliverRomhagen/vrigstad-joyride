@@ -74,12 +74,15 @@ export const DEFAULT_CLOUDS: Readonly<CloudConfig> = {
   quality: 'high',
 };
 
+/** The part of URLSearchParams this reads; the world has no DOM types (tsconfig.sim.json). */
+type Query = { get(name: string): string | null; has(name: string): boolean };
+
 /**
  * The configuration from URL parameters, for visual testing: `?clouds=clear|scattered|partly|mostly|off`,
  * `cloudSeed=7`, `wind=250,7` (from degrees, m/s), `cloudSoft=1.3`, `cloudQuality=low|high`. Anything missing or
  * unreadable keeps the default; `coarse` (a touch screen) defaults the quality to low.
  */
-export function parseCloudConfig(q: URLSearchParams, coarse = false): CloudConfig {
+export function parseCloudConfig(q: Query, coarse = false): CloudConfig {
   const c: CloudConfig = { ...DEFAULT_CLOUDS, quality: coarse ? 'low' : 'high' };
   const cover = q.get('clouds');
   if (cover === 'off' || (cover && cover in CLOUD_PRESETS)) c.cover = cover as CloudConfig['cover'];
