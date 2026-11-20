@@ -1,16 +1,13 @@
 # Fallow (#107): the static gate at the end of `npm run check`. AGENTS.md (Tests) says what each pass checks.
 # Fallow finds the Vite, Vitest and Playwright entry points itself; this file adds only what it can't see, the
 # architecture rules, and today's exceptions. Shrink the exceptions; don't grow them.
-# package.json pins Fallow exactly: it is young, and `fallow dead-code` checking cycles, boundaries and the rule pack is
-# due to move to `fallow architecture` in a later major version, so an upgrade must add that command to `check`.
+# package.json pins Fallow exactly: it is young, and `fallow dead-code` checking cycles and boundaries is due to
+# move to `fallow architecture` in a later major version, so an upgrade must add that command to `check`.
 
 # Loaded in ways Fallow can't follow:
 # - src/map/main.ts is map.html's script, and tools/build.mjs builds map.html, but Fallow's Vite plugin finds only index.html.
 # - tools/trailer/rig.js reads inpage.js with fs.readFileSync and runs it in the page.
 entry = ["src/map/main.ts", "tools/trailer/inpage.js"]
-
-# Simulation must not import three.js or call into the DOM (ARCHITECTURE.md, rule 2).
-rulePacks = ["fallow-rules.jsonc"]
 
 # Exceptions: exported, but only used in their own file. Un-export them, or use them in a test, then drop the entry.
 [[ignoreExports]]
@@ -21,11 +18,9 @@ exports = ["CRASH_MIN_MS", "CRASH_DMG_PER_MS", "HURT_MIN_MS", "HURT_HP_PER_MS", 
 file = "src/game/cats.ts"
 exports = ["CAT_NAME", "CAT_NAME_MAX"]
 
-# Rule-pack findings only warn by default; make them fail the gate like the rest.
-[rules]
-policy-violation = "error"
-
-# Layers, from ARCHITECTURE.md. A file belongs to the first zone that matches it.
+# Layers, from ARCHITECTURE.md. A file belongs to the first zone that matches it. biome.jsonc checks three.js and the
+# DOM, which Fallow can't see, on the world, world-mesh and sim zones: keep the paths of its rule-2 plugin and overrides
+# the same as these.
 [boundaries]
 # src/world/: the world's data and queries, shared by both pages. Its three.js code lives only in mesh/ and three-legacy.ts.
 [[boundaries.zones]]

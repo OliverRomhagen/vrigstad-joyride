@@ -18,6 +18,7 @@ export type MenuItem = [key: string, label: string];
 /** What the pets read from the rest of the game. The getter is read when used, so main.ts can declare it later. */
 export interface PetsDeps {
   colony: Pick<CatColony, 'owned' | 'home' | 'rename' | 'call' | 'sendHome' | 'setFree'>;
+  // biome-ignore lint/style/noRestrictedGlobals: rule 2: main.ts still hands the pets the Pets button; drop this once it moves into the HUD and the pets reads state instead (rule 4)
   button: HTMLElement; // the Pets button: shown while you own a pet
   openMenu(kind: string, title: string, items: MenuItem[], pick: (k: string) => void): void;
   openRename(p: Pet): void; // the menu with a text field for the new name

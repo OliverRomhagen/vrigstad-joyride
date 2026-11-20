@@ -25,7 +25,7 @@
     // Rule 3: only the input module reads keys, mouse and touch. The map page has its own camera controls, and the menus
     // and HUD are UI, which takes DOM events by design (rule 4). src/game/main.ts still holds the menus until #177.
     // Rule 2: a listener on any object, such as an element passed in, which noRestrictedGlobals (below) can't see. Same
-    // paths and exceptions as that override.
+    // paths as that override.
     {
       "path": "./tools/biome/no-dom-listeners.grit",
       "includes": [
@@ -34,9 +34,7 @@
         "!src/game/render/**",
         "!src/game/main.ts",
         "!src/game/hud.ts",
-        "!src/game/input.ts",
-        "!src/game/cats.ts",
-        "!src/game/pets.ts"
+        "!src/game/input.ts"
       ]
     },
     {
@@ -64,17 +62,14 @@
       // These are fallow.toml's world, world-mesh and sim zones: all of src/world/, and src/game/ outside render/ and the
       // page modules. Keep the lists the same. Fallow checks the imports between our own files; this override and the
       // next check the page's globals and three.js, which Fallow can't see.
-      // Exceptions: cats and pets still get HUD elements from main.ts (`kmenu`, the Pets button); drop each once its
-      // HUD part moves into the HUD and it reads state instead (rule 4).
+      // Exceptions are biome-ignore comments on their lines, each saying what ends it.
       "includes": [
         "src/world/**",
         "src/game/**",
         "!src/game/render/**",
         "!src/game/main.ts",
         "!src/game/hud.ts",
-        "!src/game/input.ts",
-        "!src/game/cats.ts",
-        "!src/game/pets.ts"
+        "!src/game/input.ts"
       ],
       "linter": {
         "rules": {
