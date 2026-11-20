@@ -2,11 +2,9 @@
 // terrain wears and the minimap shows. The trees' shadows are baked in once they are placed.
 // Moved from src/game/main.ts (#177).
 import * as THREE from 'three';
+import { HOUSE_MAX_M2, HOUSE_MIN_M2 } from '../../world/buildings';
 import { ROAD_WIDTH_M as ROAD_W, type WorldData } from '../../world/data';
 import { polygonArea as polyArea } from '../../world/polygon';
-
-export const HOUSE_MIN_M2 = 40,
-  HOUSE_MAX_M2 = 1500; // footprints in this range count as homes and shops
 
 /** What the ground texture reads from the renderer. */
 export interface GroundTextureOptions {

@@ -2,7 +2,7 @@
 // the streetscape's pavements and parking, and the trees. The world's data and queries come from src/world/.
 // Moved from src/game/main.ts (#177); main.ts calls these in the same order as before, since the house colours roll rnd().
 import * as THREE from 'three';
-import type { BuildingShape } from '../../world/buildings';
+import { type BuildingShape, HOUSE_MAX_M2, HOUSE_MIN_M2 } from '../../world/buildings';
 import type { WorldData } from '../../world/data';
 import type { Heightfield } from '../../world/heightfield';
 import { PaintedBuildingShells } from '../../world/mesh/building-shells';
@@ -13,7 +13,6 @@ import { TerrainMesh } from '../../world/mesh/terrain';
 import { pointInPolygon as inPoly } from '../../world/polygon';
 import type { RoadNetwork } from '../../world/roads';
 import type { StreetscapeLayout } from '../../world/streetscape';
-import { HOUSE_MAX_M2, HOUSE_MIN_M2 } from './ground-texture';
 import { mergeGeo } from './models';
 import { col } from './stage';
 
