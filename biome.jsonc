@@ -50,7 +50,10 @@
         "!src/game/main.ts",
         "!src/game/hud.ts",
         "!src/game/input.ts",
-        "!src/game/menu.ts"
+        "!src/game/menu.ts",
+        "!src/game/loop.ts",
+        "!src/game/prompt.ts",
+        "!src/game/test-hook.ts"
       ],
       "plugins": [
         // Rule 2: a listener on any object, such as an element passed in, which noRestrictedGlobals can't see.

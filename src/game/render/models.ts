@@ -18,7 +18,7 @@ type Profile = {
   extra?: (c: string) => BoxPart[];
 };
 /** A person's mesh: the legs (and the player's arms) swing as they walk. */
-type Person = THREE.Group & { legs: THREE.Mesh[]; blob: THREE.Mesh; arms?: THREE.Mesh[] };
+export type Person = THREE.Group & { legs: THREE.Mesh[]; blob: THREE.Mesh; arms?: THREE.Mesh[] };
 
 // soft round shadow under cars, people and trees, so nothing looks pasted onto the ground
 export const blobTex = (() => {
