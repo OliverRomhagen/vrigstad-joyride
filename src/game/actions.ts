@@ -1,5 +1,5 @@
 // What pressing E does (walk into a place, pet a cat, open the kiosk, get in or out of a car, steal one), and where you end up after Gripen! or a knock-out.
-// Moved from src/game/main.ts (#177); main.ts passes in the places, the cats' menus, the police and what the HUD draws. No three.js or DOM here.
+// Moved from src/game/main.ts (#177); main.ts passes in the places, the cats' menus, the police, what the HUD draws and whether the player's mesh shows. No three.js or DOM here.
 import { wrap } from '../world/math';
 import type { Car } from './cars';
 import type { Cat } from './cats';
@@ -16,13 +16,14 @@ const WAKE_LINES = ['”Va hände? Ja minns ingenting.”', '”Aj, mitt huve…
 export interface ActionsDeps {
   game: GameState;
   view: ViewState;
-  player: PlayerState & { mesh: { visible: boolean } };
+  player: PlayerState;
   readonly cars: readonly Car[];
   places: Pick<Places, 'inside' | 'list'>;
   wanted: Pick<Wanted, 'addStar' | 'police' | 'stars' | 'clear'>;
   health: Health;
-  kmenu: { readonly hidden: boolean }; // the menu plate: E closes it
+  menuOpen(): boolean; // the menu plate is up: E closes it
   closeMenu(): void;
+  showPlayer(shown: boolean): void; // the player's mesh: hidden while you drive
   nearPlace(): Place | null;
   enterHouse(p: Place): void;
   leaveHouse(): void;
@@ -61,14 +62,14 @@ export class Actions {
   };
   // park the car where it stands and put you on foot; the caller places you
   leaveCar = () => {
-    const { game, player, placeCar } = this.g;
+    const { game, placeCar, showPlayer } = this.g;
     const c = game.pcar!;
     c.mode = 'idle';
     c.v = c.slip = c.drift = c.boost = c.thr = c.st = 0;
     placeCar(c);
     game.pcar = null;
     game.inCar = false;
-    player.mesh.visible = true;
+    showPlayer(true);
   };
   action = () => {
     const {
@@ -77,8 +78,9 @@ export class Actions {
       player,
       places,
       wanted,
-      kmenu,
+      menuOpen,
       closeMenu,
+      showPlayer,
       nearPlace,
       enterHouse,
       leaveHouse,
@@ -102,7 +104,7 @@ export class Actions {
       leaveHouse();
       return;
     }
-    if (!kmenu.hidden) {
+    if (menuOpen()) {
       closeMenu();
       return;
     }
@@ -165,7 +167,7 @@ export class Actions {
     game.pcar = c;
     game.inCar = true;
     player.y = player.vy = 0;
-    player.mesh.visible = false;
+    showPlayer(false);
     view.lookOff = 0;
     view.camYaw = c.h;
   };
@@ -200,7 +202,9 @@ export class Actions {
     drawHealth();
     bigScreen(
       'Däckad!',
-      'Knocked out. You come to ' + ('name' in spot ? 'at the safehouse on ' + spot.name : 'at Torget') + '.',
+      'Knocked out. You come to ' +
+        ('name' in spot && spot.name ? 'at the safehouse on ' + spot.name : 'at Torget') +
+        '.',
     );
     sayLater(pickLine(WAKE_LINES));
   };

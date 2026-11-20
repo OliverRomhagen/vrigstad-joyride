@@ -37,7 +37,7 @@ import { Input } from './input';
 import { Actions } from './actions';
 import { Crowd } from './pedestrians';
 import { esc, MenuPlate } from './menu';
-import { Menus } from './menus';
+import { KioskCatMenus } from './kiosk-cat-menus';
 import { Pets } from './pets';
 import { KIOSK, Places } from './places';
 import { CAT_SCRATCH_HP, LOW_HP, CRASH_COOL_S, crashCars, crashDamage, driverHurt, hurt, impactSpeed, newHealth, regen, runOverHurt, smokeLevel, wrecked } from './health';
@@ -480,9 +480,9 @@ const wanted = new Wanted({ roads, rnd, pick, wrap, removeCar, drive, toast,
 const places = new Places({ footprints: bPolys, roads: R, police: wanted.police, lieLow: secs => wanted.lieLow(secs), toast, get stars() { return wanted.stars; } });
 const placeMeshes = new PlaceMeshes({ scene, places, heightAt: hAt, col, boxGeo, paintMat, glass: GLASS });
 addFootprint([KIOSK.x - KIOSK.w / 2, KIOSK.z - KIOSK.d / 2, KIOSK.x + KIOSK.w / 2, KIOSK.z - KIOSK.d / 2, KIOSK.x + KIOSK.w / 2, KIOSK.z + KIOSK.d / 2, KIOSK.x - KIOSK.w / 2, KIOSK.z + KIOSK.d / 2]);   // the kiosk collides like a building
-// the kiosk's and the cats' menus (src/game/menus.ts); trisslott is declared further down
-const menus = new Menus({ game, player, colony, health, openMenu, esc, toast, scratch: () => trisslott.scratch(), nearPlace, showHeart, drawPets, drawTreats, drawHealth });
-const { openKiosk, petCat, openOwnCat } = menus;
+// the kiosk's and the cats' menus (src/game/kiosk-cat-menus.ts); trisslott is declared further down
+const kioskCatMenus = new KioskCatMenus({ game, player, colony, health, openMenu, esc, toast, scratch: () => trisslott.scratch(), nearPlace, showHeart, drawPets, drawTreats, drawHealth });
+const { openKiosk, petCat, openOwnCat } = kioskCatMenus;
 function nearPlace() { return game.inCar ? null : places.nearest(player.x, player.z); }
 function enterHouse(p) { if (places.enter(p, player)) player.mesh.visible = false; }
 function leaveHouse() { if (!places.leave()) return; player.mesh.visible = true; $('hide').hidden = true; }
@@ -526,7 +526,7 @@ let signT = 0, blink = false, blinkT = 0;
 // ---------- stealing and getting caught (the wanted level and the police: src/game/police.ts) ----------
 function bigScreen(title, msg) { $('big-t').textContent = title; $('big-p').textContent = msg; game.bigT = 3; $('big').hidden = false; hud.hideToast(); }   // the big screen replaces any line from the same moment
 // what E does, and putting you back on your feet after Gripen! or a knock-out (src/game/actions.ts)
-const actions = new Actions({ game, view, player, cars, places, wanted, health, kmenu, closeMenu, nearPlace, enterHouse, leaveHouse, nearCat, catFirst, openOwnCat, petCat, openKiosk, collide, placeCar, rnd, pick, toast, carName,
+const actions = new Actions({ game, view, player, cars, places, wanted, health, menuOpen: () => !kmenu.hidden, closeMenu, showPlayer: v => { player.mesh.visible = v; }, nearPlace, enterHouse, leaveHouse, nearCat, catFirst, openOwnCat, petCat, openKiosk, collide, placeCar, rnd, pick, toast, carName,
   spokenName: c => vehicleVisuals.definition(c)?.spokenName, driverOut, spawnTraffic, drawStolen: () => { $('count').textContent = 'Cars stolen: ' + game.stolen; }, drawHealth, bigScreen, sayLater, pickLine });
 const { nearestCar, action, respawn, busted, knockedOut } = actions;
 // the driver of a car you steal gets out, and stands there shouting for a while

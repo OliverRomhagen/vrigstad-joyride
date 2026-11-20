@@ -12,7 +12,7 @@ const TREAT_BAG = 3,
 const CAT_MENU_M = 4; // a cat's menu (the adopt question, or your own cat's) closes when you get further than this from it (m), or it bolts, or you get in a car
 
 /** What the menus read from the rest of the game. */
-export interface MenusDeps {
+export interface KioskCatMenusDeps {
   game: Pick<GameState, 'inCar' | 'treats'>;
   readonly player: Point;
   colony: Pick<CatColony, 'pet' | 'adopt' | 'decline' | 'treat' | 'play' | 'sendHome'>;
@@ -35,10 +35,10 @@ export interface MenusDeps {
 }
 
 /** The kiosk's menu and the cats' menus. */
-export class Menus {
-  private readonly g: MenusDeps;
+export class KioskCatMenus {
+  private readonly g: KioskCatMenusDeps;
 
-  constructor(g: MenusDeps) {
+  constructor(g: KioskCatMenusDeps) {
     this.g = g;
   }
 
@@ -70,7 +70,7 @@ export class Menus {
   };
   // food from the kiosk: free until there is money (#76)
   // \n puts each speaker on their own line in the toast: you order first, then the kiosk answers
-  eat(n: number, order: string, reply: string) {
+  private eat(n: number, order: string, reply: string) {
     const { health, toast, drawHealth } = this.g;
     if (health.hp >= HP_MAX) {
       toast(order + '\n”Du ser ju mätt ut, du. Kom tebaks när du ä hungrig.”', 3);
@@ -80,7 +80,7 @@ export class Menus {
     drawHealth();
     toast(order + '\n' + reply + ' +' + n + ' health.', 3.5);
   }
-  buyTreats() {
+  private buyTreats() {
     const { game, toast, drawTreats } = this.g;
     if (game.treats >= TREAT_MAX) {
       toast('”Nämen, du har ju fickera fulla redan!”', 2.5);
@@ -92,7 +92,7 @@ export class Menus {
   }
 
   // a good pet that makes a cat ready to be adopted asks whether it comes home with you
-  nearMenuCat = (k: Cat) => () => {
+  private nearMenuCat = (k: Cat) => () => {
     const { game, player } = this.g;
     return !game.inCar && k.state !== 'flee' && Math.hypot(k.x - player.x, k.z - player.z) < CAT_MENU_M;
   };

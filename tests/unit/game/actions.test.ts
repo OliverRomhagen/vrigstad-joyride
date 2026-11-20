@@ -44,7 +44,8 @@ function actions(
     screens: string[] = [];
   const game = { ...newGameState(), started: true },
     view = newViewState(0, 0);
-  const player = { x: 0, z: 0, y: 1, vy: 2, h: 0, speed: 0, phase: 0, mesh: { visible: true } };
+  const player = { x: 0, z: 0, y: 1, vy: 2, h: 0, speed: 0, phase: 0 },
+    mesh = { visible: true };
   const wanted = {
     stars: o.stars ?? 0,
     police: [] as ActionsDeps['wanted']['police'],
@@ -63,7 +64,10 @@ function actions(
     places: { inside: null, list: o.places ?? [] },
     wanted,
     health,
-    kmenu: { hidden: !o.menuOpen },
+    menuOpen: () => !!o.menuOpen,
+    showPlayer: v => {
+      mesh.visible = v;
+    },
     closeMenu: () => void calls.push('closeMenu'),
     nearPlace: () => o.place ?? null,
     enterHouse: p => void calls.push('enter ' + p.name),
@@ -91,7 +95,7 @@ function actions(
     sayLater: l => void calls.push('later ' + l),
     pickLine: a => a[0],
   };
-  return { a: new Actions(g), calls, screens, game, view, player, wanted, health };
+  return { a: new Actions(g), calls, screens, game, view, player, mesh, wanted, health };
 }
 
 describe('Actions.action', () => {
@@ -135,7 +139,7 @@ describe('Actions.action', () => {
     expect(c.mode).toBe('player');
     expect(c.vh).toBe(1.2);
     expect(t.view.camYaw).toBe(1.2);
-    expect(t.player.mesh.visible).toBe(false);
+    expect(t.mesh.visible).toBe(false);
     expect(t.player.y).toBe(0);
     expect(t.calls).toEqual(['toast You took the Volvo. Nobody noticed.', 'stolen 1']);
 
@@ -176,7 +180,7 @@ describe('Actions.action', () => {
     expect(c.mode).toBe('idle');
     expect(t.view.lookOff).toBe(0);
     expect(t.view.camYaw).toBeCloseTo(0.5);
-    expect(t.player.mesh.visible).toBe(true);
+    expect(t.mesh.visible).toBe(true);
   });
 });
 
@@ -187,6 +191,7 @@ describe('Actions after a chase or a crash', () => {
     t.a.action();
     t.a.busted();
     expect(t.game.inCar).toBe(false);
+    expect(t.mesh.visible).toBe(true);
     expect([t.player.x, t.player.z]).toEqual([HOME.x, HOME.z]);
     expect(t.health.hp).toBe(HP_MAX);
     expect(t.calls.at(-1)).toBe('big Gripen!');

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Cat } from '../../../src/game/cats';
 import { HP_MAX, KORV_HP } from '../../../src/game/health';
-import { Menus, type MenusDeps } from '../../../src/game/menus';
+import { KioskCatMenus, type KioskCatMenusDeps } from '../../../src/game/kiosk-cat-menus';
 import type { MenuItem } from '../../../src/game/pets';
 import { newGameState } from '../../../src/game/state';
 
@@ -20,7 +20,7 @@ function menus(o: { hp?: number; treats?: number } = {}) {
     play: () => void calls.push('play'),
     sendHome: () => void calls.push('home'),
   };
-  const g: MenusDeps = {
+  const g: KioskCatMenusDeps = {
     game,
     player,
     colony,
@@ -38,7 +38,7 @@ function menus(o: { hp?: number; treats?: number } = {}) {
     drawHealth: () => {},
   };
   const choose = (k: string) => open!.pick(k);
-  return { m: new Menus(g), calls, game, health, player, menu: () => open, choose };
+  return { m: new KioskCatMenus(g), calls, game, health, player, menu: () => open, choose };
 }
 
 describe('the kiosk', () => {
