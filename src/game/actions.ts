@@ -39,7 +39,7 @@ export interface ActionsDeps {
   toast(msg: string, secs?: number): void;
   carName(c: Car): string;
   spokenName(c: Car): string | undefined; // the car's name as its driver says it, if its model has one
-  driverOut(c: Car): void; // the driver of a car you steal gets out: a person mesh, so main.ts draws it
+  driverOut(c: Car): void; // the driver of a car you steal gets out: a person mesh, so render/shouting-drivers.ts draws it
   spawnTraffic(p: Point): void;
   drawStolen(): void;
   drawHealth(): void;

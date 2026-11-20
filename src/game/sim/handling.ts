@@ -1,5 +1,5 @@
 // How a car answers the controls: its steering geometry and how quickly speed and heading follow the input.
-// Pure data and functions, no three.js: drive() in src/game/main.ts reads them. Each type's numbers are in vehicle-spec.ts.
+// Pure data and functions, no three.js: drive() in src/game/cars.ts reads them. Each type's numbers are in vehicle-spec.ts.
 
 export type Handling = {
   /** Distance between the axles, in metres; a longer car turns wider for the same steering input. */

@@ -2,7 +2,7 @@
   "$schema": "https://biomejs.dev/schemas/2.6.8/schema.json",
   "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
   "files": {
-    // The HTML pages keep their hand-formatted style until #177 splits them (AGENTS.md, Code style). tools/trailer is its
+    // The HTML pages keep their hand-formatted style until each is reformatted (AGENTS.md, Code style). tools/trailer is its
     // own package. .github and .claude stay out because check.yml skips PRs that only change them, so such an edit could
     // merge unformatted and fail on main.
     "includes": ["**", "!**/*.md", "!src/*.html", "!data", "!tools/trailer", "!.github", "!.claude"]

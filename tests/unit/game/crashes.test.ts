@@ -36,6 +36,7 @@ describe('Crashes.crash', () => {
     expect(t.hurts[0]).toBeGreaterThan(0);
     expect(t.shakes).toEqual([45]);
     expect(t.toasts).toHaveLength(1);
+    expect(t.toasts[0]).toMatch(/^”(AJ|Hoppsan|Va fan)/); // a crash line, not a smoke or wreck line
     t.game.clockS = 2; // past the car's own cooldown, inside the line's
     t.pcar.dmg = 0; // so the hit doesn't make it smoke, which has its own line
     t.c.crash(t.pcar, null, HARD_MS);
