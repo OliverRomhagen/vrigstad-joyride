@@ -127,7 +127,7 @@ Until the migration reaches a given rule, don't make the existing code worse in 
 - **No pixel-diff tests.** Headless WebGL output varies. Assert on state exposed through the test hook instead, and attach screenshots to the PR when visuals change.
 - The smoke tests live in `tests/e2e/` and run in CI on every PR that changes more than docs, labels, issue forms, agent files or other workflows (`.github/workflows/e2e.yml`), which also fails if the committed `data/vrigstad.json` is stale and uploads screenshots of both pages as the `e2e-screenshots` artifact. They read game state from `window.__joyride.state()` (defined at the end of `src/game/main.ts`); add a field there when a new smoke step needs one, and keep the hook read-only.
 - **Static analysis** ([Fallow](https://github.com/fallow-rs/fallow), [#107](https://github.com/OliverRomhagen/vrigstad-joyride/issues/107)), configured in `fallow.toml`, is the last step of `npm run check`, so it runs before every commit and in CI (`.github/workflows/check.yml`), and takes well under a second:
-  - The gate (`fallow dead-code`) fails on: an unused file, export, class member or dependency; a circular import; an import across the layers in `fallow.toml` (`world` imports only `world`; `sim` only `sim` and `world`; `render` anything but the page code); and, from the rule pack `fallow-rules.jsonc`, three.js imported in `sim` or `world` code, or a DOM call by name (`document.*`, `window.*`, `fetch`, `addEventListener`, …) in either (ARCHITECTURE.md, rule 2). Property reads such as `window.innerWidth` aren't calls, and a call through an alias (`const w = window`) has no DOM name, so the DOM rule misses both.
+  - The gate (`fallow dead-code`) fails on: an unused file, export, class member or dependency; a circular import; an import across the layers in `fallow.toml` (`world` imports only `world`; `sim` only `sim` and `world`; `render` anything but the page code); and, from the rule pack `fallow-rules.jsonc`, three.js imported in `sim` or `world` code, or a DOM call by name (`document.*`, `window.*`, `fetch`, `addEventListener`, …) in either (Architecture rules, rule 2). Property reads such as `window.innerWidth` aren't calls, and a call through an alias (`const w = window`) has no DOM name, so the DOM rule misses both.
   - A new module in `src/game/` is `sim` code by default, so the rules above apply from its first commit. A page module, one that uses the DOM or the HUD, goes in the `page` list in `fallow.toml` instead, until #177 gives the rules their own `src/game/sim/`.
   - The exceptions for code that breaks a rule today are listed in those two files, each with what ends it. Remove an entry when its code is fixed; don't add one for new code: fix the finding, or say in the PR why the rule is wrong. For a single line, `// fallow-ignore-next-line <rule>` with a reason works too, with the name Fallow prints (`unused-export`, `boundary-violation`); a rule-pack finding needs its full name, such as `policy-violation:joyride/no-dom`. When an export is only used by a test, that counts as used.
   - `npm run analyze:report` prints copied code (`fallow dupes`) and the files where complexity meets churn (`fallow health --hotspots`). Read it before refactoring; it doesn't fail.
@@ -159,5 +159,17 @@ Until the migration reaches a given rule, don't make the existing code worse in 
 | Polis | Police car |
 | Trisslott | Swedish scratch lottery ticket (kiosk minigame) |
 | Safehouse | A house where you can lie low to clear stars |
+
+Code terms, so docs, issues and PRs use one word for one thing:
+
+| Term | Meaning |
+|---|---|
+| ECS | Entity–component–system: entities are plain data, made of components, and systems are functions over every entity with a given set of components. Not adopted yet (#55). Say ECS, not "component pattern" or "entity system" |
+| Entity | One thing in the sim: a car, a cat, a pedestrian. Plain data, no methods |
+| ECS component | One named piece of data on an entity (`position`, `police`). Write "ECS component" where "component" could mean a Svelte component |
+| System | A function the sim runs every step over the entities it handles (traffic, the chase). With an ECS, the entities that have a given set of components |
+| Sim | Gameplay state and rules: plain data and functions, no three.js or DOM (Architecture rules, rule 2) |
+| Render | The code that reads sim state each frame and draws it; it never writes to the sim |
+| Intent | What input becomes: `throttle / steer / brake / action`. Gameplay reads intents, never keys or touches |
 
 Update this file when a convention changes. If you notice the instructions are wrong or out of date, fix them in your PR.
