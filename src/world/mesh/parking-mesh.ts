@@ -4,7 +4,15 @@ import { RoadClass, Surface, type WorldData } from '../data';
 import type { Heightfield } from '../heightfield';
 import { pointInPolygon } from '../polygon';
 import { roadLiftM } from '../roads';
-import { cutToTerrain, type GridLike, Part, SKIRT_BELOW_M, SOURCES, type Soup, type StreetscapeLayout } from '../streetscape';
+import {
+  cutToTerrain,
+  type GridLike,
+  Part,
+  SKIRT_BELOW_M,
+  SOURCES,
+  type Soup,
+  type StreetscapeLayout,
+} from '../streetscape';
 import { batchByChunk, partColour, SOURCE_TINTS, STREETSCAPE_COLOURS, type StreetscapeColours } from './sidewalk-mesh';
 
 export interface ParkingMeshOptions {
@@ -60,7 +68,11 @@ export class ParkingMesh {
 }
 
 /** The parking areas' surface and skirt triangles, wound outward. */
-export function parkingSurfaces(layout: Pick<StreetscapeLayout, 'lots'>, data: Pick<WorldData, 'pa'>, heightfield: Pick<Heightfield, 'heightAt'> & GridLike): Soup {
+export function parkingSurfaces(
+  layout: Pick<StreetscapeLayout, 'lots'>,
+  data: Pick<WorldData, 'pa'>,
+  heightfield: Pick<Heightfield, 'heightAt'> & GridLike,
+): Soup {
   const out: Soup = { pos: [], part: [], src: [], surface: [], tone: [] };
   const lift = roadLiftM(RoadClass.SERVICE);
   const v2 = (p: number[]) => {
@@ -76,10 +88,15 @@ export function parkingSurfaces(layout: Pick<StreetscapeLayout, 'lots'>, data: P
     const holes = (a.h ?? []).map(v2);
     const all = [...contour, ...holes.flat()];
     const flat: number[] = [];
-    for (const [i, j, k] of THREE.ShapeUtils.triangulateShape(contour, holes)) flat.push(all[i].x, all[i].y, all[j].x, all[j].y, all[k].x, all[k].y);
+    for (const [i, j, k] of THREE.ShapeUtils.triangulateShape(contour, holes))
+      flat.push(all[i].x, all[i].y, all[j].x, all[j].y, all[k].x, all[k].y);
     const cut = cutToTerrain(flat, heightfield);
     for (let t = 0; t < cut.length; t += 6) {
-      const v = [0, 2, 4].map((o) => [cut[t + o], heightfield.heightAt(cut[t + o], cut[t + o + 1]) + lift, cut[t + o + 1]]);
+      const v = [0, 2, 4].map(o => [
+        cut[t + o],
+        heightfield.heightAt(cut[t + o], cut[t + o + 1]) + lift,
+        cut[t + o + 1],
+      ]);
       // wind up: (b - a) × (c - a) has +y when the triangle runs counter-clockwise seen from above
       const cross = (v[1][0] - v[0][0]) * (v[2][2] - v[0][2]) - (v[1][2] - v[0][2]) * (v[2][0] - v[0][0]);
       const [p, q, r] = cross < 0 ? [v[0], v[1], v[2]] : [v[0], v[2], v[1]];
@@ -89,7 +106,8 @@ export function parkingSurfaces(layout: Pick<StreetscapeLayout, 'lots'>, data: P
       out.surface.push(sf);
       out.tone.push(0);
     }
-    const onSurface = (x: number, z: number) => pointInPolygon(a.p, x, z) && !(a.h ?? []).some((h) => pointInPolygon(h, x, z));
+    const onSurface = (x: number, z: number) =>
+      pointInPolygon(a.p, x, z) && !(a.h ?? []).some(h => pointInPolygon(h, x, z));
     for (const ring of [a.p, ...(a.h ?? [])]) {
       for (let i = 0, j = ring.length - 2; i < ring.length; j = i, i += 2) {
         const pts = splitAtTerrain(ring[j], ring[j + 1], ring[i], ring[i + 1], heightfield);
@@ -108,8 +126,16 @@ export function parkingSurfaces(layout: Pick<StreetscapeLayout, 'lots'>, data: P
           const top = (x: number, z: number) => [x, heightfield.heightAt(x, z) + lift, z];
           const bottom = (x: number, z: number) => [x, heightfield.heightAt(x, z) - SKIRT_BELOW_M, z];
           const quad = [top(ax, az), bottom(ax, az), bottom(bx, bz), top(bx, bz)];
-          for (const [p, q, r] of [[quad[0], quad[1], quad[2]], [quad[0], quad[2], quad[3]]]) {
-            const ux = q[0] - p[0], uy = q[1] - p[1], uz = q[2] - p[2], wx = r[0] - p[0], wy = r[1] - p[1], wz = r[2] - p[2];
+          for (const [p, q, r] of [
+            [quad[0], quad[1], quad[2]],
+            [quad[0], quad[2], quad[3]],
+          ]) {
+            const ux = q[0] - p[0],
+              uy = q[1] - p[1],
+              uz = q[2] - p[2],
+              wx = r[0] - p[0],
+              wy = r[1] - p[1],
+              wz = r[2] - p[2];
             const cx = uy * wz - uz * wy;
             const cz = ux * wy - uy * wx;
             const flip = cx * nx + cz * nz < 0;
@@ -130,13 +156,20 @@ export function parkingSurfaces(layout: Pick<StreetscapeLayout, 'lots'>, data: P
 function splitAtTerrain(ax: number, az: number, bx: number, bz: number, grid: GridLike): [number, number][] {
   const x0 = grid.sampleCoord(0);
   const cell = grid.sampleCoord(1) - x0;
-  const ua = (ax - x0) / cell, va = (az - x0) / cell, ub = (bx - x0) / cell, vb = (bz - x0) / cell;
+  const ua = (ax - x0) / cell,
+    va = (az - x0) / cell,
+    ub = (bx - x0) / cell,
+    vb = (bz - x0) / cell;
   const ts = new Set<number>([0, 1]);
   const cross = (fa: number, fb: number) => {
-    for (let k = Math.ceil(Math.min(fa, fb)); k <= Math.floor(Math.max(fa, fb)); k++) if (fa !== fb) ts.add((k - fa) / (fb - fa));
+    for (let k = Math.ceil(Math.min(fa, fb)); k <= Math.floor(Math.max(fa, fb)); k++)
+      if (fa !== fb) ts.add((k - fa) / (fb - fa));
   };
   cross(ua, ub);
   cross(va, vb);
   cross(ua + va, ub + vb);
-  return [...ts].filter((t) => t >= 0 && t <= 1).sort((p, q) => p - q).map((t) => [ax + (bx - ax) * t, az + (bz - az) * t]);
+  return [...ts]
+    .filter(t => t >= 0 && t <= 1)
+    .sort((p, q) => p - q)
+    .map(t => [ax + (bx - ax) * t, az + (bz - az) * t]);
 }

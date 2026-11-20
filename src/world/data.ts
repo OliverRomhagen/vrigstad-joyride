@@ -148,7 +148,15 @@ export type WaterwayKind = (typeof WaterwayKind)[keyof typeof WaterwayKind];
 export const ROAD_WIDTH_M = [9, 7.5, 5.5, 3.5, 2.6, 1.5] as const satisfies Record<RoadClass, number>;
 
 // Streetscape codes (#187), as tools/process.py assigns them. 0 is always "not mapped".
-export const RoadUse = { NONE: 0, DRIVEWAY: 1, PARKING_AISLE: 2, ALLEY: 3, SERVICE_OTHER: 4, SIDEWALK: 5, CROSSING: 6 } as const;
+export const RoadUse = {
+  NONE: 0,
+  DRIVEWAY: 1,
+  PARKING_AISLE: 2,
+  ALLEY: 3,
+  SERVICE_OTHER: 4,
+  SIDEWALK: 5,
+  CROSSING: 6,
+} as const;
 export type RoadUse = (typeof RoadUse)[keyof typeof RoadUse];
 
 /** UNKNOWN is a missing tag, never "no" */
@@ -158,7 +166,16 @@ export type SideState = (typeof SideState)[keyof typeof SideState];
 export const Surface = { UNKNOWN: 0, ASPHALT: 1, PAVING: 2, CONCRETE: 3, GRAVEL: 4, UNPAVED: 5, GRASS: 6 } as const;
 export type Surface = (typeof Surface)[keyof typeof Surface];
 
-export const StreetParking = { UNKNOWN: 0, NONE: 1, LANE: 2, STREET_SIDE: 3, ON_KERB: 4, HALF_ON_KERB: 5, SHOULDER: 6, SEPARATE: 7 } as const;
+export const StreetParking = {
+  UNKNOWN: 0,
+  NONE: 1,
+  LANE: 2,
+  STREET_SIDE: 3,
+  ON_KERB: 4,
+  HALF_ON_KERB: 5,
+  SHOULDER: 6,
+  SEPARATE: 7,
+} as const;
 export type StreetParking = (typeof StreetParking)[keyof typeof StreetParking];
 
 export const ParkingOrientation = { UNKNOWN: 0, PARALLEL: 1, DIAGONAL: 2, PERPENDICULAR: 3 } as const;

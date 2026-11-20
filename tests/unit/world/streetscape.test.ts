@@ -1,21 +1,47 @@
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 import { BuildingIndex } from '../../../src/world/buildings';
-import { CrossingKind, LandUse, ParkingKind, type Road, RoadClass, RoadUse, ROAD_WIDTH_M, SideState, Surface, type WorldData } from '../../../src/world/data';
+import {
+  CrossingKind,
+  LandUse,
+  ParkingKind,
+  ROAD_WIDTH_M,
+  type Road,
+  RoadClass,
+  RoadUse,
+  SideState,
+  Surface,
+  type WorldData,
+} from '../../../src/world/data';
 import { Heightfield } from '../../../src/world/heightfield';
 import { ParkingMesh, parkingSurfaces } from '../../../src/world/mesh/parking-mesh';
 import { SidewalkMesh } from '../../../src/world/mesh/sidewalk-mesh';
 import { polygonArea, segmentDistance } from '../../../src/world/polygon';
 import { resample, ribbonEdges } from '../../../src/world/polyline';
 import { RoadNetwork, roadLiftM } from '../../../src/world/roads';
-import { buildStreetscape, CURB_TOP_M, cutToTerrain, LOWERED_CURB_M, Part, type Soup, StreetscapeIndex } from '../../../src/world/streetscape';
-import { classifyStreetscape, CURB_RESIDENTIAL_M, SIDEWALK_RESIDENTIAL_M } from '../../../src/world/streetscape-rules';
+import {
+  buildStreetscape,
+  CURB_TOP_M,
+  cutToTerrain,
+  LOWERED_CURB_M,
+  Part,
+  type Soup,
+  StreetscapeIndex,
+} from '../../../src/world/streetscape';
+import { CURB_RESIDENTIAL_M, classifyStreetscape, SIDEWALK_RESIDENTIAL_M } from '../../../src/world/streetscape-rules';
 import { makeWorld, square } from './fixture';
 
 // A 400 m world with uneven ground: a 5 × 5 grid, samples 100 m apart, heights in decimetres, so nothing is planar.
 const BUMPY = [0, 30, 5, 40, 10, 20, 0, 35, 15, 25, 5, 45, 10, 30, 0, 30, 10, 20, 0, 40, 15, 0, 25, 5, 20];
 const both = [SideState.PRESENT, SideState.PRESENT] as [SideState, SideState];
-const street = (p: number[], extra: Partial<Road> = {}): Road => ({ c: RoadClass.STREET, n: '', p, i: p.length * 1000 + p[0] * 7 + p[1], sw: both, ...extra });
+const street = (p: number[], extra: Partial<Road> = {}): Road => ({
+  c: RoadClass.STREET,
+  n: '',
+  p,
+  i: p.length * 1000 + p[0] * 7 + p[1],
+  sw: both,
+  ...extra,
+});
 
 function build(world: Partial<WorldData>, avoidTrees?: number[]) {
   const data = makeWorld({ size: 400, n: 5, elev: BUMPY, ...world });
@@ -32,7 +58,7 @@ function triangles(s: Soup) {
   const out: { v: number[][]; part: Part }[] = [];
   for (let t = 0; t < s.part.length; t++) {
     const o = t * 9;
-    out.push({ v: [0, 3, 6].map((k) => [s.pos[o + k], s.pos[o + k + 1], s.pos[o + k + 2]]), part: s.part[t] });
+    out.push({ v: [0, 3, 6].map(k => [s.pos[o + k], s.pos[o + k + 1], s.pos[o + k + 2]]), part: s.part[t] });
   }
   return out;
 }
@@ -41,7 +67,7 @@ const normal = (v: number[][]) => {
   const w = [v[2][0] - v[0][0], v[2][1] - v[0][1], v[2][2] - v[0][2]];
   return [u[1] * w[2] - u[2] * w[1], u[2] * w[0] - u[0] * w[2], u[0] * w[1] - u[1] * w[0]];
 };
-const centroid = (v: number[][]) => [0, 1, 2].map((k) => (v[0][k] + v[1][k] + v[2][k]) / 3);
+const centroid = (v: number[][]) => [0, 1, 2].map(k => (v[0][k] + v[1][k] + v[2][k]) / 3);
 const TOPS: Part[] = [Part.CURB_TOP, Part.VERGE, Part.SIDEWALK];
 
 /** distance from (x, z) to the nearest carriageway's edge, negative inside one */
@@ -49,7 +75,8 @@ function carriagewayDistance(data: WorldData, x: number, z: number) {
   let best = Infinity;
   for (const r of data.r) {
     if (r.c > RoadClass.TRACK || r.s === RoadUse.SIDEWALK) continue;
-    for (let i = 2; i < r.p.length; i += 2) best = Math.min(best, segmentDistance(x, z, r.p[i - 2], r.p[i - 1], r.p[i], r.p[i + 1]) - ROAD_WIDTH_M[r.c] / 2);
+    for (let i = 2; i < r.p.length; i += 2)
+      best = Math.min(best, segmentDistance(x, z, r.p[i - 2], r.p[i - 1], r.p[i], r.p[i + 1]) - ROAD_WIDTH_M[r.c] / 2);
   }
   return best;
 }
@@ -60,7 +87,9 @@ function curbHeights(s: Soup) {
   for (const { v, part } of triangles(s)) {
     if (part !== Part.CURB_FACE) continue;
     for (let a = 0; a < 3; a++)
-      for (let b = 0; b < 3; b++) if (a !== b && v[a][0] === v[b][0] && v[a][2] === v[b][2] && v[a][1] > v[b][1]) out.push({ x: v[a][0], z: v[a][2], h: v[a][1] - v[b][1] });
+      for (let b = 0; b < 3; b++)
+        if (a !== b && v[a][0] === v[b][0] && v[a][2] === v[b][2] && v[a][1] > v[b][1])
+          out.push({ x: v[a][0], z: v[a][2], h: v[a][1] - v[b][1] });
   }
   return out;
 }
@@ -71,12 +100,12 @@ describe('buildStreetscape: cross-sections', () => {
   const { data, heightfield, layout } = build({ r: [street(curve)] });
 
   it('builds one strip a side, starting on the ribbon edge itself', () => {
-    expect(layout.strips.map((s) => s.side).sort()).toEqual([-1, 1]);
+    expect(layout.strips.map(s => s.side).sort()).toEqual([-1, 1]);
     const q = resample(
       Array.from({ length: curve.length / 2 }, (_, i): [number, number] => [curve[i * 2], curve[i * 2 + 1]]),
       6,
     );
-    const left = layout.strips.find((s) => s.side < 0)!;
+    const left = layout.strips.find(s => s.side < 0)!;
     // every ribbon sample's left edge is a station of the strip, bit for bit
     const inner = new Set<string>();
     for (let i = 0; i < left.inner.length; i += 2) inner.add(left.inner[i] + ',' + left.inner[i + 1]);
@@ -113,7 +142,7 @@ describe('buildStreetscape: cross-sections', () => {
   });
 
   it('ends a strip that has nowhere to go with a ramp down to a lowered curb', () => {
-    const lowest = Math.min(...curbHeights(layout.surface).map((c) => c.h));
+    const lowest = Math.min(...curbHeights(layout.surface).map(c => c.h));
     expect(lowest).toBeCloseTo(LOWERED_CURB_M, 9);
   });
 
@@ -149,7 +178,7 @@ describe('buildStreetscape: awkward coordinates', () => {
     const p = [0.1, 0.1, 0.7, 0.30000000000000004, 13.37, 2.9, 41.3, -7.7, 77.1, 0.3];
     const drive: Road = { c: RoadClass.SERVICE, n: '', p: [41.3, -7.7, 45, -40], s: RoadUse.DRIVEWAY, i: 3 };
     const { layout } = build({ r: [street(p), drive] });
-    expect(layout.openings.filter((o) => o.kind === 'driveway')).toHaveLength(1);
+    expect(layout.openings.filter(o => o.kind === 'driveway')).toHaveLength(1);
     for (const v of layout.surface.pos) expect(Number.isFinite(v)).toBe(true);
     for (const o of layout.openings) expect(Number.isFinite(o.s)).toBe(true);
   });
@@ -157,8 +186,8 @@ describe('buildStreetscape: awkward coordinates', () => {
 
 /** every strip end that no corner continues ramps down to a lowered curb, so nothing stops as a sheer block */
 function expectLooseEndsRamped(layout: ReturnType<typeof build>['layout']) {
-  const cornerEnds = new Set(layout.corners.flatMap((c) => [c.inner.slice(0, 2).join(), c.inner.slice(-2).join()]));
-  const heights = new Map(curbHeights(layout.surface).map((c) => [c.x + ',' + c.z, c.h]));
+  const cornerEnds = new Set(layout.corners.flatMap(c => [c.inner.slice(0, 2).join(), c.inner.slice(-2).join()]));
+  const heights = new Map(curbHeights(layout.surface).map(c => [c.x + ',' + c.z, c.h]));
   let loose = 0;
   for (const s of layout.strips) {
     for (const end of [s.inner.slice(0, 2).join(), s.inner.slice(-2).join()]) {
@@ -176,7 +205,10 @@ describe('buildStreetscape: junctions', () => {
     // reach its corner, while the main road's strip can
     const edge = ROAD_WIDTH_M[RoadClass.STREET] / 2;
     const house = [edge + 0.5, edge + 2, edge + 12, edge + 2, edge + 12, 20, edge + 0.5, 20];
-    const { layout } = build({ r: [street([-150, 0, 0, 0, 150, 0]), street([0, 0, 0, 150])], b: [{ p: house, h: 5, k: 0 }] });
+    const { layout } = build({
+      r: [street([-150, 0, 0, 0, 150, 0]), street([0, 0, 0, 150])],
+      b: [{ p: house, h: 5, k: 0 }],
+    });
     expect(layout.corners).toHaveLength(1);
     expect(expectLooseEndsRamped(layout)).toBeGreaterThan(4);
   });
@@ -186,8 +218,8 @@ describe('buildStreetscape: junctions', () => {
     const { data, layout } = build({ r: [street([-150, 0, 0, 0, 150, 0]), street([0, 0, 0, 150])] });
     expect(layout.corners).toHaveLength(2);
     // the north side (the main road's left) runs straight through; the south side is split by the stem
-    expect(layout.strips.filter((s) => s.ri === 0 && s.side < 0)).toHaveLength(1);
-    expect(layout.strips.filter((s) => s.ri === 0 && s.side > 0)).toHaveLength(2);
+    expect(layout.strips.filter(s => s.ri === 0 && s.side < 0)).toHaveLength(1);
+    expect(layout.strips.filter(s => s.ri === 0 && s.side > 0)).toHaveLength(2);
     for (const { v, part } of triangles(layout.surface)) {
       if (!TOPS.includes(part)) continue;
       const [x, , z] = centroid(v);
@@ -195,7 +227,7 @@ describe('buildStreetscape: junctions', () => {
     }
     expectLooseEndsRamped(layout);
     // each corner's curve starts and ends on a strip end
-    const ends = new Set(layout.strips.flatMap((s) => [s.inner.slice(0, 2).join(), s.inner.slice(-2).join()]));
+    const ends = new Set(layout.strips.flatMap(s => [s.inner.slice(0, 2).join(), s.inner.slice(-2).join()]));
     for (const c of layout.corners) {
       expect(ends.has(c.inner.slice(0, 2).join())).toBe(true);
       expect(ends.has(c.inner.slice(-2).join())).toBe(true);
@@ -204,11 +236,13 @@ describe('buildStreetscape: junctions', () => {
 
   it('rounds a half junction into the street without a sidewalk, and ramps it down there', () => {
     // the stem runs south; its left (east, +x) side has no sidewalk
-    const { data, layout } = build({ r: [street([-150, 0, 0, 0, 150, 0]), street([0, 0, 0, 150], { sw: [SideState.ABSENT, SideState.PRESENT] })] });
+    const { data, layout } = build({
+      r: [street([-150, 0, 0, 0, 150, 0]), street([0, 0, 0, 150], { sw: [SideState.ABSENT, SideState.PRESENT] })],
+    });
     expect(layout.corners).toHaveLength(2);
-    const half = layout.corners.find((c) => c.inner[0] > 0 && c.inner[c.inner.length - 2] > 0)!;
+    const half = layout.corners.find(c => c.inner[0] > 0 && c.inner[c.inner.length - 2] > 0)!;
     expect(half).toBeDefined();
-    const heights = new Map(curbHeights(layout.surface).map((c) => [c.x + ',' + c.z, c.h]));
+    const heights = new Map(curbHeights(layout.surface).map(c => [c.x + ',' + c.z, c.h]));
     // the main road's strip runs into the corner at full height; the corner's far end, on the stem, is lowered
     expect(heights.get(half.inner.slice(0, 2).join())).toBeCloseTo(CURB_RESIDENTIAL_M, 9);
     expect(heights.get(half.inner.slice(-2).join())).toBeCloseTo(LOWERED_CURB_M, 9);
@@ -233,13 +267,16 @@ describe('buildStreetscape: junctions', () => {
       const [x, , z] = centroid(v);
       expect(carriagewayDistance(data, x, z)).toBeGreaterThan(0);
     }
-    for (const { v, part } of triangles(layout.surface)) if (TOPS.includes(part)) expect(normal(v)[1]).toBeGreaterThan(0);
+    for (const { v, part } of triangles(layout.surface))
+      if (TOPS.includes(part)) expect(normal(v)[1]).toBeGreaterThan(0);
   });
 
   it('gives an acute junction no fillet, and no sidewalk on either carriageway', () => {
     // two roads leaving one node 20° apart
     const a = 20 * (Math.PI / 180);
-    const { data, layout } = build({ r: [street([0, 0, 150, 0]), street([0, 0, 150 * Math.cos(a), 150 * Math.sin(a)])] });
+    const { data, layout } = build({
+      r: [street([0, 0, 150, 0]), street([0, 0, 150 * Math.cos(a), 150 * Math.sin(a)])],
+    });
     expect(layout.corners).toHaveLength(0);
     for (const { v, part } of triangles(layout.surface)) {
       if (!TOPS.includes(part)) continue;
@@ -251,21 +288,24 @@ describe('buildStreetscape: junctions', () => {
   it('lowers the curb across a driveway and runs the sidewalk on, on that side only', () => {
     const drive: Road = { c: RoadClass.SERVICE, n: '', p: [0, 0, 0, 30], s: RoadUse.DRIVEWAY, i: 5 };
     const { layout } = build({ r: [street([-150, 0, 0, 0, 150, 0]), drive] });
-    expect(layout.strips.filter((s) => s.ri === 0)).toHaveLength(2); // one strip a side, unbroken
-    expect(layout.openings).toEqual([expect.objectContaining({ ri: 0, side: 1, kind: 'driveway', half: (ROAD_WIDTH_M[RoadClass.SERVICE] + 1) / 2 })]);
+    expect(layout.strips.filter(s => s.ri === 0)).toHaveLength(2); // one strip a side, unbroken
+    expect(layout.openings).toEqual([
+      expect.objectContaining({ ri: 0, side: 1, kind: 'driveway', half: (ROAD_WIDTH_M[RoadClass.SERVICE] + 1) / 2 }),
+    ]);
     const heights = curbHeights(layout.surface);
-    const south = heights.filter((c) => c.z > 0 && Math.abs(c.x) < 1);
-    const north = heights.filter((c) => c.z < 0 && Math.abs(c.x) < 1);
+    const south = heights.filter(c => c.z > 0 && Math.abs(c.x) < 1);
+    const north = heights.filter(c => c.z < 0 && Math.abs(c.x) < 1);
     expect(south.length).toBeGreaterThan(0);
     for (const c of south) expect(c.h).toBeCloseTo(LOWERED_CURB_M, 9);
     for (const c of north) expect(c.h).toBeCloseTo(CURB_RESIDENTIAL_M, 9);
-    for (const c of heights.filter((c) => c.z > 0 && Math.abs(c.x) > 1.75 + 1.5 + 0.01 && Math.abs(c.x) < 100)) expect(c.h).toBeCloseTo(CURB_RESIDENTIAL_M, 9);
+    for (const c of heights.filter(c => c.z > 0 && Math.abs(c.x) > 1.75 + 1.5 + 0.01 && Math.abs(c.x) < 100))
+      expect(c.h).toBeCloseTo(CURB_RESIDENTIAL_M, 9);
   });
 
   it('lowers both curbs at a mapped crossing and paints a zebra only when it is marked', () => {
     const roads = [street([-150, 0, 0, 0, 150, 0])];
     const marked = build({ r: roads, x: [{ i: 1, x: 0, z: 0, k: CrossingKind.MARKED, r: 0, v: 1 }] });
-    expect(marked.layout.openings.filter((o) => o.kind === 'crossing')).toHaveLength(2);
+    expect(marked.layout.openings.filter(o => o.kind === 'crossing')).toHaveLength(2);
     expect(marked.layout.markings.part.length).toBeGreaterThan(0);
     const unmarked = build({ r: roads, x: [{ i: 1, x: 0, z: 0, k: CrossingKind.UNMARKED, r: 0, v: 1 }] });
     expect(unmarked.layout.markings.part).toHaveLength(0);
@@ -274,21 +314,31 @@ describe('buildStreetscape: junctions', () => {
   it('never builds a sidewalk through a building, and narrows it before giving up', () => {
     // a house reaching to 1.8 m from the curb on the south side, x 0..10: the 1.5 m sidewalk narrows to 1 m there
     const edge = ROAD_WIDTH_M[RoadClass.STREET] / 2;
-    const { layout } = build({ r: [street([-150, 0, 150, 0])], b: [{ p: square(0, edge + CURB_TOP_M + 1.2, 10), h: 5, k: 0 }] });
-    const south = layout.strips.filter((s) => s.side > 0);
+    const { layout } = build({
+      r: [street([-150, 0, 150, 0])],
+      b: [{ p: square(0, edge + CURB_TOP_M + 1.2, 10), h: 5, k: 0 }],
+    });
+    const south = layout.strips.filter(s => s.side > 0);
     expect(south).toHaveLength(1);
     const widths: number[] = [];
-    for (let i = 0; i < south[0].outer.length; i += 2) widths.push(south[0].outer[i + 1] - south[0].inner[i + 1] - CURB_TOP_M);
+    for (let i = 0; i < south[0].outer.length; i += 2)
+      widths.push(south[0].outer[i + 1] - south[0].inner[i + 1] - CURB_TOP_M);
     expect(Math.min(...widths)).toBeCloseTo(1, 6);
     // a house right on the curb ends the strip
     const blocked = build({ r: [street([-150, 0, 150, 0])], b: [{ p: square(0, edge + 0.5, 10), h: 5, k: 0 }] });
-    expect(blocked.layout.strips.filter((s) => s.side > 0)).toHaveLength(2);
+    expect(blocked.layout.strips.filter(s => s.side > 0)).toHaveLength(2);
   });
 });
 
 describe('buildStreetscape: parking', () => {
   // a 60 × 40 m asphalt lot with a 10 × 10 m hole, on bumpy ground
-  const lot = { i: 9, p: [-30, -20, 30, -20, 30, 20, -30, 20], h: [square(-5, -5, 10)], k: ParkingKind.SURFACE, sf: Surface.ASPHALT };
+  const lot = {
+    i: 9,
+    p: [-30, -20, 30, -20, 30, 20, -30, 20],
+    h: [square(-5, -5, 10)],
+    k: ParkingKind.SURFACE,
+    sf: Surface.ASPHALT,
+  };
 
   it('cuts the surface to the terrain, keeps the hole and the area', () => {
     const { data, heightfield, layout } = build({ pa: [lot] });
@@ -364,19 +414,22 @@ describe('StreetscapeIndex', () => {
 describe('streetscape: trees, determinism and disposal', () => {
   const land = [{ k: LandUse.RESIDENTIAL, p: square(-200, -200, 400) }];
   // untagged residential streets: about 40 % get a verge, and verges get trees
-  const roads = Array.from({ length: 8 }, (_, k): Road => ({ c: RoadClass.STREET, n: '', p: [-150, -140 + k * 40, 150, -140 + k * 40], i: 500 + k }));
+  const roads = Array.from(
+    { length: 8 },
+    (_, k): Road => ({ c: RoadClass.STREET, n: '', p: [-150, -140 + k * 40, 150, -140 + k * 40], i: 500 + k }),
+  );
 
   it('puts inferred trees only on verges, spaced and clear of junctions', () => {
     const { layout } = build({ r: roads, l: land, t: [0, 100] });
     expect(layout.trees[0]).toEqual({ x: 0, z: 100, source: 'mapped' });
-    const inferred = layout.trees.filter((t) => t.source === 'inferred');
+    const inferred = layout.trees.filter(t => t.source === 'inferred');
     expect(inferred.length).toBeGreaterThan(0);
     for (let i = 1; i < inferred.length; i++) {
       const d = Math.hypot(inferred[i].x - inferred[i - 1].x, inferred[i].z - inferred[i - 1].z);
       if (d < 30) expect(d).toBeGreaterThanOrEqual(12 - 1e-9);
     }
-    const avoid = inferred.flatMap((t) => [t.x, t.z]);
-    expect(build({ r: roads, l: land }, avoid).layout.trees.filter((t) => t.source === 'inferred')).toHaveLength(0);
+    const avoid = inferred.flatMap(t => [t.x, t.z]);
+    expect(build({ r: roads, l: land }, avoid).layout.trees.filter(t => t.source === 'inferred')).toHaveLength(0);
   });
 
   it('builds the same geometry twice, number for number, and never calls Math.random', () => {
@@ -385,7 +438,11 @@ describe('streetscape: trees, determinism and disposal', () => {
       throw new Error('Math.random called');
     };
     try {
-      const world = { r: [street([-150, 0, 0, 0, 150, 0]), street([0, 0, 0, 150])], l: land, pa: [{ i: 9, p: square(40, 40, 40), k: ParkingKind.SURFACE }] };
+      const world = {
+        r: [street([-150, 0, 0, 0, 150, 0]), street([0, 0, 0, 150])],
+        l: land,
+        pa: [{ i: 9, p: square(40, 40, 40), k: ParkingKind.SURFACE }],
+      };
       const a = build(world).layout;
       const b = build(world).layout;
       expect(b.surface.pos).toEqual(a.surface.pos);
@@ -397,7 +454,10 @@ describe('streetscape: trees, determinism and disposal', () => {
   });
 
   it('batches per chunk and frees every geometry it made, leaving the materials', () => {
-    const { data, heightfield, layout } = build({ r: [street([-190, 0, 190, 0])], pa: [{ i: 9, p: square(40, 40, 40), k: ParkingKind.SURFACE }] });
+    const { data, heightfield, layout } = build({
+      r: [street([-190, 0, 190, 0])],
+      pa: [{ i: 9, p: square(40, 40, 40), k: ParkingKind.SURFACE }],
+    });
     const surface = new THREE.MeshLambertMaterial({ vertexColors: true });
     const markings = new THREE.MeshLambertMaterial();
     const sidewalks = new SidewalkMesh(layout, { surface, markings });
@@ -406,7 +466,8 @@ describe('streetscape: trees, determinism and disposal', () => {
     expect(sidewalks.meshes.length).toBeGreaterThanOrEqual(2);
     expect(parking.meshes.length).toBeGreaterThanOrEqual(1);
     const freed = new Set<THREE.BufferGeometry>();
-    for (const m of [...sidewalks.meshes, ...parking.meshes]) m.geometry.addEventListener('dispose', () => freed.add(m.geometry));
+    for (const m of [...sidewalks.meshes, ...parking.meshes])
+      m.geometry.addEventListener('dispose', () => freed.add(m.geometry));
     let materialFreed = false;
     surface.addEventListener('dispose', () => {
       materialFreed = true;
