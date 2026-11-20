@@ -82,7 +82,7 @@ export function addRoadRibbons(
 // house details: windows (a texture on a skin just outside the walls), white corner boards and eave boards, a dark plinth, and a chimney on gabled roofs
 const WIN_W = 2.6,
   STOREY = 2.8; // window spacing and storey height (m)
-/** What the houses roll their colours with: the game's seeded rnd(), so they come out the same every time. */
+/** The game's seeded rnd(), which rolls the house colours so they come out the same every time, and the renderer's anisotropy for the window texture. */
 export interface BuildingMeshOptions {
   rnd(): number;
   pick<T>(a: readonly T[]): T;
