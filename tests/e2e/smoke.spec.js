@@ -225,12 +225,16 @@ test.describe('game (index.html)', () => {
     await page.goto('/index.html');
     await page.locator('#go').click();
     await getInVolvo(page);
-    expect((await state(page)).wheelbase).toBeCloseTo(2.65, 2);  // the parked Volvo 240 brings its model's wheelbase
+    expect((await state(page)).wheelbase).toBeCloseTo(2.65, 2); // the parked Volvo 240 brings its model's wheelbase
     await page.keyboard.down('KeyW');
-    await expect.poll(async () => (await state(page)).body.pitch, { intervals: [50], timeout: 30_000 }).toBeGreaterThan(0.003);   // nose up
+    await expect
+      .poll(async () => (await state(page)).body.pitch, { intervals: [50], timeout: 30_000 })
+      .toBeGreaterThan(0.003); // nose up
     await expect.poll(async () => (await state(page)).speed, { intervals: [50], timeout: 60_000 }).toBeGreaterThan(6);
     await page.keyboard.down('KeyD');
-    await expect.poll(async () => (await state(page)).body.roll, { intervals: [50], timeout: 30_000 }).toBeGreaterThan(0.01);   // roof out to the left
+    await expect
+      .poll(async () => (await state(page)).body.roll, { intervals: [50], timeout: 30_000 })
+      .toBeGreaterThan(0.01); // roof out to the left
     await page.keyboard.up('KeyD');
     await page.keyboard.up('KeyW');
     expect(errors).toEqual([]);

@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { restingBody, stepBody, SUSPENSION, suspensionFor, type BodyForces } from '../../../../src/game/render/suspension';
+import {
+  type BodyForces,
+  restingBody,
+  SUSPENSION,
+  stepBody,
+  suspensionFor,
+} from '../../../../src/game/render/suspension';
 
 const run = (forces: BodyForces, seconds: number, type = 'volvo', dt = 1 / 60) => {
   const state = restingBody(),
