@@ -11,7 +11,8 @@ A browser open-world driving game set in the real village of Vrigstad, Sweden, b
 ```sh
 npm install                 # once
 npm run dev                 # dev server with hot reload: the game at http://localhost:5173/, the map at /map.html
-npm run check               # typecheck; run before every commit, with npm test, and CI runs it on every PR that changes code (lint joins them in #46)
+npm run check               # typecheck, lint and format check (Biome); run before every commit, with npm test, and CI runs it on every PR that changes code
+npm run format              # apply Biome's formatting and safe lint fixes
 npm test                    # unit tests (Vitest), once
 npm run build               # production build into dist/ (index.html, map.html)
 npm run preview             # serve the built dist/ locally
@@ -77,7 +78,7 @@ GitHub issues are the backlog: every bug, idea and piece of work is one issue.
 
 - **Match the surrounding code.** Same naming, comment density and idiom as the file you're in.
 - Current single-file code is dense: 2-space indent, single quotes, semicolons, short local names for hot math (`x`, `z`, `h`, `v`, `dt`), sections marked `// ---------- name ----------`. Keep that style inside `src/game/main.ts` and `src/map/main.ts` until they are split up.
-- New TypeScript code: formatted by Biome (after #46), so don't hand-format. Prefer clear names over the dense style, small modules with one responsibility, named exports, no default exports, `strict` types, no `any` without a comment saying why.
+- New TypeScript code: formatted by Biome (`npm run format`), so don't hand-format. The pages (`src/*.html`, `src/game/main.ts`, `src/map/main.ts`) aren't formatted until #177 splits them (`biome.jsonc`), but the two scripts are still checked for undeclared names, unused variables and unused imports. The repo's `.vscode/` settings make Biome the formatter in VS Code, so a Prettier you set up for other projects doesn't reformat files on save. Prefer clear names over the dense style, small modules with one responsibility, named exports, no default exports, `strict` types, no `any` without a comment saying why.
 - Classes, data or functions, by what the thing is:
   - **A class** for something built once and then queried, or that holds state or resources with a lifecycle: a world index (`Heightfield`, `RoadNetwork`, `BuildingIndex`), a controller, an object that owns meshes and disposes them, a Svelte store with `$state` fields. Depend on the narrow part you use (`Pick<Heightfield, 'heightAt'>`), so a test can pass a stub.
   - **Plain data** for simulation state (#49): it has to be copied to a worker or over the network, snapshotted for replays and compared in tests. No methods on entities.

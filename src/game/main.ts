@@ -7,7 +7,7 @@ import { pickVariant, vehicleDefinition } from './render/vehicle-registry';
 import { VehicleVisuals } from './render/vehicle-visuals';
 import D from '../../data/vrigstad.json';
 import { LabFlags } from '../lab/flags';
-import { BUILDING_CELL_M as BC, BuildingIndex } from '../world/buildings';
+import { BuildingIndex } from '../world/buildings';
 import { ROAD_WIDTH_M as ROAD_W } from '../world/data';
 import { Heightfield } from '../world/heightfield';
 import { clamp } from '../world/math';
@@ -20,7 +20,7 @@ import { nodeKey, RoadNetwork } from '../world/roads';
 import { LEGACY_LIGHT } from '../world/three-legacy';
 import { treeSpots } from '../world/trees';
 import { Water } from '../world/water';
-import { CAT_ADOPT_PETS, CatColony } from './cats';
+import { CatColony } from './cats';
 import { Hud } from './hud';
 import { Input } from './input';
 import { Crowd } from './pedestrians';
@@ -47,7 +47,7 @@ const normalAt = (x, z) => heightfield.normalAt(x, z, _n);
 const canvas = $('gl');
 let renderer;
 try { renderer = new THREE.WebGLRenderer({ canvas, antialias: true }); }
-catch (err) { $('fail').hidden = false; $('ui').hidden = true; $('intro').hidden = true; return; }
+catch { $('fail').hidden = false; $('ui').hidden = true; $('intro').hidden = true; return; }
 const coarse = matchMedia('(pointer: coarse)').matches;
 renderer.setPixelRatio(Math.min(devicePixelRatio || 1, coarse ? 1.5 : 2));
 renderer.shadowMap.enabled = true;
@@ -161,7 +161,7 @@ scene.add(...roadRibbons.meshes);
 const water = new Water(D, roads), inWater = water.inWater.bind(water);
 
 // ---------- buildings (painted in Swedish house colours) + collision grid ----------
-const buildings = new BuildingIndex(D), { footprints: bPolys, grid: bGrid } = buildings;
+const buildings = new BuildingIndex(D), { footprints: bPolys } = buildings;
 const addFootprint = buildings.addFootprint.bind(buildings), collide = buildings.collide.bind(buildings);
 // house details: windows (a texture on a skin just outside the walls), white corner boards and eave boards, a dark plinth, and a chimney on gabled roofs
 const WIN_W = 2.6, STOREY = 2.8;   // window spacing and storey height (m)
