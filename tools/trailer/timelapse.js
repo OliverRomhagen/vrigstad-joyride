@@ -6,7 +6,7 @@ const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
 const ffmpeg = require('ffmpeg-static');
-const { open, WORK, ROOT } = require('./rig');
+const { open, modelsReady, WORK, ROOT } = require('./rig');
 const { releases, prepare } = require('./versions');
 const { mix } = require('./synth');
 
@@ -56,6 +56,7 @@ async function version(file, v, opts) {
   try {
     await page.evaluate(setupPage);
     await page.evaluate(`__X.chase('volvo', '#7a2530', ${WARM_STEPS}, [9, 15, 22], 33); __X.label(null);`);
+    await modelsReady(page);
     if (opts.first) await shoot(page, card, OPEN_F, `<h1>Vrigstad <span>Joyride</span></h1><div class="rule"></div><p>Every release, from the first to today</p>`);
     marks.cards.push(frame);
     await shoot(page, card, CARD_F, `<p>${v.when}</p><h2>${v.name}</h2>`);
