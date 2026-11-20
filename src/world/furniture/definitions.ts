@@ -110,9 +110,9 @@ export const FURNITURE: Readonly<Record<FurnitureKind, FurnitureDefinition>> = {
   mailbox: {
     kind: 'mailbox',
     modelId: 'mailbox-green',
-    widthM: 0.42,
+    widthM: 0.36,
     depthM: 0.26,
-    heightM: 1.2,
+    heightM: 1.3,
     clearanceM: 0.3,
     carriagewayClearanceM: 0.5,
     treeClearanceM: 1,
@@ -124,9 +124,9 @@ export const FURNITURE: Readonly<Record<FurnitureKind, FurnitureDefinition>> = {
   'mailbox-stand': {
     kind: 'mailbox-stand',
     modelId: 'mailbox-stand-4',
-    widthM: 2.9,
+    widthM: 2.6,
     depthM: 0.3,
-    heightM: 1.25,
+    heightM: 1.3,
     clearanceM: 0.4,
     carriagewayClearanceM: 0.6,
     treeClearanceM: 1.5,

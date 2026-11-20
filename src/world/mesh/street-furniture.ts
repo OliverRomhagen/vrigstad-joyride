@@ -121,23 +121,23 @@ function wheelieBin(colour: number): FurnitureModel {
 }
 
 /**
- * A Swedish mailbox: an upright rectangular box, wider than deep, with a lid that slopes down to the front over the
- * slot, about 0.4 × 0.24 m at 1.2 m. Not the round-topped American tunnel.
+ * A Swedish mailbox: an upright rectangular box, taller than wide and wider than deep, with a lid that slopes down to the
+ * front over the slot, about 0.34 × 0.4 × 0.2 m on top of a post at 0.85 m. Not the round-topped American tunnel.
  */
 function mailboxParts(x: number, colour: number): Part[] {
   return [
-    [box(0.4, 0.26, 0.2, x, 1.0, 0), colour],
-    [box(0.42, 0.025, 0.24, x, 1.145, 0, 0.18), colour], // the lid, sloping to the front
-    [box(0.36, 0.015, 0.005, x, 1.075, 0.1025), MAILBOX_EDGE], // the flap's edge across the front
+    [box(0.34, 0.4, 0.2, x, 1.05, 0), colour],
+    [box(0.36, 0.025, 0.24, x, 1.265, 0, 0.18), colour], // the lid, sloping to the front
+    [box(0.3, 0.015, 0.005, x, 1.17, 0.1025), MAILBOX_EDGE], // the flap's edge across the front
   ];
 }
 function mailbox(colour: number): FurnitureModel {
-  return { body: merge([[box(0.07, 0.88, 0.07, 0, 0.44, -0.02), WOOD_GREY], ...mailboxParts(0, colour)]) };
+  return { body: merge([[box(0.07, 0.86, 0.07, 0, 0.43, -0.02), WOOD_GREY], ...mailboxParts(0, colour)]) };
 }
 
 /** A wooden stand of `n` mailboxes side by side, at the road edge in the outskirts. */
 function mailboxStand(n: number): FurnitureModel {
-  const step = 0.46;
+  const step = 0.4;
   const span = n * step;
   const parts: Part[] = [
     [box(0.08, 0.9, 0.08, -span / 2, 0.45, -0.06), WOOD_GREY],
