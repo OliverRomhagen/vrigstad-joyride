@@ -34,12 +34,14 @@ import { Fleet, newCar, TURBO_AT } from './cars';
 import { CatColony } from './cats';
 import { Hud } from './hud';
 import { Input } from './input';
+import { Actions } from './actions';
 import { Crowd } from './pedestrians';
 import { esc, MenuPlate } from './menu';
+import { KioskCatMenus } from './kiosk-cat-menus';
 import { Pets } from './pets';
 import { KIOSK, Places } from './places';
-import { CAT_SCRATCH_HP, LOW_HP, CRASH_COOL_S, crashCars, crashDamage, driverHurt, HP_MAX, heal, hurt, KORV_HP, impactSpeed, newHealth, regen, RULLE_HP, runOverHurt, smokeLevel, wakeSpot, wrecked } from './health';
-import { carInReach, HOME, hop, ride, standAt, stepOut, tooFastToGetOut, walk } from './player';
+import { CAT_SCRATCH_HP, LOW_HP, CRASH_COOL_S, crashCars, crashDamage, driverHurt, hurt, impactSpeed, newHealth, regen, runOverHurt, smokeLevel, wrecked } from './health';
+import { HOME, hop, ride, tooFastToGetOut, walk } from './player';
 import { Wanted } from './police';
 import { PlaceMeshes } from './render/places';
 import { specFor } from './sim/vehicle-spec';
@@ -442,20 +444,11 @@ const crowd = new Crowd({ scene, roads, buildings, labels: D.labels, groundAt, w
 const updateNpcs = crowd.update.bind(crowd);
 
 // ---------- cats: lounge by the house walls, wander a little, bolt from cars and running feet (src/game/cats.ts) ----------
-const TREAT_BAG = 3, TREAT_MAX = 9;                                  // treats per bag from the kiosk; how many fit in your pockets
 // the getters are read when the cats use them, so they can name things declared further down
 const colony = new CatColony({ scene, buildings, inWater, groundAt, half: HALF, coarse, wrap, geoCache, boxGeo, paintMat, blob, cars, toast,
   get player() { return player; }, get keys() { return keys; }, get joy() { return joy; }, get kmenu() { return kmenu; }, get inCar() { return game.inCar; }, get pcar() { return game.pcar; }, get inside() { return places.inside; },
   useTreat() { if (game.treats <= 0) return false; game.treats--; drawTreats(); return true; }, scratched() { hurtPlayer(CAT_SCRATCH_HP); } });
 const { cats } = colony, updateCats = colony.update.bind(colony), catFirst = colony.catFirst.bind(colony), nearCat = colony.nearest.bind(colony);
-// a good pet that makes a cat ready to be adopted asks whether it comes home with you
-const CAT_MENU_M = 4;   // a cat's menu (the adopt question, or your own cat's) closes when you get further than this from it (m), or it bolts, or you get in a car
-const nearMenuCat = k => () => !game.inCar && k.state !== 'flee' && Math.hypot(k.x - player.x, k.z - player.z) < CAT_MENU_M;
-function petCat(k) { const ready = colony.pet(k); showHeart(k); if (ready) openMenu('adopt', '”Ska du följa mä hem, kisse?”', [['adopt', 'Ja, adoptera'], ['no', 'Nä, inte nu']], c => { if (c === 'adopt') { colony.adopt(k); showHeart(k); } else colony.decline(k); drawPets(); }, nearMenuCat(k)); }
-// your own cat: E opens its menu rather than petting it straight away; Ge godis shows only while you have treats
-function openOwnCat(k) {
-  openMenu('cat', '”' + esc(k.name) + '”', [['pet', 'Klappa'], ...(game.treats ? [['treat', 'Ge godis']] : []), ['play', 'Leka'], ['home', 'Skicka hem'], ['no', 'Stäng']], c => {
-    if (c === 'pet') petCat(k); else if (c === 'treat') { if (colony.treat(k)) showHeart(k); } else if (c === 'play') colony.play(k); else if (c === 'home') colony.sendHome(); }, nearMenuCat(k)); }
 // ---------- your pets: P (or the Pets button) calls them, sends them home or sets them free (src/game/pets.ts) ----------
 // small menus on one plate (the kiosk, a cat, your pets, naming a pet: src/game/menu.ts)
 // the getters are read when the plate uses them, so they can name things declared further down
@@ -468,10 +461,6 @@ const openPets = pets.open.bind(pets), drawPets = pets.draw.bind(pets);
 // ---------- the adopt heart: hovers over a stray once it has had a good pet, a third fuller for each good pet in a row (src/game/render/adopt-heart.ts) ----------
 const adoptHearts = new AdoptHearts({ scene, colony }), showHeart = adoptHearts.show.bind(adoptHearts), drawHearts = adoptHearts.update.bind(adoptHearts);
 $('pets').addEventListener('click', () => { if (menuPlate.menuKind === 'pets') closeMenu(); else openPets(); canvas.focus(); });   // from the kiosk or adopt menu too
-function buyTreats() {
-  if (game.treats >= TREAT_MAX) { toast('”Nämen, du har ju fickera fulla redan!”', 2.5); return; }
-  game.treats = Math.min(TREAT_MAX, game.treats + TREAT_BAG); drawTreats(); toast('”En påse kattgodis, varsågo. Kattera ä tôcka i dä.”', 4);
-}
 function drawTreats() { const el = $('treats'); el.hidden = false; el.textContent = 'Cat treats: ' + game.treats; }
 
 // ---------- player (walking, jumping, getting out: src/game/player.ts) ----------
@@ -491,17 +480,9 @@ const wanted = new Wanted({ roads, rnd, pick, wrap, removeCar, drive, toast,
 const places = new Places({ footprints: bPolys, roads: R, police: wanted.police, lieLow: secs => wanted.lieLow(secs), toast, get stars() { return wanted.stars; } });
 const placeMeshes = new PlaceMeshes({ scene, places, heightAt: hAt, col, boxGeo, paintMat, glass: GLASS });
 addFootprint([KIOSK.x - KIOSK.w / 2, KIOSK.z - KIOSK.d / 2, KIOSK.x + KIOSK.w / 2, KIOSK.z - KIOSK.d / 2, KIOSK.x + KIOSK.w / 2, KIOSK.z + KIOSK.d / 2, KIOSK.x - KIOSK.w / 2, KIOSK.z + KIOSK.d / 2]);   // the kiosk collides like a building
-// the kiosk's one lucka, on the menu plate
-const openKiosk = () => openMenu('kiosk', '”Va ska dä va?”', [['triss', 'Trisslott'], ['treats', 'Kattgodis (3 st)'], ['korv', 'Korv me brö <small>+' + KORV_HP + ' health</small>'], ['vego', 'Vegokorv me brö'], ['rulle', 'Smålandsrulle <small>+' + RULLE_HP + ' health</small>'], ['no', 'Nä tack']], k => {
-  if (k === 'triss') trisslott.scratch(); else if (k === 'treats') buyTreats(); else if (k === 'korv') eat(KORV_HP, '”En korv me brö, tack.”', '”Varsågod. Senap å ketchup ä på disken.”');
-  else if (k === 'vego') toast('”En vegokåv me brö, tack.”\n”Vegokåv? Nä vi ha ingen vegokåv! Den ligger i frysen.”', 4);   // always sold out
-  else if (k === 'rulle') eat(RULLE_HP, '”En smålandsrulle, tack.”', '”Varsågod, mos å räksallad å allt. Dä ä mat dä!”'); }, () => nearPlace()?.kind === 'kiosk');
-// food from the kiosk: free until there is money (#76)
-// \n puts each speaker on their own line in the toast: you order first, then the kiosk answers
-function eat(n, order, reply) {
-  if (health.hp >= HP_MAX) { toast(order + '\n”Du ser ju mätt ut, du. Kom tebaks när du ä hungrig.”', 3); return; }
-  heal(health, n); drawHealth(); toast(order + '\n' + reply + ' +' + n + ' health.', 3.5);
-}
+// the kiosk's and the cats' menus (src/game/kiosk-cat-menus.ts); trisslott is declared further down
+const kioskCatMenus = new KioskCatMenus({ game, player, colony, health, openMenu, esc, toast, scratch: () => trisslott.scratch(), nearPlace, showHeart, drawPets, drawTreats, drawHealth });
+const { openKiosk, petCat, openOwnCat } = kioskCatMenus;
 function nearPlace() { return game.inCar ? null : places.nearest(player.x, player.z); }
 function enterHouse(p) { if (places.enter(p, player)) player.mesh.visible = false; }
 function leaveHouse() { if (!places.leave()) return; player.mesh.visible = true; $('hide').hidden = true; }
@@ -543,46 +524,16 @@ function drawHealth() { hud.drawHealth(health.hp, game.inCar ? game.pcar.dmg : n
 let signT = 0, blink = false, blinkT = 0;
 
 // ---------- stealing and getting caught (the wanted level and the police: src/game/police.ts) ----------
-function nearestCar() { return carInReach(player, cars); }
-// park the car where it stands and put you on foot; the caller places you
-function leaveCar() { const c = game.pcar; c.mode = 'idle'; c.v = c.slip = c.drift = c.boost = c.thr = c.st = 0; placeCar(c); game.pcar = null; game.inCar = false; player.mesh.visible = true; }
-function action() {
-  if (!game.started || game.bigT > 0) return;
-  if (places.inside) { leaveHouse(); return; }
-  if (!kmenu.hidden) { closeMenu(); return; }
-  const pl = nearPlace(), kt = nearCat();
-  if (catFirst(kt, pl)) { if (kt.owned) openOwnCat(kt); else petCat(kt); return; }
-  if (pl) { if (pl.kind === 'safe') enterHouse(pl); else openKiosk(); return; }
-  if (game.inCar) {
-    if (tooFastToGetOut(game.pcar)) { toast('Slow down before you get out.', 2); return; }
-    stepOut(player, game.pcar); collide(player, 0.5);
-    leaveCar(); game.jumpQ = false; view.camYaw = wrap(view.camYaw + view.lookOff); view.lookOff = 0; return;
-  }
-  const c = nearestCar(); if (!c) return;
-  if (c.mode === 'ai') {
-    const p = personParts(pick(['#b5463a', '#3f6b8a', '#5c7a4a', '#7a5a8a']), '#3a3a3a');
-    p.position.set(c.x - Math.cos(c.h) * 2.2, 0, c.z - Math.sin(c.h) * 2.2); p.position.y = groundAt(p.position.x, p.position.z); p.ttl = 14; scene.add(p); peds.push(p);
-    toast(pick(['”Hörru! Det där är min bil!”', '”Men va fan gör du?!”', '”Polisen! Han tar ' + (vehicleVisuals.definition(c)?.spokenName || 'min ' + c.T.name) + '!”']) + ' The driver calls the police.');
-    wanted.addStar(); spawnTraffic(player);
-  } else if (!c.owned) {
-    if (wanted.police.length || rnd() < 0.35) wanted.addStar('A neighbour saw you take the ' + carName(c) + ' and called the police.');
-    else toast(c.type === 'epa' ? 'EPA-traktor: legally limited to 30 km/h. Good luck outrunning anyone.' : 'You took the ' + carName(c) + '. Nobody noticed.');
-  }
-  if (!c.owned) { c.owned = true; game.stolen++; $('count').textContent = 'Cars stolen: ' + game.stolen; }
-  c.mode = 'player'; c.vh = c.h; c.slip = c.drift = c.boost = c.loose = c.thr = c.st = 0; game.pcar = c; game.inCar = true; player.y = player.vy = 0; player.mesh.visible = false; view.lookOff = 0; view.camYaw = c.h;
-}
-function respawn() { leaveHouse(); if (game.inCar) leaveCar();
-  standAt(player, HOME.x, HOME.z); game.jumpQ = false; collide(player, 0.6); }
 function bigScreen(title, msg) { $('big-t').textContent = title; $('big-p').textContent = msg; game.bigT = 3; $('big').hidden = false; hud.hideToast(); }   // the big screen replaces any line from the same moment
-function busted() { respawn(); health.hp = HP_MAX; drawHealth(); bigScreen('Gripen!', 'Busted. The police drop you off at Torget.'); }
-// health at zero: with the police after you it's Gripen!, otherwise you come to at the nearest safehouse, or Torget
-function knockedOut() {
-  if (wanted.stars) { wanted.clear(); busted(); return; }   // Gripen! expects the stars cleared
-  const spot = wakeSpot(player.x, player.z, HOME, places.list);
-  respawn(); standAt(player, spot.x, spot.z); collide(player, 0.6); health.hp = HP_MAX; drawHealth();
-  bigScreen('Däckad!', 'Knocked out. You come to ' + (spot.name ? 'at the safehouse on ' + spot.name : 'at Torget') + '.'); sayLater(pickLine(WAKE_LINES));
+// what E does, and putting you back on your feet after Gripen! or a knock-out (src/game/actions.ts)
+const actions = new Actions({ game, view, player, cars, places, wanted, health, menuOpen: () => !kmenu.hidden, closeMenu, showPlayer: v => { player.mesh.visible = v; }, nearPlace, enterHouse, leaveHouse, nearCat, catFirst, openOwnCat, petCat, openKiosk, collide, placeCar, rnd, pick, toast, carName,
+  spokenName: c => vehicleVisuals.definition(c)?.spokenName, driverOut, spawnTraffic, drawStolen: () => { $('count').textContent = 'Cars stolen: ' + game.stolen; }, drawHealth, bigScreen, sayLater, pickLine });
+const { nearestCar, action, respawn, busted, knockedOut } = actions;
+// the driver of a car you steal gets out, and stands there shouting for a while
+function driverOut(c) {
+  const p = personParts(pick(['#b5463a', '#3f6b8a', '#5c7a4a', '#7a5a8a']), '#3a3a3a');
+  p.position.set(c.x - Math.cos(c.h) * 2.2, 0, c.z - Math.sin(c.h) * 2.2); p.position.y = groundAt(p.position.x, p.position.z); p.ttl = 14; scene.add(p); peds.push(p);
 }
-const WAKE_LINES = ['”Va hände? Ja minns ingenting.”', '”Aj, mitt huve…”'];
 function hurtPlayer(n) { if (n <= 0) return; const was = health.hp;
   const el = $('hurt'); el.style.transition = 'none'; el.style.opacity = Math.min(1, 0.45 + n / 40); void el.offsetWidth; el.style.transition = ''; el.style.opacity = 0;   // a red flash that fades
   hurt(health, n); drawHealth();
