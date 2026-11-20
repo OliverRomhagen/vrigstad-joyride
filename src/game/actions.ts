@@ -12,6 +12,13 @@ import type { GameState, ViewState } from './state';
 
 type Point = { x: number; z: number };
 const WAKE_LINES = ['”Va hände? Ja minns ingenting.”', '”Aj, mitt huve…”'];
+/** What you say on a new star. */
+export const WANTED_LINES = [
+  '”Oj, nu ä länsman efter mä!”',
+  '”Ajaj, nu kommer snuten.”',
+  '”Fan, nu ä snuten på mä.”',
+  '”Nu blir dä bråk mä länsman, dä.”',
+];
 
 /** What E reads from the rest of the game. */
 export interface ActionsDeps {
@@ -42,14 +49,13 @@ export interface ActionsDeps {
   toast(msg: string, secs?: number): void;
   carName(c: Car): string;
   spokenName(c: Car): string | undefined; // the car's name as its driver says it, if its model has one
-  driverOut(c: Car): void; // the driver of a car you steal gets out: a person mesh, so main.ts draws it
+  driverOut(c: Car): void; // the driver of a car you steal gets out: a person mesh, so render/shouting-drivers.ts draws it
   spawnTraffic(p: Point): void;
   drawStolen(): void;
   drawHealth(): void;
   bigScreen(title: string, msg: string): void;
   sayLater(line: string): void;
   pickLine(lines: readonly string[]): string;
-  wantedLines: readonly string[]; // what you say on a new star
 }
 
 /** What E does, and putting you back on your feet. */
@@ -103,7 +109,6 @@ export class Actions {
       spawnTraffic,
       drawStolen,
       pickLine,
-      wantedLines,
     } = this.g;
     if (!game.started || game.bigT > 0) return;
     if (places.inside) {
@@ -156,7 +161,7 @@ export class Actions {
     } else if (!c.owned) {
       if (wanted.police.length || rnd() < 0.35)
         wanted.addStar(
-          pickLine(wantedLines) + ' A neighbour saw you take the ' + carName(c) + ' and called the police.',
+          pickLine(WANTED_LINES) + ' A neighbour saw you take the ' + carName(c) + ' and called the police.',
         );
       else
         toast(

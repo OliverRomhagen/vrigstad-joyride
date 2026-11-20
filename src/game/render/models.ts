@@ -1,12 +1,12 @@
 // The low-poly models: merged box and extruded geometry, the procedural cars and tractor, people, and the soft blob shadow under them.
 // Moved from src/game/main.ts (#177); main.ts hands these to the modules that build the cars, people, cats and places.
 import * as THREE from 'three';
-import { col } from './stage';
+import { col } from '../../world/three-legacy';
 
 /** One part of a model: a geometry and its sRGB colour; the colour attribute is left out when the parts have none. */
 type Part = [geometry: THREE.BufferGeometry, colour?: string];
 /** One box of a model: size, position and colour. */
-type BoxPart = [sx: number, sy: number, sz: number, x: number, y: number, z: number, colour?: string];
+type BoxPart = [sx: number, sy: number, sz: number, x: number, y: number, z: number, colour: string];
 type Profile = {
   body: number[][];
   glass: number[][];
@@ -18,7 +18,7 @@ type Profile = {
   extra?: (c: string) => BoxPart[];
 };
 /** A person's mesh: the legs (and the player's arms) swing as they walk. */
-type Person = THREE.Group & { legs: THREE.Mesh[]; blob: THREE.Mesh; arms?: THREE.Mesh[] };
+export type Person = THREE.Group & { legs: THREE.Mesh[]; blob: THREE.Mesh; arms?: THREE.Mesh[] };
 
 // soft round shadow under cars, people and trees, so nothing looks pasted onto the ground
 export const blobTex = (() => {

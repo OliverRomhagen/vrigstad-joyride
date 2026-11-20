@@ -99,7 +99,6 @@ function actions(
     },
     sayLater: l => void calls.push('later ' + l),
     pickLine: a => a[0],
-    wantedLines: ['”Nu kommer snuten.”'],
   };
   return { a: new Actions(g), calls, screens, game, view, player, mesh, wanted, health, wallet };
 }
@@ -157,7 +156,9 @@ describe('Actions.action', () => {
   it('calls the police when a neighbour sees you take a car', () => {
     const t = actions({ cars: [parked()], roll: 0.1 });
     t.a.action();
-    expect(t.calls[0]).toBe('star ”Nu kommer snuten.” A neighbour saw you take the Volvo and called the police.');
+    expect(t.calls[0]).toBe(
+      'star ”Oj, nu ä länsman efter mä!” A neighbour saw you take the Volvo and called the police.',
+    );
   });
 
   it('pulls the driver out of a car on the road, who calls the police', () => {

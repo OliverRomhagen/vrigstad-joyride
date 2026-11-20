@@ -88,6 +88,25 @@ export class Hud {
     }
   }
 
+  /** The big screen (Gripen!, Däckad!); it replaces any line from the same moment. The caller times it. */
+  showBig(title: string, msg: string) {
+    const { $ } = this.g;
+    $('big-t').textContent = title;
+    $('big-p').textContent = msg;
+    $('big').hidden = false;
+    this.hideToast();
+  }
+
+  /** A red flash that fades, stronger for a harder hurt of `n` health. */
+  flashHurt(n: number) {
+    const el = this.g.$('hurt');
+    el.style.transition = 'none';
+    el.style.opacity = String(Math.min(1, 0.45 + n / 40));
+    void el.offsetWidth; // restarts the fade
+    el.style.transition = '';
+    el.style.opacity = '0';
+  }
+
   drawStars() {
     const el = this.g.$('stars');
     el.textContent = '';
