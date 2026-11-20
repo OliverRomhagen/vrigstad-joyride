@@ -2,8 +2,8 @@ import { makeRnd } from '../../world/random';
 
 // Strength is compositor opacity; scale is CSS pixels per fine grain sample,
 // independent of the renderer's resolution and device pixel ratio.
-export const ISO800_STRENGTH = 0.40;
-export const ISO800_SCALE_PX = 1;
+const ISO800_STRENGTH = 0.4;
+const ISO800_SCALE_PX = 1;
 export const GRAIN_TILE_SIZE = 256;
 const COARSE_GRID_SIZE = 64;
 const FINE_CONTRAST = 40;
@@ -14,8 +14,8 @@ export const GRAIN_UPDATES_PER_SECOND = 12;
 export const GRAIN_STILL_UPDATES_PER_SECOND = 4;
 // Per-frame camera change below which it counts as still. The chase camera eases towards its target and never
 // stops exactly, so an exact comparison would keep it 'moving' for seconds after the car stops.
-export const GRAIN_STILL_MOVE_M = 0.001;
-export const GRAIN_STILL_TURN_RAD = 1e-4;
+const GRAIN_STILL_MOVE_M = 0.001;
+const GRAIN_STILL_TURN_RAD = 1e-4;
 const GRAIN_SEQUENCE_LENGTH = 97;
 
 // Uncorrelated jumps of two independently positioned repetitions produce boiling,
@@ -37,9 +37,16 @@ type Vec = { x: number; y: number; z: number };
 type Quat = Vec & { w: number };
 /** Whether the camera moved or turned noticeably between two frames. Plain numbers, so the effect needs no three.js. */
 export function cameraMoved(fromPosition: Vec, fromRotation: Quat, toPosition: Vec, toRotation: Quat) {
-  const dx = toPosition.x - fromPosition.x, dy = toPosition.y - fromPosition.y, dz = toPosition.z - fromPosition.z;
+  const dx = toPosition.x - fromPosition.x,
+    dy = toPosition.y - fromPosition.y,
+    dz = toPosition.z - fromPosition.z;
   if (dx * dx + dy * dy + dz * dz > GRAIN_STILL_MOVE_M ** 2) return true;
-  const dot = Math.abs(fromRotation.x * toRotation.x + fromRotation.y * toRotation.y + fromRotation.z * toRotation.z + fromRotation.w * toRotation.w);
+  const dot = Math.abs(
+    fromRotation.x * toRotation.x +
+      fromRotation.y * toRotation.y +
+      fromRotation.z * toRotation.z +
+      fromRotation.w * toRotation.w,
+  );
   return 2 * Math.acos(Math.min(1, dot)) > GRAIN_STILL_TURN_RAD;
 }
 
@@ -51,17 +58,21 @@ const playbackRate = (moving: boolean) => (moving ? 1 : GRAIN_STILL_UPDATES_PER_
 export function grainPixels() {
   const random = makeRnd(800);
   const coarse = Float32Array.from({ length: COARSE_GRID_SIZE ** 2 }, () => random() * 2 - 1);
-  const at = (x: number, y: number) => coarse[(y % COARSE_GRID_SIZE) * COARSE_GRID_SIZE + x % COARSE_GRID_SIZE];
+  const at = (x: number, y: number) => coarse[(y % COARSE_GRID_SIZE) * COARSE_GRID_SIZE + (x % COARSE_GRID_SIZE)];
   const pixels = new Uint8ClampedArray(GRAIN_TILE_SIZE ** 2 * 4);
   for (let y = 0; y < GRAIN_TILE_SIZE; y++) {
     for (let x = 0; x < GRAIN_TILE_SIZE; x++) {
-      const u = x * COARSE_GRID_SIZE / GRAIN_TILE_SIZE;
-      const v = y * COARSE_GRID_SIZE / GRAIN_TILE_SIZE;
-      const ix = Math.floor(u), iy = Math.floor(v);
-      const fx = u - ix, fy = v - iy;
-      const sx = fx * fx * (3 - 2 * fx), sy = fy * fy * (3 - 2 * fy);
-      const cluster = (at(ix, iy) * (1 - sx) + at(ix + 1, iy) * sx) * (1 - sy)
-        + (at(ix, iy + 1) * (1 - sx) + at(ix + 1, iy + 1) * sx) * sy;
+      const u = (x * COARSE_GRID_SIZE) / GRAIN_TILE_SIZE;
+      const v = (y * COARSE_GRID_SIZE) / GRAIN_TILE_SIZE;
+      const ix = Math.floor(u),
+        iy = Math.floor(v);
+      const fx = u - ix,
+        fy = v - iy;
+      const sx = fx * fx * (3 - 2 * fx),
+        sy = fy * fy * (3 - 2 * fy);
+      const cluster =
+        (at(ix, iy) * (1 - sx) + at(ix + 1, iy) * sx) * (1 - sy) +
+        (at(ix, iy + 1) * (1 - sx) + at(ix + 1, iy + 1) * sx) * sy;
       let fine = -3;
       for (let sample = 0; sample < 6; sample++) fine += random();
       const value = Math.max(0, Math.min(255, 127.5 + fine * FINE_CONTRAST + cluster * COARSE_CONTRAST));
@@ -85,7 +96,7 @@ export class FilmGrain {
     this.animation = undefined;
     if (!this.motion.matches) {
       this.animation = this.layer.animate(grainKeyframes(), {
-        duration: GRAIN_SEQUENCE_LENGTH / GRAIN_UPDATES_PER_SECOND * 1000,
+        duration: (GRAIN_SEQUENCE_LENGTH / GRAIN_UPDATES_PER_SECOND) * 1000,
         iterations: Infinity,
       });
       this.animation.playbackRate = playbackRate(this.moving);
@@ -109,11 +120,16 @@ export class FilmGrain {
     // Only their discrete offsets change; the repeated backgrounds always fill
     // the viewport and retain their CSS-pixel scale through resize.
     Object.assign(layer.style, {
-      position: 'fixed', inset: '0', zIndex: '2147483647',
-      pointerEvents: 'none', userSelect: 'none',
-      mixBlendMode: 'soft-light', opacity: String(ISO800_STRENGTH),
+      position: 'fixed',
+      inset: '0',
+      zIndex: '2147483647',
+      pointerEvents: 'none',
+      userSelect: 'none',
+      mixBlendMode: 'soft-light',
+      opacity: String(ISO800_STRENGTH),
       backgroundImage: `${texture}, ${texture}`,
-      backgroundRepeat: 'repeat', backgroundPosition: '0 0, -73px -151px',
+      backgroundRepeat: 'repeat',
+      backgroundPosition: '0 0, -73px -151px',
       backgroundSize: `${GRAIN_TILE_SIZE * ISO800_SCALE_PX}px ${GRAIN_TILE_SIZE * ISO800_SCALE_PX}px, ${GRAIN_TILE_SIZE * ISO800_SCALE_PX * Math.SQRT2}px ${GRAIN_TILE_SIZE * ISO800_SCALE_PX * Math.SQRT2}px`,
     });
     host.append(layer);
