@@ -1,13 +1,16 @@
 import { expect, test } from '@playwright/test';
 import { watchErrors } from './render-helpers.js';
 
-// Not the default Volvo, so this fails if ?vehicle= is ignored.
+// Not the default Volvo, so this fails if ?vehicle= is ignored. The Impala's 3.02 m wheelbase differs from its
+// type's, so it also fails if the model's wheelbase doesn't reach the driving model.
 test('?vehicle= loads and selects a model other than the default', async ({ page }) => {
   const errors = watchErrors(page);
   await page.setViewportSize({ width: 640, height: 360 });
-  await page.goto('/index.html?vehicle=saab900');
+  await page.goto('/index.html?vehicle=impala1970');
   await expect.poll(() => page.evaluate(() => window.__joyride?.state().vehicle?.status)).toBe('loaded');
-  expect(await page.evaluate(() => window.__joyride.state().vehicle)).toMatchObject({ id: 'saab900', detailed: true });
+  const q = await page.evaluate(() => window.__joyride.state());
+  expect(q.vehicle).toMatchObject({ id: 'impala1970', detailed: true });
+  expect(q.wheelbase).toBeCloseTo(3.02, 2);
   expect(errors).toEqual([]);
 });
 test('a failed GLB remains an explicitly failed procedural fallback', async ({ page }) => {
