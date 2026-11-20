@@ -17,7 +17,6 @@ function colony(water: (x: number, z: number) => boolean = () => false) {
     groundAt: () => 0,
     half: 1100,
     coarse: false,
-    wrap: a => Math.atan2(Math.sin(a), Math.cos(a)),
     geoCache: {},
     boxGeo: () => new THREE.BufferGeometry(),
     paintMat: new THREE.MeshBasicMaterial(),

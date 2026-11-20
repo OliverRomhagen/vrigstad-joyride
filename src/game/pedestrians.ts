@@ -3,6 +3,7 @@
 import type * as THREE from 'three';
 import type { BuildingIndex } from '../world/buildings';
 import type { Label } from '../world/data';
+import { wrap } from '../world/math';
 import { nodeKey, ROAD_CELL_M as RC, type RoadLine, type RoadNetwork } from '../world/roads';
 
 // Each 50 m cell gets a density (0..1): how built-up the cell and its neighbours are, plus a boost near named places.
@@ -45,7 +46,6 @@ export interface CrowdDeps {
   /** how far from road ri's centre line people walk on `side` (-1 left, +1 right of the road's own direction) (m) */
   walkOffset(ri: number, side: -1 | 1): number;
   coarse: boolean; // touch screen: fewer pedestrians
-  wrap(a: number): number;
   rnd(): number; // the game's seeded stream, so the rolls stay in the order they were
   pick<T>(a: readonly T[]): T;
   personParts(shirt: string, pants: string, hair: string): PersonMesh;
@@ -162,7 +162,7 @@ export class Crowd {
   }
 
   private updateNpc(n: Npc, dt: number) {
-    const { rnd, advance, cars, player, inCar, groundAt, walkOffset, wrap } = this.g,
+    const { rnd, advance, cars, player, inCar, groundAt, walkOffset } = this.g,
       { R } = this;
     const d0 = this.densAt(n.x, n.z);
     if (n.idle > 0) {
