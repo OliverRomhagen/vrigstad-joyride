@@ -41,12 +41,13 @@
     {
       // Rules 2 and 3 on the world and the simulation: they know nothing about the page, so they run in Node, a worker or
       // a server, and they read intents, not input. These are fallow.toml's world, world-mesh and sim zones: all of
-      // src/world/, and src/game/ outside render/ and the page modules. tsconfig.sim.json has the same paths: keep the
+      // src/world/, and src/game/ outside render/, presentation/ and the page modules. tsconfig.sim.json has the same paths: keep the
       // three lists the same (tests/unit/zones.test.ts checks). Fallow checks the imports between our own files; Biome and tsc check what Fallow can't see.
       "includes": [
         "src/world/**",
         "src/game/**",
         "!src/game/render/**",
+        "!src/game/presentation/**",
         "!src/game/main.ts",
         "!src/game/hud.ts",
         "!src/game/input.ts"
