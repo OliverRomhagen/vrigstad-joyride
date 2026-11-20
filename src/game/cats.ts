@@ -32,6 +32,7 @@ const CAT_SEATS: Record<string, Seat> = {
   car: { x: 0.35, y: 0.8, z: 0.55, ry: 0, rx: 0.3, inside: true, hi: '”Mjau.”\n”Hoppa in, {n}. Baksätet ä ditt.”' },
 };
 const CAT_BOARD_M = 3; // your cat hops into your car from this close (m)
+const CAT_MENU_M = 4; // a cat's menu (the adopt question, or your own cat's) closes when you get further than this from it (m), or it bolts, or you get in a car
 const CAT_OFF_SIDE_M = 1.8,
   CAT_OFF_BACK_M = 1.4; // a cat hopping off a car lands this far to its side and behind its middle (m); yours on the side away from you
 const STILL_MS = 0.3; // a car slower than this (m/s) counts as standing still
@@ -126,6 +127,11 @@ export interface Cat extends Point {
   pets: number;
   owned: boolean;
 } // good pets in a row, towards adopting it; the player's own cat
+
+/** Whether a cat's menu stays open: you're on foot, near it, and it isn't running off. */
+export function canTend(k: Pick<Cat, 'x' | 'z' | 'state'>, player: Point, inCar: boolean) {
+  return !inCar && k.state !== 'flee' && Math.hypot(k.x - player.x, k.z - player.z) < CAT_MENU_M;
+}
 
 /** What the cats read from the rest of the game. The getters are read when used, so main.ts can declare those later. */
 export interface CatDeps {
