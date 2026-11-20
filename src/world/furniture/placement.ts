@@ -18,6 +18,7 @@ import {
   SHORT_LAMP_EMITTER,
   SHORT_LAMP_MODEL,
 } from './definitions';
+import { type HouseFront, houseFronts } from './houses';
 import type { FurnitureOverride } from './overrides';
 
 export interface FurniturePlacement {
@@ -40,10 +41,10 @@ export type Rejection =
   | 'slope'
   | 'carriageway'
   | 'junction'
-  | 'building'
-  | 'water'
   | 'tree'
   | 'furniture'
+  | 'building'
+  | 'water'
   | 'reserved'
   | 'exclusion';
 
@@ -63,7 +64,7 @@ export interface FurnitureInput {
   /** the streetscape's classification and what it reserved (#187) */
   street: {
     readonly sides: readonly StreetSides[];
-    readonly openings: readonly { ri: number; side: -1 | 1; s: number; half: number }[];
+    readonly openings: readonly { ri: number; side: -1 | 1; s: number; half: number; kind: string }[];
     readonly lots: readonly { ai: number }[];
   };
   /** game-side objects to keep clear of, such as the kiosk and safehouse doors */
@@ -100,8 +101,6 @@ const SEAT_EDGE_M = 2.0;
 const SEAT_PAST_SIDEWALK_M = 0.2;
 /** no lamp within this of another carriageway's edge (m) */
 const OTHER_CARRIAGEWAY_M = 3;
-/** benches and bins keep this far from a junction (m) */
-const JUNCTION_KEEP_M = 8;
 /** Torget's benches: how many, set back from the outline, apart, and away from a building wall (m) */
 const TORGET_BENCHES = { min: 4, max: 6 };
 const TORGET_SETBACK_M = 1.5;
@@ -132,14 +131,47 @@ const BENCH_JITTER_RAD = (5 * Math.PI) / 180;
 const BIN_JITTER_RAD = (20 * Math.PI) / 180;
 /** furniture stays this far inside the world's edge (m) */
 const EDGE_KEEP_M = 20;
+// #305: by the houses. Artistic values, not a survey of Vrigstad.
+/** the property line: this far past a sidewalk's outer edge, or past the carriageway's edge without one (m) */
+const HOUSE_PAST_SIDEWALK_M = 0.3;
+const HOUSE_LINE_M = 1.4;
+/** without a mapped driveway, the bins and the mailbox stand this far either side of the point opposite the house (m) */
+const HOUSE_SPLIT_M = 1.2;
+/** the wheelie bins stand this far out from the house's wall, about this far along it from the point nearest the street (m) */
+const BIN_WALL_GAP_M = 0.25;
+const BIN_ALONG_WALL_M = 1.2;
+/** a second wheelie bin with this chance, this far along from the first (m) */
+const SECOND_BIN_SHARE = 0.6;
+const BIN_GAP_M = 0.75;
+/** a street cabinet after every this many houses along a street, from MIN to MIN + SPREAD - 1, by hash */
+const CABINET_EVERY_MIN = 4;
+const CABINET_EVERY_SPREAD = 3;
+/** in the outskirts, houses this close along a road share one mailbox stand when there are at least STAND_MIN (m) */
+const STAND_REACH_M = 150;
+const STAND_MIN = 3;
+const STAND_MAX = 6;
+/** wheelie bins: green or black, by hash */
+const WHEELIE_MODELS = ['wheelie-bin-green', 'wheelie-bin-black'] as const;
+/** mailboxes: green, grey or black, by hash */
+const MAILBOX_MODELS = ['mailbox-green', 'mailbox-grey', 'mailbox-black'] as const;
+
 /** grid cells for the trees and furniture already placed (m) */
 const CELL_M = 10;
 
-const KIND_ORDER: readonly FurnitureKind[] = ['street-lamp', 'bench', 'waste-bin'];
+const KIND_ORDER: readonly FurnitureKind[] = [
+  'street-lamp',
+  'bench',
+  'waste-bin',
+  'wheelie-bin',
+  'mailbox',
+  'mailbox-stand',
+  'street-cabinet',
+];
 const MAPPED_KIND: Partial<Record<FurnitureCode, FurnitureKind>> = {
   [FurnitureCode.STREET_LAMP]: 'street-lamp',
   [FurnitureCode.BENCH]: 'bench',
   [FurnitureCode.WASTE_BASKET]: 'waste-bin',
+  [FurnitureCode.STREET_CABINET]: 'street-cabinet',
 };
 
 interface Candidate extends FurniturePlacement {
@@ -247,6 +279,38 @@ function rectsOverlap(a: readonly (readonly [number, number])[], b: readonly (re
   return true;
 }
 
+/**
+ * The outline's edge nearest (x, z): its start, unit tangent, length, outward normal (towards (x, z)) and how far along
+ * it the nearest point is. Null for a degenerate outline.
+ */
+function nearestWall(p: readonly number[], x: number, z: number) {
+  let best: {
+    ax: number;
+    az: number;
+    tx: number;
+    tz: number;
+    nx: number;
+    nz: number;
+    len: number;
+    u: number;
+    d: number;
+  } | null = null;
+  for (let i = 0, j = p.length - 2; i < p.length; j = i, i += 2) {
+    const ax = p[j];
+    const az = p[j + 1];
+    const len = Math.hypot(p[i] - ax, p[i + 1] - az);
+    if (len < 1) continue;
+    const tx = (p[i] - ax) / len;
+    const tz = (p[i + 1] - az) / len;
+    const u = Math.max(0, Math.min(len, (x - ax) * tx + (z - az) * tz));
+    const d = Math.hypot(ax + tx * u - x, az + tz * u - z);
+    if (best && d >= best.d) continue;
+    const toward = (x - ax) * -tz + (z - az) * tx > 0 ? 1 : -1; // the normal on the side of (x, z)
+    best = { ax, az, tx, tz, nx: -tz * toward, nz: tx * toward, len, u, d };
+  }
+  return best;
+}
+
 /** Places street furniture: mapped objects first, then overrides, then the rules. The same input gives the same array. */
 export function placeFurniture(inp: FurnitureInput): FurnitureLayout {
   const { data, roads, heightfield, buildings, water, street } = inp;
@@ -264,10 +328,10 @@ export function placeFurniture(inp: FurnitureInput): FurnitureLayout {
         'slope',
         'carriageway',
         'junction',
-        'building',
-        'water',
         'tree',
         'furniture',
+        'building',
+        'water',
         'reserved',
         'exclusion',
       ] as const
@@ -341,15 +405,21 @@ export function placeFurniture(inp: FurnitureInput): FurnitureLayout {
     if (c.kind === 'street-lamp') {
       if (carriagewayGap(x, z, c.ri) < OTHER_CARRIAGEWAY_M) return 'junction';
     } else
-      for (const j of junctions.near(x, z, JUNCTION_KEEP_M))
-        if (Math.hypot(j.x - x, j.z - z) < JUNCTION_KEEP_M) return 'junction';
-    if ([...box, [x, z] as const].some(([bx, bz]) => buildings.collide({ x: bx, z: bz }, d.clearanceM)))
-      return 'building';
-    if ([...box, [x, z] as const].some(([bx, bz]) => water.inWater(bx, bz))) return 'water';
+      for (const j of junctions.near(x, z, d.junctionKeepM))
+        if (Math.hypot(j.x - x, j.z - z) < d.junctionKeepM) return 'junction';
+    // the cheap checks first: most candidates that fail, fail on a tree or other furniture
     for (const t of trees.near(x, z, d.treeClearanceM))
       if (Math.hypot(t.x - x, t.z - z) < d.treeClearanceM) return 'tree';
     const grown = corners(c.kind, x, z, c.rotationY, d.clearanceM / 2);
     for (const o of placed.near(x, z, 4)) if (rectsOverlap(grown, o.box)) return 'furniture';
+    if ([...box, [x, z] as const].some(([bx, bz]) => buildings.collide({ x: bx, z: bz }, d.clearanceM)))
+      return 'building';
+    // the water test scans every lake: the middle is enough for something smaller than a metre
+    const wet =
+      Math.max(d.widthM, d.depthM) < 1
+        ? water.inWater(x, z)
+        : [...box, [x, z] as const].some(([bx, bz]) => water.inWater(bx, bz));
+    if (wet) return 'water';
     if (lots.some(p => pointInPolygon(p, x, z))) return 'reserved';
     for (const e of inp.exclusions ?? []) if (Math.hypot(e.x - x, e.z - z) < e.r) return 'exclusion';
     return null;
@@ -740,7 +810,7 @@ export function placeFurniture(inp: FurnitureInput): FurnitureLayout {
   // ---------- accept candidates in order: each kind by rank, then id; the first accepted wins ----------
   const byOrder = (a: Candidate, b: Candidate) => a.rank - b.rank || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
   const count = (c: Candidate) => {
-    generated[c.origin] ??= { 'street-lamp': 0, bench: 0, 'waste-bin': 0 };
+    generated[c.origin] ??= Object.fromEntries(KIND_ORDER.map(k => [k, 0])) as Record<FurnitureKind, number>;
     generated[c.origin][c.kind]++;
   };
   const caps: Record<string, number> = { torget: TORGET_BENCHES.max, church: CHURCH_BENCHES };
@@ -799,6 +869,133 @@ export function placeFurniture(inp: FurnitureInput): FurnitureLayout {
     }
   }
   for (const c of binCandidates.sort(byOrder)) tryPlace(c);
+
+  // ---------- by the houses (#305): a mailbox and wheelie bins at each house's street, cabinets now and then ----------
+  const houseLine = (ri: number, side: -1 | 1, kind: FurnitureKind) => {
+    const c = roads.lines[ri].c;
+    const depth = FURNITURE[kind].depthM / 2;
+    if (!hasSidewalk(ri, side)) return ROAD_WIDTH_M[c] / 2 + HOUSE_LINE_M + depth;
+    const spec = sideSpec(ri, side);
+    return sidewalkCentreM(spec, c)! + spec.widthM / 2 + HOUSE_PAST_SIDEWALK_M + depth;
+  };
+  const fronts = houseFronts(data, roads, ri => contexts[ri] !== 'path');
+  /** how far either side of the front the house's things stand: past the driveway's lowered curb when there is one */
+  const split = (f: HouseFront) => {
+    const o = street.openings.find(
+      o => o.ri === f.ri && o.side === f.side && Math.abs(o.s - f.s) < 6 && o.kind === 'driveway',
+    );
+    return o ? o.half + 1 : HOUSE_SPLIT_M;
+  };
+  const houseCandidates: Candidate[] = [];
+  const outskirts = new Map<string, HouseFront[]>();
+  for (const f of fronts) {
+    if (contexts[f.ri] === 'outer') {
+      const k = `${f.ri}:${f.side}`;
+      outskirts.set(k, [...(outskirts.get(k) ?? []), f]);
+      continue;
+    }
+    const gap = split(f);
+    const mailbox = roadside(
+      'mailbox',
+      f.ri,
+      f.side,
+      f.s - gap - FURNITURE.mailbox.widthM / 2,
+      houseLine(f.ri, f.side, 'mailbox'),
+      `gen:mailbox:${f.key}`,
+      'house',
+      0,
+    );
+    if (mailbox)
+      houseCandidates.push({ ...mailbox, modelId: MAILBOX_MODELS[Math.floor(hash01(mailbox.id, 'colour') * 3)] });
+  }
+  for (const f of fronts) {
+    // the wheelie bins stand at the house, back to the wall that faces the street; they go out to the kerb only on collection day
+    const at = measured[f.ri].at(f.s);
+    const wall = nearestWall(f.p, at.x, at.z);
+    if (!wall) continue;
+    const bins = hash01(f.key, 'bins') < SECOND_BIN_SHARE ? 2 : 1;
+    const way = hash01(f.key, 'bin side') < 0.5 ? -1 : 1;
+    const standOff = BIN_WALL_GAP_M + FURNITURE['wheelie-bin'].depthM / 2;
+    for (let n = 0; n < bins; n++) {
+      const id = `gen:wheelie-bin:${f.key}:${n}`;
+      // along the wall from its point nearest the street, kept on the wall
+      const u = Math.max(0.4, Math.min(wall.len - 0.4, wall.u + way * (BIN_ALONG_WALL_M + n * BIN_GAP_M)));
+      houseCandidates.push({
+        id,
+        kind: 'wheelie-bin',
+        modelId: WHEELIE_MODELS[hash01(id, 'colour') < 0.5 ? 0 : 1],
+        x: wall.ax + wall.tx * u + wall.nx * standOff,
+        z: wall.az + wall.tz * u + wall.nz * standOff,
+        rotationY: heading(wall.nx, wall.nz) + (hash01(id, 'turn') - 0.5) * BIN_JITTER_RAD,
+        scale: 1,
+        source: 'procedural',
+        rank: 1,
+        origin: 'house',
+        ri: f.ri,
+      });
+    }
+  }
+  // in the outskirts, a stand of mailboxes where a few houses share a stretch of road; one each where they don't
+  for (const list of outskirts.values()) {
+    list.sort((a, b) => a.s - b.s);
+    for (let i = 0; i < list.length; ) {
+      let j = i;
+      while (j + 1 < list.length && list[j + 1].s - list[i].s <= STAND_REACH_M) j++;
+      const group = list.slice(i, j + 1);
+      const f = group[0];
+      if (group.length >= STAND_MIN) {
+        const n = Math.min(STAND_MAX, group.length);
+        const c = roadside(
+          'mailbox-stand',
+          f.ri,
+          f.side,
+          f.s,
+          houseLine(f.ri, f.side, 'mailbox-stand'),
+          `gen:mailbox-stand:${f.key}`,
+          'outskirts',
+          0,
+        );
+        if (c) houseCandidates.push({ ...c, modelId: `mailbox-stand-${n}` });
+      } else
+        for (const g of group) {
+          const c = roadside(
+            'mailbox',
+            g.ri,
+            g.side,
+            g.s - split(g),
+            houseLine(g.ri, g.side, 'mailbox'),
+            `gen:mailbox:${g.key}`,
+            'outskirts',
+            0,
+          );
+          if (c) houseCandidates.push({ ...c, modelId: MAILBOX_MODELS[Math.floor(hash01(c.id, 'colour') * 3)] });
+        }
+      i = j + 1;
+    }
+  }
+  // a street cabinet in the verge after every few houses along a street, between two of them
+  const byStreet = new Map<number, HouseFront[]>();
+  for (const f of fronts) if (contexts[f.ri] !== 'outer') byStreet.set(f.ri, [...(byStreet.get(f.ri) ?? []), f]);
+  for (const [ri, list] of byStreet) {
+    list.sort((a, b) => a.s - b.s);
+    const every = CABINET_EVERY_MIN + Math.floor(hash01(keys[ri], 'cabinets') * CABINET_EVERY_SPREAD);
+    for (let n = every - 1; n + 1 < list.length; n += every) {
+      const a = list[n];
+      const s = (a.s + list[n + 1].s) / 2;
+      const c = roadside(
+        'street-cabinet',
+        ri,
+        a.side,
+        s,
+        houseLine(ri, a.side, 'street-cabinet'),
+        `gen:street-cabinet:${keys[ri]}:${n}`,
+        'street',
+        0,
+      );
+      if (c) houseCandidates.push({ ...c, rank: 2 });
+    }
+  }
+  for (const c of houseCandidates.sort(byOrder)) tryPlace(c);
 
   // ---------- 4. overrides: removals and moves of generated objects ----------
   let result = out.map(strip);

@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { BuildingIndex } from '../../../../src/world/buildings';
 import {
+  type Building,
+  BuildingKind,
   FurnitureCode,
   type FurniturePoint,
   ParkingKind,
@@ -355,5 +357,61 @@ describe('placeFurniture: determinism', () => {
     const [, y, armM] = FURNITURE['street-lamp'].emitter!.offset;
     expect(Math.abs(e[0].z)).toBeCloseTo(Math.abs(lamps[0].z) - armM, 6); // the arm reaches over the road
     expect(e[0].y).toBeCloseTo(y, 6);
+  });
+});
+
+describe('placeFurniture: by the houses (#305)', () => {
+  // an eastbound residential street along z = 0; south (+z) is its right
+  const VILLAGATAN = () => road(RoadClass.STREET, [-300, 0, 300, 0], { i: 5000 });
+  const houses = (n: number, z = 15, from = -200, step = 30) =>
+    Array.from({ length: n }, (_, k): Building => ({ p: square(from + k * step, z, 10), h: 5, k: BuildingKind.OTHER }));
+
+  it('gives each house a mailbox at the street and one or two wheelie bins against its wall, all facing the street', () => {
+    const { placements } = place({ world: { r: [VILLAGATAN()], b: houses(6) } });
+    const mailboxes = kinds(placements, 'mailbox');
+    const bins = kinds(placements, 'wheelie-bin');
+    expect(mailboxes.length).toBe(6);
+    expect(bins.length).toBeGreaterThanOrEqual(6);
+    expect(bins.length).toBeLessThanOrEqual(12);
+    const edge = ROAD_WIDTH_M[RoadClass.STREET] / 2 + 1.4; // no sidewalk: the property line past the verge
+    for (const m of mailboxes) expect(m.z).toBeCloseTo(edge + FURNITURE.mailbox.depthM / 2, 6);
+    for (const b of bins) {
+      expect(b.z).toBeCloseTo(15 - 0.25 - FURNITURE['wheelie-bin'].depthM / 2, 6); // back to the house's north wall at z = 15
+      const x0 = -200 + Math.round((b.x + 200) / 30 - 0.15) * 30; // the house it stands at
+      expect(b.x).toBeGreaterThan(x0);
+      expect(b.x).toBeLessThan(x0 + 10);
+    }
+    for (const p of [...mailboxes, ...bins]) expect(facing(p.rotationY)[1]).toBeLessThan(-0.9); // turned to the street, -z
+  });
+
+  it('keeps the mailboxes off the sidewalk: past its outer edge', () => {
+    const right = side('present', 1.5);
+    const { placements } = place({
+      world: { r: [VILLAGATAN()], b: houses(3) },
+      profiles: [sides('residential', side(), right)],
+    });
+    const outer = sidewalkCentreM(right, RoadClass.STREET)! + 0.75;
+    for (const p of kinds(placements, 'mailbox'))
+      expect(p.z - FURNITURE[p.kind].depthM / 2).toBeGreaterThanOrEqual(outer);
+  });
+
+  it('stands a street cabinet in the verge every few houses', () => {
+    const { placements } = place({ world: { r: [VILLAGATAN()], b: houses(14, 15, -250, 34) } });
+    const cabinets = kinds(placements, 'street-cabinet');
+    expect(cabinets.length).toBeGreaterThanOrEqual(2); // every 4 to 6 of 14 houses
+    expect(cabinets.length).toBeLessThanOrEqual(3);
+    expect(cabinets.every(c => c.z > 0)).toBe(true);
+  });
+
+  it('gives houses in the outskirts a shared mailbox stand, and bins at the houses', () => {
+    const { placements } = place({
+      world: { r: [VILLAGATAN()], b: houses(4, 15, -200, 40) },
+      profiles: [sides('outskirts')],
+    });
+    expect(kinds(placements, 'mailbox-stand').map(p => p.modelId)).toEqual(['mailbox-stand-4']);
+    expect(kinds(placements, 'mailbox')).toEqual([]);
+    expect(kinds(placements, 'wheelie-bin').length).toBeGreaterThanOrEqual(4); // bins at every house, out here too
+    const lone = place({ world: { r: [VILLAGATAN()], b: houses(2, 15, -200, 40) }, profiles: [sides('outskirts')] });
+    expect(kinds(lone.placements, 'mailbox').length).toBe(2); // too few for a stand: one each
   });
 });

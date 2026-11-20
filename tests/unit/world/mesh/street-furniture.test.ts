@@ -4,7 +4,18 @@ import { FURNITURE, SHORT_LAMP_EMITTER } from '../../../../src/world/furniture/d
 import type { FurniturePlacement } from '../../../../src/world/furniture/placement';
 import { FURNITURE_MODELS, StreetFurniture } from '../../../../src/world/mesh/street-furniture';
 
-const BUDGET: Record<string, number> = { 'lamp-arm': 260, 'lamp-arm-short': 260, 'bench-wood': 300, 'bin-green': 140 };
+const BUDGET: Record<string, number> = {
+  'lamp-arm': 260,
+  'lamp-arm-short': 260,
+  'bench-wood': 300,
+  'bin-green': 140,
+  'wheelie-bin-green': 150,
+  'wheelie-bin-black': 150,
+  'mailbox-green': 80,
+  'mailbox-stand-3': 300,
+  'mailbox-stand-6': 300,
+  'street-cabinet': 60,
+};
 const tris = (g?: THREE.BufferGeometry) => (g ? g.getAttribute('position').count / 3 : 0);
 const place = (
   id: string,
@@ -57,6 +68,10 @@ describe('street furniture models', () => {
       ['bench', 'bench-wood'],
       ['waste-bin', 'bin-green'],
       ['street-lamp', 'lamp-arm'],
+      ['wheelie-bin', 'wheelie-bin-green'],
+      ['mailbox', 'mailbox-green'],
+      ['mailbox-stand', 'mailbox-stand-6'],
+      ['street-cabinet', 'street-cabinet'],
     ] as const) {
       const m = FURNITURE_MODELS[id]();
       m.body.computeBoundingBox();

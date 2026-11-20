@@ -3,6 +3,7 @@
 import data from '../data/vrigstad.json';
 import { BuildingIndex } from '../src/world/buildings';
 import type { WorldData } from '../src/world/data';
+import { FURNITURE, type FurnitureKind } from '../src/world/furniture/definitions';
 import { FURNITURE_OVERRIDES } from '../src/world/furniture/overrides';
 import { placeFurniture } from '../src/world/furniture/placement';
 import { Heightfield } from '../src/world/heightfield';
@@ -56,7 +57,7 @@ export function report() {
   });
   const ms = performance.now() - t0;
   const by = (k: string, s: string) => f.placements.filter(p => p.kind === k && p.source === s).length;
-  const kinds = ['street-lamp', 'bench', 'waste-bin'] as const;
+  const kinds = Object.keys(FURNITURE) as FurnitureKind[];
   console.log(
     [
       '\n## Street furniture coverage (runtime rules)',
@@ -67,7 +68,7 @@ export function report() {
           .sort()
           .map(([w, n]) => `${w} (${kinds.map(k => n[k]).join('/')})`)
           .join(', ') +
-        '  [lamps/benches/bins]',
+        `  [${kinds.join('/')}]`,
       'rejected: ' +
         Object.entries(f.rejected)
           .map(([k, n]) => `${k} ${n}`)
