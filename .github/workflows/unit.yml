@@ -2,6 +2,14 @@ name: unit
 
 on:
   pull_request:
+    # Skip PRs that only change docs, labels, issue forms, agent files or other workflows, as e2e.yml does; keep the
+    # two filters the same. Later patterns win, so this workflow's own file still runs it. main runs it on every push.
+    paths:
+      - '**'
+      - '!**/*.md'
+      - '!.claude/**'
+      - '!.github/**'
+      - '.github/workflows/unit.yml'
   push:
     branches: [main]
 
