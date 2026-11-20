@@ -50,6 +50,7 @@
         "!src/game/main.ts",
         "!src/game/hud.ts",
         "!src/game/input.ts",
+        "!src/game/menu.ts",
         "!src/game/devconsole.ts",
         "!src/game/confetti.ts"
       ],

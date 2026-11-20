@@ -1,6 +1,6 @@
 // The wanted level and the police: stars, police cars that chase you, losing them, lying low and getting caught.
 // Moved from src/game/main.ts (#177); main.ts passes in car spawning, removal and the driving model, the roads, the seeded rolls and what the HUD shows. No three.js or DOM here.
-import { clamp } from '../world/math';
+import { clamp, wrap } from '../world/math';
 import type { RoadNetwork } from '../world/roads';
 import { wrecked } from './health';
 
@@ -39,7 +39,6 @@ export interface WantedDeps {
   roads: Pick<RoadNetwork, 'lines' | 'driveable'>;
   rnd(): number; // the seeded stream: police rolls are part of gameplay
   pick<T>(a: readonly T[]): T; // a random element, from the same stream
-  wrap(a: number): number; // an angle into -π..π
   spawnCar(x: number, z: number, h: number): PoliceCar; // adds a police car to the world
   removeCar(c: PoliceCar): void;
   drive(c: PoliceCar, throttle: number, steer: number, brake: boolean, dt: number): void; // the shared driving model
@@ -146,7 +145,7 @@ export class Wanted {
       this.g.drive(c, 0, 0, false, dt);
       return d;
     } // a wreck only rolls to a stop: no chasing, and no stuck rolls from rnd()
-    const diff = this.g.wrap(Math.atan2(dx, -dz) - c.h);
+    const diff = wrap(Math.atan2(dx, -dz) - c.h);
     let thr = Math.abs(diff) < FULL_ANGLE ? 1 : TURN_THROTTLE,
       steer = clamp(diff * STEER_GAIN, -1, 1),
       brake = false;

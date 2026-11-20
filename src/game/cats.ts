@@ -2,7 +2,7 @@
 // Moved from src/game/main.ts (#177); main.ts passes in what the cats read from the rest of the game.
 import * as THREE from 'three';
 import { BUILDING_CELL_M as BC, type BuildingIndex } from '../world/buildings';
-import { clamp } from '../world/math';
+import { clamp, wrap } from '../world/math';
 import { pointInPolygon as inPoly } from '../world/polygon';
 import { makeRnd } from '../world/random';
 
@@ -32,6 +32,7 @@ const CAT_SEATS: Record<string, Seat> = {
   car: { x: 0.35, y: 0.8, z: 0.55, ry: 0, rx: 0.3, inside: true, hi: '”Mjau.”\n”Hoppa in, {n}. Baksätet ä ditt.”' },
 };
 const CAT_BOARD_M = 3; // your cat hops into your car from this close (m)
+const CAT_MENU_M = 4; // a cat's menu (the adopt question, or your own cat's) closes when you get further than this from it (m), or it bolts, or you get in a car
 const CAT_OFF_SIDE_M = 1.8,
   CAT_OFF_BACK_M = 1.4; // a cat hopping off a car lands this far to its side and behind its middle (m); yours on the side away from you
 const STILL_MS = 0.3; // a car slower than this (m/s) counts as standing still
@@ -128,6 +129,11 @@ export interface Cat extends Point {
   owned: boolean;
 } // good pets in a row, towards adopting it; the player's own cat
 
+/** Whether a cat's menu stays open: you're on foot, near it, and it isn't running off. */
+export function canTend(k: Pick<Cat, 'x' | 'z' | 'state'>, player: Point, inCar: boolean) {
+  return !inCar && k.state !== 'flee' && Math.hypot(k.x - player.x, k.z - player.z) < CAT_MENU_M;
+}
+
 /** What the cats read from the rest of the game. The getters are read when used, so main.ts can declare those later. */
 export interface CatDeps {
   scene: THREE.Scene;
@@ -136,7 +142,6 @@ export interface CatDeps {
   groundAt(x: number, z: number): number;
   half: number; // half the playable square's side (m)
   coarse: boolean; // touch screen: fewer cats
-  wrap(a: number): number;
   geoCache: Record<string, THREE.BufferGeometry>;
   boxGeo(parts: (number | string)[][]): THREE.BufferGeometry;
   paintMat: THREE.Material;
@@ -610,7 +615,7 @@ export class CatColony {
       tx = (s: number) => c.x + ch * s * CAT_OFF_SIDE_M - sh * CAT_OFF_BACK_M,
       tz = (s: number) => c.z + sh * s * CAT_OFF_SIDE_M + ch * CAT_OFF_BACK_M;
     if (g.inWater(tx(side), tz(side))) side = -side; // the dry side, if there is one
-    k.h = k.want = g.wrap(c.h + (Math.PI * side) / 2);
+    k.h = k.want = wrap(c.h + (Math.PI * side) / 2);
     k.mesh.rotation.set(0, -k.h, 0);
     this.startHop(k, _cv.x, _cv.y, _cv.z, null, tx(side), tz(side));
     if (!k.owned && c === g.pcar) g.toast('”Hej då, kisse!”', 2.5);
@@ -618,7 +623,7 @@ export class CatColony {
 
   private updateCat(k: Cat, dt: number) {
     const g = this.g,
-      { player, wrap, inWater, groundAt } = g,
+      { player, inWater, groundAt } = g,
       HALF = g.half,
       rnd = this.rnd;
     const car = k.owned && g.inCar ? g.pcar : null; // the car your own cat goes with

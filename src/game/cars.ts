@@ -1,5 +1,6 @@
 // The cars as the game rules see them: the driving model the player and the police share, traffic that follows the street network, and the cars parked along the streets.
-// Moved from src/game/main.ts (#177, #283); main.ts passes in a car's meshes (addCar, placeCar), what a crash does to you and what ramming the police does. No three.js or DOM here.
+// Moved from src/game/main.ts (#177, #283); main.ts passes in how a car is made with its meshes (addCar) and placed (placeCar), what a crash does to you and what ramming the police does. No three.js or DOM here.
+// The Fleet owns the list of cars (#297): main.ts's addCar makes one with newCar, gives it its meshes, then adds it.
 import type { BuildingIndex } from '../world/buildings';
 import { ROAD_WIDTH_M as ROAD_W } from '../world/data';
 import { clamp, wrap } from '../world/math';
@@ -34,6 +35,18 @@ const TURBO_ACC = 14,
   TURBO_TOP = 1.2; // m/s² of boost; top speed multiplier while boosting
 const _pivot = { dx: 0, dz: 0 }; // rearPivotShift writes here: no allocation per car per frame
 
+// Traffic
+const TRAFFIC_LIMIT_MS = [13.9, 11, 8.3] as const; // speed limit (m/s) on a primary road, a secondary one and a street (RoadClass); traffic drives on no other
+const TRAFFIC_ACC_MS2 = 3,
+  TRAFFIC_BRAKE_MS2 = 9; // how fast traffic speeds up to the limit and slows for what's ahead
+const LOOK_CAR_M = 11,
+  LOOK_CAR_SIDE_M = 1.7; // a car this far ahead, and this close to the line ahead, stops traffic
+const LOOK_PLAYER_M = 9,
+  LOOK_PLAYER_SIDE_M = 1.8; // the same for you on foot
+const STUCK_S = 6,
+  GHOST_S = 3; // blocked this long, a traffic car drives through what blocks it for GHOST_S
+const SPAWN_AWAY_M = 260; // new traffic appears at least this far from you
+
 type Point = { x: number; z: number };
 /** Who drives a car: nobody yet (`parked`), nobody since you got out (`idle`), traffic (`ai`), the police, or you. */
 export type CarMode = 'parked' | 'idle' | 'ai' | 'police' | 'player';
@@ -66,6 +79,51 @@ export interface Car extends Point {
   revSteer: number;
   dmg: number; // damage, and the clock (s) of the last hit (health.ts)
   hitAt: number;
+  color: string; // the paint (sRGB), one of T.cols
+}
+
+/** A new car standing still at (x, z), nose towards h. `color` is the caller's roll from T.cols, so the world's rolls stay in their order. */
+export function newCar(
+  type: CarType,
+  x: number,
+  z: number,
+  h: number,
+  mode: CarMode,
+  T: VehicleSpec,
+  color: string,
+): Car {
+  return {
+    type,
+    T,
+    x,
+    z,
+    h,
+    vh: h,
+    v: 0,
+    st: 0,
+    thr: 0,
+    slip: 0,
+    drift: 0,
+    charge: 0,
+    yr: 0,
+    spin: 0,
+    loose: 0,
+    flickDir: 0,
+    flickT: 9,
+    flickHeld: 0,
+    boost: 0,
+    mode,
+    wet: false,
+    owned: false,
+    blocked: 0,
+    ghost: 0,
+    stuck: 0,
+    rev: 0,
+    revSteer: 1,
+    dmg: 0,
+    hitAt: -9,
+    color,
+  };
 }
 /** Where a car or a walker is on the street network: road ri, from vertex a towards a + dir. */
 export interface OnRoad {
@@ -90,7 +148,7 @@ export interface FleetDeps {
   half: number; // half the map's side (m)
   rnd: () => number; // the game's seeded stream, so the rolls stay in the order they were
   pick: <T>(a: readonly T[]) => T;
-  addCar: (type: CarType, x: number, z: number, h: number, mode: CarMode) => Car; // makes the car's meshes and adds it to `cars`
+  addCar: (type: CarType, x: number, z: number, h: number, mode: CarMode) => Car; // makes a car, gives it its meshes and adds it with `add`
   placeCar: (c: Car) => void; // puts the car's meshes where the car is
   crash: (c: Car, o: Car | null, impact: number) => void; // c hit o, or a wall, at `impact` m/s: the damage, and what you hear and feel
   rammed: (c: Car, o: Car) => void; // c hit police car o at speed
@@ -106,6 +164,16 @@ export class Fleet {
 
   constructor(g: FleetDeps) {
     this.g = g;
+  }
+
+  /** Puts a new car in the village. */
+  add<C extends Car>(c: C): C {
+    this.cars.push(c);
+    return c;
+  }
+  remove(c: Car) {
+    const i = this.cars.indexOf(c);
+    if (i >= 0) this.cars.splice(i, 1);
   }
 
   civType(): CarType {
@@ -187,7 +255,7 @@ export class Fleet {
         r = R[ri],
         a = Math.floor(rnd() * (r.p.length - 1)),
         p = r.p[a];
-      if (farFrom && Math.hypot(p[0] - farFrom.x, p[1] - farFrom.z) < 260) continue;
+      if (farFrom && Math.hypot(p[0] - farFrom.x, p[1] - farFrom.z) < SPAWN_AWAY_M) continue;
       const type = rnd() < 0.5 ? 'volvo' : rnd() < 0.7 ? 'saab' : 'epa';
       return Object.assign(this.g.addCar(type, p[0], p[1], 0, 'ai'), { ri, a, dir: 1, t: 0, first: true });
     }
@@ -211,7 +279,7 @@ export class Fleet {
         const dx = o.x - c.x,
           dz = o.z - c.z,
           fw = dx * fx + dz * fz;
-        if (fw > 0 && fw < 11 && Math.abs(-dx * fz + dz * fx) < 1.7) {
+        if (fw > 0 && fw < LOOK_CAR_M && Math.abs(-dx * fz + dz * fx) < LOOK_CAR_SIDE_M) {
           blocked = true;
           break;
         }
@@ -221,16 +289,17 @@ export class Fleet {
           dx = player.x - c.x,
           dz = player.z - c.z,
           fw = dx * fx + dz * fz;
-        if (fw > 0 && fw < 9 && Math.abs(-dx * fz + dz * fx) < 1.8) blocked = true;
+        if (fw > 0 && fw < LOOK_PLAYER_M && Math.abs(-dx * fz + dz * fx) < LOOK_PLAYER_SIDE_M) blocked = true;
       }
     }
     c.blocked = blocked ? c.blocked + dt : 0;
-    if (c.blocked > 6) {
-      c.ghost = 3;
+    if (c.blocked > STUCK_S) {
+      c.ghost = GHOST_S;
       c.blocked = 0;
     }
-    const target = blocked || wrecked(c) ? 0 : Math.min(c.T.max * topSpeedShare(c.dmg), [13.9, 11, 8.3][R[c.ri].c]);
-    c.v += clamp(target - c.v, -9 * dt, 3 * dt);
+    const target =
+      blocked || wrecked(c) ? 0 : Math.min(c.T.max * topSpeedShare(c.dmg), TRAFFIC_LIMIT_MS[R[c.ri].c as 0 | 1 | 2]);
+    c.v += clamp(target - c.v, -TRAFFIC_BRAKE_MS2 * dt, TRAFFIC_ACC_MS2 * dt);
     c.t += c.v * dt;
     for (let g = 0; c.t >= L && g < 8; g++) {
       c.t -= L;
