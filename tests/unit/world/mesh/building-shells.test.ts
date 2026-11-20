@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 import { BuildingKind } from '../../../../src/world/data';
 import { Heightfield } from '../../../../src/world/heightfield';
-import { PaintedBuildingShells } from '../../../../src/world/mesh/building-shells';
+import { BuildingShellsByMaterial, PaintedBuildingShells } from '../../../../src/world/mesh/building-shells';
 import { makeWorld, square } from '../fixture';
 
 describe('PaintedBuildingShells', () => {
@@ -35,5 +35,22 @@ describe('PaintedBuildingShells', () => {
     expect(colour.getX(0)).toBe(0.5);
     plain.dispose();
     shells.dispose();
+  });
+});
+
+describe('BuildingShellsByMaterial', () => {
+  it('frees its geometry on dispose and leaves the materials to their owner', () => {
+    const world = makeWorld({ b: [{ p: square(0, 0, 10), h: 5, k: BuildingKind.OTHER }] });
+    const materials = { wall: new THREE.MeshBasicMaterial(), roof: new THREE.MeshBasicMaterial() };
+    const shells = new BuildingShellsByMaterial(world, new Heightfield(world), {
+      materials,
+      materialsFor: () => ({ walls: 'wall', roof: 'roof' }),
+    });
+    const freed: string[] = [];
+    for (const mesh of shells.meshes) mesh.geometry.addEventListener('dispose', () => freed.push('geometry'));
+    for (const [key, material] of Object.entries(materials))
+      material.addEventListener('dispose', () => freed.push(key));
+    shells.dispose();
+    expect(freed).toEqual(['geometry', 'geometry']);
   });
 });
