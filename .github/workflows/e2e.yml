@@ -2,6 +2,14 @@ name: e2e
 
 on:
   pull_request:
+    # Skip PRs that only change docs, labels, issue forms, agent files or other workflows: none of them reaches the built pages.
+    # Later patterns win, so this workflow's own file still runs it. main runs it on every push.
+    paths:
+      - '**'
+      - '!**/*.md'
+      - '!.claude/**'
+      - '!.github/**'
+      - '.github/workflows/e2e.yml'
   push:
     branches: [main]
 
@@ -9,12 +17,43 @@ permissions:
   contents: read
 
 jobs:
-  smoke:
-    name: Smoke tests (Playwright)
+  # The smoke tests run in Playwright's image, which has the browser and its system packages, instead of installing them on
+  # every run (that took from half a minute to eight). Its tag must match the locked Playwright, so read it from the lock file.
+  playwright:
+    name: Playwright version
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    outputs:
+      version: ${{ steps.lock.outputs.version }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          sparse-checkout: package-lock.json
+          sparse-checkout-cone-mode: false
+      # jq prints null for a missing entry, which would pull an image tagged vnull.
+      - id: lock
+        run: |
+          version=$(jq -r '.packages["node_modules/@playwright/test"].version // empty' package-lock.json)
+          if [ -z "$version" ]; then
+            echo "::error file=package-lock.json::No node_modules/@playwright/test entry in package-lock.json; run npm install."
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+  smoke:
+    name: Smoke tests (Playwright)
+    needs: playwright
+    runs-on: ubuntu-latest
+    container:
+      image: mcr.microsoft.com/playwright:v${{ needs.playwright.outputs.version }}-noble
+      # Docker's default 64 MB /dev/shm can crash Chromium; Playwright's Docker docs recommend the host's IPC namespace.
+      options: --ipc=host
+    timeout-minutes: 15
+    steps:
+      # The image has no Python: tools/process.py and the test server need it.
+      - run: apt-get update -qq && apt-get install -y -qq --no-install-recommends python3
+      - uses: actions/checkout@v4
+      # The container runs as root on a workspace the runner owns, and checkout trusts it only for its own git calls.
+      - run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - uses: actions/setup-node@v4
         with:
           node-version: lts/*
@@ -25,7 +64,6 @@ jobs:
       - run: npm run build
       # The built pages are not committed (#45): fail if a merge brought one back.
       - run: test -z "$(git ls-files index.html map.html)"
-      - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e
       # Screenshots of both pages, plus a trace of any failed test. Not pixel-diffed: headless WebGL output varies.
       - uses: actions/upload-artifact@v4

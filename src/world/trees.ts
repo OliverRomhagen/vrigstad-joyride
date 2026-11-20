@@ -18,7 +18,11 @@ export interface TreeSpotOptions {
  * Spots for trees in the mapped woodland, as flat [x, z, scale, ...] triples. Draws from `rnd` two numbers a try, and a
  * third for the scale of a spot that is kept, so the same stream gives the same trees.
  */
-export function treeSpots(data: WorldData, rnd: Rnd, { squareMetresPerTry, minScale, scaleSpread, roads, roadClearanceM = 0 }: TreeSpotOptions) {
+export function treeSpots(
+  data: WorldData,
+  rnd: Rnd,
+  { squareMetresPerTry, minScale, scaleSpread, roads, roadClearanceM = 0 }: TreeSpotOptions,
+) {
   const spots: number[] = [];
   for (const wood of data.l) {
     if (wood.k !== LandUse.FOREST) continue;
@@ -28,7 +32,8 @@ export function treeSpots(data: WorldData, rnd: Rnd, { squareMetresPerTry, minSc
     for (let t = Math.round(((x1 - x0) * (z1 - z0)) / squareMetresPerTry); t > 0; t--) {
       const x = x0 + rnd() * (x1 - x0);
       const z = z0 + rnd() * (z1 - z0);
-      if (pointInPolygon(p, x, z) && (!roads || roads.nearestRoad(x, z).d > roadClearanceM)) spots.push(x, z, minScale + rnd() * scaleSpread);
+      if (pointInPolygon(p, x, z) && (!roads || roads.nearestRoad(x, z).d > roadClearanceM))
+        spots.push(x, z, minScale + rnd() * scaleSpread);
     }
   }
   return spots;

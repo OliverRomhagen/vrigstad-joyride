@@ -1,0 +1,37 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.6.8/schema.json",
+  "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
+  "files": {
+    // The HTML pages keep their hand-formatted style until #177 splits them (AGENTS.md, Code style). tools/trailer is its
+    // own package. .github and .claude stay out because check.yml skips PRs that only change them, so such an edit could
+    // merge unformatted and fail on main.
+    "includes": ["**", "!**/*.md", "!src/*.html", "!data", "!tools/trailer", "!.github", "!.claude"]
+  },
+  // Indent style and width come from .editorconfig, so editors and Biome can't disagree.
+  "formatter": { "useEditorconfig": true, "lineWidth": 120 },
+  "javascript": { "formatter": { "quoteStyle": "single", "arrowParentheses": "asNeeded" } },
+  "linter": {
+    "rules": {
+      // Recommended only warns on these; `biome check --error-on-warnings` (package.json) fails on the rest too.
+      "correctness": { "noUnusedVariables": "error", "noUnusedImports": "error" },
+      // `getObjectByName(...)!` and string `+` are the house style in the dense code; flagging them is only noise.
+      "style": { "noNonNullAssertion": "off", "useTemplate": "off" }
+    }
+  },
+  "overrides": [
+    {
+      // The two single-file scripts keep their dense style until #177 splits them, so only formatting is off. These rules
+      // still run: @ts-nocheck hides undeclared names from tsc, and a split that moves a name out of main.ts while another
+      // branch still uses it would otherwise only fail at runtime.
+      "includes": ["src/game/main.ts", "src/map/main.ts"],
+      "formatter": { "enabled": false },
+      "assist": { "enabled": false },
+      "linter": {
+        "rules": {
+          "recommended": false,
+          "correctness": { "noUndeclaredVariables": "error", "noUnusedVariables": "error", "noUnusedImports": "error" }
+        }
+      }
+    }
+  ]
+}
