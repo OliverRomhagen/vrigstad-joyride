@@ -151,7 +151,7 @@ export interface CatDeps {
   readonly player: Point & { speed: number };
   readonly keys: Record<string, boolean | undefined>;
   readonly joy: { on: boolean };
-  readonly kmenu: { readonly hidden: boolean }; // the menu element main.ts hands in, until the menu moves into the HUD (rule 4)
+  readonly kmenu: { readonly hidden: boolean | 'until-found' }; // the menu element main.ts hands in (`hidden` as the DOM types it), until the menu moves into the HUD (rule 4)
   readonly inCar: boolean;
   readonly pcar: CatCar | null; // the player's car, if they drive one
   readonly inside: unknown;
