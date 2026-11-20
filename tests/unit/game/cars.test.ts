@@ -50,7 +50,7 @@ function newCar(type: CarType, x: number, z: number, h: number, mode: CarMode): 
   };
 }
 
-function fleet(world: Partial<WorldData> = { r: [MAIN_ROAD] }) {
+function fleet(world: Partial<WorldData> = { r: [MAIN_ROAD] }, canPark = (_x: number, _z: number) => true) {
   const data = makeWorld({ size: SIZE_M, ...world });
   const roads = new RoadNetwork(data, { heightAt: () => 0 });
   const rnd = makeRnd(1);
@@ -77,6 +77,7 @@ function fleet(world: Partial<WorldData> = { r: [MAIN_ROAD] }) {
     rammed: (_c, o) => {
       log.rammed.push(o);
     },
+    canPark,
     player,
     inCar: false,
   });
@@ -227,6 +228,13 @@ describe('parkCars', () => {
       expect(Math.abs(c.z)).toBeCloseTo(kerbM);
       for (const o of cars.cars) if (o !== c) expect(Math.hypot(o.x - c.x, o.z - c.z)).toBeGreaterThanOrEqual(7);
     }
+  });
+
+  it('parks only where canPark allows', () => {
+    const { cars } = fleet({ r: [STREET] }, (_x, z) => z < 0); // as if the south side of the street were pavement
+    cars.parkCars();
+    expect(cars.cars.length).toBeGreaterThan(5);
+    for (const c of cars.cars) expect(c.z).toBeLessThan(0);
   });
 
   it('parks none along a primary road', () => {
