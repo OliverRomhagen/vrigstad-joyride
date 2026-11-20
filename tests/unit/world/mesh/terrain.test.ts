@@ -37,7 +37,11 @@ describe('TerrainMesh', () => {
     // a different height at every sample, in decimetres
     const world = makeWorld({ elev: [10, 20, 30, 40, 55, 60, 70, 80, 95] });
     const material = new THREE.MeshBasicMaterial();
-    const terrain = new TerrainMesh(new Heightfield(world), { material, skirtMaterial: material, skirtDepthM: SKIRT_DEPTH_M });
+    const terrain = new TerrainMesh(new Heightfield(world), {
+      material,
+      skirtMaterial: material,
+      skirtDepthM: SKIRT_DEPTH_M,
+    });
     const surface = terrain.surface.geometry.getAttribute('position');
     const surfaceHeight = new Map<string, number>();
     for (let i = 0; i < surface.count; i++) surfaceHeight.set(`${surface.getX(i)},${surface.getZ(i)}`, surface.getY(i));

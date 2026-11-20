@@ -18,15 +18,28 @@ permissions:
 
 jobs:
   check:
-    # npm run check, the command AGENTS.md asks for before every commit. The Vite build doesn't typecheck.
+    # npm run check, the command AGENTS.md asks for before every commit: types, Biome, then the Fallow gate (#107,
+    # fallow.toml). The Vite build doesn't typecheck.
     name: Check (npm run check)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # Fallow's hotspots weigh complexity by git churn, which a shallow clone doesn't have
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: lts/*
           cache: npm
       - run: npm ci
-      - run: npm run check
+      # Arguments after `--` go to the last command in the script, `fallow dead-code`: annotations put each finding on
+      # its line in the PR diff, with no write token, so they show on fork PRs too (SARIF to code scanning would need
+      # security-events: write, which fork PRs don't get).
+      - run: npm run check -- --format github-annotations
+      # Reading passes: copied code and complexity hotspots, for the log; they never fail the job. To gate on them later,
+      # give `fallow dupes` a `--threshold` (the most duplication allowed, in percent) and run `fallow health` without
+      # `--hotspots`, which fails on every function over its complexity limits (`[health]` in fallow.toml), then drop
+      # continue-on-error.
+      - run: npm run analyze:report
+        if: ${{ !cancelled() }}
+        continue-on-error: true

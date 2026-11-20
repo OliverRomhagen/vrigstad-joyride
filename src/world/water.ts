@@ -1,4 +1,4 @@
-import { WaterwayKind, type Waterway, type WorldData } from './data';
+import { type Waterway, WaterwayKind, type WorldData } from './data';
 import { type Bounds, pointInPolygon, polygonBounds, segmentDistance } from './polygon';
 import type { NearestRoad, RoadNetwork } from './roads';
 
@@ -20,8 +20,8 @@ export class Water {
 
   constructor(data: WorldData, roads: Pick<RoadNetwork, 'nearestRoad'>) {
     this.roads = roads;
-    this.rivers = data.ww.filter((w) => w.k === WaterwayKind.RIVER);
-    this.lakes = data.w.map((rings) => {
+    this.rivers = data.ww.filter(w => w.k === WaterwayKind.RIVER);
+    this.lakes = data.w.map(rings => {
       const bounds: Bounds = { x0: Infinity, x1: -Infinity, z0: Infinity, z1: -Infinity };
       for (const r of rings) polygonBounds(r, bounds);
       return { rings, ...bounds };

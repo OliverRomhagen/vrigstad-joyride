@@ -9,8 +9,8 @@ describe('math', () => {
   });
 
   it('wraps an angle into -π..π', () => {
-    expect(wrap(3 * Math.PI / 2)).toBeCloseTo(-Math.PI / 2);
-    expect(wrap(-7 * Math.PI / 2)).toBeCloseTo(Math.PI / 2);
+    expect(wrap((3 * Math.PI) / 2)).toBeCloseTo(-Math.PI / 2);
+    expect(wrap((-7 * Math.PI) / 2)).toBeCloseTo(Math.PI / 2);
     expect(wrap(1)).toBe(1);
   });
 });

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import data from '../../../data/vrigstad.json';
-import { BuildingKind, LandUse, RoadClass, ROAD_WIDTH_M, WaterwayKind } from '../../../src/world/data';
+import { BuildingKind, LandUse, ROAD_WIDTH_M, RoadClass, WaterwayKind } from '../../../src/world/data';
 
 // The pages import the JSON without type checks, so this is what holds tools/process.py to WorldData.
 const codes = (kinds: Record<string, number>) => new Set(Object.values(kinds));
