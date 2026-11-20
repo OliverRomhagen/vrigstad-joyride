@@ -2,10 +2,10 @@
 // Moved from src/game/main.ts (#177); main.ts passes in the models and what the meshes read from the rest of the game.
 import * as THREE from 'three';
 import { makeRnd } from '../../world/random';
-import type { Car, CarMode } from '../cars';
-import { type CarType, specFor } from '../sim/vehicle-spec';
+import type { Car } from '../cars';
+import type { CarType } from '../sim/vehicle-spec';
 import type { BodyMotion } from './body-motion';
-import { pickVariant, type VehicleId, vehicleDefinition } from './vehicle-registry';
+import { pickVariant, type VehicleId } from './vehicle-registry';
 import type { VehicleVisuals } from './vehicle-visuals';
 
 const _f = new THREE.Vector3(),
@@ -18,12 +18,11 @@ export interface RenderedCar extends Car {
   body: THREE.Mesh;
 }
 
-/** What the car meshes read from the rest of the game. `cars` is a getter, so main.ts can declare the fleet later. */
+/** What the car meshes read from the rest of the game. */
 export interface CarMeshesDeps {
   scene: THREE.Scene;
   groundAt: (x: number, z: number) => number;
   normalAt: (x: number, z: number) => THREE.Vector3;
-  pick: <T>(a: readonly T[]) => T; // the game's seeded stream: a car's colour is a world roll
   carGeo: (type: CarType, color: string) => THREE.BufferGeometry; // the procedural body, cached by type and colour
   carMat: THREE.Material;
   blob: (parent: THREE.Object3D, w: number, l: number) => THREE.Mesh; // the soft shadow under it
@@ -31,10 +30,9 @@ export interface CarMeshesDeps {
   barMat: THREE.Material;
   vehicleVisuals: VehicleVisuals;
   bodyMotion: BodyMotion;
-  readonly cars: RenderedCar[];
 }
 
-/** Makes, places and removes the meshes of every car. */
+/** Makes, places and disposes the meshes of every car. It never adds a car to the list or removes one: the Fleet does (#297). */
 export class CarMeshes {
   private readonly g: CarMeshesDeps;
   private readonly modelRnd = makeRnd(240); // own stream: which model a car wears doesn't shift the world's rolls
@@ -54,17 +52,14 @@ export class CarMeshes {
     c.mesh.position.set(c.x, groundAt(c.x, c.z) - (c.wet ? 0.55 : 0), c.z);
     vehicleVisuals.sync(c);
   }
-  addCar(
-    type: CarType,
-    x: number,
-    z: number,
-    h: number,
-    mode: CarMode,
-    assetId: VehicleId | undefined = pickVariant(type, this.modelRnd()),
-  ) {
-    const { scene, pick, carGeo, carMat, blob, barGeo, barMat, vehicleVisuals, bodyMotion, cars } = this.g;
-    const T = specFor(type, vehicleDefinition(assetId ?? null)),
-      color = pick(T.cols),
+  /** Which model a new car of this type wears, if one: rolled from the meshes' own stream. */
+  pickModel(type: CarType): VehicleId | undefined {
+    return pickVariant(type, this.modelRnd());
+  }
+  /** Gives a car the Fleet already holds its meshes: the procedural body, the police light bar, and its model if `assetId` names one. */
+  attach(car: Car, assetId: VehicleId | undefined): RenderedCar {
+    const { scene, carGeo, carMat, blob, barGeo, barMat, vehicleVisuals, bodyMotion } = this.g;
+    const { type, T, color } = car,
       fallback = new THREE.Mesh(carGeo(type, color), carMat),
       mesh = new THREE.Group();
     fallback.castShadow = true;
@@ -75,41 +70,8 @@ export class CarMeshes {
       bar.position.set(0, 1.62, 0.2);
       fallback.add(bar);
     }
-    const c: RenderedCar = {
-      type,
-      T,
-      mesh,
-      x,
-      z,
-      h,
-      vh: h,
-      v: 0,
-      st: 0,
-      thr: 0,
-      slip: 0,
-      drift: 0,
-      charge: 0,
-      yr: 0,
-      spin: 0,
-      loose: 0,
-      flickDir: 0,
-      flickT: 9,
-      flickHeld: 0,
-      boost: 0,
-      mode,
-      wet: false,
-      owned: false,
-      blocked: 0,
-      ghost: 0,
-      stuck: 0,
-      rev: 0,
-      revSteer: 1,
-      dmg: 0,
-      hitAt: -9,
-      body: fallback,
-    };
+    const c = Object.assign(car, { mesh, body: fallback });
     scene.add(mesh);
-    cars.push(c);
     this.placeCar(c);
     bodyMotion.add(c, T.suspension, fallback);
     if (assetId) {
@@ -117,12 +79,11 @@ export class CarMeshes {
     }
     return c;
   }
-  removeCar(c: RenderedCar) {
-    const { scene, vehicleVisuals, bodyMotion, cars } = this.g;
+  /** Disposes a car's meshes; the Fleet takes the car itself out of the list. */
+  detach(c: RenderedCar) {
+    const { scene, vehicleVisuals, bodyMotion } = this.g;
     vehicleVisuals.dispose(c);
     bodyMotion.remove(c);
     scene.remove(c.mesh);
-    const i = cars.indexOf(c);
-    if (i >= 0) cars.splice(i, 1);
   }
 }

@@ -87,10 +87,14 @@ const crackMat = (d: boolean) =>
     polygonOffsetFactor: -2,
     polygonOffsetUnits: -4,
   });
-const CRACK_OFF = new THREE.MeshBasicMaterial({ visible: false }),
-  CRACK_LIGHT = crackMat(false),
-  CRACK_HEAVY = crackMat(true);
-const CRACK_MATS = [null, [CRACK_LIGHT, CRACK_OFF], [CRACK_HEAVY, CRACK_LIGHT], [CRACK_HEAVY, CRACK_HEAVY]];
+// by crack level: the materials for the panes facing forwards or backwards, and for the rest. Made with the CarDamageFx, not at import,
+// since the textures are drawn on a canvas: the module can then be imported without a DOM (#297)
+function crackMaterials() {
+  const off = new THREE.MeshBasicMaterial({ visible: false }),
+    light = crackMat(false),
+    heavy = crackMat(true);
+  return [null, [light, off], [heavy, light], [heavy, heavy]];
+}
 const CRACK_REAR: Record<string, number> = { saab: 2 }; // index of the glass profile's point where the rear window starts (default 1); the Saab's is its hatch
 // a car model (#176) cracks its own glass: each of its glass_ parts, with texture coordinates added, split like crackGeo into the panes
 // that face forwards or backwards (material 0) and the rest (material 1); the models' glass has no texture coordinates of its own
@@ -105,7 +109,7 @@ const SMOKE_N = 48,
   SMOKE_NEAR_M = 140,
   SMOKE_RATE = [0, 8, 12]; // puffs in the pool; s each lasts; only cars this close smoke; puffs/s by smoke level
 const SMOKE_COLS = [null, col(0x7c7c78), col(0x2a2826)];
-const smokeTex = (() => {
+function smokeTexture() {
   const cv = document.createElement('canvas');
   cv.width = cv.height = 64;
   const g = cv.getContext('2d')!,
@@ -115,7 +119,7 @@ const smokeTex = (() => {
   g.fillStyle = r;
   g.fillRect(0, 0, 64, 64);
   return new THREE.CanvasTexture(cv);
-})();
+}
 
 /** The cracks in every car's glass, and the smoke from the bonnets of the damaged cars near the camera. */
 export class CarDamageFx {
@@ -124,9 +128,11 @@ export class CarDamageFx {
   private readonly modelCrackGeos = new WeakMap<THREE.BufferGeometry, THREE.BufferGeometry>();
   private readonly puffs: Puff[];
   private puffI = 0;
+  private readonly crackMats = crackMaterials();
 
   constructor(g: CarDamageFxDeps) {
     this.g = g;
+    const smokeTex = smokeTexture();
     const puffs = Array.from({ length: SMOKE_N }, () => {
       const p = new THREE.Sprite(
         new THREE.SpriteMaterial({ map: smokeTex, transparent: true, depthWrite: false }),
@@ -239,11 +245,11 @@ export class CarDamageFx {
     if (!lv) return;
     if (c.crack !== lv) {
       if (!c.crackMesh) {
-        c.crackMesh = new THREE.Mesh(this.crackGeo(c.type), CRACK_MATS[lv]!);
+        c.crackMesh = new THREE.Mesh(this.crackGeo(c.type), this.crackMats[lv]!);
         c.body.add(c.crackMesh);
       }
-      c.crackMesh.material = CRACK_MATS[lv]!;
-      if (c.modelCrack) for (const m of c.modelCrack) m.material = CRACK_MATS[lv]!;
+      c.crackMesh.material = this.crackMats[lv]!;
+      if (c.modelCrack) for (const m of c.modelCrack) m.material = this.crackMats[lv]!;
       c.crack = lv;
     }
     if (!c.modelCrack && vehicleVisuals.loaded(c) && c.mesh.getObjectByName('glass_envelope')) {
@@ -252,7 +258,7 @@ export class CarDamageFx {
         if (o instanceof THREE.Mesh && o.name.startsWith('glass_')) glass.push(o);
       });
       c.modelCrack = glass.map(gl => {
-        const m = new THREE.Mesh(this.modelCrackGeo(gl.geometry), CRACK_MATS[lv]!);
+        const m = new THREE.Mesh(this.modelCrackGeo(gl.geometry), this.crackMats[lv]!);
         gl.add(m);
         return m;
       });

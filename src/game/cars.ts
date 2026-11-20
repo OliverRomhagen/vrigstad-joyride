@@ -1,5 +1,6 @@
 // The cars as the game rules see them: the driving model the player and the police share, traffic that follows the street network, and the cars parked along the streets.
-// Moved from src/game/main.ts (#177, #283); main.ts passes in a car's meshes (addCar, placeCar), what a crash does to you and what ramming the police does. No three.js or DOM here.
+// Moved from src/game/main.ts (#177, #283); main.ts passes in how a car is made with its meshes (addCar) and placed (placeCar), what a crash does to you and what ramming the police does. No three.js or DOM here.
+// The Fleet owns the list of cars (#297): main.ts's addCar makes one with newCar, gives it its meshes, then adds it.
 import type { BuildingIndex } from '../world/buildings';
 import { ROAD_WIDTH_M as ROAD_W } from '../world/data';
 import { clamp, wrap } from '../world/math';
@@ -66,6 +67,51 @@ export interface Car extends Point {
   revSteer: number;
   dmg: number; // damage, and the clock (s) of the last hit (health.ts)
   hitAt: number;
+  color: string; // the paint (sRGB), one of T.cols
+}
+
+/** A new car standing still at (x, z), nose towards h. `color` is the caller's roll from T.cols, so the world's rolls stay in their order. */
+export function newCar(
+  type: CarType,
+  x: number,
+  z: number,
+  h: number,
+  mode: CarMode,
+  T: VehicleSpec,
+  color: string,
+): Car {
+  return {
+    type,
+    T,
+    x,
+    z,
+    h,
+    vh: h,
+    v: 0,
+    st: 0,
+    thr: 0,
+    slip: 0,
+    drift: 0,
+    charge: 0,
+    yr: 0,
+    spin: 0,
+    loose: 0,
+    flickDir: 0,
+    flickT: 9,
+    flickHeld: 0,
+    boost: 0,
+    mode,
+    wet: false,
+    owned: false,
+    blocked: 0,
+    ghost: 0,
+    stuck: 0,
+    rev: 0,
+    revSteer: 1,
+    dmg: 0,
+    hitAt: -9,
+    color,
+  };
 }
 /** Where a car or a walker is on the street network: road ri, from vertex a towards a + dir. */
 export interface OnRoad {
@@ -90,7 +136,7 @@ export interface FleetDeps {
   half: number; // half the map's side (m)
   rnd: () => number; // the game's seeded stream, so the rolls stay in the order they were
   pick: <T>(a: readonly T[]) => T;
-  addCar: (type: CarType, x: number, z: number, h: number, mode: CarMode) => Car; // makes the car's meshes and adds it to `cars`
+  addCar: (type: CarType, x: number, z: number, h: number, mode: CarMode) => Car; // makes a car, gives it its meshes and adds it with `add`
   placeCar: (c: Car) => void; // puts the car's meshes where the car is
   crash: (c: Car, o: Car | null, impact: number) => void; // c hit o, or a wall, at `impact` m/s: the damage, and what you hear and feel
   rammed: (c: Car, o: Car) => void; // c hit police car o at speed
@@ -106,6 +152,16 @@ export class Fleet {
 
   constructor(g: FleetDeps) {
     this.g = g;
+  }
+
+  /** Puts a new car in the village. */
+  add<C extends Car>(c: C): C {
+    this.cars.push(c);
+    return c;
+  }
+  remove(c: Car) {
+    const i = this.cars.indexOf(c);
+    if (i >= 0) this.cars.splice(i, 1);
   }
 
   civType(): CarType {
