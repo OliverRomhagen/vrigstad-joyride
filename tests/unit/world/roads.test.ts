@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { RoadClass, ROAD_WIDTH_M } from '../../../src/world/data';
+import { ROAD_WIDTH_M, RoadClass } from '../../../src/world/data';
 import { nodeKey, RoadNetwork, roadLiftM } from '../../../src/world/roads';
 import { makeWorld } from './fixture';
 

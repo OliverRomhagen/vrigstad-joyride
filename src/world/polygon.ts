@@ -5,7 +5,8 @@ import { clamp } from './math';
 export function pointInPolygon(p: number[], x: number, z: number) {
   let inside = false;
   for (let i = 0, j = p.length - 2; i < p.length; j = i, i += 2) {
-    if (p[i + 1] > z !== p[j + 1] > z && x < ((p[j] - p[i]) * (z - p[i + 1])) / (p[j + 1] - p[i + 1]) + p[i]) inside = !inside;
+    if (p[i + 1] > z !== p[j + 1] > z && x < ((p[j] - p[i]) * (z - p[i + 1])) / (p[j + 1] - p[i + 1]) + p[i])
+      inside = !inside;
   }
   return inside;
 }
@@ -18,7 +19,10 @@ export interface Bounds {
 }
 
 /** Grows `into` to cover the polygon, and returns it; with no `into`, the polygon's own bounding box. */
-export function polygonBounds(p: number[], into: Bounds = { x0: Infinity, x1: -Infinity, z0: Infinity, z1: -Infinity }) {
+export function polygonBounds(
+  p: number[],
+  into: Bounds = { x0: Infinity, x1: -Infinity, z0: Infinity, z1: -Infinity },
+) {
   for (let i = 0; i < p.length; i += 2) {
     into.x0 = Math.min(into.x0, p[i]);
     into.x1 = Math.max(into.x1, p[i]);
