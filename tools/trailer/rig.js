@@ -13,7 +13,7 @@ const CHROME = process.env.CHROME || '/Applications/Google Chrome.app/Contents/M
 // and what later moved into its own module (the police and stars into `wanted`, the safehouses into `places`) is read from there.
 const BOOT = 'resize(); requestAnimationFrame(frame);', RENDER = 'renderer.render(scene, camera);\n}', RENDER_HOOKED = 'if (window.__cam) window.__cam(camera, T);\n  ' + RENDER;
 const NAMES = ['THREE', 'player', 'cars', 'keys', 'joy', 'R', 'D', 'hAt', 'camera', 'scene', 'action', 'toast', 'respawn', 'nearestRoad', 'addCar', 'removeCar',
-  'carGeo', 'sun', 'SUN_DIR', 'renderer', 'placeCar', 'nodes', 'nodeKey', 'driveable', 'inCar', 'pcar'];
+  'carGeo', 'sun', 'SUN_DIR', 'renderer', 'placeCar', 'nodes', 'nodeKey', 'driveable', 'inCar', 'pcar', 'vehicleVisuals'];
 const has = n => `typeof ${n} !== 'undefined'`;
 const HOOK = `window.__G = { ${NAMES.map(n => `get ${n}() { return ${has(n)} ? ${n} : undefined; }`).join(', ')},
   get police() { return ${has('wanted')} ? wanted.police : police; }, get stars() { return ${has('wanted')} ? wanted.stars : stars; },
@@ -67,4 +67,12 @@ async function open({ width = 1280, height = 720, scale = 1.5, file = null } = {
   return { browser, page };
 }
 
-module.exports = { open, WORK, ROOT };
+// Detailed car models load in the background (src/game/render/vehicle-visuals.ts) while the virtual clock stands still, so a shot
+// waits until no car is still loading one, then renders a frame to show them; otherwise it can catch the box cars they replace.
+async function modelsReady(page, timeout = 30000) {
+  await page.waitForFunction(() => { const V = __G.vehicleVisuals; if (!V || !V.state) return true;
+    return __G.cars.every(c => { const s = V.state(c); return !s || s.status !== 'loading'; }); }, { timeout, polling: 100 });
+  await page.evaluate(() => __step(1));
+}
+
+module.exports = { open, modelsReady, WORK, ROOT };

@@ -2,7 +2,7 @@
 // Usage: node capture.js [shot-name-prefix ...]   (no arguments renders every shot)
 const fs = require('fs');
 const path = require('path');
-const { open, WORK } = require('./rig');
+const { open, modelsReady, WORK } = require('./rig');
 const shots = require('./shots');
 
 (async () => {
@@ -15,6 +15,7 @@ const shots = require('./shots');
     fs.rmSync(dir, { recursive: true, force: true }); fs.mkdirSync(dir, { recursive: true });
     const t0 = Date.now(), { browser, page } = await open(), ev = {};
     await page.evaluate(s.setup);
+    await modelsReady(page);
     for (let i = 0; i < s.n; i++) {
       const st = await page.evaluate((i, n) => { window.__frame(i, n); window.__step(1);
         return { busted: !document.getElementById('big').hidden, stars: window.__G.stars, toast: document.getElementById('toast').hidden ? '' : document.getElementById('toast').textContent }; }, i, s.n);
