@@ -32,7 +32,7 @@ export const STREETSCAPE_COLOURS: StreetscapeColours = {
 export const SOURCE_TINTS = [0x3fae5a, 0xe0b23a, 0xd0533f] as const;
 
 /** side of a batching chunk (m), the same chunking as #121 */
-export const CHUNK_M = 250;
+const CHUNK_M = 250;
 /** the strongest per-strip lightness variation, as a share (±) */
 const TONE_SHARE = 0.03;
 
@@ -70,16 +70,26 @@ export function partColour(c: StreetscapeColours, part: Part, surface: Surface) 
  * chunk's corner), by each triangle's centroid; an infinite `chunkM` makes one mesh. `colour` gives a triangle's linear
  * RGB, or null for no colour attribute.
  */
-export function batchByChunk(soup: Soup, material: THREE.Material, colour: ((t: number, out: THREE.Color) => void) | null, chunkM = CHUNK_M) {
+export function batchByChunk(
+  soup: Soup,
+  material: THREE.Material,
+  colour: ((t: number, out: THREE.Color) => void) | null,
+  chunkM = CHUNK_M,
+) {
   const chunks = new Map<string, number[]>();
   const n = soup.part.length;
   for (let t = 0; t < n; t++) {
     const o = t * 9;
     const cx = Number.isFinite(chunkM) ? Math.floor((soup.pos[o] + soup.pos[o + 3] + soup.pos[o + 6]) / 3 / chunkM) : 0;
-    const cz = Number.isFinite(chunkM) ? Math.floor((soup.pos[o + 2] + soup.pos[o + 5] + soup.pos[o + 8]) / 3 / chunkM) : 0;
+    const cz = Number.isFinite(chunkM)
+      ? Math.floor((soup.pos[o + 2] + soup.pos[o + 5] + soup.pos[o + 8]) / 3 / chunkM)
+      : 0;
     const k = cx + ',' + cz;
     let list = chunks.get(k);
-    if (!list) chunks.set(k, (list = []));
+    if (!list) {
+      list = [];
+      chunks.set(k, list);
+    }
     list.push(t);
   }
   const meshes: THREE.Mesh[] = [];
@@ -133,7 +143,10 @@ export class SidewalkMesh {
     const lin = new Map<number, THREE.Color>();
     const linear = (srgb: number) => {
       let v = lin.get(srgb);
-      if (!v) lin.set(srgb, (v = new THREE.Color(srgb).convertSRGBToLinear()));
+      if (!v) {
+        v = new THREE.Color(srgb).convertSRGBToLinear();
+        lin.set(srgb, v);
+      }
       return v;
     };
     this.meshes.push(

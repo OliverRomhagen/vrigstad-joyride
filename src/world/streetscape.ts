@@ -7,9 +7,9 @@ import {
   CrossingKind,
   Kerb,
   ParkingOrientation,
+  ROAD_WIDTH_M,
   RoadClass,
   RoadUse,
-  ROAD_WIDTH_M,
   StreetParking,
   Surface,
   type WorldData,
@@ -58,11 +58,21 @@ const KERB_REACH_M = 4;
 const ZEBRA_BAR_M = 0.5;
 const ZEBRA_GAP_M = 0.5;
 const ZEBRA_LENGTH_M = 3;
-export const MARKING_LIFT_M = 0.02;
+const MARKING_LIFT_M = 0.02;
 const MARKING_LINE_M = 0.1;
 /** street parking: bay depth by orientation (m), and how far bays stop short of junctions, crossings and driveways (m) */
-const BAY_DEPTH_M = { [ParkingOrientation.UNKNOWN]: 2, [ParkingOrientation.PARALLEL]: 2, [ParkingOrientation.DIAGONAL]: 4.5, [ParkingOrientation.PERPENDICULAR]: 5 };
-const BAY_LENGTH_M = { [ParkingOrientation.UNKNOWN]: 5.5, [ParkingOrientation.PARALLEL]: 5.5, [ParkingOrientation.DIAGONAL]: 3, [ParkingOrientation.PERPENDICULAR]: 2.5 };
+const BAY_DEPTH_M = {
+  [ParkingOrientation.UNKNOWN]: 2,
+  [ParkingOrientation.PARALLEL]: 2,
+  [ParkingOrientation.DIAGONAL]: 4.5,
+  [ParkingOrientation.PERPENDICULAR]: 5,
+};
+const BAY_LENGTH_M = {
+  [ParkingOrientation.UNKNOWN]: 5.5,
+  [ParkingOrientation.PARALLEL]: 5.5,
+  [ParkingOrientation.DIAGONAL]: 3,
+  [ParkingOrientation.PERPENDICULAR]: 2.5,
+};
 const BAY_CLEAR_JUNCTION_M = 10;
 const BAY_CLEAR_CROSSING_M = 5;
 const BAY_CLEAR_DRIVEWAY_M = 3;
@@ -84,7 +94,16 @@ const TREE_CLEAR_TREE_M = 4;
 const INDEX_CELL_M = 25;
 
 /** what a triangle is, for its colour */
-export const Part = { CURB_FACE: 0, CURB_TOP: 1, VERGE: 2, SIDEWALK: 3, SKIRT: 4, ROAD: 5, PARKING: 6, MARKING: 7 } as const;
+export const Part = {
+  CURB_FACE: 0,
+  CURB_TOP: 1,
+  VERGE: 2,
+  SIDEWALK: 3,
+  SKIRT: 4,
+  ROAD: 5,
+  PARKING: 6,
+  MARKING: 7,
+} as const;
 export type Part = (typeof Part)[keyof typeof Part];
 export const SOURCES: readonly Source[] = ['mapped', 'derived', 'inferred'];
 
@@ -190,8 +209,10 @@ const sub = (a: V2, b: V2): V2 => [a[0] - b[0], a[1] - b[1]];
 const dot = (a: V2, b: V2) => a[0] * b[0] + a[1] * b[1];
 const lerp2 = (a: V2, b: V2, t: number): V2 => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
 const bezier = (a: V2, k: V2, b: V2, t: number): V2 => lerp2(lerp2(a, k, t), lerp2(k, b, t), t);
-const isCarriageway = (c: RoadClass, use: number | undefined) => c <= RoadClass.TRACK && use !== RoadUse.SIDEWALK && use !== RoadUse.CROSSING;
-const isMinor = (c: RoadClass, use: number | undefined) => c >= RoadClass.SERVICE || (use !== undefined && use !== RoadUse.NONE);
+const isCarriageway = (c: RoadClass, use: number | undefined) =>
+  c <= RoadClass.TRACK && use !== RoadUse.SIDEWALK && use !== RoadUse.CROSSING;
+const isMinor = (c: RoadClass, use: number | undefined) =>
+  c >= RoadClass.SERVICE || (use !== undefined && use !== RoadUse.NONE);
 
 /** Intersection of the lines p + d·t and q + e·u, or null when they are parallel. */
 function intersect(p: V2, d: V2, q: V2, e: V2): V2 | null {
@@ -205,12 +226,33 @@ function intersect(p: V2, d: V2, q: V2, e: V2): V2 | null {
  * Adds the quad a0, a1, b1, b0 (each [x, y, z]) as two triangles wound so their normal points along `want` (any
  * direction with a positive component the right way): outward winding, so FrontSide materials work.
  */
-function quad(out: Soup, a0: number[], a1: number[], b1: number[], b0: number[], want: number[], part: Part, src: number, surf: Surface, tone: number) {
+function quad(
+  out: Soup,
+  a0: number[],
+  a1: number[],
+  b1: number[],
+  b0: number[],
+  want: number[],
+  part: Part,
+  src: number,
+  surf: Surface,
+  tone: number,
+) {
   tri(out, a0, a1, b1, want, part, src, surf, tone);
   tri(out, a0, b1, b0, want, part, src, surf, tone);
 }
 
-function tri(out: Soup, a: number[], b: number[], c: number[], want: number[], part: Part, src: number, surf: Surface, tone: number) {
+function tri(
+  out: Soup,
+  a: number[],
+  b: number[],
+  c: number[],
+  want: number[],
+  part: Part,
+  src: number,
+  surf: Surface,
+  tone: number,
+) {
   const ux = b[0] - a[0];
   const uy = b[1] - a[1];
   const uz = b[2] - a[2];
@@ -222,7 +264,8 @@ function tri(out: Soup, a: number[], b: number[], c: number[], want: number[], p
   const nz = ux * vy - uy * vx;
   const area = Math.hypot(nx, ny, nz);
   if (area < 1e-6) return; // degenerate: skipped, never emitted
-  if (nx * want[0] + ny * want[1] + nz * want[2] < 0) out.pos.push(a[0], a[1], a[2], c[0], c[1], c[2], b[0], b[1], b[2]);
+  if (nx * want[0] + ny * want[1] + nz * want[2] < 0)
+    out.pos.push(a[0], a[1], a[2], c[0], c[1], c[2], b[0], b[1], b[2]);
   else out.pos.push(a[0], a[1], a[2], b[0], b[1], b[2], c[0], c[1], c[2]);
   out.part.push(part);
   out.src.push(src);
@@ -264,7 +307,10 @@ function sampleRoad(p: readonly Point[], c: RoadClass, heightfield: Pick<Heightf
   const ms: number[] = [];
   for (let i = 0; i < q.length; i++) {
     const e = ribbonEdges(q, i, W);
-    edge.push([[e.lx, e.lz], [e.rx, e.rz]]);
+    edge.push([
+      [e.lx, e.lz],
+      [e.rx, e.rz],
+    ]);
     edgeY.push([heightfield.heightAt(e.lx, e.lz) + lift, heightfield.heightAt(e.rx, e.rz) + lift]);
     const m = mitreAt(q, i);
     mn.push([m.nx, m.nz]);
@@ -333,7 +379,7 @@ interface CornerPlan {
 export function buildStreetscape(inp: StreetscapeInputs): StreetscapeLayout {
   const { data, roads, heightfield, buildings, water, sides } = inp;
   const lines = roads.lines;
-  const samples = lines.map((r) => (r.p.length > 1 ? sampleRoad(r.p, r.c, heightfield) : null));
+  const samples = lines.map(r => (r.p.length > 1 ? sampleRoad(r.p, r.c, heightfield) : null));
   const surface = soup();
   const markings = soup();
   const lotMarkings = soup();
@@ -367,7 +413,10 @@ export function buildStreetscape(inp: StreetscapeInputs): StreetscapeLayout {
     r.p.forEach((p, v) => {
       const k = nodeKey(p);
       let l = nodes.get(k);
-      if (!l) nodes.set(k, (l = []));
+      if (!l) {
+        l = [];
+        nodes.set(k, l);
+      }
       l.push({ ri, v });
     });
   });
@@ -384,20 +433,28 @@ export function buildStreetscape(inp: StreetscapeInputs): StreetscapeLayout {
         const len = Math.hypot(p[w][0] - p[v][0], p[w][1] - p[v][1]);
         if (len < 1e-6) continue;
         const d: V2 = [(p[w][0] - p[v][0]) / len, (p[w][1] - p[v][1]) / len];
-        arms.push({ ri, v, dir, d, angle: Math.atan2(d[1], d[0]), half: ROAD_WIDTH_M[lines[ri].c] / 2, minor: isMinor(lines[ri].c, data.r[ri].s) });
+        arms.push({
+          ri,
+          v,
+          dir,
+          d,
+          angle: Math.atan2(d[1], d[0]),
+          half: ROAD_WIDTH_M[lines[ri].c] / 2,
+          minor: isMinor(lines[ri].c, data.r[ri].s),
+        });
       }
     }
     if (arms.length < 2) continue;
     const J = lines[at[0].ri].p[at[0].v] as V2;
-    let major = arms.filter((a) => !a.minor);
-    const minor = arms.filter((a) => a.minor);
+    let major = arms.filter(a => !a.minor);
+    const minor = arms.filter(a => a.minor);
     if (!major.length) major = arms;
     if (major.length >= 3) junctionPoints.push(J);
 
     // a driveway or service road meeting a street lowers the street's curb on its side, and the strip runs on across it
     if (major !== arms) {
       for (const m of minor) {
-        if (major.some((a) => a.ri === m.ri)) continue;
+        if (major.some(a => a.ri === m.ri)) continue;
         for (const a of major) {
           const rs = samples[a.ri];
           if (!rs) continue;
@@ -405,8 +462,14 @@ export function buildStreetscape(inp: StreetscapeInputs): StreetscapeLayout {
           const t: V2 = [a.d[0] * a.dir, a.d[1] * a.dir];
           const side = (Math.sign(-t[1] * m.d[0] + t[0] * m.d[1]) || 1) as -1 | 1;
           const s = rs.vs[a.v];
-          if (!openings.some((o) => o.ri === a.ri && o.side === side && Math.abs(o.s - s) < 0.5))
-            openings.push({ ri: a.ri, side, s, half: (ROAD_WIDTH_M[lines[m.ri].c] + DRIVEWAY_EXTRA_M) / 2, kind: 'driveway' });
+          if (!openings.some(o => o.ri === a.ri && o.side === side && Math.abs(o.s - s) < 0.5))
+            openings.push({
+              ri: a.ri,
+              side,
+              s,
+              half: (ROAD_WIDTH_M[lines[m.ri].c] + DRIVEWAY_EXTRA_M) / 2,
+              kind: 'driveway',
+            });
         }
       }
     }
@@ -440,7 +503,12 @@ export function buildStreetscape(inp: StreetscapeInputs): StreetscapeLayout {
       if (!stripA && !stripB) continue;
       const nA: V2 = [-A.d[1], A.d[0]];
       const nB: V2 = [B.d[1], -B.d[0]];
-      const K = intersect([J[0] + nA[0] * A.half, J[1] + nA[1] * A.half], A.d, [J[0] + nB[0] * B.half, J[1] + nB[1] * B.half], B.d);
+      const K = intersect(
+        [J[0] + nA[0] * A.half, J[1] + nA[1] * A.half],
+        A.d,
+        [J[0] + nB[0] * B.half, J[1] + nB[1] * B.half],
+        B.d,
+      );
       if (!K) continue;
       const filleted = theta >= (MIN_CORNER_DEG * Math.PI) / 180;
       // a half corner: the arm without a sidewalk gets a stub as deep as the other's, so the corner rounds into it
@@ -450,7 +518,8 @@ export function buildStreetscape(inp: StreetscapeInputs): StreetscapeLayout {
       if (filleted && !stripB) depthB = depthA;
       const sin = Math.sin(theta);
       const cos = Math.cos(theta);
-      const R = lines[A.ri].c <= RoadClass.SECONDARY || lines[B.ri].c <= RoadClass.SECONDARY ? FILLET_MAJOR_M : FILLET_STREET_M;
+      const R =
+        lines[A.ri].c <= RoadClass.SECONDARY || lines[B.ri].c <= RoadClass.SECONDARY ? FILLET_MAJOR_M : FILLET_STREET_M;
       // how far past K each strip must start so it clears the other arm's strip (or curb line), plus the fillet
       const clearA = (depthB + Math.max(0, depthA * cos)) / sin + 0.2;
       const clearB = (depthA + Math.max(0, depthB * cos)) / sin + 0.2;
@@ -479,14 +548,33 @@ export function buildStreetscape(inp: StreetscapeInputs): StreetscapeLayout {
         const a = { ri: A.ri, side: sideA, s: endA };
         const b = { ri: B.ri, side: sideB, s: endB };
         const cls = Math.min(lines[A.ri].c, lines[B.ri].c) as RoadClass;
-        if (stripA && stripB) plans.push({ a, b, k: K, kOuter, liftA: roadLiftM(lines[A.ri].c), liftB: roadLiftM(lines[B.ri].c), cls, stub: null });
+        if (stripA && stripB)
+          plans.push({
+            a,
+            b,
+            k: K,
+            kOuter,
+            liftA: roadLiftM(lines[A.ri].c),
+            liftB: roadLiftM(lines[B.ri].c),
+            cls,
+            stub: null,
+          });
         else {
           // keep the real strip as a; the stub ends on the other arm's curb line, past K by the same clearance a strip would need
           const [real, other, n, d, aOther, depth] = stripA ? [a, b, nB, B.d, aB, depthA] : [b, a, nA, A.d, aA, depthB];
           const inner: V2 = [K[0] + d[0] * aOther, K[1] + d[1] * aOther];
           const stub = { inner, outer: [inner[0] + n[0] * depth, inner[1] + n[1] * depth] as V2 };
           const liftReal = roadLiftM(lines[real.ri].c);
-          plans.push({ a: real, b: other, k: K, kOuter, liftA: liftReal, liftB: roadLiftM(lines[other.ri].c), cls, stub });
+          plans.push({
+            a: real,
+            b: other,
+            k: K,
+            kOuter,
+            liftA: liftReal,
+            liftB: roadLiftM(lines[other.ri].c),
+            cls,
+            stub,
+          });
         }
       }
     }
@@ -507,8 +595,9 @@ export function buildStreetscape(inp: StreetscapeInputs): StreetscapeLayout {
       for (const { ri: rj, v } of nodes.get(nodeKey(p)) ?? []) {
         if (isMinor(lines[rj].c, data.r[rj].s) && lines[rj].c > RoadClass.SERVICE) continue;
         const s = samples[rj]!.vs[v];
-        if (openings.some((o) => o.ri === rj && o.kind === 'crossing' && Math.abs(o.s - s) < 1)) continue;
-        for (const side of [-1, 1] as const) openings.push({ ri: rj, side, s, half: CROSSING_HALF_M, kind: 'crossing' });
+        if (openings.some(o => o.ri === rj && o.kind === 'crossing' && Math.abs(o.s - s) < 1)) continue;
+        for (const side of [-1, 1] as const)
+          openings.push({ ri: rj, side, s, half: CROSSING_HALF_M, kind: 'crossing' });
         crossingPoints.push([p[0], p[1]]);
       }
     }
@@ -598,7 +687,14 @@ export function buildStreetscape(inp: StreetscapeInputs): StreetscapeLayout {
       const d = segmentDistance(x, z, list[i], list[i + 1], list[i + 2], list[i + 3]) - ROAD_WIDTH_M[lines[rj].c] / 2;
       if (d >= CARRIAGEWAY_MARGIN_M) continue;
       // a road joined to this one near here is the junction rules' business
-      if (joinedNodes[rj].some((p) => Math.hypot(p[0] - x, p[1] - z) < JOINED_REACH_M && joinedNodes[ri].some((q) => q[0] === p[0] && q[1] === p[1]))) continue;
+      if (
+        joinedNodes[rj].some(
+          p =>
+            Math.hypot(p[0] - x, p[1] - z) < JOINED_REACH_M &&
+            joinedNodes[ri].some(q => q[0] === p[0] && q[1] === p[1]),
+        )
+      )
+        continue;
       return true;
     }
     return false;
@@ -608,14 +704,24 @@ export function buildStreetscape(inp: StreetscapeInputs): StreetscapeLayout {
   const wetCells = new Set<string>();
   const markWet = (x0: number, z0: number, x1: number, z1: number) => {
     for (let x = Math.floor((x0 - 6) / WATER_CELL_M); x <= Math.floor((x1 + 6) / WATER_CELL_M); x++)
-      for (let z = Math.floor((z0 - 6) / WATER_CELL_M); z <= Math.floor((z1 + 6) / WATER_CELL_M); z++) wetCells.add(x + ',' + z);
+      for (let z = Math.floor((z0 - 6) / WATER_CELL_M); z <= Math.floor((z1 + 6) / WATER_CELL_M); z++)
+        wetCells.add(x + ',' + z);
   };
-  for (const lake of data.w) for (const ring of lake) {
-    const b = polygonBounds(ring);
-    markWet(b.x0, b.z0, b.x1, b.z1);
-  }
-  for (const w of data.ww) for (let i = 2; i < w.p.length; i += 2) markWet(Math.min(w.p[i - 2], w.p[i]), Math.min(w.p[i - 1], w.p[i + 1]), Math.max(w.p[i - 2], w.p[i]), Math.max(w.p[i - 1], w.p[i + 1]));
-  const inWater = (x: number, z: number) => !!water && wetCells.has(Math.floor(x / WATER_CELL_M) + ',' + Math.floor(z / WATER_CELL_M)) && water.inWater(x, z);
+  for (const lake of data.w)
+    for (const ring of lake) {
+      const b = polygonBounds(ring);
+      markWet(b.x0, b.z0, b.x1, b.z1);
+    }
+  for (const w of data.ww)
+    for (let i = 2; i < w.p.length; i += 2)
+      markWet(
+        Math.min(w.p[i - 2], w.p[i]),
+        Math.min(w.p[i - 1], w.p[i + 1]),
+        Math.max(w.p[i - 2], w.p[i]),
+        Math.max(w.p[i - 1], w.p[i + 1]),
+      );
+  const inWater = (x: number, z: number) =>
+    !!water && wetCells.has(Math.floor(x / WATER_CELL_M) + ',' + Math.floor(z / WATER_CELL_M)) && water.inWater(x, z);
 
   function buildingAt(x: number, z: number) {
     const list = buildings.grid.get(Math.floor(x / 40) + ',' + Math.floor(z / 40));
@@ -635,7 +741,8 @@ export function buildStreetscape(inp: StreetscapeInputs): StreetscapeLayout {
           if (x < b.x0 - reach || x > b.x1 + reach || z < b.z0 - reach || z > b.z1 + reach) continue;
           if (pointInPolygon(b.p, x, z)) return 0;
           const p = b.p;
-          for (let i = 0, j = p.length - 2; i < p.length; j = i, i += 2) best = Math.min(best, segmentDistance(x, z, p[j], p[j + 1], p[i], p[i + 1]));
+          for (let i = 0, j = p.length - 2; i < p.length; j = i, i += 2)
+            best = Math.min(best, segmentDistance(x, z, p[j], p[j + 1], p[i], p[i + 1]));
         }
       }
     }
@@ -658,29 +765,29 @@ export function buildStreetscape(inp: StreetscapeInputs): StreetscapeLayout {
   const endKey = (ri: number, side: number, s: number) => ri + ':' + side + ':' + Math.round(s * 100);
   const runs: { ri: number; side: -1 | 1; run: Station[]; rs: RoadSamples; L: number }[] = [];
 
-  lines.forEach((r, ri) => {
+  lines.forEach((_r, ri) => {
     const rs = samples[ri];
     if (!rs) return;
     const L = rs.s[rs.s.length - 1];
     for (const side of [-1, 1] as const) {
       const sp = sideSpec(ri, side);
       if (sp.sidewalk !== 'present') continue;
-      const k = side < 0 ? 0 : 1;
-      const myCuts = cuts.filter((c) => c.ri === ri && c.side === side);
-      const myOpenings = openings.filter((o) => o.ri === ri && o.side === side);
+      const myCuts = cuts.filter(c => c.ri === ri && c.side === side);
+      const myOpenings = openings.filter(o => o.ri === ri && o.side === side);
       // stations: every sample, plus every cut edge and opening edge
       const at = new Set<number>(rs.s);
       for (const c of myCuts) for (const v of [c.s0, c.s1]) if (v > 0 && v < L) at.add(v);
       for (const o of myOpenings) {
-        for (const v of [o.s - o.half - OPENING_EASE_M, o.s - o.half, o.s + o.half, o.s + o.half + OPENING_EASE_M]) if (v > 0 && v < L) at.add(v);
+        for (const v of [o.s - o.half - OPENING_EASE_M, o.s - o.half, o.s + o.half, o.s + o.half + OPENING_EASE_M])
+          if (v > 0 && v < L) at.add(v);
       }
       const ss = [...at].sort((a, b) => a - b);
       const bay = bayDepth(ri, side);
       const sep = sp.separate;
-      const kept: (Station | null)[] = ss.map((s) => {
-        if (myCuts.some((c) => s > c.s0 + 1e-6 && s < c.s1 - 1e-6)) return null;
+      const kept: (Station | null)[] = ss.map(s => {
+        if (myCuts.some(c => s > c.s0 + 1e-6 && s < c.s1 - 1e-6)) return null;
         const [i, f] = locate(rs, s);
-        if (sep && sep[f < 0.5 ? i : i + 1]) return null;
+        if (sep?.[f < 0.5 ? i : i + 1]) return null;
         if (!(rs.ms[i] > 0) || !(rs.ms[Math.min(i + 1, rs.ms.length - 1)] > 0)) return null; // past the mitre limit: split
         let width = sp.widthM;
         const st: Station = { s, i, f, width, curb: sp.curbM, bay };
@@ -702,7 +809,12 @@ export function buildStreetscape(inp: StreetscapeInputs): StreetscapeLayout {
         if (!st) continue;
         for (const o of myOpenings) {
           const d = Math.abs(st.s - o.s) - o.half;
-          const h = d <= 0 ? LOWERED_CURB_M : d >= OPENING_EASE_M ? sp.curbM : LOWERED_CURB_M + ((sp.curbM - LOWERED_CURB_M) * d) / OPENING_EASE_M;
+          const h =
+            d <= 0
+              ? LOWERED_CURB_M
+              : d >= OPENING_EASE_M
+                ? sp.curbM
+                : LOWERED_CURB_M + ((sp.curbM - LOWERED_CURB_M) * d) / OPENING_EASE_M;
           st.curb = Math.min(st.curb, h);
         }
       }
@@ -734,7 +846,8 @@ export function buildStreetscape(inp: StreetscapeInputs): StreetscapeLayout {
     // a stub needs clear ground: no building, water or other road where it would stand
     const { inner, outer } = plan.stub;
     const blocked = [inner, outer, lerp2(inner, outer, 0.5)].some(
-      ([x, z]) => buildingAt(x, z) || inWater(x, z) || inOtherCarriageway(plan.b.ri, x, z) || inOtherCarriageway(plan.a.ri, x, z),
+      ([x, z]) =>
+        buildingAt(x, z) || inWater(x, z) || inOtherCarriageway(plan.b.ri, x, z) || inOtherCarriageway(plan.a.ri, x, z),
     );
     if (runEnds.has(a) && !blocked) cornerEnds.add(a);
     else plan.stub = null; // the strip ramps down on its own, as before
@@ -783,14 +896,24 @@ export function buildStreetscape(inp: StreetscapeInputs): StreetscapeLayout {
     if (ramp0 || ramp1) {
       // make sure there is a station RAMP_M in from each ramped end
       const extra: Station[] = [];
-      for (const [want, on] of [[s0 + RAMP_M, ramp0], [s1 - RAMP_M, ramp1]] as const) {
-        if (!on || want <= s0 || want >= s1 || run.some((st) => Math.abs(st.s - want) < 0.05)) continue;
-        const idx = run.findIndex((st) => st.s > want);
+      for (const [want, on] of [
+        [s0 + RAMP_M, ramp0],
+        [s1 - RAMP_M, ramp1],
+      ] as const) {
+        if (!on || want <= s0 || want >= s1 || run.some(st => Math.abs(st.s - want) < 0.05)) continue;
+        const idx = run.findIndex(st => st.s > want);
         const a = run[idx - 1];
         const b = run[idx];
         const t = (want - a.s) / (b.s - a.s);
         const [i, f] = locate(rs, want);
-        extra.push({ s: want, i, f, width: a.width + (b.width - a.width) * t, curb: a.curb + (b.curb - a.curb) * t, bay: a.bay });
+        extra.push({
+          s: want,
+          i,
+          f,
+          width: a.width + (b.width - a.width) * t,
+          curb: a.curb + (b.curb - a.curb) * t,
+          bay: a.bay,
+        });
       }
       run = [...run, ...extra].sort((a, b) => a.s - b.s);
       for (const st of run) {
@@ -801,7 +924,7 @@ export function buildStreetscape(inp: StreetscapeInputs): StreetscapeLayout {
     // street-side bays stop short of junctions, crossings and driveways
     for (const st of run) if (st.bay && bayBlocked(ri, side, st.s, rs)) st.bay = 0;
 
-    const pts = run.map((st) => {
+    const pts = run.map(st => {
       const [e, roadY] = edgeAt(rs, st, side);
       const y = (p: V2) => heightfield.heightAt(p[0], p[1]) + lift + st.curb;
       const bayP = st.bay ? crossPoint(rs, st, side, ri, st.bay) : e;
@@ -833,7 +956,8 @@ export function buildStreetscape(inp: StreetscapeInputs): StreetscapeLayout {
       // outward = away from the road along the cross-section, towards the road for the face
       const out = [b.n[0] + a.n[0], 0, b.n[1] + a.n[1]];
       const toward = [-out[0], 0, -out[2]];
-      if (a.bay || b.bay) quad(roadPatches[lines[ri].c], a.e, a.b0, b.b0, b.e, [0, 1, 0], Part.ROAD, src, Surface.ASPHALT, tone);
+      if (a.bay || b.bay)
+        quad(roadPatches[lines[ri].c], a.e, a.b0, b.b0, b.e, [0, 1, 0], Part.ROAD, src, Surface.ASPHALT, tone);
       quad(surface, a.b0, a.t0, b.t0, b.b0, toward, Part.CURB_FACE, src, surf, tone);
       quad(surface, a.t0, a.t1, b.t1, b.t0, [0, 1, 0], Part.CURB_TOP, src, surf, tone);
       if (sp.vergeM > 0) quad(surface, a.t1, a.t2, b.t2, b.t1, [0, 1, 0], Part.VERGE, src, Surface.GRASS, tone);
@@ -841,17 +965,25 @@ export function buildStreetscape(inp: StreetscapeInputs): StreetscapeLayout {
       quad(surface, a.t3, a.g3, b.g3, b.t3, out, Part.SKIRT, src, surf, tone);
     }
     // end caps, so a strip never shows an open edge
-    for (const [p, dirSign] of [[pts[0], -1], [pts[pts.length - 1], 1]] as const) {
+    for (const [p, dirSign] of [
+      [pts[0], -1],
+      [pts[pts.length - 1], 1],
+    ] as const) {
       const other = dirSign < 0 ? pts[1] : pts[pts.length - 2];
       const along = [p.e[0] - other.e[0], 0, p.e[2] - other.e[2]];
       const below = (q: number[]) => [q[0], Math.min(heightfield.heightAt(q[0], q[2]) - SKIRT_BELOW_M, q[1]), q[2]];
-      for (const [u, w] of [[p.t0, p.t1], [p.t1, p.t2], [p.t2, p.t3]] as const) {
+      for (const [u, w] of [
+        [p.t0, p.t1],
+        [p.t1, p.t2],
+        [p.t2, p.t3],
+      ] as const) {
         if (Math.hypot(u[0] - w[0], u[2] - w[2]) < 1e-6) continue;
         quad(surface, below(u), u, w, below(w), along, Part.SKIRT, src, surf, tone);
       }
     }
     // stall marks on a sidewalk that is parked on
-    if (sp.parking === StreetParking.ON_KERB || sp.parking === StreetParking.HALF_ON_KERB) bayTicks(ri, side, run, rs, sp.vergeM + CURB_TOP_M, sp.curbM);
+    if (sp.parking === StreetParking.ON_KERB || sp.parking === StreetParking.HALF_ON_KERB)
+      bayTicks(ri, side, run, rs, sp.vergeM + CURB_TOP_M, sp.curbM);
 
     const inner: number[] = [];
     const outer: number[] = [];
@@ -862,7 +994,10 @@ export function buildStreetscape(inp: StreetscapeInputs): StreetscapeLayout {
     const lengthM = s1 - s0;
     strips.push({ ri, side, source: sp.source, inner, outer, lengthM });
     sidewalkM[sp.source] += lengthM;
-    for (const [st, p] of [[run[0], pts[0]], [run[run.length - 1], pts[pts.length - 1]]] as const) {
+    for (const [st, p] of [
+      [run[0], pts[0]],
+      [run[run.length - 1], pts[pts.length - 1]],
+    ] as const) {
       ends.set(endKey(ri, side, st.s), { inner: p.inner, outer: p.out, curb: p.curb, innerY: p.innerY });
     }
   }
@@ -870,9 +1005,14 @@ export function buildStreetscape(inp: StreetscapeInputs): StreetscapeLayout {
   function bayBlocked(ri: number, side: -1 | 1, s: number, rs: RoadSamples) {
     const [i, f] = locate(rs, s);
     const c = lerp2(rs.q[i] as V2, rs.q[Math.min(i + 1, rs.q.length - 1)] as V2, f);
-    if (junctionPoints.some((p) => Math.hypot(p[0] - c[0], p[1] - c[1]) < BAY_CLEAR_JUNCTION_M)) return true;
-    if (crossingPoints.some((p) => Math.hypot(p[0] - c[0], p[1] - c[1]) < BAY_CLEAR_CROSSING_M)) return true;
-    return openings.some((o) => o.ri === ri && o.side === side && Math.abs(o.s - s) < o.half + (o.kind === 'crossing' ? BAY_CLEAR_CROSSING_M : BAY_CLEAR_DRIVEWAY_M));
+    if (junctionPoints.some(p => Math.hypot(p[0] - c[0], p[1] - c[1]) < BAY_CLEAR_JUNCTION_M)) return true;
+    if (crossingPoints.some(p => Math.hypot(p[0] - c[0], p[1] - c[1]) < BAY_CLEAR_CROSSING_M)) return true;
+    return openings.some(
+      o =>
+        o.ri === ri &&
+        o.side === side &&
+        Math.abs(o.s - s) < o.half + (o.kind === 'crossing' ? BAY_CLEAR_CROSSING_M : BAY_CLEAR_DRIVEWAY_M),
+    );
   }
 
   /** Painted bay lines: a long line `d0` out from the carriageway edge and a tick every bay length, outside blocked stretches. */
@@ -919,7 +1059,12 @@ export function buildStreetscape(inp: StreetscapeInputs): StreetscapeLayout {
     const stub = plan.stub;
     // a stub's end is lowered: the corner ramps down as it turns into the street without a sidewalk
     const eb = stub
-      ? { inner: stub.inner, outer: stub.outer, curb: LOWERED_CURB_M, innerY: heightfield.heightAt(stub.inner[0], stub.inner[1]) + plan.liftB }
+      ? {
+          inner: stub.inner,
+          outer: stub.outer,
+          curb: LOWERED_CURB_M,
+          innerY: heightfield.heightAt(stub.inner[0], stub.inner[1]) + plan.liftB,
+        }
       : ends.get(endKey(plan.b.ri, plan.b.side, plan.b.s));
     if (!ea || !eb || (stub && !cornerEnds.has(endKey(plan.a.ri, plan.a.side, plan.a.s)))) continue; // trimmed short of its corner: the strip keeps its ramped end
     const ka = plan.k;
@@ -932,9 +1077,12 @@ export function buildStreetscape(inp: StreetscapeInputs): StreetscapeLayout {
     const surf = sideSpec(plan.a.ri, plan.a.side).surface;
     const pts: { e: number[]; t0: number[]; t1: number[]; t3: number[]; g3: number[]; inner: V2; out: V2 }[] = [];
     // a stub keeps the full curb round the bend and ramps down over its last RAMP_M of curb line
-    const curve = Array.from({ length: CORNER_SEGMENTS + 1 }, (_, k) => bezier(ea.inner, ka, eb.inner, k / CORNER_SEGMENTS));
+    const curve = Array.from({ length: CORNER_SEGMENTS + 1 }, (_, k) =>
+      bezier(ea.inner, ka, eb.inner, k / CORNER_SEGMENTS),
+    );
     const toEnd = curve.map(() => 0);
-    for (let k = CORNER_SEGMENTS - 1; k >= 0; k--) toEnd[k] = toEnd[k + 1] + Math.hypot(curve[k + 1][0] - curve[k][0], curve[k + 1][1] - curve[k][1]);
+    for (let k = CORNER_SEGMENTS - 1; k >= 0; k--)
+      toEnd[k] = toEnd[k + 1] + Math.hypot(curve[k + 1][0] - curve[k][0], curve[k + 1][1] - curve[k][1]);
     for (let k = 0; k <= CORNER_SEGMENTS; k++) {
       const t = k / CORNER_SEGMENTS;
       const inner = curve[k];
@@ -944,7 +1092,8 @@ export function buildStreetscape(inp: StreetscapeInputs): StreetscapeLayout {
         : ea.curb + (eb.curb - ea.curb) * t;
       const lift = plan.liftA + (plan.liftB - plan.liftA) * t;
       // the ends sit exactly on the strips' end heights; in between, the same formula as the strips
-      const roadY = k === 0 ? ea.innerY : k === CORNER_SEGMENTS ? eb.innerY : heightfield.heightAt(inner[0], inner[1]) + lift;
+      const roadY =
+        k === 0 ? ea.innerY : k === CORNER_SEGMENTS ? eb.innerY : heightfield.heightAt(inner[0], inner[1]) + lift;
       const span = Math.hypot(out[0] - inner[0], out[1] - inner[1]) || 1;
       const p1 = lerp2(inner, out, Math.min(1, CURB_TOP_M / span));
       const y = (p: V2) => heightfield.heightAt(p[0], p[1]) + lift + curb;
@@ -963,7 +1112,11 @@ export function buildStreetscape(inp: StreetscapeInputs): StreetscapeLayout {
     for (let k = 1; k < pts.length; k++) {
       const a = pts[k - 1];
       const b = pts[k];
-      const out: number[] = [b.out[0] + a.out[0] - b.inner[0] - a.inner[0], 0, b.out[1] + a.out[1] - b.inner[1] - a.inner[1]];
+      const out: number[] = [
+        b.out[0] + a.out[0] - b.inner[0] - a.inner[0],
+        0,
+        b.out[1] + a.out[1] - b.inner[1] - a.inner[1],
+      ];
       quad(surface, a.e, a.t0, b.t0, b.e, [-out[0], 0, -out[2]], Part.CURB_FACE, src, surf, 0);
       quad(surface, a.t0, a.t1, b.t1, b.t0, [0, 1, 0], Part.CURB_TOP, src, surf, 0);
       quad(surface, a.t1, a.t3, b.t3, b.t1, [0, 1, 0], Part.SIDEWALK, src, surf, 0);
@@ -994,8 +1147,9 @@ export function buildStreetscape(inp: StreetscapeInputs): StreetscapeLayout {
     const hard = !a.sf || a.sf === Surface.ASPHALT || a.sf === Surface.PAVING || a.sf === Surface.CONCRETE;
     const lift = roadLiftM(RoadClass.SERVICE) + MARKING_LIFT_M;
     const stalls: number[] = [];
-    const inside = (x: number, z: number) => pointInPolygon(a.p, x, z) && !(a.h ?? []).some((h) => pointInPolygon(h, x, z));
-    const spaces = (data.ps ?? []).filter((s) => {
+    const inside = (x: number, z: number) =>
+      pointInPolygon(a.p, x, z) && !(a.h ?? []).some(h => pointInPolygon(h, x, z));
+    const spaces = (data.ps ?? []).filter(s => {
       let cx = 0;
       let cz = 0;
       for (let i = 0; i < s.p.length; i += 2) {
@@ -1033,7 +1187,18 @@ export function buildStreetscape(inp: StreetscapeInputs): StreetscapeLayout {
     const l = Math.hypot(d[0], d[1]) || 1;
     const n: V2 = [(-d[1] / l) * (MARKING_LINE_M / 2), (d[0] / l) * (MARKING_LINE_M / 2)];
     const y = (p: V2) => [p[0], heightfield.heightAt(p[0], p[1]) + lift, p[1]];
-    quad(lotMarkings, y([a[0] - n[0], a[1] - n[1]]), y([a[0] + n[0], a[1] + n[1]]), y([b[0] + n[0], b[1] + n[1]]), y([b[0] - n[0], b[1] - n[1]]), [0, 1, 0], Part.MARKING, 0, Surface.UNKNOWN, 0);
+    quad(
+      lotMarkings,
+      y([a[0] - n[0], a[1] - n[1]]),
+      y([a[0] + n[0], a[1] + n[1]]),
+      y([b[0] + n[0], b[1] + n[1]]),
+      y([b[0] - n[0], b[1] - n[1]]),
+      [0, 1, 0],
+      Part.MARKING,
+      0,
+      Surface.UNKNOWN,
+      0,
+    );
   }
   function outlineMarks(p: number[], lift: number) {
     for (let i = 0, j = p.length - 2; i < p.length; j = i, i += 2) lineMark([p[j], p[j + 1]], [p[i], p[i + 1]], lift);
@@ -1073,7 +1238,8 @@ export function buildStreetscape(inp: StreetscapeInputs): StreetscapeLayout {
     const edgeDistance = (x: number, z: number) => {
       let d = Infinity;
       for (const ring of [p, ...(data.pa![ai].h ?? [])])
-        for (let i = 0, j = ring.length - 2; i < ring.length; j = i, i += 2) d = Math.min(d, segmentDistance(x, z, ring[j], ring[j + 1], ring[i], ring[i + 1]));
+        for (let i = 0, j = ring.length - 2; i < ring.length; j = i, i += 2)
+          d = Math.min(d, segmentDistance(x, z, ring[j], ring[j + 1], ring[i], ring[i + 1]));
       return d;
     };
     const nearRoad = (x: number, z: number) => {
@@ -1081,7 +1247,11 @@ export function buildStreetscape(inp: StreetscapeInputs): StreetscapeLayout {
       for (let i = 0; i < list.length; i += 5) {
         const ri = list[i + 4];
         if (!isCarriageway(lines[ri].c, data.r[ri].s)) continue;
-        if (segmentDistance(x, z, list[i], list[i + 1], list[i + 2], list[i + 3]) - ROAD_WIDTH_M[lines[ri].c] / 2 < LOT_ENTRY_CLEAR_M) return true;
+        if (
+          segmentDistance(x, z, list[i], list[i + 1], list[i + 2], list[i + 3]) - ROAD_WIDTH_M[lines[ri].c] / 2 <
+          LOT_ENTRY_CLEAR_M
+        )
+          return true;
       }
       return false;
     };
@@ -1097,7 +1267,8 @@ export function buildStreetscape(inp: StreetscapeInputs): StreetscapeLayout {
             [u + STALL_W_M, row + STALL_L_M],
             [u, row + STALL_L_M],
           ].map(([a, b]): V2 => [a * ux + b * vx, a * uz + b * vz]);
-          if (c.every(([x, z]) => inside(x, z) && edgeDistance(x, z) >= LOT_INSET_M - 1e-6 && !nearRoad(x, z))) for (const [x, z] of c) out.push(x, z);
+          if (c.every(([x, z]) => inside(x, z) && edgeDistance(x, z) >= LOT_INSET_M - 1e-6 && !nearRoad(x, z)))
+            for (const [x, z] of c) out.push(x, z);
         }
       }
     }
@@ -1125,11 +1296,16 @@ export function buildStreetscape(inp: StreetscapeInputs): StreetscapeLayout {
       const [i, f] = locate(rs, s);
       const [x, z] = crossPoint(rs, { i, f }, strip.side, strip.ri, CURB_TOP_M + sp.vergeM / 2);
       const ok =
-        !junctionPoints.some((p) => Math.hypot(p[0] - x, p[1] - z) < TREE_CLEAR_JUNCTION_M) &&
-        !crossingPoints.some((p) => Math.hypot(p[0] - x, p[1] - z) < TREE_CLEAR_JUNCTION_M) &&
-        !openings.some((o) => o.ri === strip.ri && o.side === strip.side && Math.abs(o.s - s) < o.half + (o.kind === 'crossing' ? TREE_CLEAR_JUNCTION_M : TREE_CLEAR_DRIVEWAY_M)) &&
+        !junctionPoints.some(p => Math.hypot(p[0] - x, p[1] - z) < TREE_CLEAR_JUNCTION_M) &&
+        !crossingPoints.some(p => Math.hypot(p[0] - x, p[1] - z) < TREE_CLEAR_JUNCTION_M) &&
+        !openings.some(
+          o =>
+            o.ri === strip.ri &&
+            o.side === strip.side &&
+            Math.abs(o.s - s) < o.half + (o.kind === 'crossing' ? TREE_CLEAR_JUNCTION_M : TREE_CLEAR_DRIVEWAY_M),
+        ) &&
         buildingDistance(x, z, TREE_CLEAR_BUILDING_M) >= TREE_CLEAR_BUILDING_M &&
-        !trees.some((t) => Math.hypot(t.x - x, t.z - z) < TREE_CLEAR_TREE_M) &&
+        !trees.some(t => Math.hypot(t.x - x, t.z - z) < TREE_CLEAR_TREE_M) &&
         !nearAvoided(x, z) &&
         !otherRoadWithin(strip.ri, x, z, clearRoad) &&
         surfaceIn(strip, x, z);
@@ -1138,7 +1314,9 @@ export function buildStreetscape(inp: StreetscapeInputs): StreetscapeLayout {
     }
   }
   function nearAvoided(x: number, z: number) {
-    for (let i = 0; i < avoid.length; i += 2) if (Math.abs(avoid[i] - x) < TREE_CLEAR_TREE_M && Math.hypot(avoid[i] - x, avoid[i + 1] - z) < TREE_CLEAR_TREE_M) return true;
+    for (let i = 0; i < avoid.length; i += 2)
+      if (Math.abs(avoid[i] - x) < TREE_CLEAR_TREE_M && Math.hypot(avoid[i] - x, avoid[i + 1] - z) < TREE_CLEAR_TREE_M)
+        return true;
     return false;
   }
   function otherRoadWithin(ri: number, x: number, z: number, reach: number) {
@@ -1146,7 +1324,8 @@ export function buildStreetscape(inp: StreetscapeInputs): StreetscapeLayout {
     for (let i = 0; i < list.length; i += 5) {
       const rj = list[i + 4];
       if (rj === ri || !isCarriageway(lines[rj].c, data.r[rj].s)) continue;
-      if (segmentDistance(x, z, list[i], list[i + 1], list[i + 2], list[i + 3]) - ROAD_WIDTH_M[lines[rj].c] / 2 < reach) return true;
+      if (segmentDistance(x, z, list[i], list[i + 1], list[i + 2], list[i + 3]) - ROAD_WIDTH_M[lines[rj].c] / 2 < reach)
+        return true;
     }
     return false;
   }
@@ -1157,7 +1336,20 @@ export function buildStreetscape(inp: StreetscapeInputs): StreetscapeLayout {
     return pointInPolygon(ring, x, z);
   }
 
-  return { sides, strips, corners, openings, surface, roadPatches, markings, lots, lotMarkings, crossings: crossingCount, trees, sidewalkM };
+  return {
+    sides,
+    strips,
+    corners,
+    openings,
+    surface,
+    roadPatches,
+    markings,
+    lots,
+    lotMarkings,
+    crossings: crossingCount,
+    trees,
+    sidewalkM,
+  };
 }
 
 /** arc length of the sample nearest (x, z) */
@@ -1178,7 +1370,10 @@ function nearestS(rs: RoadSamples, x: number, z: number) {
 }
 
 /** Distance from the centre line of a road of class c to the middle of its sidewalk on a side (m), or null without one. */
-export function sidewalkCentreM(spec: Pick<SideSpec, 'sidewalk' | 'vergeM' | 'widthM' | 'parking' | 'orientation'>, c: RoadClass) {
+export function sidewalkCentreM(
+  spec: Pick<SideSpec, 'sidewalk' | 'vergeM' | 'widthM' | 'parking' | 'orientation'>,
+  c: RoadClass,
+) {
   if (spec.sidewalk !== 'present') return null;
   const bay = spec.parking === StreetParking.STREET_SIDE ? BAY_DEPTH_M[spec.orientation] : 0;
   return ROAD_WIDTH_M[c] / 2 + bay + CURB_TOP_M + spec.vergeM + spec.widthM / 2;
@@ -1210,7 +1405,7 @@ export function cutToTerrain(tris: readonly number[], grid: GridLike): number[] 
       const dp = a * p[0] + b * p[1] + c;
       const dq = a * q[0] + b * q[1] + c;
       if (dp >= 0) res.push(p);
-      if ((dp >= 0) !== (dq >= 0)) {
+      if (dp >= 0 !== dq >= 0) {
         const t = dp / (dp - dq);
         res.push([p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t]);
       }
@@ -1218,7 +1413,7 @@ export function cutToTerrain(tris: readonly number[], grid: GridLike): number[] 
     return res;
   };
   for (let t = 0; t < tris.length; t += 6) {
-    const uv = [0, 2, 4].map((k) => [(tris[t + k] - x0) / cell, (tris[t + k + 1] - x0) / cell]);
+    const uv = [0, 2, 4].map(k => [(tris[t + k] - x0) / cell, (tris[t + k + 1] - x0) / cell]);
     const i0 = Math.max(0, Math.floor(Math.min(uv[0][0], uv[1][0], uv[2][0])));
     const i1 = Math.min(n - 2, Math.floor(Math.max(uv[0][0], uv[1][0], uv[2][0])));
     const j0 = Math.max(0, Math.floor(Math.min(uv[0][1], uv[1][1], uv[2][1])));
@@ -1259,7 +1454,11 @@ export class StreetscapeIndex {
   private readonly heightfield: Pick<Heightfield, 'heightAt'>;
   private readonly lotLift = roadLiftM(RoadClass.SERVICE);
 
-  constructor(layout: Pick<StreetscapeLayout, 'surface'>, data: Pick<WorldData, 'pa'>, heightfield: Pick<Heightfield, 'heightAt'>) {
+  constructor(
+    layout: Pick<StreetscapeLayout, 'surface'>,
+    data: Pick<WorldData, 'pa'>,
+    heightfield: Pick<Heightfield, 'heightAt'>,
+  ) {
     this.heightfield = heightfield;
     const { pos, part } = layout.surface;
     for (let t = 0; t < part.length; t++) {
@@ -1275,7 +1474,10 @@ export class StreetscapeIndex {
         for (let z = z0; z <= z1; z++) {
           const k = cellOf(x, z);
           let list = this.grid.get(k);
-          if (!list) this.grid.set(k, (list = []));
+          if (!list) {
+            list = [];
+            this.grid.set(k, list);
+          }
           list.push(index);
         }
       }
@@ -1308,7 +1510,15 @@ export class StreetscapeIndex {
       }
     }
     for (const l of this.lots) {
-      if (x < l.x0 || x > l.x1 || z < l.z0 || z > l.z1 || !pointInPolygon(l.p, x, z) || l.h.some((h) => pointInPolygon(h, x, z))) continue;
+      if (
+        x < l.x0 ||
+        x > l.x1 ||
+        z < l.z0 ||
+        z > l.z1 ||
+        !pointInPolygon(l.p, x, z) ||
+        l.h.some(h => pointInPolygon(h, x, z))
+      )
+        continue;
       const y = this.heightfield.heightAt(x, z) + this.lotLift;
       if (best === null || y > best) best = y;
     }

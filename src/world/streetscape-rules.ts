@@ -4,9 +4,9 @@
 import {
   LandUse,
   ParkingOrientation,
+  ROAD_WIDTH_M,
   RoadClass,
   RoadUse,
-  ROAD_WIDTH_M,
   SideState,
   StreetParking,
   Surface,
@@ -27,12 +27,12 @@ export type Profile = 'centre' | 'residential' | 'outskirts';
 export const SIDEWALK_CENTRE_M = 2.0;
 export const SIDEWALK_RESIDENTIAL_M = 1.5;
 /** curb height by profile (m); a mapped sidewalk in the outskirts takes the residential curb */
-export const CURB_CENTRE_M = 0.12;
+const CURB_CENTRE_M = 0.12;
 export const CURB_RESIDENTIAL_M = 0.1;
 /** grass strip between curb and sidewalk on the residential streets that get one (m) */
 export const VERGE_M = 0.8;
 /** share of residential streets with a verge, chosen per way by hash */
-export const VERGE_SHARE = 0.4;
+const VERGE_SHARE = 0.4;
 
 /** the centre: within this of the Torget label (m) */
 const CENTRE_RADIUS_M = 300;
@@ -110,7 +110,8 @@ function midpoint(p: readonly Point[]): Point {
   let left = polylineLength(p) / 2;
   for (let i = 1; i < p.length; i++) {
     const d = Math.hypot(p[i][0] - p[i - 1][0], p[i][1] - p[i - 1][1]);
-    if (left <= d && d > 0) return [p[i - 1][0] + ((p[i][0] - p[i - 1][0]) * left) / d, p[i - 1][1] + ((p[i][1] - p[i - 1][1]) * left) / d];
+    if (left <= d && d > 0)
+      return [p[i - 1][0] + ((p[i][0] - p[i - 1][0]) * left) / d, p[i - 1][1] + ((p[i][1] - p[i - 1][1]) * left) / d];
     left -= d;
   }
   return p[p.length - 1];
@@ -186,7 +187,10 @@ function centreGrid(centres: readonly Point[]) {
   for (const c of centres) {
     const k = Math.floor(c[0] / FRONTAGE_REACH_M) + ',' + Math.floor(c[1] / FRONTAGE_REACH_M);
     let list = grid.get(k);
-    if (!list) grid.set(k, (list = []));
+    if (!list) {
+      list = [];
+      grid.set(k, list);
+    }
     list.push(c);
   }
   return grid;
@@ -208,10 +212,25 @@ function frontage(road: RoadLine, grid: Map<string, Point[]>) {
   let left = 0;
   let right = 0;
   const centres: Point[] = [];
-  for (let gx = Math.floor((x0 - FRONTAGE_REACH_M) / FRONTAGE_REACH_M); gx <= Math.floor((x1 + FRONTAGE_REACH_M) / FRONTAGE_REACH_M); gx++)
-    for (let gz = Math.floor((z0 - FRONTAGE_REACH_M) / FRONTAGE_REACH_M); gz <= Math.floor((z1 + FRONTAGE_REACH_M) / FRONTAGE_REACH_M); gz++) centres.push(...(grid.get(gx + ',' + gz) ?? []));
+  for (
+    let gx = Math.floor((x0 - FRONTAGE_REACH_M) / FRONTAGE_REACH_M);
+    gx <= Math.floor((x1 + FRONTAGE_REACH_M) / FRONTAGE_REACH_M);
+    gx++
+  )
+    for (
+      let gz = Math.floor((z0 - FRONTAGE_REACH_M) / FRONTAGE_REACH_M);
+      gz <= Math.floor((z1 + FRONTAGE_REACH_M) / FRONTAGE_REACH_M);
+      gz++
+    )
+      centres.push(...(grid.get(gx + ',' + gz) ?? []));
   for (const [x, z] of centres) {
-    if (x < x0 - FRONTAGE_REACH_M || x > x1 + FRONTAGE_REACH_M || z < z0 - FRONTAGE_REACH_M || z > z1 + FRONTAGE_REACH_M) continue;
+    if (
+      x < x0 - FRONTAGE_REACH_M ||
+      x > x1 + FRONTAGE_REACH_M ||
+      z < z0 - FRONTAGE_REACH_M ||
+      z > z1 + FRONTAGE_REACH_M
+    )
+      continue;
     const { d, side } = sideOf(road.p, x, z);
     if (d > FRONTAGE_REACH_M) continue;
     near++;
@@ -224,9 +243,10 @@ function frontage(road: RoadLine, grid: Map<string, Point[]>) {
 }
 
 function profileOf(data: WorldData, road: RoadLine, density: number): Profile {
-  const torget = data.labels.find((l) => l.t === 'Torget');
+  const torget = data.labels.find(l => l.t === 'Torget');
   const [mx, mz] = midpoint(road.p);
-  if (torget && Math.hypot(mx - torget.x, mz - torget.z) <= CENTRE_RADIUS_M && density >= CENTRE_DENSITY) return 'centre';
+  if (torget && Math.hypot(mx - torget.x, mz - torget.z) <= CENTRE_RADIUS_M && density >= CENTRE_DENSITY)
+    return 'centre';
   if (density >= RESIDENTIAL_DENSITY) return 'residential';
   for (const l of data.l) if (l.k === LandUse.RESIDENTIAL && pointInPolygon(l.p, mx, mz)) return 'residential';
   return 'outskirts';
@@ -237,7 +257,13 @@ const defaultCurb = (profile: Profile) => (profile === 'centre' ? CURB_CENTRE_M 
 const defaultSurface = (profile: Profile) => (profile === 'centre' ? Surface.PAVING : Surface.ASPHALT);
 
 /** A side with a sidewalk, from explicit or inferred evidence. */
-function present(profile: Profile, widthM: number, surface: Surface, source: Source, verge: boolean): Partial<SideSpec> {
+function present(
+  profile: Profile,
+  widthM: number,
+  surface: Surface,
+  source: Source,
+  verge: boolean,
+): Partial<SideSpec> {
   return {
     sidewalk: 'present',
     widthM: widthM || defaultWidth(profile),
@@ -285,7 +311,8 @@ export function classifyStreetscape(
       if (o) {
         // a cited survey is as good as a mapped tag; anything else stays derived
         const source: Source = /survey/i.test(override!.note) ? 'mapped' : 'derived';
-        if (o === 'present') Object.assign(side, present(profile, override!.sidewalkWidthM ?? 0, Surface.UNKNOWN, source, verge));
+        if (o === 'present')
+          Object.assign(side, present(profile, override!.sidewalkWidthM ?? 0, Surface.UNKNOWN, source, verge));
         else Object.assign(side, { sidewalk: o, source });
       } else if (state === SideState.PRESENT) {
         // a mapped width makes it mapped; a bare sidewalk=yes|both|left|right leaves the geometry to the defaults
@@ -299,21 +326,25 @@ export function classifyStreetscape(
     sides.forEach((side, k) => {
       if (override?.sidewalk?.[k ? 'right' : 'left'] || (r.sw?.[k] ?? SideState.UNKNOWN) !== SideState.UNKNOWN) return;
       side.separate = separateCover(road, sidewalks, k ? 1 : -1);
-      if (side.separate && side.separate.every(Boolean)) Object.assign(side, { sidewalk: 'separate', source: 'derived' });
+      if (side.separate?.every(Boolean)) Object.assign(side, { sidewalk: 'separate', source: 'derived' });
     });
 
     // inference: streets only, built-up only, sides OSM said nothing about
-    const unknown = (k: number) => !override?.sidewalk?.[k ? 'right' : 'left'] && (r.sw?.[k] ?? SideState.UNKNOWN) === SideState.UNKNOWN && sides[k].sidewalk !== 'separate';
+    const unknown = (k: number) =>
+      !override?.sidewalk?.[k ? 'right' : 'left'] &&
+      (r.sw?.[k] ?? SideState.UNKNOWN) === SideState.UNKNOWN &&
+      sides[k].sidewalk !== 'separate';
     if (road.c <= RoadClass.STREET && use === RoadUse.NONE && profile !== 'outskirts') {
       if (profile === 'centre') {
-        for (const k of [0, 1]) if (unknown(k)) Object.assign(sides[k], present(profile, 0, Surface.UNKNOWN, 'inferred', false));
+        for (const k of [0, 1])
+          if (unknown(k)) Object.assign(sides[k], present(profile, 0, Surface.UNKNOWN, 'inferred', false));
       } else {
         // one side: the one with more houses on it; a tie goes by the way's hash
         const k = f.left === f.right ? (hash01(key, 'side') < 0.5 ? 0 : 1) : f.left > f.right ? 0 : 1;
         if (unknown(k)) Object.assign(sides[k], present(profile, 0, Surface.UNKNOWN, 'inferred', verge));
       }
     }
-    out.streetTrees = profile === 'residential' && sides.some((s) => s.vergeM >= VERGE_M);
+    out.streetTrees = profile === 'residential' && sides.some(s => s.vergeM >= VERGE_M);
     return out;
   });
 }

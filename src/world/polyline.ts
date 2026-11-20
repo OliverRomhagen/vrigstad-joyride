@@ -23,7 +23,7 @@ export function resample(points: readonly Point[], stepM = STEP_M): Point[] {
  * The unit tangent at sample i, from its two neighbours (one at the ends), written into `out`. A zero-length span
  * gives (0, 0), as RoadRibbons always did.
  */
-export function tangentAt(q: readonly Point[], i: number, out: [number, number] = [0, 0]) {
+function tangentAt(q: readonly Point[], i: number, out: [number, number] = [0, 0]) {
   const a = q[Math.max(0, i - 1)];
   const b = q[Math.min(q.length - 1, i + 1)];
   let dx = b[0] - a[0];
