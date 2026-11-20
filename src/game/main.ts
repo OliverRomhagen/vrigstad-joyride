@@ -30,7 +30,7 @@ import { classifyStreetscape } from '../world/streetscape-rules';
 import { LEGACY_LIGHT } from '../world/three-legacy';
 import { treeSpots } from '../world/trees';
 import { Water } from '../world/water';
-import { Fleet, TURBO_AT } from './cars';
+import { Fleet, newCar, TURBO_AT } from './cars';
 import { CatColony } from './cats';
 import { Hud } from './hud';
 import { Input } from './input';
@@ -42,6 +42,7 @@ import { CAT_SCRATCH_HP, LOW_HP, CRASH_COOL_S, crashCars, crashDamage, driverHur
 import { carInReach, HOME, hop, ride, standAt, stepOut, tooFastToGetOut, walk } from './player';
 import { Wanted } from './police';
 import { PlaceMeshes } from './render/places';
+import { specFor } from './sim/vehicle-spec';
 import { newGameState, newViewState } from './state';
 import { Trisslott } from './trisslott';
 
@@ -374,8 +375,14 @@ function personParts(shirt, pants, hair, arms) {     // arms: separate meshes th
 // the getters are read when they are used, so they can name things declared further down
 const bodyMotion = new BodyMotion();
 const vehicleVisuals = new VehicleVisuals(coarse, (c, body) => bodyMotion.addNode(c, body));
-const carMeshes = new CarMeshes({ scene, groundAt, normalAt, pick, carGeo, carMat, blob, barGeo, barMat, vehicleVisuals, bodyMotion, get cars() { return cars; } });
-const addCar = carMeshes.addCar.bind(carMeshes), placeCar = carMeshes.placeCar.bind(carMeshes), removeCar = carMeshes.removeCar.bind(carMeshes);
+const carMeshes = new CarMeshes({ scene, groundAt, normalAt, carGeo, carMat, blob, barGeo, barMat, vehicleVisuals, bodyMotion });
+const placeCar = carMeshes.placeCar.bind(carMeshes);
+// the car gets its meshes, then the Fleet holds it, so a car in the list always has them; the rolls keep their order: the model (its own stream), then the colour (rnd)
+function addCar(type, x, z, h, mode, assetId = carMeshes.pickModel(type)) {
+  const T = specFor(type, vehicleDefinition(assetId ?? null));
+  return fleet.add(carMeshes.attach(newCar(type, x, z, h, mode, T, pick(T.cols)), assetId));
+}
+function removeCar(c) { carMeshes.detach(c); fleet.remove(c); }
 const fleet = new Fleet({ roads, buildings, water, half: HALF, rnd, pick, addCar, placeCar, crash,
   canPark: (x, z) => streetIndex.surfaceAt(x, z) === null,   // streetIndex is built before parkCars runs
   rammed: c => { if (c === game.pcar && game.ramCool <= 0) { game.ramCool = 6; wanted.addStar('Ramming a police car. That will not help.'); } },
