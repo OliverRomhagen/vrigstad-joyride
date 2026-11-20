@@ -28,8 +28,8 @@ const FLICK_LOOSE = 0.5,
 const FLICK_LOAD_S = 0.3; // s the first direction must be held to load the car up: shorter taps are corrections, not a flick
 const FLICK_SPIN = 1.5; // rad/s the rear's swing adds to the new direction at full looseness, on top of the steering
 const CATCH = 0.8; // share of the grip that swings the nose back to the path, not the path to the nose, at full opposite lock
-export const TURBO_AT = [1, 2.2];
-const TURBO_S = [0.7, 1.3]; // s of sliding for a blue / an orange spark; how long each boost lasts (s)
+export const TURBO_AT = [1, 2.2] as const; // s of sliding for a blue / an orange spark
+const TURBO_S = [0.7, 1.3]; // s each of those boosts lasts
 const TURBO_ACC = 14,
   TURBO_TOP = 1.2; // m/s² of boost; top speed multiplier while boosting
 const _pivot = { dx: 0, dz: 0 }; // rearPivotShift writes here: no allocation per car per frame
@@ -79,18 +79,21 @@ export interface TrafficCar extends Car, OnRoad {
   first: boolean;
 }
 
-/** What the cars read from the rest of the game. The getters are read when used, so main.ts can declare those later. */
+/**
+ * What the cars read from the rest of the game. The getters are read when used, so main.ts can declare those later.
+ * The callbacks are function properties, not methods: the Fleet calls them detached, without `this`.
+ */
 export interface FleetDeps {
   roads: Pick<RoadNetwork, 'lines' | 'junctions' | 'driveable' | 'nearestRoad'>;
   buildings: Pick<BuildingIndex, 'collide'>;
   water: Pick<Water, 'inWater'>;
   half: number; // half the map's side (m)
-  rnd(): number; // the game's seeded stream, so the rolls stay in the order they were
-  pick<T>(a: readonly T[]): T;
-  addCar(type: CarType, x: number, z: number, h: number, mode: CarMode): Car; // makes the car's meshes and adds it to `cars`
-  placeCar(c: Car): void; // puts the car's meshes where the car is
-  crash(c: Car, o: Car | null, impact: number): void; // c hit o, or a wall, at `impact` m/s: the damage, and what you hear and feel
-  rammed(c: Car, o: Car): void; // c hit police car o at speed
+  rnd: () => number; // the game's seeded stream, so the rolls stay in the order they were
+  pick: <T>(a: readonly T[]) => T;
+  addCar: (type: CarType, x: number, z: number, h: number, mode: CarMode) => Car; // makes the car's meshes and adds it to `cars`
+  placeCar: (c: Car) => void; // puts the car's meshes where the car is
+  crash: (c: Car, o: Car | null, impact: number) => void; // c hit o, or a wall, at `impact` m/s: the damage, and what you hear and feel
+  rammed: (c: Car, o: Car) => void; // c hit police car o at speed
   readonly player: Point;
   readonly inCar: boolean;
 }
@@ -183,21 +186,13 @@ export class Fleet {
         a = Math.floor(rnd() * (r.p.length - 1)),
         p = r.p[a];
       if (farFrom && Math.hypot(p[0] - farFrom.x, p[1] - farFrom.z) < 260) continue;
-      const type = rnd() < 0.5 ? 'volvo' : rnd() < 0.7 ? 'saab' : 'epa',
-        c = this.g.addCar(type, p[0], p[1], 0, 'ai') as TrafficCar;
-      c.ri = ri;
-      c.a = a;
-      c.dir = 1;
-      c.t = 0;
-      c.first = true;
-      return c;
+      const type = rnd() < 0.5 ? 'volvo' : rnd() < 0.7 ? 'saab' : 'epa';
+      return Object.assign(this.g.addCar(type, p[0], p[1], 0, 'ai'), { ri, a, dir: 1, t: 0, first: true });
     }
   }
   updateTraffic(c: TrafficCar, dt: number) {
     const {
         roads: { lines: R },
-        player,
-        inCar,
       } = this.g,
       cars = this.cars;
     const r = R[c.ri];
@@ -219,8 +214,9 @@ export class Fleet {
           break;
         }
       }
-      if (!blocked && !inCar) {
-        const dx = player.x - c.x,
+      if (!blocked && !this.g.inCar) {
+        const { player } = this.g, // getters: read only when this car can see the player
+          dx = player.x - c.x,
           dz = player.z - c.z,
           fw = dx * fx + dz * fz;
         if (fw > 0 && fw < 9 && Math.abs(-dx * fz + dz * fx) < 1.8) blocked = true;
