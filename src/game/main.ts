@@ -525,8 +525,8 @@ function crash(c, o, impact) {
 // what you say about a crash (#213 moves these into a speech bubble over you); picked from their own random stream, so they don't shift the world's rolls
 const lineRnd = makeRnd(213), pickLine = a => a[Math.floor(lineRnd() * a.length)];
 const CRASH_LINE_S = 6;                        // at most one "that hurt" line this often (s)
-const CRASH_LINES = ['”AJ! Dä där kändes i nacken.”', '”Hoppsan. Dä där va inte meningen.”', '”Va fan, vem satte dit den där?!”', '”Oj oj, nu blev hon lite fördärvad.”'];
-const WRECK_LINES = ['”Nä, nu ä den kaputt.”', '”Dä va dä, den bilen.”', '”Den rullar inte mer, den.”', '”Ajaj, nu ä denna bilen fördärvad.”', '”Nu ä hon fördärvad, hela bilen.”'];
+const CRASH_LINES = ['”AJ! Dä där kändes i nacken.”', '”Hoppsan. Dä där va inte meningen.”', '”Va fan, vem satte dit den där?!”', '”Oj oj, nu blev ho lite fördärvad.”'];
+const WRECK_LINES = ['”Nä, nu ä den kaputt.”', '”Dä va dä, den bilen.”', '”Den rullar inte mer, den.”', '”Ajaj, nu ä denna bilen fördärvad.”', '”Nu ä ho fördärvad, hela bilen.”'];
 const POLICE_WRECK_LINES = ['”Hoppsan, nu ä länsmans bil fördärvad.”', '”Dä där fick snuten inte betalt för.”'];
 const WANTED_LINES = ['”Oj, nu ä länsman efter mä!”', '”Ajaj, nu kommer snuten.”', '”Fan, nu ä snuten på mä.”', '”Nu blir dä bråk mä länsman, dä.”'];   // yours, on a new star
 const SMOKE_LINES = [null, '”Hörru, dä ryker ur motorn!”', '”Svart rök… dä ä inte bra, dä.”'];   // by smokeLevel
