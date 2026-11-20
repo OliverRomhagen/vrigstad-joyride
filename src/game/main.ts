@@ -591,7 +591,7 @@ const driftFx = new DriftFx({ scene, groundAt, profiles: PROFILES, turboAt: TURB
 // ---------- pedestrians: walk the streets and footpaths, now and then stop for a while (src/game/pedestrians.ts) ----------
 // the getters are read when the pedestrians use them, so they can name things declared further down
 const crowd = new Crowd({ scene, roads, buildings, labels: D.labels, groundAt, coarse, wrap, rnd, pick, personParts, advance, cars,
-  get player() { return player; }, get inCar() { return inCar; } });
+  get player() { return player; }, get inCar() { return inCar; }, get pcar() { return pcar; }, toast, hurtPlayer: n => { hurtPlayer(n); shake(n); } });
 const updateNpcs = crowd.update.bind(crowd);
 
 // ---------- cats: lounge by the house walls, wander a little, bolt from cars and running feet (src/game/cats.ts) ----------
