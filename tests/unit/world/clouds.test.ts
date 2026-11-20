@@ -124,6 +124,24 @@ describe('sunCover', () => {
     }
   });
 
+  it('reads the field with the octaves of the quality the sky draws', () => {
+    const covers = (quality: CloudConfig['quality']) => {
+      const out: number[] = [];
+      for (let t = 0; t < 2000; t += 10)
+        out.push(sunCover(cfg({ cover: 'partly', quality }), 0, 20, 0, -0.5, 0.75, 0.4, t));
+      return out;
+    };
+    expect(covers('low')).not.toEqual(covers('high'));
+  });
+
+  it('gives the same cover with the wind and seed offsets passed in', () => {
+    const c = cfg({ cover: 'mostly' });
+    for (let t = 0; t < 200; t += 7) {
+      const passed = sunCover(c, 5, 20, -3, 0.2, 0.8, -0.3, t, windOffset(c, t), seedOffset(c.seed));
+      expect(passed).toBe(sunCover(c, 5, 20, -3, 0.2, 0.8, -0.3, t));
+    }
+  });
+
   it('covers the sun more often under a cloudier sky', () => {
     const often = (cover: CloudConfig['cover']) => {
       let n = 0;

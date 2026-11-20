@@ -191,8 +191,13 @@ export function windOffset(
 /** The third field axis after `t` seconds: the clouds' slow change of shape. */
 export const evolveAt = (t: number) => mod(t * CLOUD_EVOLVE_PER_S, FIELD_PERIOD);
 
-export const HIGH_OCTAVES = 5;
+const HIGH_OCTAVES = 5;
 export const LOW_OCTAVES = 3;
+/** Noise octaves for a quality; the shader and sunCover use the same, so the sun dims at the edge you see. */
+export const octavesFor = (quality: CloudConfig['quality']) => (quality === 'high' ? HIGH_OCTAVES : LOW_OCTAVES);
+
+type CloudSample = { base: number; cluster: number; detail: number; qx: number; qz: number };
+const _field: CloudSample = { base: 0, cluster: 0, detail: 0, qx: 0, qz: 0 }; // sunCover's, every frame: no allocation
 
 /**
  * The cloud field above world point (x, z), with the wind offset (u, v) and the time axis w. `base` says where clouds
@@ -205,9 +210,10 @@ export function cloudField(
   u: number,
   v: number,
   w: number,
-  seed: [number, number],
+  seed: readonly [number, number],
   octaves = HIGH_OCTAVES,
-) {
+  out: CloudSample = { base: 0, cluster: 0, detail: 0, qx: 0, qz: 0 },
+): CloudSample {
   // the world moves against the wind offset: the field at a world point is the field at (point - offset)
   const px = x / CLOUD_SCALE_M - u + seed[0];
   const pz = z / CLOUD_SCALE_M - v + seed[1];
@@ -217,7 +223,12 @@ export function cloudField(
   const cluster = valueNoise(px * 0.25 + 40, pz * 0.25 + 9, w * 0.5);
   const base = fbm(qx, qz, w, 3);
   const detail = billow(qx * 4 + 3, qz * 4 + 11, w * 2, octaves - 2);
-  return { base, cluster, detail, qx, qz };
+  out.base = base;
+  out.cluster = cluster;
+  out.detail = detail;
+  out.qx = qx;
+  out.qz = qz;
+  return out;
 }
 
 /** how deep the billowy detail cuts into a cloud's edge */
@@ -240,7 +251,8 @@ const smooth = (a: number, b: number, v: number) => {
 
 /**
  * How much cloud is in front of the sun, 0..1, seen from (cx, cy, cz) along the unit direction to the sun (sx, sy, sz).
- * The sky shader draws the same cloud there, so the light dims when the player sees the sun go behind one.
+ * The sky shader draws the same cloud there, so the light dims when the player sees the sun go behind one. A caller
+ * that runs every frame passes the wind offset it already has and the seed offset it computed once.
  */
 export function sunCover(
   cfg: CloudConfig,
@@ -251,12 +263,22 @@ export function sunCover(
   sy: number,
   sz: number,
   t: number,
+  wind: readonly [number, number] = windOffset(cfg, t),
+  seed: readonly [number, number] = seedOffset(cfg.seed),
 ) {
   if (cfg.cover === 'off' || sy <= 0.02) return 0;
   const reach = (CLOUD_ALTITUDE_M - cy) / (sy + CLOUD_CURVE);
   if (reach <= 0) return 0;
-  const [u, v] = windOffset(cfg, t);
-  const f = cloudField(cx + sx * reach, cz + sz * reach, u, v, evolveAt(t), seedOffset(cfg.seed));
+  const f = cloudField(
+    cx + sx * reach,
+    cz + sz * reach,
+    wind[0],
+    wind[1],
+    evolveAt(t),
+    seed,
+    octavesFor(cfg.quality),
+    _field,
+  );
   // the same thinning with distance and towards the horizon as the shader, so what you see is what dims the sun
   const h = Math.min(1, Math.max(0, (sy - 0.012) / (0.13 - 0.012)));
   const fade = Math.exp(-reach / CLOUD_FADE_M) * h * h * (3 - 2 * h);

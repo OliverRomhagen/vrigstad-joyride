@@ -12,8 +12,7 @@ import {
   type CloudConfig,
   EROSION,
   evolveAt,
-  HIGH_OCTAVES,
-  LOW_OCTAVES,
+  octavesFor,
   SUN_SHADE_TAU_S,
   seedOffset,
   sunCover,
@@ -126,11 +125,13 @@ export class Sky {
   private readonly cfg: CloudConfig;
   private readonly sunDir: THREE.Vector3;
   private readonly wind: [number, number] = [0, 0];
+  private readonly seed: readonly [number, number];
   private shade = -1; // -1: not yet set; the first update starts it where it should be, with no fade-in
   private timeS = 0;
 
   constructor({ top, horizon, sunColour, sunDir, clouds, radius = 3000 }: SkyOptions) {
     this.cfg = { ...clouds };
+    this.seed = seedOffset(clouds.seed);
     this.sunDir = sunDir;
     const on = clouds.cover !== 'off';
     const preset = CLOUD_PRESETS[on ? (clouds.cover as keyof typeof CLOUD_PRESETS) : 'partly'];
@@ -141,7 +142,7 @@ export class Sky {
       defines: {
         CLOUDS: on ? 1 : 0,
         SHADE: clouds.quality === 'high' ? 1 : 0,
-        OCTAVES: clouds.quality === 'high' ? HIGH_OCTAVES : LOW_OCTAVES,
+        OCTAVES: octavesFor(clouds.quality),
         ALTITUDE: CLOUD_ALTITUDE_M.toFixed(1),
         SCALE: CLOUD_SCALE_M.toFixed(1),
         FADE: CLOUD_FADE_M.toFixed(1),
@@ -155,7 +156,7 @@ export class Sky {
         sunDir: { value: sunDir },
         camPos: { value: new THREE.Vector3() },
         wind: { value: new THREE.Vector2() },
-        seed: { value: new THREE.Vector2(...seedOffset(clouds.seed)) },
+        seed: { value: new THREE.Vector2(...this.seed) },
         evolve: { value: 0 },
         threshold: { value: preset.threshold },
         softness: { value: preset.softness * clouds.softness },
@@ -185,7 +186,7 @@ export class Sky {
     u.wind.value.set(this.wind[0], this.wind[1]);
     u.evolve.value = evolveAt(timeS);
     const d = this.sunDir;
-    const cover = sunCover(this.cfg, camera.x, camera.y, camera.z, d.x, d.y, d.z, timeS);
+    const cover = sunCover(this.cfg, camera.x, camera.y, camera.z, d.x, d.y, d.z, timeS, this.wind, this.seed);
     this.shade = this.shade < 0 ? cover : approach(this.shade, cover, SUN_SHADE_TAU_S, dt);
     this.sunFactor = 1 - CLOUD_PRESETS[this.cfg.cover].sunDim * this.shade;
   }
