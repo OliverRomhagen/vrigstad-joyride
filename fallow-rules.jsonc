@@ -17,7 +17,14 @@
       "id": "no-dom",
       "kind": "banned-call",
       // Calls only: a property read such as `window.innerWidth` isn't a call, so this catches most DOM use, not all of it.
-      "callees": ["document.*", "window.*", "localStorage.*", "sessionStorage.*", "requestAnimationFrame", "*.addEventListener"],
+      "callees": [
+        "document.*",
+        "window.*",
+        "localStorage.*",
+        "sessionStorage.*",
+        "requestAnimationFrame",
+        "*.addEventListener"
+      ],
       "zones": ["sim", "world", "world-mesh"],
       "message": "Simulation doesn't touch the DOM: input arrives as intents, and the HUD reads state."
     }
