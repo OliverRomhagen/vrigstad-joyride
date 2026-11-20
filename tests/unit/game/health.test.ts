@@ -1,7 +1,26 @@
 import { describe, expect, it } from 'vitest';
 import {
-  CRASH_COOL_S, crackLevel, crashCars, crashDamage, DMG_MAX, damageCar, driverHurt, HP_MAX, heal, hurt, impactSpeed, LIMP_TOP, newHealth, REGEN_DELAY_S, REGEN_HP_S, regen,
-  runOverHurt, smokeLevel, topSpeedShare, wakeSpot, wrecked,
+  CRASH_COOL_S,
+  crackLevel,
+  crashCars,
+  crashDamage,
+  DMG_MAX,
+  damageCar,
+  driverHurt,
+  HP_MAX,
+  heal,
+  hurt,
+  impactSpeed,
+  LIMP_TOP,
+  newHealth,
+  REGEN_DELAY_S,
+  REGEN_HP_S,
+  regen,
+  runOverHurt,
+  smokeLevel,
+  topSpeedShare,
+  wakeSpot,
+  wrecked,
 } from '../../../src/game/health';
 
 describe('player health', () => {
@@ -15,7 +34,7 @@ describe('player health', () => {
     expect(h.hp).toBe(40);
     expect(hurt(h, 60)).toBe(true);
     expect(h.hp).toBe(0);
-    expect(hurt(h, 10)).toBe(false);   // already out
+    expect(hurt(h, 10)).toBe(false); // already out
   });
 
   it('ignores a hurt of zero, which also leaves regeneration running', () => {
@@ -51,10 +70,10 @@ describe('player health', () => {
 
 describe('impacts', () => {
   it('counts the closing speed along the normal only', () => {
-    expect(impactSpeed(0, 20, 0, -1)).toBe(20);                   // head-on into a wall to the south
-    expect(impactSpeed(20, 0, 0, -1)).toBe(0);                    // sliding along it
-    expect(impactSpeed(0, -20, 0, -1)).toBe(0);                   // moving away
-    expect(impactSpeed(12, 16, 0, -1)).toBeCloseTo(16);           // a glancing hit at 20 m/s
+    expect(impactSpeed(0, 20, 0, -1)).toBe(20); // head-on into a wall to the south
+    expect(impactSpeed(20, 0, 0, -1)).toBe(0); // sliding along it
+    expect(impactSpeed(0, -20, 0, -1)).toBe(0); // moving away
+    expect(impactSpeed(12, 16, 0, -1)).toBeCloseTo(16); // a glancing hit at 20 m/s
   });
 
   it('does no damage to a car below the threshold, then grows with speed', () => {
@@ -112,15 +131,16 @@ describe('car damage', () => {
 
 describe('crashes', () => {
   const car = (dmg = 0) => ({ dmg, hitAt: -9 });
-  const HARD_MS = 27;   // 20 m/s over CRASH_MIN_MS: 45 damage
+  const HARD_MS = 27; // 20 m/s over CRASH_MIN_MS: 45 damage
 
   it('damages both cars in a hard hit, and only the car against a wall', () => {
-    const a = car(), b = car();
-    expect(crashCars(0, HARD_MS, a, b).map((h) => h.car)).toEqual([a, b]);
+    const a = car(),
+      b = car();
+    expect(crashCars(0, HARD_MS, a, b).map(h => h.car)).toEqual([a, b]);
     expect(a.dmg).toBe(45);
     expect(b.dmg).toBe(45);
     const c = car();
-    expect(crashCars(0, HARD_MS, c, null).map((h) => h.car)).toEqual([c]);
+    expect(crashCars(0, HARD_MS, c, null).map(h => h.car)).toEqual([c]);
   });
 
   it('ignores a slow bump, which also leaves the cooldown alone', () => {
@@ -130,9 +150,10 @@ describe('crashes', () => {
   });
 
   it('gives each car its own cooldown', () => {
-    const a = car(), b = car();
+    const a = car(),
+      b = car();
     crashCars(0, HARD_MS, a, null);
-    expect(crashCars(CRASH_COOL_S / 2, HARD_MS, a, b).map((h) => h.car)).toEqual([b]);   // a was just hit; b still takes it
+    expect(crashCars(CRASH_COOL_S / 2, HARD_MS, a, b).map(h => h.car)).toEqual([b]); // a was just hit; b still takes it
     expect(a.dmg).toBe(45);
     expect(crashCars(CRASH_COOL_S, HARD_MS, a, null)).toHaveLength(1);
     expect(a.dmg).toBe(90);
@@ -140,9 +161,9 @@ describe('crashes', () => {
 
   it('says when a hit makes a car smoke more, and when it wrecks it instead', () => {
     const a = car(40);
-    expect(crashCars(0, HARD_MS, a, null)).toEqual([{ car: a, wrecked: false, smokeUp: true }]);   // 40 → 85: black smoke
+    expect(crashCars(0, HARD_MS, a, null)).toEqual([{ car: a, wrecked: false, smokeUp: true }]); // 40 → 85: black smoke
     expect(crashCars(1, HARD_MS, a, null)).toEqual([{ car: a, wrecked: true, smokeUp: false }]);
-    expect(crashCars(2, HARD_MS, a, null)).toEqual([{ car: a, wrecked: false, smokeUp: false }]);   // already wrecked
+    expect(crashCars(2, HARD_MS, a, null)).toEqual([{ car: a, wrecked: false, smokeUp: false }]); // already wrecked
   });
 });
 

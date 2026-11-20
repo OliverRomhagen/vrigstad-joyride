@@ -3,13 +3,19 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import D from '../../data/vrigstad.json';
+import { BuildingIndex } from '../world/buildings';
 import { ROAD_WIDTH_M as ROAD_W } from '../world/data';
 import { Heightfield } from '../world/heightfield';
 import { BuildingShellsByMaterial } from '../world/mesh/building-shells';
 import { TerrainMesh } from '../world/mesh/terrain';
 import { makeRnd } from '../world/random';
+import { RoadNetwork } from '../world/roads';
+import { buildStreetscape } from '../world/streetscape';
+import { STREETSCAPE_OVERRIDES } from '../world/streetscape-overrides';
+import { classifyStreetscape } from '../world/streetscape-rules';
 import { LEGACY_LIGHT } from '../world/three-legacy';
 import { treeSpots } from '../world/trees';
+import { Water } from '../world/water';
 
 (function () {
 'use strict';
@@ -19,12 +25,12 @@ const minE = heightfield.minElevationM, maxE = heightfield.maxElevationM;
 document.getElementById('relief').textContent = Math.round(minE) + '–' + Math.round(maxE) + ' m above sea level';
 
 const PAL = {
-  light: { streetSw: '#9a9a8e', sky: '#dfe9ea', ground: '#eef0d2', land: ['#f1e9d8', '#f7edb0', '#e3dcd6', '#d5e8b8', '#cfe0bd', '#bcd9a2', '#a9d48f'],
+  light: { streetSw: '#9a9a8e', sidewalk: '#e4ded2', parking: '#dcd8cf', crossing: '#ffffff', sky: '#dfe9ea', ground: '#eef0d2', land: ['#f1e9d8', '#f7edb0', '#e3dcd6', '#d5e8b8', '#cfe0bd', '#bcd9a2', '#a9d48f'],
     water: '#9fcdea', waterLine: '#6fb0dc', contour: 'rgba(150,95,50,.42)',
     road: [['#f0a03c', '#8a5a1e'], ['#f7d774', '#9a8440'], ['#ffffff', '#9a9a8e'], ['#ffffff', '#b0b0a4']], track: '#9c7a52', path: '#6b5a48',
     text: '#2b2b26', halo: 'rgba(255,255,255,.85)', tree: '#5f9150', earth: '#b79f7c',
     wall: '#e9e2d3', roof: '#7b6a5e', lmWall: '#a8392a', lmRoof: '#5b2a22' },
-  dark: { streetSw: '#5b6660', sky: '#0e1513', ground: '#232d27', land: ['#2b2f2b', '#353522', '#2e2c2f', '#26372a', '#26352b', '#1c3a26', '#2c4a2c'],
+  dark: { streetSw: '#5b6660', sidewalk: '#3f4842', parking: '#343b37', crossing: '#9aa39c', sky: '#0e1513', ground: '#232d27', land: ['#2b2f2b', '#353522', '#2e2c2f', '#26372a', '#26352b', '#1c3a26', '#2c4a2c'],
     water: '#163d57', waterLine: '#2a6289', contour: 'rgba(200,150,100,.26)',
     road: [['#c98a3a', '#3a2a12'], ['#a8914a', '#332d16'], ['#5b6660', '#151a17'], ['#4b5550', '#151a17']], track: '#7a6548', path: '#8a7b68',
     text: '#dfe5dd', halo: 'rgba(10,14,12,.85)', tree: '#2f5a3a', earth: '#3a3229',
@@ -37,7 +43,7 @@ const isDark = () => { const t = document.documentElement.dataset.theme;
 const canvas = document.getElementById('gl');
 let renderer;
 try { renderer = new THREE.WebGLRenderer({ canvas, antialias: true }); }
-catch (err) { document.getElementById('fail').hidden = false; document.getElementById('ui').hidden = true; return; }
+catch { document.getElementById('fail').hidden = false; document.getElementById('ui').hidden = true; return; }
 renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
 renderer.outputColorSpace = THREE.LinearSRGBColorSpace;   // as in r128: the map's look was tuned without sRGB output encoding
 renderer.shadowMap.enabled = true;
@@ -65,6 +71,34 @@ sun.shadow.mapSize.set(4096, 4096);
 Object.assign(sun.shadow.camera, { left: -1750, right: 1750, top: 1750, bottom: -1750, near: 200, far: 5200 });
 sun.shadow.bias = -0.0004; sun.shadow.normalBias = 1.2;
 scene.add(sun);
+
+// ---- streetscape: the game's layout of pavements, corners, parking and crossings, painted as 2D outlines (#187) ----
+const street = (function () {
+  const roads = new RoadNetwork(D, heightfield), buildings = new BuildingIndex(D);
+  const sides = classifyStreetscape(D, roads, buildings, STREETSCAPE_OVERRIDES);
+  return buildStreetscape({ data: D, roads, heightfield, buildings, water: new Water(D, roads), sides });
+})();
+function paintStreetscape(pal, before) {
+  if (before) {   // parking areas under the roads, so aisles run over them
+    ctx.fillStyle = pal.parking; ctx.beginPath();
+    for (const lot of street.lots) { const a = D.pa[lot.ai]; trace(a.p, true); for (const h of a.h || []) trace(h, true); }
+    ctx.fill('evenodd'); return;
+  }
+  ctx.fillStyle = pal.sidewalk;
+  for (const s of [...street.strips, ...street.corners]) {   // one fill each: left and right strips wind opposite ways
+    const ring = s.inner.slice(); for (let i = s.outer.length - 2; i >= 0; i -= 2) ring.push(s.outer[i], s.outer[i + 1]);
+    ctx.beginPath(); trace(ring, true); ctx.fill();
+  }
+  // mapped crossings: a short bar across the road
+  ctx.strokeStyle = pal.crossing; ctx.lineCap = 'butt';
+  for (const x of D.x || []) {
+    if (x.r === undefined) continue;
+    const p = D.r[x.r].p, v = x.v, a = Math.max(0, v - 1) * 2, b = Math.min(p.length / 2 - 1, v + 1) * 2, dx = p[b] - p[a], dz = p[b + 1] - p[a + 1], l = Math.hypot(dx, dz) || 1;
+    ctx.lineWidth = 3 * K; ctx.beginPath(); ctx.moveTo(P(x.x - dz / l * ROAD_W[D.r[x.r].c] / 2), P(x.z + dx / l * ROAD_W[D.r[x.r].c] / 2));
+    ctx.lineTo(P(x.x + dz / l * ROAD_W[D.r[x.r].c] / 2), P(x.z - dx / l * ROAD_W[D.r[x.r].c] / 2)); ctx.stroke();
+  }
+  ctx.lineCap = 'round';
+}
 
 // ---- map texture ----
 const CW = (Math.min(innerWidth, innerHeight) < 600 || renderer.capabilities.maxTextureSize < 4096) ? 2048 : 4096;
@@ -136,6 +170,7 @@ function paint(pal) {
   for (const w of D.w) { ctx.beginPath(); for (const ring of w) trace(ring, true); ctx.fill('evenodd'); ctx.stroke(); }
   ctx.strokeStyle = pal.water;
   for (const w of D.ww) { ctx.lineWidth = (w.k === 0 ? 5.5 : 1.5) * K; ctx.beginPath(); trace(w.p); ctx.stroke(); }
+  paintStreetscape(pal, true);
   // paths and tracks
   ctx.lineCap = 'butt';
   ctx.setLineDash([4 * K, 3 * K]); ctx.strokeStyle = pal.path; ctx.lineWidth = Math.max(1.2, 1.1 * K);
@@ -148,6 +183,7 @@ function paint(pal) {
     ctx.strokeStyle = pal.road[c][pass]; ctx.lineWidth = (ROAD_W[c] + (pass ? 2 : 0)) * K;
     ctx.beginPath(); for (const r of D.r) if (r.c === c) trace(r.p); ctx.stroke();
   }
+  paintStreetscape(pal, false);
   streetNames(pal);
   texture.needsUpdate = true;
 }

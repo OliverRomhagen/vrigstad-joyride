@@ -1,0 +1,6 @@
+# Commits that only reformat code, which git blame skips. GitHub reads this file itself; for git blame on your machine, run once:
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
+# Add the squash commit of a PR that reformats code, with its title.
+
+# build(architecture): lint and format with biome (#181)
+6945dae0e3978a1b3a95ed27b8ed910025402453

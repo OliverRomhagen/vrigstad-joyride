@@ -10,6 +10,7 @@ describe('confetti count', () => {
   });
 
   it('gives every bigger prize more', () => {
-    for (let i = 1; i < TRISS_PLAN.length; i++) expect(confettiCount(TRISS_PLAN[i][0])).toBeGreaterThan(confettiCount(TRISS_PLAN[i - 1][0]));
+    for (let i = 1; i < TRISS_PLAN.length; i++)
+      expect(confettiCount(TRISS_PLAN[i][0])).toBeGreaterThan(confettiCount(TRISS_PLAN[i - 1][0]));
   });
 });

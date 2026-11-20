@@ -1,4 +1,4 @@
-import { RoadClass, ROAD_WIDTH_M, type WorldData } from './data';
+import { ROAD_WIDTH_M, RoadClass, type WorldData } from './data';
 import type { Heightfield } from './heightfield';
 import { segmentDistance } from './polygon';
 
@@ -49,7 +49,7 @@ export class RoadNetwork {
 
   constructor(data: WorldData, heightfield: Pick<Heightfield, 'heightAt'>) {
     this.heightfield = heightfield;
-    this.lines = data.r.map((r) => {
+    this.lines = data.r.map(r => {
       const p: Point[] = [];
       for (let i = 0; i < r.p.length; i += 2) p.push([r.p[i], r.p[i + 1]]);
       return { p, c: r.c, n: r.n };
@@ -67,7 +67,10 @@ export class RoadNetwork {
           for (let z = z0; z <= z1; z++) {
             const k = x + ',' + z;
             let list = this.grid.get(k);
-            if (!list) this.grid.set(k, (list = []));
+            if (!list) {
+              list = [];
+              this.grid.set(k, list);
+            }
             list.push(a[0], a[1], b[0], b[1], ri);
           }
         }
@@ -80,7 +83,10 @@ export class RoadNetwork {
       r.p.forEach((p, vi) => {
         const k = nodeKey(p);
         let list = this.junctions.get(k);
-        if (!list) this.junctions.set(k, (list = []));
+        if (!list) {
+          list = [];
+          this.junctions.set(k, list);
+        }
         list.push(ri, vi);
       });
     });
@@ -96,7 +102,9 @@ export class RoadNetwork {
     const list = this.grid.get(cellKey(x, z));
     if (list) {
       for (let i = 0; i < list.length; i += 5) {
-        const d = segmentDistance(x, z, list[i], list[i + 1], list[i + 2], list[i + 3]) - ROAD_WIDTH_M[this.lines[list[i + 4]].c] / 2;
+        const d =
+          segmentDistance(x, z, list[i], list[i + 1], list[i + 2], list[i + 3]) -
+          ROAD_WIDTH_M[this.lines[list[i + 4]].c] / 2;
         if (d < near.d) {
           near.d = d;
           near.ri = list[i + 4];

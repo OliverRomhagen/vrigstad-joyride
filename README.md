@@ -77,6 +77,8 @@ npm run test:e2e
 
 A `feat` pull request gets a playable build at `https://oliverromhagen.github.io/vrigstad-joyride/pr-preview/pr-<number>/`, and a bot comments the link on the PR a minute or two after each push. Any other PR gets one when you add the `preview` label. The preview is removed when the PR closes, or when it loses the label or the `feat` title. PRs from forks get no preview.
 
+Add `?lab=<id>,<id>` to the game's link, a preview's or the live one, to switch on lab experiments, which are off for everyone else. `src/lab/flags.ts` lists them, with what each one costs.
+
 ## Releases
 
 Versions use semver tags (`vMAJOR.MINOR.PATCH`) on `main`. Bump the minor version for new features and the patch version for fixes.

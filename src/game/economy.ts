@@ -1,22 +1,36 @@
 // Money (#76): the player's wallet, prices and payouts, as plain data and pure rules (no three.js, no DOM).
 // Selling cars, repairs and paying off a star build on pay / earn.
 
-export const START_KR = 200;                              // what you have in your pocket at the start
-export const TRISS_KR = 30, TREATS_KR = 5;                // a trisslott; a bag of three cat treats
-export const KORV_KR = 25, RULLE_KR = 45;                 // korv me brö; a smålandsrulle
-export const RAIN_KR = 1000;                              // låt det regna: banknotes thrown in the air, for show
-export const FINE_SHARE = 0.25, FINE_PER_STAR_KR = 100;   // Gripen! costs this share of your money, or this much per star, whichever is more
+export const START_KR = 200; // what you have in your pocket at the start
+export const TRISS_KR = 30,
+  TREATS_KR = 5; // a trisslott; a bag of three cat treats
+export const KORV_KR = 25,
+  RULLE_KR = 45; // korv me brö; a smålandsrulle
+export const RAIN_KR = 1000; // låt det regna: banknotes thrown in the air, for show
+const FINE_SHARE = 0.25; // Gripen! costs this share of your money, or FINE_PER_STAR_KR per star, whichever is more
+export const FINE_PER_STAR_KR = 100;
 
 // The trisslott vinstplan: of every TRISS_TICKETS tickets, how many win each prize, as [kr, tickets]; the rest lose.
 // One ticket in ten wins, most of them a ticket back, and about a fifth of the money comes back.
 export const TRISS_TICKETS = 100_000;
-export const TRISS_PLAN: readonly (readonly [number, number])[] = [[30, 8_000], [60, 1_200], [100, 450], [200, 200], [500, 100], [1000, 40], [10_000, 10]];
+export const TRISS_PLAN: readonly (readonly [number, number])[] = [
+  [30, 8_000],
+  [60, 1_200],
+  [100, 450],
+  [200, 200],
+  [500, 100],
+  [1000, 40],
+  [10_000, 10],
+];
 
 export interface Wallet {
   kr: number;
 }
 
 export const newWallet = (): Wallet => ({ kr: START_KR });
+
+/** Money as the HUD shows it, in Swedish style: 10 000 kr. */
+export const fmtKr = (n: number) => n.toLocaleString('sv-SE') + ' kr';
 
 /** Takes n kr if the wallet holds that much. False, and nothing taken, when it doesn't. */
 export function pay(w: Wallet, n: number): boolean {

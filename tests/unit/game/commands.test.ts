@@ -25,7 +25,12 @@ describe('commands', () => {
   it('shows the usage line for bad arguments, and passes other errors on', () => {
     const c = echo();
     c.register('kr', { usage: '<amount>', help: 'money', run: a => String(parseKr(a[0])) });
-    c.register('boom', { help: 'breaks', run: () => { throw new Error('broken'); } });
+    c.register('boom', {
+      help: 'breaks',
+      run: () => {
+        throw new Error('broken');
+      },
+    });
     expect(c.run('kr lots')).toBe('Usage: kr <amount>');
     expect(c.run('kr')).toBe('Usage: kr <amount>');
     expect(c.run('kr -50')).toBe('-50');

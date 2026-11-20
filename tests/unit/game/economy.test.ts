@@ -1,5 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import { earn, FINE_PER_STAR_KR, fine, newWallet, pay, START_KR, TRISS_KR, TRISS_PLAN, TRISS_TICKETS, trissPrize } from '../../../src/game/economy';
+import {
+  earn,
+  FINE_PER_STAR_KR,
+  fine,
+  newWallet,
+  pay,
+  START_KR,
+  TRISS_KR,
+  TRISS_PLAN,
+  TRISS_TICKETS,
+  trissPrize,
+} from '../../../src/game/economy';
 
 describe('wallet', () => {
   it('starts with some money', () => {
@@ -12,7 +23,7 @@ describe('wallet', () => {
     expect(w.kr).toBe(5);
     expect(pay(w, 30)).toBe(false);
     expect(w.kr).toBe(5);
-    expect(pay(w, 5)).toBe(true);   // the last krona too
+    expect(pay(w, 5)).toBe(true); // the last krona too
     expect(w.kr).toBe(0);
   });
 
@@ -49,7 +60,10 @@ describe('trisslott vinstplan', () => {
 
   it('pays each prize to exactly its number of tickets: one in ten wins, and about a fifth comes back', () => {
     const seen = new Map<number, number>();
-    for (let i = 0; i < TRISS_TICKETS; i++) { const kr = trissPrize((i + 0.5) / TRISS_TICKETS); seen.set(kr, (seen.get(kr) ?? 0) + 1); }
+    for (let i = 0; i < TRISS_TICKETS; i++) {
+      const kr = trissPrize((i + 0.5) / TRISS_TICKETS);
+      seen.set(kr, (seen.get(kr) ?? 0) + 1);
+    }
     for (const [kr, n] of TRISS_PLAN) expect(seen.get(kr)).toBe(n);
     expect(seen.get(0)).toBe(TRISS_TICKETS * 0.9);
     const paid = TRISS_PLAN.reduce((s, [kr, n]) => s + kr * n, 0);

@@ -40,13 +40,19 @@ export class Commands {
     try {
       return cmd.run(args);
     } catch (err) {
-      if (err instanceof UsageError) return `${err.message ? err.message + ' ' : ''}Usage: ${name.toLowerCase()} ${cmd.usage ?? ''}`.trimEnd();
+      if (err instanceof UsageError)
+        return `${err.message ? err.message + ' ' : ''}Usage: ${name.toLowerCase()} ${cmd.usage ?? ''}`.trimEnd();
       throw err;
     }
   }
 
   private help(): string {
-    return this.names().map(n => { const c = this.list.get(n) as Command; return `${n}${c.usage ? ' ' + c.usage : ''}: ${c.help}`; }).join('\n');
+    return this.names()
+      .map(n => {
+        const c = this.list.get(n) as Command;
+        return `${n}${c.usage ? ' ' + c.usage : ''}: ${c.help}`;
+      })
+      .join('\n');
   }
 }
 
