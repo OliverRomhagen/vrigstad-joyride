@@ -3,17 +3,10 @@ import { newGameState, newViewState } from '../../../src/game/state';
 
 describe('newGameState', () => {
   it('starts before Start, on foot, with nothing taken', () => {
-    expect(newGameState()).toEqual({
-      started: false,
-      clockS: 0,
-      inCar: false,
-      pcar: null,
-      jumpQ: false,
-      stolen: 0,
-      ramCool: 0,
-      bigT: 0,
-      treats: 0,
-    });
+    const { started, inCar, pcar, jumpQ, ...counts } = newGameState();
+    expect({ started, inCar, pcar, jumpQ }).toEqual({ started: false, inCar: false, pcar: null, jumpQ: false });
+    // every other field is a counter or timer, so a new one that doesn't start at 0 fails here
+    for (const [name, n] of Object.entries(counts)) expect([name, n]).toEqual([name, 0]);
   });
 
   it('gives a fresh object each time, so one game never writes into another', () => {

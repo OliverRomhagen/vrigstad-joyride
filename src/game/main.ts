@@ -537,6 +537,8 @@ let signT = 0, blink = false, blinkT = 0;
 
 // ---------- stealing and getting caught (the wanted level and the police: src/game/police.ts) ----------
 function nearestCar() { return carInReach(player, cars); }
+// park the car where it stands and put you on foot; the caller places you
+function leaveCar() { const c = game.pcar; c.mode = 'idle'; c.v = c.slip = c.drift = c.boost = c.thr = c.st = 0; placeCar(c); game.pcar = null; game.inCar = false; player.mesh.visible = true; }
 function action() {
   if (!game.started || game.bigT > 0) return;
   if (places.inside) { leaveHouse(); return; }
@@ -547,7 +549,7 @@ function action() {
   if (game.inCar) {
     if (tooFastToGetOut(game.pcar)) { toast('Slow down before you get out.', 2); return; }
     stepOut(player, game.pcar); collide(player, 0.5);
-    game.pcar.mode = 'idle'; game.pcar.v = game.pcar.slip = game.pcar.drift = game.pcar.boost = game.pcar.thr = game.pcar.st = 0; placeCar(game.pcar); game.pcar = null; game.inCar = false; game.jumpQ = false; player.mesh.visible = true; view.camYaw = wrap(view.camYaw + view.lookOff); view.lookOff = 0; return;
+    leaveCar(); game.jumpQ = false; view.camYaw = wrap(view.camYaw + view.lookOff); view.lookOff = 0; return;
   }
   const c = nearestCar(); if (!c) return;
   if (c.mode === 'ai') {
@@ -562,7 +564,7 @@ function action() {
   if (!c.owned) { c.owned = true; game.stolen++; $('count').textContent = 'Cars stolen: ' + game.stolen; }
   c.mode = 'player'; c.vh = c.h; c.slip = c.drift = c.boost = c.loose = c.thr = c.st = 0; game.pcar = c; game.inCar = true; player.y = player.vy = 0; player.mesh.visible = false; view.lookOff = 0; view.camYaw = c.h;
 }
-function respawn() { leaveHouse(); if (game.inCar) { game.pcar.mode = 'idle'; game.pcar.v = game.pcar.slip = game.pcar.drift = game.pcar.boost = game.pcar.thr = game.pcar.st = 0; placeCar(game.pcar); game.pcar = null; game.inCar = false; player.mesh.visible = true; }
+function respawn() { leaveHouse(); if (game.inCar) leaveCar();
   standAt(player, HOME.x, HOME.z); game.jumpQ = false; collide(player, 0.6); }
 function bigScreen(title, msg) { $('big-t').textContent = title; $('big-p').textContent = msg; game.bigT = 3; $('big').hidden = false; hud.hideToast(); }   // the big screen replaces any line from the same moment
 function busted() { respawn(); health.hp = HP_MAX; drawHealth(); bigScreen('Gripen!', 'Busted. The police drop you off at Torget.'); }
