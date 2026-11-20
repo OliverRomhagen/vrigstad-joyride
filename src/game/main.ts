@@ -19,7 +19,7 @@ import { ParkingMesh } from '../world/mesh/parking-mesh';
 import { RoadRibbons } from '../world/mesh/road-ribbons';
 import { SidewalkMesh } from '../world/mesh/sidewalk-mesh';
 import { TerrainMesh } from '../world/mesh/terrain';
-import { pointInPolygon as inPoly, polygonArea as polyArea, segmentDistance as segDist } from '../world/polygon';
+import { pointInPolygon as inPoly, polygonArea as polyArea } from '../world/polygon';
 import { makeRnd } from '../world/random';
 import { nodeKey, RoadNetwork } from '../world/roads';
 import { buildStreetscape, sidewalkCentreM, StreetscapeIndex } from '../world/streetscape';
@@ -33,9 +33,12 @@ import { Hud } from './hud';
 import { Input } from './input';
 import { Crowd } from './pedestrians';
 import { Pets } from './pets';
+import { KIOSK, Places } from './places';
 import { CAT_SCRATCH_HP, crackLevel, LOW_HP, CRASH_COOL_S, crashCars, crashDamage, driverHurt, HP_MAX, heal, hurt, KORV_HP, impactSpeed, newHealth, regen, RULLE_HP, runOverHurt, smokeLevel, topSpeedShare, wakeSpot, wrecked } from './health';
 import { carInReach, HOME, hop, ride, standAt, stepOut, tooFastToGetOut, walk } from './player';
 import { Wanted } from './police';
+import { PlaceMeshes } from './render/places';
+import { Trisslott } from './trisslott';
 
 (function () {
 'use strict';
@@ -623,7 +626,7 @@ const TREAT_BAG = 3, TREAT_MAX = 9;                                  // treats p
 let treats = 0;
 // the getters are read when the cats use them, so they can name things declared further down
 const colony = new CatColony({ scene, buildings, inWater, groundAt, half: HALF, coarse, wrap, geoCache, boxGeo, paintMat, blob, cars, toast,
-  get player() { return player; }, get keys() { return keys; }, get joy() { return joy; }, get kmenu() { return kmenu; }, get inCar() { return inCar; }, get pcar() { return pcar; }, get inside() { return inside; },
+  get player() { return player; }, get keys() { return keys; }, get joy() { return joy; }, get kmenu() { return kmenu; }, get inCar() { return inCar; }, get pcar() { return pcar; }, get inside() { return places.inside; },
   useTreat() { if (treats <= 0) return false; treats--; drawTreats(); return true; }, scratched() { hurtPlayer(CAT_SCRATCH_HP); } });
 const { cats } = colony, updateCats = colony.update.bind(colony), catFirst = colony.catFirst.bind(colony), nearCat = colony.nearest.bind(colony);
 // a good pet that makes a cat ready to be adopted asks whether it comes home with you
@@ -658,53 +661,22 @@ function drawTreats() { const el = $('treats'); el.hidden = false; el.textConten
 const player = { x: HOME.x, z: HOME.z, y: 0, vy: 0, h: 0, speed: 0, phase: 0, mesh: personParts('#f2c230', '#2b3a55', null, true) };   // y: metres above the ground
 collide(player, 0.6); scene.add(player.mesh);
 let jumpQ = false;   // set by a fresh Space / Jump press on foot, used up by the next frame: a held key (braking, then getting out) never jumps, a tap between frames isn't lost
-const jumpOk = () => !inCar && !inside && bigT <= 0;   // queue only where a jump can start, so a press inside a safehouse or under Gripen! can't fire as it ends
+const jumpOk = () => !inCar && !places.inside && bigT <= 0;   // queue only where a jump can start, so a press inside a safehouse or under Gripen! can't fire as it ends
 (function () { const o = { x: player.x + 7, z: player.z + 3 }; collide(o, 2.6); displayCar = addCar(selectedVehicle?.archetype || 'volvo', o.x, o.z, 0.6, 'parked', selectedVehicle?.id ?? 'volvo240'); })();
 let inCar = false, pcar = null, stolen = 0, ramCool = 0, started = false, bigT = 0;
 let clockS = 0;                                  // s of play, for hit cool-downs
 const health = newHealth();
-let inside = null, trissT = 0, trissN = 0, trissWon = 0, trissLast = '';
-const peds = [], trissLog = [];
+const peds = [];
 const wanted = new Wanted({ roads, rnd, pick, wrap, removeCar, drive, toast,
   spawnCar: (x, z, h) => addCar('polis', x, z, h, 'police'),
   drawStars: () => drawStars(), showEvading: on => $('stars').classList.toggle('evading', on), caught: () => busted(),
-  get lyingLow() { return !!inside; } });
+  get lyingLow() { return !!places.inside; } });
 
 // ---------- places: safehouses (lie low to lose your stars) and the trisslott kiosk ----------
-const SAFE_SECS = 60, SAFE_SEEN = 60;            // seconds inside to lose the stars; police closer than this (m) see you go in
-const places = [];
-const ringGeo = new THREE.RingGeometry(0.95, 1.25, 28); ringGeo.rotateX(-Math.PI / 2);
-const gemGeo = new THREE.OctahedronGeometry(0.42);
-function addPlace(kind, name, x, z, color) {
-  const mat = new THREE.MeshBasicMaterial({ color: col(color), transparent: true, opacity: 0.8, side: THREE.DoubleSide, depthWrite: false });
-  const y = hAt(x, z), ring = new THREE.Mesh(ringGeo, mat), gem = new THREE.Mesh(gemGeo, mat);
-  ring.position.set(x, y + 0.4, z); gem.position.set(x, y + 3.6, z); scene.add(ring, gem);
-  const p = { kind, name, x, z, gem }; places.push(p); return p;
-}
-// safehouses: real houses picked by a point inside their footprint; the door goes on the wall that faces the nearest street
-[['Gästgivaregatan', 39.9, -43.6], ['Göransgatan', -379.5, -157.8], ['Sigfridsvägen', 340.2, 271.5]].forEach(s => {
-  const b = bPolys.find(b => inPoly(b.p, s[1], s[2])); if (!b) return;
-  const p = b.p; let best = 1e9, door = null;
-  for (let i = 0, j = p.length - 2; i < p.length; j = i, i += 2) {
-    const ex = p[i] - p[j], ez = p[i + 1] - p[j + 1], len = Math.hypot(ex, ez); if (len < 2.5) continue;
-    const mx = (p[i] + p[j]) / 2, mz = (p[i + 1] + p[j + 1]) / 2; let d = 1e9;
-    for (const r of R) if (r.c < 4) for (let k = 1; k < r.p.length; k++) d = Math.min(d, segDist(mx, mz, r.p[k - 1][0], r.p[k - 1][1], r.p[k][0], r.p[k][1]));
-    if (d < best) { best = d; let nx = ez / len, nz = -ex / len; if (inPoly(p, mx + nx * 0.5, mz + nz * 0.5)) { nx = -nx; nz = -nz; } door = { mx, mz, nx, nz }; }
-  }
-  if (!door) return;
-  const m = new THREE.Mesh(boxGeo([[1.4, 2.35, 0.1, 0, 1.17, 0, '#f2c230'], [1.05, 2.1, 0.16, 0, 1.05, 0, '#2f5a41'], [0.1, 0.1, 0.24, 0.36, 1.05, 0, '#f2c230']]), paintMat);
-  m.position.set(door.mx, hAt(door.mx, door.mz), door.mz); m.rotation.y = Math.atan2(door.nx, door.nz); scene.add(m);
-  addPlace('safe', s[0], door.mx + door.nx * 1.4, door.mz + door.nz * 1.4, 0x4fd27a);
-});
-// kiosk on Torget, counter facing south towards the spawn point; it collides like a building
-(function () {
-  const x = -13, z = 25.5, y = hAt(x, z), W = '#e8e2d2', RED = '#c8372d';
-  const m = new THREE.Mesh(boxGeo([[3, 2.3, 2.2, 0, 1.15, 0, W], [3.5, 0.18, 3, 0, 2.39, 0.25, RED], [1.9, 0.9, 0.06, 0, 1.55, 1.1, GLASS], [2.2, 0.1, 0.5, 0, 1.05, 1.3, '#7a4a3c'],
-    [2.4, 0.5, 0.1, 0, 2.75, 1.2, '#f2c230'], [0.5, 2.3, 0.04, -1.25, 1.15, 1.1, RED], [0.5, 2.3, 0.04, 1.25, 1.15, 1.1, RED]]), paintMat);
-  m.position.set(x, y, z); m.castShadow = true; scene.add(m);
-  addFootprint([x - 1.5, z - 1.1, x + 1.5, z - 1.1, x + 1.5, z + 1.1, x - 1.5, z + 1.1]);
-  addPlace('kiosk', 'Kiosken', x, z + 2.3, 0xf2c230);
-})();
+// the getter is read when a place uses it, so it follows the stars
+const places = new Places({ footprints: bPolys, roads: R, police: wanted.police, lieLow: secs => wanted.lieLow(secs), toast, get stars() { return wanted.stars; } });
+const placeMeshes = new PlaceMeshes({ scene, places, heightAt: hAt, col, boxGeo, paintMat, glass: GLASS });
+addFootprint([KIOSK.x - KIOSK.w / 2, KIOSK.z - KIOSK.d / 2, KIOSK.x + KIOSK.w / 2, KIOSK.z - KIOSK.d / 2, KIOSK.x + KIOSK.w / 2, KIOSK.z + KIOSK.d / 2, KIOSK.x - KIOSK.w / 2, KIOSK.z + KIOSK.d / 2]);   // the kiosk collides like a building
 // small menus on one plate (the kiosk's one lucka, adopting a cat): number keys / Esc, or tap; walking away closes it
 const kmenu = $('kmenu');
 let relock = false;                                             // a menu needs the cursor: free it while the menu is open, and take it back after
@@ -717,7 +689,7 @@ function closeMenu() { kmenu.hidden = true; nameIn = null; menuKind = menuPick =
 // a choice can open the next menu (a pet's "are you sure?"): then the menu stays up, and the cursor stays free
 function menuChoose(k) { const pick = menuPick; menuPick = null; if (pick) pick(k); if (!menuPick) closeMenu(); }
 const openKiosk = () => openMenu('kiosk', '”Va ska dä va?”', [['triss', 'Trisslott'], ['treats', 'Kattgodis (3 st)'], ['korv', 'Korv me brö <small>+' + KORV_HP + ' health</small>'], ['vego', 'Vegokorv me brö'], ['rulle', 'Smålandsrulle <small>+' + RULLE_HP + ' health</small>'], ['no', 'Nä tack']], k => {
-  if (k === 'triss') scratch(); else if (k === 'treats') buyTreats(); else if (k === 'korv') eat(KORV_HP, '”En korv me brö, tack.”', '”Varsågod. Senap å ketchup ä på disken.”');
+  if (k === 'triss') trisslott.scratch(); else if (k === 'treats') buyTreats(); else if (k === 'korv') eat(KORV_HP, '”En korv me brö, tack.”', '”Varsågod. Senap å ketchup ä på disken.”');
   else if (k === 'vego') toast('”En vegokåv me brö, tack.”\n”Vegokåv? Nä vi ha ingen vegokåv! Den ligger i frysen.”', 4);   // always sold out
   else if (k === 'rulle') eat(RULLE_HP, '”En smålandsrulle, tack.”', '”Varsågod, mos å räksallad å allt. Dä ä mat dä!”'); }, () => nearPlace()?.kind === 'kiosk');
 // food from the kiosk: free until there is money (#76)
@@ -727,13 +699,9 @@ function eat(n, order, reply) {
   heal(health, n); drawHealth(); toast(order + '\n' + reply + ' +' + n + ' health.', 3.5);
 }
 kmenu.addEventListener('click', e => { const b = e.target.closest('button'); if (b) { menuChoose(b.dataset.k); canvas.focus(); } });
-function nearPlace() { if (inCar) return null; for (const p of places) if (Math.hypot(p.x - player.x, p.z - player.z) < 2.2) return p; return null; }
-function enterHouse(p) {
-  if (wanted.police.some(c => !wrecked(c) && Math.hypot(c.x - p.x, c.z - p.z) < SAFE_SEEN)) { toast('The police can see you. Get further ahead of them before you go inside.', 3); return; }
-  inside = p; wanted.lieLow(SAFE_SECS); player.x = p.x; player.z = p.z; player.speed = 0; player.mesh.visible = false;
-  toast(wanted.stars ? 'You slip inside. Stay put for a minute and the police give up.' : 'Home sweet home. Nobody is looking for you.');
-}
-function leaveHouse() { if (!inside) return; inside = null; player.mesh.visible = true; $('hide').hidden = true; if (wanted.stars) toast('Back outside, and still wanted.', 2.5); }
+function nearPlace() { return inCar ? null : places.nearest(player.x, player.z); }
+function enterHouse(p) { if (places.enter(p, player)) player.mesh.visible = false; }
+function leaveHouse() { if (!places.leave()) return; player.mesh.visible = true; $('hide').hidden = true; }
 // ---------- car damage: smoke from the bonnet, grey past half damage and black when nearly wrecked ----------
 const SMOKE_N = 48, SMOKE_S = 1.8, SMOKE_NEAR_M = 140, SMOKE_RATE = [0, 8, 12];   // puffs in the pool; s each lasts; only cars this close smoke; puffs/s by smoke level
 const SMOKE_COLS = [null, col(0x7c7c78), col(0x2a2826)];
@@ -753,26 +721,10 @@ function updateSmoke(dt, T) {
     p.position.y += dt * 1.3; p.scale.setScalar(0.6 + t * 2.4); p.material.opacity = 0.75 * (1 - t); }
 }
 
-// trisslott: one win in a thousand, and the temper gets worse with every losing ticket scratched inside the window
-const TRISS_ODDS = 0.001, TRISS_WINDOW = 25;
-const TRISS = [
-  ['Järnspikar, ingen vinst denna gång heller.', 'Äsch, dä va la synd.', 'Nä, inget dänna gången heller.', 'Jaja, nästa lott så.'],
-  ['Men jösses, inte ett öre!', 'Tusan hakar, en nitlott te!', 'Dä här börjar likna lurendrejeri.', 'Sjutton gubbar, nu får dä la ändå vända!'],
-  ['Fy sjutton, dä ä ju rena fusket!', 'Jäklar anamma, inte en krona!', 'Va i hela fridens namn hôller di på mä?!', 'Nu blir ja förbannad på riktigt!'],
-  ['Fan i helvete, dä ä ju bedrägeri!', 'Satans jävla skitlotter!', 'Jävlar i min lilla låda, ge mej en te!', 'Helvetes förbannade skrapskit, ja ska anmäla hela Svenska Spel!']
-];
-function scratch() { if (trissT > 0) return; trissT = 0.9; toast('Skrap, skrap, skrap…', 1.5); }
-function trissResult() {
-  trissN++;
-  if (Math.random() < TRISS_ODDS) { trissWon++; trissLog.length = 0; toast('”VINST! Dä va som sjutton, ja visste väl dä!” You won on a trisslott. That never happens.', 8, 'win'); }
-  else {
-    const t = performance.now() / 1000; while (trissLog.length && t - trissLog[0] > TRISS_WINDOW) trissLog.shift(); trissLog.push(t);
-    const n = trissLog.length, lines = TRISS[n < 3 ? 0 : n < 5 ? 1 : n < 8 ? 2 : 3]; let line = trissN === 1 ? lines[0] : pick(lines);
-    while (line === trissLast) line = pick(lines);
-    trissLast = line; toast('”' + line + '”', 3);
-  }
-  const el = $('triss'); el.hidden = false; el.textContent = 'Trisslotter: ' + trissN + ' · Vinster: ' + trissWon;
-}
+// trisslott (src/game/trisslott.ts)
+// biome-ignore lint/plugin/no-math-random: the known exception in AGENTS.md (rule 5); a ticket's luck isn't world state to replay
+const trisslott = new Trisslott({ random: Math.random, pick, now: () => performance.now() / 1000, toast,
+  draw: (bought, won) => { const el = $('triss'); el.hidden = false; el.textContent = 'Trisslotter: ' + bought + ' · Vinster: ' + won; } });
 const START_CAM = [0.6, 0.34];   // camera yaw and pitch at Start
 let camYaw = START_CAM[0], camPitch = START_CAM[1], lookOff = 0, lookIdle = 9;
 // ?at=x,z[,yaw[,pitch]] starts the player there, looking that way: for review screenshots, such as the streetscape's (#187)
@@ -800,7 +752,7 @@ const { keys, joy } = input;
 
 // ---------- HUD (src/game/hud.ts) ----------
 // the getters are read when the HUD uses them, so they can name things that change during play
-const hud = new Hud({ $, ground: tex2d, P, K, roads, labels: D.labels, cars, places,
+const hud = new Hud({ $, ground: tex2d, P, K, roads, labels: D.labels, cars, places: places.list,
   get stars() { return wanted.stars; }, get pcar() { return pcar; }, get blink() { return blink; } });
 // a declaration, not a bound const, so the sections above can pass toast on before the HUD exists
 function toast(msg, secs, cls) { hud.toast(msg, secs, cls); }
@@ -816,7 +768,7 @@ let signT = 0, blink = false, blinkT = 0;
 function nearestCar() { return carInReach(player, cars); }
 function action() {
   if (!started || bigT > 0) return;
-  if (inside) { leaveHouse(); return; }
+  if (places.inside) { leaveHouse(); return; }
   if (!kmenu.hidden) { closeMenu(); return; }
   const pl = nearPlace(), kt = nearCat();
   if (catFirst(kt, pl)) { if (kt.owned) openOwnCat(kt); else petCat(kt); return; }
@@ -846,7 +798,7 @@ function busted() { respawn(); health.hp = HP_MAX; drawHealth(); bigScreen('Grip
 // health at zero: with the police after you it's Gripen!, otherwise you come to at the nearest safehouse, or Torget
 function knockedOut() {
   if (wanted.stars) { wanted.clear(); busted(); return; }   // Gripen! expects the stars cleared
-  const spot = wakeSpot(player.x, player.z, HOME, places);
+  const spot = wakeSpot(player.x, player.z, HOME, places.list);
   respawn(); standAt(player, spot.x, spot.z); collide(player, 0.6); health.hp = HP_MAX; drawHealth();
   bigScreen('Däckad!', 'Knocked out. You come to ' + (spot.name ? 'at the safehouse on ' + spot.name : 'at Torget') + '.'); sayLater(pickLine(WAKE_LINES));
 }
@@ -869,19 +821,19 @@ function frame(now) {
   if (health.hp <= 0) knockedOut();   // here, not where the hit lands: that can be halfway through moving the car
   if (bigT > 0) { bigT -= dt; if (bigT <= 0) $('big').hidden = true; }
   if (ramCool > 0) ramCool -= dt;
-  if (trissT > 0) { trissT -= dt; if (trissT <= 0) trissResult(); }
-  for (const p of places) p.gem.rotation.y += dt * 1.6;
+  trisslott.update(dt);
+  placeMeshes.update(dt);
 
   const jump = jumpQ; jumpQ = false;
   if (inCar) { drive(pcar, my, mx, !!keys.brake, dt, true); ride(player, pcar); }
   else {
-    walk(player, dt, mx, my, camYaw, { run: !!keys.run || joy.on, wet: inWater(player.x, player.z), still: bigT > 0 || !!inside }, HALF);
+    walk(player, dt, mx, my, camYaw, { run: !!keys.run || joy.on, wet: inWater(player.x, player.z), still: bigT > 0 || !!places.inside }, HALF);
     collide(player, 0.5);
-    if (!inside) for (const c of cars) { const dx = player.x - c.x, dz = player.z - c.z, d = Math.hypot(dx, dz); if (d < 1.6 && d > 0.01) { player.x += dx / d * (1.6 - d); player.z += dz / d * (1.6 - d);
+    if (!places.inside) for (const c of cars) { const dx = player.x - c.x, dz = player.z - c.z, d = Math.hypot(dx, dz); if (d < 1.6 && d > 0.01) { player.x += dx / d * (1.6 - d); player.z += dz / d * (1.6 - d);
       const a = c.mode === 'ai' ? c.h : c.vh, n = runOverHurt(impactSpeed(Math.sin(a) * c.v, -Math.cos(a) * c.v, -dx / d, -dz / d));   // the car's speed towards you
       if (n > 0 && clockS - runOverAt >= CRASH_COOL_S) { runOverAt = clockS; hurtPlayer(n); shake(n); if (health.hp <= 0) break; } } }
     const wetNow = inWater(player.x, player.z);                // after this frame's move: take-off and wading depth follow where the player stands now
-    hop(player, dt, jump && !wetNow && !inside && bigT <= 0);   // on foot, Space and the touch Brake button jump
+    hop(player, dt, jump && !wetNow && !places.inside && bigT <= 0);   // on foot, Space and the touch Brake button jump
     // walking: arms swing against the legs and the body bobs; in the air: legs apart and both arms up
     const air = player.y > 0, sw = air ? 0.5 : Math.sin(player.phase) * 0.75, lift = player.y + (air ? 0 : Math.abs(Math.sin(player.phase)) * 0.05), m = player.mesh;
     m.legs[0].rotation.x = sw; m.legs[1].rotation.x = -sw; m.arms[0].rotation.x = air ? 2.4 : -sw * 0.8; m.arms[1].rotation.x = air ? 2.4 : sw * 0.8;
@@ -907,7 +859,7 @@ function frame(now) {
   if (!started) { camYaw = wrap(camYaw + dt * 0.07); dist = 46; camPitch = 0.42; }
   else if (inCar) { lookIdle += dt; if (lookIdle > 1.2 && !input.dragging) lookOff *= Math.pow(0.02, dt);
     camYaw += wrap(pcar.h - pcar.slip * 0.6 + lookOff - camYaw) * Math.min(1, dt * 4.5); dist = 10 + Math.abs(pcar.v) * 0.09; }
-  else dist = inside ? 15 : 6.2;
+  else dist = places.inside ? 15 : 6.2;
   const cp = Math.cos(camPitch), cx = T.x - Math.sin(camYaw) * dist * cp, cz = T.z + Math.cos(camYaw) * dist * cp;
   camera.position.set(cx, Math.max(ty + 1.5 + dist * Math.sin(camPitch), hAt(cx, cz) + 0.8), cz);
   camera.lookAt(T.x, ty + 1.5, T.z);
@@ -921,10 +873,10 @@ function frame(now) {
   hud.update(dt);
   if (!hud.toasting && laterLine && bigT <= 0) { toast(laterLine, 3); laterLine = null; }
   signT -= dt; if (signT <= 0) { signT = 0.25; updateSign(T); catRideLines();
-    const pr = $('prompt'), pl = started && !inside ? nearPlace() : null, kt = started ? nearCat() : null, c = started && !inCar && !inside ? nearestCar() : null;
-    $('hide').hidden = !inside;
+    const pr = $('prompt'), pl = started && !places.inside ? nearPlace() : null, kt = started ? nearCat() : null, c = started && !inCar && !places.inside ? nearestCar() : null;
+    $('hide').hidden = !places.inside;
     if (menuStay && !menuStay()) closeMenu();
-    if (inside) { $('hide').innerHTML = wanted.stars ? 'Lying low<b>' + Math.floor(Math.ceil(Math.max(0, wanted.hideLeft)) / 60) + ':' + String(Math.ceil(Math.max(0, wanted.hideLeft)) % 60).padStart(2, '0') + '</b>' : 'Safehouse · ' + inside.name;
+    if (places.inside) { $('hide').innerHTML = wanted.stars ? 'Lying low<b>' + Math.floor(Math.ceil(Math.max(0, wanted.hideLeft)) / 60) + ':' + String(Math.ceil(Math.max(0, wanted.hideLeft)) % 60).padStart(2, '0') + '</b>' : 'Safehouse · ' + places.inside.name;
       pr.hidden = false; pr.innerHTML = '<kbd>E</kbd>Go outside'; }
     else if (catFirst(kt, pl)) { pr.hidden = !kmenu.hidden; pr.innerHTML = '<kbd>E</kbd>' + (kt.owned ? 'Hang out with ' + esc(kt.name) : 'Pet the cat' + (treats ? ' (offer a treat)' : '')); }
     else if (pl) { pr.hidden = !kmenu.hidden; pr.innerHTML = '<kbd>E</kbd>' + (pl.kind === 'safe' ? 'Go inside the safehouse' : 'Handla i kiosken'); }

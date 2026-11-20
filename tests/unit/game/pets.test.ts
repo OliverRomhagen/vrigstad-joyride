@@ -22,7 +22,7 @@ function pets(owned: boolean) {
       colony.owned = null;
     },
   };
-  const button = { hidden: true } as HTMLElement;
+  const button = { hidden: true };
   const deps: PetsDeps = {
     colony,
     button,
