@@ -7,8 +7,8 @@ import type { MenuItem, Pet } from './pets';
 /** What the menu plate reads from the rest of the game. The getters are read when used, so main.ts can declare those later. */
 export interface MenuPlateDeps {
   kmenu: HTMLElement; // the plate
-  canvas: HTMLElement; // focus goes back to the game after a tapped choice
-  doc: Pick<Document, 'exitPointerLock'>;
+  canvas: Pick<HTMLElement, 'focus'>; // focus goes back to the game after a tapped choice
+  doc: Pick<Document, 'exitPointerLock' | 'createElement'>;
   readonly input: Pick<Input, 'locked' | 'lockMouse'>;
   readonly hasPets: boolean; // P opens your pets only once you have one
   openPets: () => void;
@@ -19,8 +19,8 @@ export interface MenuPlateDeps {
 export class MenuPlate {
   private readonly g: MenuPlateDeps;
   private relock = false; // a menu needs the cursor: free it while the menu is open, and take it back after
-  private menuPick: ((k: string) => void) | null = null; // what a choice does, and what keeps the menu open (checked 4 times a second; none: stays open)
-  private menuStay: (() => boolean) | null = null;
+  private menuPick: ((k: string) => void) | null = null; // what a choice does
+  private menuStay: (() => boolean) | null = null; // what keeps the menu open (checked 4 times a second; none: stays open)
   private nameIn: HTMLInputElement | null = null;
   private kind: string | null = null;
 
@@ -99,7 +99,7 @@ export class MenuPlate {
 
   // naming a pet: a text field in the menu; Enter saves, Esc cancels, and game keys don't fire while you type
   openRename = (p: Pet) => {
-    const { kmenu, toast } = this.g;
+    const { kmenu, doc, toast } = this.g;
     this.openMenu(
       'pets',
       '”Va ska ' + esc(p.name) + ' heta?”',
@@ -113,7 +113,7 @@ export class MenuPlate {
         if (k === 'ok' && n.trim()) toast('”' + p.rename(n) + '. Dä ä ett fint namn, dä.”', 2.5);
       },
     );
-    const nameIn = document.createElement('input');
+    const nameIn = doc.createElement('input');
     this.nameIn = nameIn;
     nameIn.type = 'text';
     nameIn.value = p.name;
