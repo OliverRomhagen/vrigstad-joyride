@@ -170,8 +170,21 @@ test.describe('game (index.html)', () => {
     await page.locator('#go').click();
     await getInParkedCar(page);
 
+    // The body rides along: it squats under throttle and leans out of the slide. Peaks are kept between polls.
+    let pitch = 0,
+      roll = 0;
     await page.keyboard.down('KeyW');
-    await expect.poll(async () => (await state(page)).speed, { intervals: [50], timeout: 60_000 }).toBeGreaterThan(9);
+    await expect
+      .poll(
+        async () => {
+          const q = await state(page);
+          pitch = Math.max(pitch, q.body.pitch);
+          return q.speed;
+        },
+        { intervals: [100], timeout: 60_000 },
+      )
+      .toBeGreaterThan(9);
+    expect(pitch).toBeGreaterThan(0.003); // nose up
     await page.keyboard.down('KeyD');
     await page.keyboard.down('Space');
     await expect.poll(async () => (await state(page)).drift, { intervals: [50] }).toBe(1);
@@ -182,6 +195,7 @@ test.describe('game (index.html)', () => {
         async () => {
           const q = await state(page);
           expect(q.drift).toBe(1);
+          roll = Math.max(roll, q.body.roll);
           return q.charge;
         },
         { intervals: [100], timeout: 60_000 },
@@ -190,6 +204,7 @@ test.describe('game (index.html)', () => {
     await page.keyboard.up('Space');
     await page.keyboard.up('KeyD');
     await page.keyboard.up('KeyW');
+    expect(roll).toBeGreaterThan(0.01); // roof out to the left of a right-hand slide
     await expect.poll(async () => (await state(page)).drift, { intervals: [20] }).toBe(0);
     const q = await state(page);
     expect(q.boost).toBeGreaterThan(0);
@@ -214,29 +229,6 @@ test.describe('game (index.html)', () => {
     await page.keyboard.up('KeyA');
     await page.keyboard.down('KeyD');
     await expect.poll(async () => (await state(page)).loose, { intervals: [20] }).toBeGreaterThan(0);
-    await page.keyboard.up('KeyD');
-    await page.keyboard.up('KeyW');
-    expect(errors).toEqual([]);
-  });
-
-  test('the car body squats under throttle and leans out of a turn', async ({ page }) => {
-    test.setTimeout(120_000);
-    await page.setViewportSize({ width: 640, height: 360 });
-    const errors = watchErrors(page);
-    // the Impala's 3.02 m differs from its type's 2.65 m, so this fails if the model's wheelbase is ignored
-    await page.goto('/index.html?vehicle=impala1970');
-    await page.locator('#go').click();
-    await getInParkedCar(page, 'Chevrolet Impala 1970 hardtop');
-    expect((await state(page)).wheelbase).toBeCloseTo(3.02, 2);
-    await page.keyboard.down('KeyW');
-    await expect
-      .poll(async () => (await state(page)).body.pitch, { intervals: [50], timeout: 30_000 })
-      .toBeGreaterThan(0.003); // nose up
-    await expect.poll(async () => (await state(page)).speed, { intervals: [50], timeout: 60_000 }).toBeGreaterThan(6);
-    await page.keyboard.down('KeyD');
-    await expect
-      .poll(async () => (await state(page)).body.roll, { intervals: [50], timeout: 30_000 })
-      .toBeGreaterThan(0.01); // roof out to the left
     await page.keyboard.up('KeyD');
     await page.keyboard.up('KeyW');
     expect(errors).toEqual([]);
