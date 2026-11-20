@@ -1,6 +1,6 @@
 # Sections for the release notes GitHub generates (`gh release create --generate-notes`, and the release workflow).
 # Each merged PR goes in the first section whose label it has. PR triage sets these labels from the PR title, so the
-# Conventional Commits type picks the section; anything else, such as refactor, ci or docs, goes under "Under the hood".
+# Conventional Commits type picks the section: what players notice first, then the work behind it.
 changelog:
   categories:
     - title: ⚠️ Breaking changes
@@ -15,5 +15,14 @@ changelog:
       labels: ["type:data"]
     - title: ↩️ Reverts
       labels: ["type:revert"]
-    - title: 🔧 Under the hood
+    - title: 🧱 Code structure
+      labels: ["type:refactor"]
+    - title: 🧪 Tests and CI
+      labels: ["type:test", "type:ci"]
+    - title: 🛠️ Tooling
+      labels: ["type:build", "type:chore", "type:style"]
+    - title: 📝 Docs
+      labels: ["type:docs"]
+    # A PR merged before its labels were set, or with a label removed: listed rather than dropped.
+    - title: Other
       labels: ["*"]

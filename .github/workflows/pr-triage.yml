@@ -84,8 +84,8 @@ jobs:
           fi
 
           # Type labels sort the release notes into sections (.github/release.yml). They always follow the title, unlike the
-          # scope: a type label set or removed by hand is put back on the next run. Other types go under "Under the hood".
-          want=$(sed -nE 's/^(feat|fix|perf|data|revert)(\([a-z]+\))?!?: .*/type:\1/p' <<<"$title")
+          # scope: a type label set or removed by hand is put back on the next run. Only the types in AGENTS.md, so a typo makes no label.
+          want=$(sed -nE 's/^(feat|fix|perf|data|revert|refactor|test|ci|build|chore|style|docs)(\([a-z]+\))?!?: .*/type:\1/p' <<<"$title")
           if grep -qE '^[a-z]+(\([a-z]+\))?!: ' <<<"$title"; then want+=$'\n'breaking; fi
           have=$(gh api "repos/$GH_REPO/issues/$number" --jq '.labels[].name | select(startswith("type:") or . == "breaking")')
           for label in $have; do
