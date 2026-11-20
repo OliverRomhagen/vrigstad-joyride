@@ -25,6 +25,9 @@ import { makeRnd } from '../world/random';
 import { RoadNetwork } from '../world/roads';
 import { buildStreetscape, sidewalkCentreM, StreetscapeIndex } from '../world/streetscape';
 import { STREETSCAPE_OVERRIDES } from '../world/streetscape-overrides';
+import { FURNITURE_OVERRIDES } from '../world/furniture/overrides';
+import { placeFurniture } from '../world/furniture/placement';
+import { StreetFurniture } from '../world/mesh/street-furniture';
 import { classifyStreetscape } from '../world/streetscape-rules';
 import { LEGACY_LIGHT } from '../world/three-legacy';
 import { treeSpots } from '../world/trees';
@@ -570,6 +573,16 @@ const wanted = new Wanted({ roads, rnd, pick, wrap, removeCar, drive, toast,
 const places = new Places({ footprints: bPolys, roads: R, police: wanted.police, lieLow: secs => wanted.lieLow(secs), toast, get stars() { return wanted.stars; } });
 const placeMeshes = new PlaceMeshes({ scene, places, heightAt: hAt, col, boxGeo, paintMat, glass: GLASS });
 addFootprint([KIOSK.x - KIOSK.w / 2, KIOSK.z - KIOSK.d / 2, KIOSK.x + KIOSK.w / 2, KIOSK.z - KIOSK.d / 2, KIOSK.x + KIOSK.w / 2, KIOSK.z + KIOSK.d / 2, KIOSK.x - KIOSK.w / 2, KIOSK.z + KIOSK.d / 2]);   // the kiosk collides like a building
+// ---------- street furniture: lamps, benches and bins from OSM, rules where OSM says nothing (#144, src/world/furniture/) ----------
+// after the trees, the streetscape and the places, which it keeps clear of; the kiosk is a footprint by now
+const DEBUG_FURNITURE = new URLSearchParams(location.search).get('debug') === 'furniture';   // ?debug=furniture tints by source
+const furniture = (function () {
+  const t0 = performance.now(), trees = forestSpots.slice(); for (const t of street.layout.trees) trees.push(t.x, t.z, STREET_TREE_SCALE);
+  const exclusions = places.list.map(p => ({ x: p.x, z: p.z, r: 2.5 }));   // where you stand at a safehouse door or the kiosk's lucka
+  const layout = placeFurniture({ data: D, roads, heightfield, buildings, water, trees, street: street.layout, exclusions, overrides: FURNITURE_OVERRIDES });
+  const draw = new StreetFurniture(layout.placements, { groundAt, debugSources: DEBUG_FURNITURE }); scene.add(...draw.meshes);
+  return { layout, draw, ms: performance.now() - t0 };
+})();
 // small menus on one plate (the kiosk's one lucka, adopting a cat): number keys / Esc, or tap; walking away closes it
 const kmenu = $('kmenu');
 let relock = false;                                             // a menu needs the cursor: free it while the menu is open, and take it back after
@@ -788,7 +801,11 @@ $('go').addEventListener('click', e => { started = true; $('intro').hidden = tru
 resize(); requestAnimationFrame(frame);
 
 // ---------- test hook: read-only state for the smoke tests (tests/e2e), so they do not have to read pixels ----------
-window.__joyride = { state: () => { const n = nearestCar(); return { started, lab: lab.list(), x: player.x, z: player.z, y: player.y, yaw: camYaw, inCar, car: pcar ? pcar.type : null, near: n ? n.mode : null, speed: pcar ? pcar.v : 0, drift: pcar ? pcar.drift : 0, boost: pcar ? pcar.boost : 0, charge: pcar ? pcar.charge : 0, loose: pcar ? pcar.loose : 0, flickDir: pcar ? pcar.flickDir : 0, flickHeld: pcar ? pcar.flickHeld : 0, stars: wanted.stars, cats: cats.length, treats, hp: health.hp, carDmg: pcar ? pcar.dmg : null, ownCat: !!colony.owned, vehicle: displayCar ? vehicleVisuals.state(displayCar) : null, nearSelectedVehicle: n === displayCar, activeVehicle: pcar ? vehicleVisuals.state(pcar) : null, body: pcar ? bodyMotion.state(pcar) : null, wheelbase: (pcar || displayCar)?.T.handling.wheelbaseM ?? 0, traffic: cars.filter(c => c.mode === 'ai').map(c => ({ type: c.type, vehicle: vehicleVisuals.state(c) })), clouds: skyDome.state(), streetscape: streetscapeState() }; } };
+window.__joyride = { state: () => { const n = nearestCar(); return { started, lab: lab.list(), x: player.x, z: player.z, y: player.y, yaw: camYaw, inCar, car: pcar ? pcar.type : null, near: n ? n.mode : null, speed: pcar ? pcar.v : 0, drift: pcar ? pcar.drift : 0, boost: pcar ? pcar.boost : 0, charge: pcar ? pcar.charge : 0, loose: pcar ? pcar.loose : 0, flickDir: pcar ? pcar.flickDir : 0, flickHeld: pcar ? pcar.flickHeld : 0, stars: wanted.stars, cats: cats.length, treats, hp: health.hp, carDmg: pcar ? pcar.dmg : null, ownCat: !!colony.owned, vehicle: displayCar ? vehicleVisuals.state(displayCar) : null, nearSelectedVehicle: n === displayCar, activeVehicle: pcar ? vehicleVisuals.state(pcar) : null, body: pcar ? bodyMotion.state(pcar) : null, wheelbase: (pcar || displayCar)?.T.handling.wheelbaseM ?? 0, traffic: cars.filter(c => c.mode === 'ai').map(c => ({ type: c.type, vehicle: vehicleVisuals.state(c) })), clouds: skyDome.state(), streetscape: streetscapeState(), furniture: furnitureState() }; } };
+function furnitureState() { const P = furniture.layout.placements, n = (k, v) => P.filter(p => p[k] === v).length;
+  return { total: P.length, byKind: { 'street-lamp': n('kind', 'street-lamp'), bench: n('kind', 'bench'), 'waste-bin': n('kind', 'waste-bin') },
+    bySource: { osm: n('source', 'osm'), override: n('source', 'override'), procedural: n('source', 'procedural') },
+    meshes: furniture.draw.meshes.length, triangles: furniture.draw.triangles, buildMs: Math.round(furniture.ms), debug: DEBUG_FURNITURE }; }
 function streetscapeState() { const L = street.layout, m = L.sidewalkM, r = v => Math.round(v);
   return { sidewalkM: { mapped: r(m.mapped), derived: r(m.derived), inferred: r(m.inferred) }, parkingAreas: L.lots.length, crossings: L.crossings,
     streetTrees: { mapped: L.trees.filter(t => t.source === 'mapped').length, inferred: L.trees.filter(t => t.source === 'inferred').length },
