@@ -65,7 +65,7 @@ describe('trisslott', () => {
     play();
     expect(wins).toEqual([30]);
     expect(drawn).toEqual([[1, 1, 30]]);
-    expect(toasts.at(-1)).toMatch(/^”Vinst! 30 kr/);
+    expect(toasts.at(-1)).toMatch(/^”Vinst! 30 riksdaler/);
   });
 
   it('gives a big win the big toast', () => {
@@ -73,7 +73,7 @@ describe('trisslott', () => {
     const { toasts, wins, play } = lotto(before / TRISS_TICKETS);
     play();
     expect(wins).toEqual([BIG_WIN_KR]);
-    expect(toasts.at(-1)).toMatch(/^”VINST!.*You won 10\u00a0000 kr/);
+    expect(toasts.at(-1)).toMatch(/^”VINST!.*You won 10\u00a0000 riksdaler/);
   });
 
   it('scratches nothing without the money for a ticket', () => {

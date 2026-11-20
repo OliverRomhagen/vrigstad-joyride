@@ -29,8 +29,8 @@ export interface Wallet {
 
 export const newWallet = (): Wallet => ({ kr: START_KR });
 
-/** Money as the HUD shows it, in Swedish style: 10 000 kr. */
-export const fmtKr = (n: number) => n.toLocaleString('sv-SE') + ' kr';
+/** Money as the game shows it, in Swedish style: 10 000 riksdaler (everyday Swedish for kronor, said to sound a little funny; the same in the plural). */
+export const fmtKr = (n: number) => n.toLocaleString('sv-SE') + ' riksdaler';
 
 /** Takes n kr if the wallet holds that much. False, and nothing taken, when it doesn't. */
 export function pay(w: Wallet, n: number): boolean {

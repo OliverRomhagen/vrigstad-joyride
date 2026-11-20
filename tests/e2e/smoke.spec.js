@@ -370,7 +370,7 @@ test.describe('game (index.html)', () => {
     await page.locator('#go').click();
     await expect.poll(async () => (await state(page)).cats).toBeGreaterThan(0); // Torget is built-up, so cats spawn at once
     expect(await state(page)).toMatchObject({ treats: 0, kr: 200 });
-    await expect(page.locator('#kr')).toHaveText('200 kr');
+    await expect(page.locator('#kr')).toHaveText('200 riksdaler');
 
     // With the camera as Start leaves it, the kiosk lucka is about 4.6 m to the player's left.
     await page.keyboard.down('KeyA');
@@ -384,7 +384,7 @@ test.describe('game (index.html)', () => {
     await expect(page.locator('#kmenu')).toBeHidden();
     await expect(page.locator('#treats')).toHaveText('Cat treats: 3');
     expect(await state(page)).toMatchObject({ treats: 3, kr: 195 });
-    await expect(page.locator('#kr')).toHaveText('195 kr');
+    await expect(page.locator('#kr')).toHaveText('195 riksdaler');
 
     await page.keyboard.press('KeyE');
     await expect(page.locator('#kmenu')).toBeVisible();
@@ -425,11 +425,11 @@ test.describe('game (index.html)', () => {
     expect(await state(page)).toMatchObject({ x, z, devcon: true });
     await page.keyboard.type('kr 500');
     await page.keyboard.press('Enter');
-    await expect(page.locator('#kr')).toHaveText('700 kr');
-    await expect(page.locator('#devcon li').last()).toHaveText('Wallet: 700 kr.');
+    await expect(page.locator('#kr')).toHaveText('700 riksdaler');
+    await expect(page.locator('#devcon li').last()).toHaveText('Wallet: 700 riksdaler.');
     await page.keyboard.type('mynt'); // the old cheat word, now a command: 1 000 kr
     await page.keyboard.press('Enter');
-    await expect(page.locator('#kr')).toHaveText('1 700 kr');
+    await expect(page.locator('#kr')).toHaveText('1 700 riksdaler');
     const run = async line => {
       await page.keyboard.type(line);
       await page.keyboard.press('Enter');
@@ -443,7 +443,7 @@ test.describe('game (index.html)', () => {
     await page.keyboard.press('Escape');
     expect(await state(page)).toMatchObject({ devcon: false });
     await page.keyboard.press('KeyL'); // låt det regna: 1 000 kr in the air
-    await expect(page.locator('#kr')).toHaveText('700 kr');
+    await expect(page.locator('#kr')).toHaveText('700 riksdaler');
     expect((await state(page)).bills).toBeGreaterThan(0);
     await page.keyboard.press('KeyL'); // not enough left: nothing is taken
     expect(await state(page)).toMatchObject({ kr: 700 });

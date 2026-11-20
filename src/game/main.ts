@@ -694,7 +694,7 @@ function openMenu(kind, title, items, pick, stay = null) {
 function closeMenu() { kmenu.hidden = true; nameIn = null; menuKind = menuPick = menuStay = null; if (relock) { relock = false; input.lockMouse(); } }
 // a choice can open the next menu (a pet's "are you sure?"): then the menu stays up, and the cursor stays free
 function menuChoose(k) { const pick = menuPick; menuPick = null; if (pick) pick(k); if (!menuPick) closeMenu(); }
-const openKiosk = () => openMenu('kiosk', '”Va ska dä va?”', [['triss', 'Trisslott <small>' + TRISS_KR + ' kr</small>'], ['treats', 'Kattgodis (3 st) <small>' + TREATS_KR + ' kr</small>'], ['korv', 'Korv me brö <small>' + KORV_KR + ' kr · +' + KORV_HP + ' health</small>'], ['vego', 'Vegokorv me brö <small>' + KORV_KR + ' kr</small>'], ['rulle', 'Smålandsrulle <small>' + RULLE_KR + ' kr · +' + RULLE_HP + ' health</small>'], ['no', 'Nä tack']], k => {
+const openKiosk = () => openMenu('kiosk', '”Va ska dä va?”', [['triss', 'Trisslott <small>' + fmtKr(TRISS_KR) + '</small>'], ['treats', 'Kattgodis (3 st) <small>' + fmtKr(TREATS_KR) + '</small>'], ['korv', 'Korv me brö <small>' + fmtKr(KORV_KR) + ' · +' + KORV_HP + ' health</small>'], ['vego', 'Vegokorv me brö <small>' + fmtKr(KORV_KR) + '</small>'], ['rulle', 'Smålandsrulle <small>' + fmtKr(RULLE_KR) + ' · +' + RULLE_HP + ' health</small>'], ['no', 'Nä tack']], k => {
   if (k === 'triss') trisslott.scratch(); else if (k === 'treats') buyTreats(); else if (k === 'korv') eat(KORV_HP, KORV_KR, '”En korv me brö, tack.”', '”Varsågod. Senap å ketchup ä på disken.”');
   else if (k === 'vego') toast('”En vegokåv me brö, tack.”\n”Vegokåv? Nä vi ha ingen vegokåv! Den ligger i frysen.”', 4);   // always sold out
   else if (k === 'rulle') eat(RULLE_HP, RULLE_KR, '”En smålandsrulle, tack.”', '”Varsågod, mos å räksallad å allt. Dä ä mat dä!”'); }, () => nearPlace()?.kind === 'kiosk');
@@ -830,7 +830,7 @@ const devcon = new DevConsole({ root: $('devcon'), commands,
   onClose: () => { canvas.focus(); if (conRelock && kmenu.hidden) input.lockMouse(); conRelock = false; } });   // an open menu needs the cursor
 const MYNT_KR = 1000;   // what the mynt cheat adds
 function addKr(n) { if (n >= 0) earn(wallet, n); else pay(wallet, Math.min(-n, wallet.kr)); drawKr(); return 'Wallet: ' + fmtKr(wallet.kr) + '.'; }
-commands.register('kr', { usage: '<amount>', help: 'add kronor to your wallet; a negative amount takes them', run: a => addKr(parseKr(a[0])) });
+commands.register('kr', { usage: '<amount>', help: 'add riksdaler to your wallet; a negative amount takes them', run: a => addKr(parseKr(a[0])) });
 // adopt <pet>: a new random pet of that kind, right by you. Only cats so far; another kind of pet adds its entry here.
 const ADOPT = new Map([['cat', () => { if (colony.owned) return 'You already have a cat, ' + colony.owned.name + '. Set it free first (P).';
   if (inCar) return 'Get out of the car first.';   // a cat made by the car would land inside it
@@ -839,7 +839,7 @@ commands.register('adopt', { usage: '<' + [...ADOPT.keys()].join(' | ') + '>', h
   run: a => { const f = a[0] && ADOPT.get(a[0].toLowerCase()); if (!f) throw new UsageError(a[0] ? 'No pet called ' + a[0] + '.' : ''); return f(); } });
 commands.register('mynt', { help: 'add ' + fmtKr(MYNT_KR) + ' to your wallet', run: () => addKr(MYNT_KR) });
 drawKr();
-const broke = kr => '”Dä blir ' + kr + ' kronor. Va, har du inga pengar? Nä, då blir dä inget.”';
+const broke = kr => '”Dä blir ' + fmtKr(kr) + '. Va, har du inga pengar? Nä, då blir dä inget.”';
 let signT = 0, blink = false, blinkT = 0;
 
 // ---------- stealing and getting caught (the wanted level and the police: src/game/police.ts) ----------
