@@ -51,7 +51,11 @@ export function addRoadRibbons(
     cv.width = cv.height = 256;
     const x = cv.getContext('2d') as CanvasRenderingContext2D;
     let seed = 11;
-    const next = () => (seed = (seed * 48271) % 2147483647) / 2147483647; // its own generator, so the look doesn't shift the seeded rnd() sequence
+    // its own generator, so the look doesn't shift the seeded rnd() sequence
+    const next = () => {
+      seed = (seed * 48271) % 2147483647;
+      return seed / 2147483647;
+    };
     x.fillStyle = '#f7f7f7';
     x.fillRect(0, 0, 256, 256);
     x.globalAlpha = 0.7;
@@ -368,7 +372,10 @@ export function addTrees(
       if (kind(i) === ki) {
         const k = cellOf(spots[i * 3]) + ',' + cellOf(spots[i * 3 + 1]);
         let l = cells.get(k);
-        if (!l) cells.set(k, (l = []));
+        if (!l) {
+          l = [];
+          cells.set(k, l);
+        }
         l.push(i);
       }
     const crownMat = new THREE.MeshLambertMaterial({ color: 0xffffff }),

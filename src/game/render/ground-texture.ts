@@ -51,7 +51,10 @@ export class GroundTexture {
       GRASS.forEach(fillLand);
       // mottled grass: its own generator, so the look doesn't shift the seeded rnd() sequence
       let ns = 7;
-      const nr = () => (ns = (ns * 48271) % 2147483647) / 2147483647;
+      const nr = () => {
+        ns = (ns * 48271) % 2147483647;
+        return ns / 2147483647;
+      };
       for (let i = 0; i < 2600; i++) {
         const cx = nr() * CW,
           cy = nr() * CW,

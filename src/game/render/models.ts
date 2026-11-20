@@ -96,8 +96,8 @@ function extrude(pts: number[][], width: number, bevel: number) {
 }
 export const paintMat = new THREE.MeshLambertMaterial({ vertexColors: true });
 export const carMat = new THREE.MeshPhongMaterial({ vertexColors: true, shininess: 60, specular: col(0x555555) }); // glossy paint and glass
-export const GLASS = '#26323a',
-  TYRE = '#1c1c1c';
+export const GLASS = '#26323a';
+const TYRE = '#1c1c1c';
 const lamps = (z: number): BoxPart[] => [
   [0.34, 0.16, 0.06, -0.6, 0.72, -z, '#fff6c8'],
   [0.34, 0.16, 0.06, 0.6, 0.72, -z, '#fff6c8'],
@@ -261,7 +261,12 @@ function softCar(t: string, c: string) {
   return mergeGeo(parts);
 }
 export const geoCache: Record<string, THREE.BufferGeometry> = {};
-export const carGeo = (t: string, c: string) => geoCache[t + c] || (geoCache[t + c] = softCar(t, c));
+// the geometry under `key`, made the first time it is asked for
+const cached = (key: string, make: () => THREE.BufferGeometry) => {
+  geoCache[key] ||= make();
+  return geoCache[key];
+};
+export const carGeo = (t: string, c: string) => cached(t + c, () => softCar(t, c));
 export const BAR_BLUE = col(0x2f6bff),
   BAR_RED = col(0xff3b30);
 export const barMat = new THREE.MeshBasicMaterial({ color: BAR_BLUE.clone() }),
@@ -270,9 +275,8 @@ export function personParts(shirt: string, pants: string, hair?: string | null, 
   // arms: separate meshes that swing from the shoulder (two more draw calls, so only the player has them)
   hair = hair || '#5a4632';
   const bk = shirt + hair + (arms ? '+arms' : ''),
-    body =
-      geoCache[bk] ||
-      (geoCache[bk] = boxGeo(
+    body = cached(bk, () =>
+      boxGeo(
         (
           [
             [0.5, 0.65, 0.28, 0, 1.13, 0, shirt],
@@ -287,8 +291,9 @@ export function personParts(shirt: string, pants: string, hair?: string | null, 
                 [0.14, 0.6, 0.16, 0.33, 1.12, 0, shirt],
               ],
         ),
-      ));
-  const leg = geoCache[pants] || (geoCache[pants] = boxGeo([[0.19, 0.8, 0.21, 0, -0.4, 0, pants]]));
+      ),
+    );
+  const leg = cached(pants, () => boxGeo([[0.19, 0.8, 0.21, 0, -0.4, 0, pants]]));
   const g = new THREE.Group() as Person,
     b = new THREE.Mesh(body, paintMat),
     l = new THREE.Mesh(leg, paintMat),
@@ -300,7 +305,7 @@ export function personParts(shirt: string, pants: string, hair?: string | null, 
   g.legs = [l, r];
   g.blob = blob(g, 0.9, 0.9);
   if (arms) {
-    const ag = geoCache['arm' + shirt] || (geoCache['arm' + shirt] = boxGeo([[0.14, 0.6, 0.16, 0, -0.3, 0, shirt]]));
+    const ag = cached('arm' + shirt, () => boxGeo([[0.14, 0.6, 0.16, 0, -0.3, 0, shirt]]));
     g.arms = [-0.33, 0.33].map(x => {
       const a = new THREE.Mesh(ag, paintMat);
       a.position.set(x, 1.42, 0);
