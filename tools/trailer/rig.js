@@ -8,9 +8,9 @@ const ROOT = path.join(__dirname, '..', '..');
 const WORK = path.join(__dirname, '.work');
 const CHROME = process.env.CHROME || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 
-// The game's internals the shots use, as a window.__G handle, plus a per-frame camera hook. A name that doesn't exist (an older
-// or newer main.ts) reads as undefined instead of stopping the game, and what moved into its own module (the police and stars
-// into `wanted`, the safehouses into `places`) is read from there.
+// The game's internals the shots use, as a window.__G handle, plus a per-frame camera hook. The same hook goes into every
+// release (tools/trailer/versions.js), so a name that doesn't exist in a version reads as undefined instead of failing,
+// and what later moved into its own module (the police and stars into `wanted`, the safehouses into `places`) is read from there.
 const BOOT = 'resize(); requestAnimationFrame(frame);', RENDER = 'renderer.render(scene, camera);\n}', RENDER_HOOKED = 'if (window.__cam) window.__cam(camera, T);\n  ' + RENDER;
 const NAMES = ['THREE', 'player', 'cars', 'keys', 'joy', 'R', 'D', 'hAt', 'camera', 'scene', 'action', 'toast', 'respawn', 'nearestRoad', 'addCar', 'removeCar',
   'carGeo', 'sun', 'SUN_DIR', 'renderer', 'placeCar', 'nodes', 'nodeKey', 'driveable', 'inCar', 'pcar'];
@@ -38,7 +38,7 @@ async function buildCaptureCopy() {
   return path.join(WORK, 'index.html');
 }
 
-/** Opens a hooked game page: `file` if given, else a fresh build of this checkout. */
+/** Opens a hooked game page: `file` if given (a release from versions.js), else a fresh build of this checkout. */
 async function open({ width = 1280, height = 720, scale = 1.5, file = null } = {}) {
   file = file || await buildCaptureCopy();
   const browser = await puppeteer.launch({ executablePath: CHROME, headless: 'new',
