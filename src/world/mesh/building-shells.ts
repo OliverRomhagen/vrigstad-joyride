@@ -27,7 +27,7 @@ function eachShellVertex(shape: BuildingShape, emit: (x: number, y: number, z: n
   }
   for (const side of sides) {
     // triangulateShape wants { x, y } points, and drops a closing point that repeats the first
-    const flat = side.map((v) => new THREE.Vector2(v.x, v.z));
+    const flat = side.map(v => new THREE.Vector2(v.x, v.z));
     for (const face of THREE.ShapeUtils.triangulateShape(flat, [])) {
       for (const i of face) emit(side[i].x, yAt(side[i]), side[i].z, 'roof');
     }
@@ -88,14 +88,18 @@ export interface PaintedShellOptions {
 export class PaintedBuildingShells {
   readonly mesh: THREE.Mesh;
 
-  constructor(data: WorldData, heightfield: Pick<Heightfield, 'heightAt'>, { material, colours, extra }: PaintedShellOptions) {
+  constructor(
+    data: WorldData,
+    heightfield: Pick<Heightfield, 'heightAt'>,
+    { material, colours, extra }: PaintedShellOptions,
+  ) {
     const positions: number[] = [];
     const vertexColours: number[] = [];
     const emit: EmitVertex = (x, y, z, c) => {
       positions.push(x, y, z);
       vertexColours.push(c.r, c.g, c.b);
     };
-    forEachBuilding(data, heightfield, (shape) => {
+    forEachBuilding(data, heightfield, shape => {
       const paint = colours(shape);
       eachShellVertex(shape, (x, y, z, surface) => {
         emit(x, y, z, surface === 'roof' ? paint.roof : surface === 'wallTop' ? paint.wall : paint.wallFoot);
@@ -124,15 +128,19 @@ export class BuildingShellsByMaterial<K extends string> {
   /** one mesh per material, in the order of the `materials` keys, also when no building uses it */
   readonly meshes: THREE.Mesh[];
 
-  constructor(data: WorldData, heightfield: Pick<Heightfield, 'heightAt'>, { materials, materialsFor }: ShellsByMaterialOptions<K>) {
+  constructor(
+    data: WorldData,
+    heightfield: Pick<Heightfield, 'heightAt'>,
+    { materials, materialsFor }: ShellsByMaterialOptions<K>,
+  ) {
     const keys = Object.keys(materials) as K[];
     const buffers = {} as Record<K, number[]>;
     for (const k of keys) buffers[k] = [];
-    forEachBuilding(data, heightfield, (shape) => {
+    forEachBuilding(data, heightfield, shape => {
       const { walls, roof } = materialsFor(shape.building);
       eachShellVertex(shape, (x, y, z, surface) => buffers[surface === 'roof' ? roof : walls].push(x, y, z));
     });
-    this.meshes = keys.map((k) => shellMesh(buffers[k], materials[k]));
+    this.meshes = keys.map(k => shellMesh(buffers[k], materials[k]));
   }
 
   dispose() {

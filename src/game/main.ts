@@ -7,10 +7,10 @@ import { pickVariant, vehicleDefinition } from './render/vehicle-registry';
 import { VehicleVisuals } from './render/vehicle-visuals';
 import D from '../../data/vrigstad.json';
 import { LabFlags } from '../lab/flags';
-import { BUILDING_CELL_M as BC, BuildingIndex } from '../world/buildings';
+import { BuildingIndex } from '../world/buildings';
 import { ROAD_WIDTH_M as ROAD_W } from '../world/data';
 import { Heightfield } from '../world/heightfield';
-import { clamp } from '../world/math';
+import { clamp, wrap } from '../world/math';
 import { PaintedBuildingShells } from '../world/mesh/building-shells';
 import { RoadRibbons } from '../world/mesh/road-ribbons';
 import { TerrainMesh } from '../world/mesh/terrain';
@@ -20,19 +20,19 @@ import { nodeKey, RoadNetwork } from '../world/roads';
 import { LEGACY_LIGHT } from '../world/three-legacy';
 import { treeSpots } from '../world/trees';
 import { Water } from '../world/water';
-import { CAT_ADOPT_PETS, CatColony } from './cats';
+import { CatColony } from './cats';
 import { Hud } from './hud';
 import { Input } from './input';
 import { Crowd } from './pedestrians';
 import { Pets } from './pets';
 import { CAT_SCRATCH_HP, crackLevel, LOW_HP, CRASH_COOL_S, crashCars, crashDamage, driverHurt, HP_MAX, heal, hurt, KORV_HP, impactSpeed, newHealth, regen, RULLE_HP, runOverHurt, smokeLevel, topSpeedShare, wakeSpot, wrecked } from './health';
+import { carInReach, HOME, hop, ride, standAt, stepOut, tooFastToGetOut, walk } from './player';
 import { Wanted } from './police';
 
 (function () {
 'use strict';
 const $ = id => document.getElementById(id);
 const S = D.size, HALF = S / 2;
-const wrap = a => { while (a > Math.PI) a -= 2 * Math.PI; while (a < -Math.PI) a += 2 * Math.PI; return a; };
 // seeded streams: rnd() drives the world and gameplay; side systems get their own stream so they don't shift its rolls
 const rnd = makeRnd(57355);
 const pick = a => a[Math.floor(rnd() * a.length)];
@@ -47,7 +47,7 @@ const normalAt = (x, z) => heightfield.normalAt(x, z, _n);
 const canvas = $('gl');
 let renderer;
 try { renderer = new THREE.WebGLRenderer({ canvas, antialias: true }); }
-catch (err) { $('fail').hidden = false; $('ui').hidden = true; $('intro').hidden = true; return; }
+catch { $('fail').hidden = false; $('ui').hidden = true; $('intro').hidden = true; return; }
 const coarse = matchMedia('(pointer: coarse)').matches;
 renderer.setPixelRatio(Math.min(devicePixelRatio || 1, coarse ? 1.5 : 2));
 renderer.shadowMap.enabled = true;
@@ -161,7 +161,7 @@ scene.add(...roadRibbons.meshes);
 const water = new Water(D, roads), inWater = water.inWater.bind(water);
 
 // ---------- buildings (painted in Swedish house colours) + collision grid ----------
-const buildings = new BuildingIndex(D), { footprints: bPolys, grid: bGrid } = buildings;
+const buildings = new BuildingIndex(D), { footprints: bPolys } = buildings;
 const addFootprint = buildings.addFootprint.bind(buildings), collide = buildings.collide.bind(buildings);
 // house details: windows (a texture on a skin just outside the walls), white corner boards and eave boards, a dark plinth, and a chimney on gabled roofs
 const WIN_W = 2.6, STOREY = 2.8;   // window spacing and storey height (m)
@@ -626,9 +626,7 @@ function buyTreats() {
 }
 function drawTreats() { const el = $('treats'); el.hidden = false; el.textContent = 'Cat treats: ' + treats; }
 
-// ---------- player ----------
-const HOME = { x: -8.9, z: 30.1 };
-const JUMP_V = 5.2, GRAVITY = 16;   // m/s up at take-off, m/s² down: a hop about 0.85 m high that lasts 0.65 s
+// ---------- player (walking, jumping, getting out: src/game/player.ts) ----------
 const player = { x: HOME.x, z: HOME.z, y: 0, vy: 0, h: 0, speed: 0, phase: 0, mesh: personParts('#f2c230', '#2b3a55', null, true) };   // y: metres above the ground
 collide(player, 0.6); scene.add(player.mesh);
 let jumpQ = false;   // set by a fresh Space / Jump press on foot, used up by the next frame: a held key (braking, then getting out) never jumps, a tap between frames isn't lost
@@ -783,8 +781,7 @@ function drawHealth() { hud.drawHealth(health.hp, inCar ? pcar.dmg : null); }
 let signT = 0, blink = false, blinkT = 0;
 
 // ---------- stealing and getting caught (the wanted level and the police: src/game/police.ts) ----------
-function nearestCar() { let best = null, bd = 4.4;
-  for (const c of cars) { if (c.mode === 'police') continue; const d = Math.hypot(c.x - player.x, c.z - player.z); if (d < bd) { bd = d; best = c; } } return best; }
+function nearestCar() { return carInReach(player, cars); }
 function action() {
   if (!started || bigT > 0) return;
   if (inside) { leaveHouse(); return; }
@@ -793,8 +790,8 @@ function action() {
   if (catFirst(kt, pl)) { if (kt.owned) openOwnCat(kt); else petCat(kt); return; }
   if (pl) { if (pl.kind === 'safe') enterHouse(pl); else openKiosk(); return; }
   if (inCar) {
-    if (Math.abs(pcar.v) > 3) { toast('Slow down before you get out.', 2); return; }
-    player.x = pcar.x - Math.cos(pcar.h) * 2; player.z = pcar.z - Math.sin(pcar.h) * 2; player.h = pcar.h; collide(player, 0.5);
+    if (tooFastToGetOut(pcar)) { toast('Slow down before you get out.', 2); return; }
+    stepOut(player, pcar); collide(player, 0.5);
     pcar.mode = 'idle'; pcar.v = pcar.slip = pcar.drift = pcar.boost = 0; placeCar(pcar); pcar = null; inCar = false; jumpQ = false; player.mesh.visible = true; camYaw = wrap(camYaw + lookOff); lookOff = 0; return;
   }
   const c = nearestCar(); if (!c) return;
@@ -811,14 +808,14 @@ function action() {
   c.mode = 'player'; c.vh = c.h; c.slip = c.drift = c.boost = c.loose = 0; pcar = c; inCar = true; player.y = player.vy = 0; player.mesh.visible = false; lookOff = 0; camYaw = c.h;
 }
 function respawn() { leaveHouse(); if (inCar) { pcar.mode = 'idle'; pcar.v = pcar.slip = pcar.drift = pcar.boost = 0; placeCar(pcar); pcar = null; inCar = false; player.mesh.visible = true; }
-  player.x = HOME.x; player.z = HOME.z; player.y = player.vy = 0; jumpQ = false; collide(player, 0.6); }
+  standAt(player, HOME.x, HOME.z); jumpQ = false; collide(player, 0.6); }
 function bigScreen(title, msg) { $('big-t').textContent = title; $('big-p').textContent = msg; bigT = 3; $('big').hidden = false; hud.hideToast(); }   // the big screen replaces any line from the same moment
 function busted() { respawn(); health.hp = HP_MAX; drawHealth(); bigScreen('Gripen!', 'Busted. The police drop you off at Torget.'); }
 // health at zero: with the police after you it's Gripen!, otherwise you come to at the nearest safehouse, or Torget
 function knockedOut() {
   if (wanted.stars) { wanted.clear(); busted(); return; }   // Gripen! expects the stars cleared
   const spot = wakeSpot(player.x, player.z, HOME, places);
-  respawn(); player.x = spot.x; player.z = spot.z; collide(player, 0.6); health.hp = HP_MAX; drawHealth();
+  respawn(); standAt(player, spot.x, spot.z); collide(player, 0.6); health.hp = HP_MAX; drawHealth();
   bigScreen('Däckad!', 'Knocked out. You come to ' + (spot.name ? 'at the safehouse on ' + spot.name : 'at Torget') + '.'); sayLater(pickLine(WAKE_LINES));
 }
 const WAKE_LINES = ['”Va hände? Ja minns ingenting.”', '”Aj, mitt huve…”'];
@@ -844,22 +841,15 @@ function frame(now) {
   for (const p of places) p.gem.rotation.y += dt * 1.6;
 
   const jump = jumpQ; jumpQ = false;
-  if (inCar) { drive(pcar, my, mx, !!keys.brake, dt, true); player.x = pcar.x; player.z = pcar.z; player.h = pcar.h; player.speed = Math.abs(pcar.v); }
+  if (inCar) { drive(pcar, my, mx, !!keys.brake, dt, true); ride(player, pcar); }
   else {
-    const mag = Math.min(1, Math.hypot(mx, my)), wet = inWater(player.x, player.z);
-    if (mag > 0.08 && bigT <= 0 && !inside) {
-      const fx = Math.sin(camYaw), fz = -Math.cos(camYaw), dx = fx * my - fz * mx, dz = fz * my + fx * mx, L = Math.hypot(dx, dz);
-      const sp = (wet ? 1.6 : keys.run || joy.on ? 8 : 4.6) * mag;
-      player.x = clamp(player.x + dx / L * sp * dt, -HALF + 2, HALF - 2); player.z = clamp(player.z + dz / L * sp * dt, -HALF + 2, HALF - 2);
-      player.h += wrap(Math.atan2(dx, -dz) - player.h) * Math.min(1, dt * 12); player.speed = sp; player.phase += sp * dt * 2.1;
-    } else { player.speed = 0; player.phase *= 0.8; }
+    walk(player, dt, mx, my, camYaw, { run: !!keys.run || joy.on, wet: inWater(player.x, player.z), still: bigT > 0 || !!inside }, HALF);
     collide(player, 0.5);
     if (!inside) for (const c of cars) { const dx = player.x - c.x, dz = player.z - c.z, d = Math.hypot(dx, dz); if (d < 1.6 && d > 0.01) { player.x += dx / d * (1.6 - d); player.z += dz / d * (1.6 - d);
       const a = c.mode === 'ai' ? c.h : c.vh, n = runOverHurt(impactSpeed(Math.sin(a) * c.v, -Math.cos(a) * c.v, -dx / d, -dz / d));   // the car's speed towards you
       if (n > 0 && clockS - runOverAt >= CRASH_COOL_S) { runOverAt = clockS; hurtPlayer(n); shake(n); if (health.hp <= 0) break; } } }
     const wetNow = inWater(player.x, player.z);                // after this frame's move: take-off and wading depth follow where the player stands now
-    if (player.y === 0 && jump && !wetNow && !inside && bigT <= 0) player.vy = JUMP_V;   // on foot, Space and the touch Brake button jump
-    if (player.y > 0 || player.vy > 0) { player.y += (player.vy - GRAVITY * dt / 2) * dt; player.vy -= GRAVITY * dt; if (player.y <= 0) player.y = player.vy = 0; }   // exact for constant gravity: same hop at any frame rate
+    hop(player, dt, jump && !wetNow && !inside && bigT <= 0);   // on foot, Space and the touch Brake button jump
     // walking: arms swing against the legs and the body bobs; in the air: legs apart and both arms up
     const air = player.y > 0, sw = air ? 0.5 : Math.sin(player.phase) * 0.75, lift = player.y + (air ? 0 : Math.abs(Math.sin(player.phase)) * 0.05), m = player.mesh;
     m.legs[0].rotation.x = sw; m.legs[1].rotation.x = -sw; m.arms[0].rotation.x = air ? 2.4 : -sw * 0.8; m.arms[1].rotation.x = air ? 2.4 : sw * 0.8;
@@ -905,7 +895,7 @@ function frame(now) {
       pr.hidden = false; pr.innerHTML = '<kbd>E</kbd>Go outside'; }
     else if (catFirst(kt, pl)) { pr.hidden = !kmenu.hidden; pr.innerHTML = '<kbd>E</kbd>' + (kt.owned ? 'Hang out with ' + esc(kt.name) : 'Pet the cat' + (treats ? ' (offer a treat)' : '')); }
     else if (pl) { pr.hidden = !kmenu.hidden; pr.innerHTML = '<kbd>E</kbd>' + (pl.kind === 'safe' ? 'Go inside the safehouse' : 'Handla i kiosken'); }
-    else if (inCar && !coarse) { pr.hidden = Math.abs(pcar.v) > 3; pr.innerHTML = '<kbd>E</kbd>Get out'; }
+    else if (inCar && !coarse) { pr.hidden = tooFastToGetOut(pcar); pr.innerHTML = '<kbd>E</kbd>Get out'; }
     else if (c) { pr.hidden = false; pr.innerHTML = '<kbd>E</kbd>' + (c.owned ? 'Get in the ' : 'Steal the ') + carName(c) + (wrecked(c) ? ' (wrecked)' : ''); }
     else pr.hidden = true;
     const bl = inCar ? 'Brake' : 'Jump'; if ($('p-brake').textContent !== bl) $('p-brake').textContent = bl;
