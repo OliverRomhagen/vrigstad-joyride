@@ -50,7 +50,9 @@ describe('parseCloudConfig', () => {
       softness: 1.5,
       quality: 'low',
     });
-    expect(parseCloudConfig(q('clouds=stormy&cloudSeed=x&wind=a,b&cloudSoft=-2&cloudQuality=ultra'))).toEqual(DEFAULT_CLOUDS);
+    expect(parseCloudConfig(q('clouds=stormy&cloudSeed=x&wind=a,b&cloudSoft=-2&cloudQuality=ultra'))).toEqual(
+      DEFAULT_CLOUDS,
+    );
     expect(parseCloudConfig(q('clouds=off')).cover).toBe('off');
     expect(parseCloudConfig(q('wind=90,999')).windSpeedMps).toBe(40);
   });
@@ -64,7 +66,11 @@ describe('the cloud field', () => {
   });
 
   it('repeats exactly every FIELD_PERIOD, so wrapping the wind offset never shows', () => {
-    for (const [x, z] of [[0, 0], [3100, -870], [-12000, 4400]]) {
+    for (const [x, z] of [
+      [0, 0],
+      [3100, -870],
+      [-12000, 4400],
+    ]) {
       const a = cloudField(x, z, 3.25, 0.5, 2, seedOffset(4));
       const b = cloudField(x, z, 3.25 + FIELD_PERIOD, 0.5 - FIELD_PERIOD, 2 + FIELD_PERIOD, seedOffset(4));
       expect(b.base).toBeCloseTo(a.base, 9);

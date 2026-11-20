@@ -10,8 +10,8 @@ import {
   CLOUD_FADE_M,
   CLOUD_PRESETS,
   CLOUD_SCALE_M,
-  EROSION,
   type CloudConfig,
+  EROSION,
   evolveAt,
   HIGH_OCTAVES,
   LOW_OCTAVES,
@@ -162,7 +162,8 @@ export class Sky {
         cluster: { value: preset.cluster },
         opacity: { value: preset.opacity },
       },
-      vertexShader: 'varying vec3 vDir; void main() { vDir = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+      vertexShader:
+        'varying vec3 vDir; void main() { vDir = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
       fragmentShader: FRAGMENT,
     });
     this.mesh = new THREE.Mesh(new THREE.SphereGeometry(radius, 32, 16), material);
@@ -192,7 +193,16 @@ export class Sky {
   /** read-only state for the test hook */
   state() {
     const { cover, seed, windFromDeg, windSpeedMps, quality } = this.cfg;
-    return { cover, seed, windFromDeg, windSpeedMps, quality, timeS: this.timeS, sunShade: Math.max(0, this.shade), sunFactor: this.sunFactor };
+    return {
+      cover,
+      seed,
+      windFromDeg,
+      windSpeedMps,
+      quality,
+      timeS: this.timeS,
+      sunShade: Math.max(0, this.shade),
+      sunFactor: this.sunFactor,
+    };
   }
 
   dispose() {
