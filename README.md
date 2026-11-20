@@ -86,10 +86,12 @@ To cut a release, from an up-to-date `main`:
 ```sh
 git tag -a v0.1.0 -m "v0.1.0"
 git push origin v0.1.0
-npm run --silent release-notes | gh release create v0.1.0 --notes-file -
+gh release create v0.1.0 --generate-notes
 ```
 
-`release-notes` runs [git-cliff](https://git-cliff.org) over the commits since the previous tag. Each one is a squash-merged PR title, so keep those titles descriptive: `cliff.toml` groups them by type (features, fixes, performance, data, then the rest folded under "Under the hood") and shows the scope in bold. To preview the notes before tagging, run `npx git-cliff --unreleased --tag v0.1.0 --strip all`.
+`--generate-notes` builds the changelog from merged PR titles, so keep those titles descriptive.
+
+The notes come in sections by the PR titles' type: breaking changes, features, fixes, performance, data and reverts, then everything else under "Under the hood" (`.github/release.yml`). The sections read labels that the PR triage workflow sets from each title, so a PR merged without them lands under "Under the hood".
 
 Publishing a release also announces it in the Discord server: a repository webhook (Settings → Webhooks) posts `release` events to the channel's Discord webhook URL with `/github` appended. The URL is a secret, so it lives only in the webhook settings.
 
