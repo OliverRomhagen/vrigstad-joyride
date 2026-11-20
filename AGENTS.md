@@ -96,7 +96,7 @@ GitHub issues are the backlog: every bug, idea and piece of work is one issue.
 Defaults for new code; review checks them, no linter does.
 
 - **Name a thing for what it is.** If a reviewer has to ask what a name holds ("is `idx` a node or a road?"), rename it. A domain word and a structural word aren't interchangeable: a `car` (the sim object) isn't its `VehicleVisuals` model, and a `footprint` isn't a `building`.
-- **Booleans read as a question or a state:** `canDrift`, `inCar`, `dragging`, `menuOpen`. Add `is`, `has`, `can` or `should` when the bare word could be read as a noun or a verb: `isBusted`, since `busted()` is a function.
+- **Booleans read as a question or a state:** `canDrift`, `inCar`, `dragging`, `menuOpen`. Add `is`, `has`, `can` or `should` when the bare word could be read as a noun or a verb: a flag beside the function `busted()` would be `isBusted`, not `busted`.
 - **Handlers and callbacks are named by what they do** (`endDrag`, `closeMenu`, `spawnTraffic`), not by the event (`handleClick`, `onPointerUp`). Pass a named handler by reference when it's used more than once or is longer than a line; a short one-off can stay an inline arrow. The callbacks a module takes in its `*Deps` object are named the same way: `caught`, `spawnCar`, `drawStars` (`src/game/police.ts`).
 - **Getters over `getX()` on classes** for a value the object already has (`get dragging()` in `src/game/input.ts`). Sim entities stay plain data with no methods, as above. Keep `getX()` or `loadX()` for work that costs something, such as an async load.
 - **Fixed sets of values are `as const` maps with upper-case keys, not enums:** `RoadClass = { PRIMARY: 0, SECONDARY: 1, … } as const` (`src/world/data.ts`). An `Error` subclass only when a caller branches on it.
@@ -106,7 +106,7 @@ Defaults for new code; review checks them, no linter does.
 **When to break them:**
 - **Names someone else owns keep their spelling:** three.js and the DOM (`visible`, `castShadow`, `needsUpdate`, `hidden`), OSM tags and the data in `data/vrigstad.json`.
 - **Existing code isn't renamed just to follow these.** Rename when you're changing that code anyway; a rename that touches many lines is its own `refactor` PR.
-- **Code moved out of a `main.ts` keeps its names and dense idiom** (short names, one-line loops) in the PR that moves it (#177), so a reviewer can compare it line for line with the old code. Formatting is still Biome's. Clear names can follow in a later PR.
+- **Code moved out of a `main.ts` keeps its names** in the PR that moves it (#177), so a reviewer can compare it with the old code. Biome reformats it in its new module, so move it as-is in one commit and run `npm run format` in the next; `git diff --color-moved` on the first commit then shows it moved unchanged. Clear names can follow in a later PR.
 - **Inside `src/game/main.ts` and `src/map/main.ts`, match the surrounding code**, as above, until #177 splits them.
 - **When a name reads better another way, use it** and say why in the PR. Consistency with nearby code beats a general rule.
 
