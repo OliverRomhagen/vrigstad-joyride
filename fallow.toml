@@ -39,7 +39,7 @@ patterns = ["src/world/**"]
 # The page modules in src/game/, which would otherwise fall into sim below. They are page code (see the last zone).
 [[boundaries.zones]]
 name = "page"
-patterns = ["src/game/main.ts", "src/game/hud.ts", "src/game/input.ts"]
+patterns = ["src/game/main.ts", "src/game/hud.ts", "src/game/input.ts", "src/game/menu.ts"]
 
 [[boundaries.zones]]
 name = "render"
