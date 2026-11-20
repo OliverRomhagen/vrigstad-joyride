@@ -4,7 +4,6 @@ import * as THREE from 'three';
 import { AdoptHearts } from './render/adopt-heart';
 import { DriftFx } from './render/drift-fx';
 import { vehicleDefinition } from './render/vehicle-registry';
-import { Sky } from './render/sky';
 import { VehicleVisuals } from './render/vehicle-visuals';
 import { BodyMotion } from './render/body-motion';
 import { CarDamageFx } from './render/car-damage';
@@ -14,20 +13,12 @@ import { LabFlags } from '../lab/flags';
 import { BuildingIndex } from '../world/buildings';
 import { ROAD_WIDTH_M as ROAD_W } from '../world/data';
 import { Heightfield } from '../world/heightfield';
-import { parseCloudConfig } from '../world/clouds';
 import { clamp, wrap } from '../world/math';
-import { PaintedBuildingShells } from '../world/mesh/building-shells';
-import { ParkingMesh } from '../world/mesh/parking-mesh';
-import { RoadRibbons } from '../world/mesh/road-ribbons';
-import { SidewalkMesh } from '../world/mesh/sidewalk-mesh';
-import { TerrainMesh } from '../world/mesh/terrain';
-import { pointInPolygon as inPoly, polygonArea as polyArea } from '../world/polygon';
 import { makeRnd } from '../world/random';
 import { RoadNetwork } from '../world/roads';
 import { buildStreetscape, sidewalkCentreM, StreetscapeIndex } from '../world/streetscape';
 import { STREETSCAPE_OVERRIDES } from '../world/streetscape-overrides';
 import { classifyStreetscape } from '../world/streetscape-rules';
-import { LEGACY_LIGHT } from '../world/three-legacy';
 import { treeSpots } from '../world/trees';
 import { Water } from '../world/water';
 import { Fleet, newCar, TURBO_AT } from './cars';
@@ -44,6 +35,10 @@ import { CAT_SCRATCH_HP, LOW_HP, CRASH_COOL_S, crashCars, crashDamage, driverHur
 import { HOME, hop, ride, tooFastToGetOut, walk } from './player';
 import { Wanted } from './police';
 import { PlaceMeshes } from './render/places';
+import { GroundTexture } from './render/ground-texture';
+import { BAR_BLUE, BAR_RED, barGeo, barMat, blob, blobTex, boxGeo, carGeo, carMat, GLASS, geoCache, PROFILES, paintMat, personParts, TRACTOR_CAB } from './render/models';
+import { buildStage, col, SUN_DIR, SUN_I, setUpRenderer } from './render/stage';
+import { addBuildings, addRoadRibbons, addStreetscapeMeshes, addTerrain, addTrees } from './render/world-meshes';
 import { specFor } from './sim/vehicle-spec';
 import { newGameState, newViewState } from './state';
 import { Trisslott } from './trisslott';
@@ -64,44 +59,15 @@ const heightfield = new Heightfield(D), hAt = heightfield.heightAt.bind(heightfi
 const _n = new THREE.Vector3();
 const normalAt = (x, z) => heightfield.normalAt(x, z, _n);
 
-// ---------- renderer ----------
+// ---------- renderer and stage: fog, lights, sky and camera (src/game/render/stage.ts) ----------
 const canvas = $('gl');
 let renderer;
 try { renderer = new THREE.WebGLRenderer({ canvas, antialias: true }); }
 catch { $('fail').hidden = false; $('ui').hidden = true; $('intro').hidden = true; return; }
 const coarse = matchMedia('(pointer: coarse)').matches;
-renderer.setPixelRatio(Math.min(devicePixelRatio || 1, coarse ? 1.5 : 2));
-renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFShadowMap;
-// filmic tone mapping on an sRGB pipeline: colours below are written in sRGB and converted to linear with col()
-renderer.outputColorSpace = THREE.SRGBColorSpace;
-renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1;
-const col = c => new THREE.Color(c).convertSRGBToLinear();
-// three applies fog after the output colour space conversion, so the fog, clear and sky colours stay in sRGB
-const HORIZON = 0xd6e4e6, FOG_PER_M = 0.0007;   // FogExp2 density: about 40% haze at 1 km
-const scene = new THREE.Scene();
-scene.background = new THREE.Color(HORIZON);
-scene.fog = new THREE.FogExp2(HORIZON, FOG_PER_M);
-const camera = new THREE.PerspectiveCamera(58, 1, 0.8, 4200);
-scene.add(new THREE.HemisphereLight(0xffffff, col(0x9aa58a), 0.62 * LEGACY_LIGHT));
-const sun = new THREE.DirectionalLight(col(0xfff4dd), 0.95 * LEGACY_LIGHT);   // intensity: SUN_I, times the clouds' sunFactor
-const SUN_DIR = new THREE.Vector3(-0.55, 0.75, 0.37).normalize();
-// sky: a gradient dome with the sun's glow and drifting fair-weather clouds (src/game/render/sky.ts); it follows the camera
-// and fades into the fog at the horizon. ?clouds=clear|scattered|partly|mostly|off, cloudSeed, wind=from°,m/s (see clouds.ts)
-const SUN_I = 0.95 * LEGACY_LIGHT;   // the sun's intensity under a clear sky; a cloud in front of it takes some away
-const skyDome = new Sky({ top: 0x5f97c9, horizon: HORIZON, sunColour: 0xfff1d0, sunDir: SUN_DIR, clouds: parseCloudConfig(new URLSearchParams(location.search), coarse) });
-const dome = skyDome.mesh; scene.add(dome);
-// soft round shadow under cars, people and trees, so nothing looks pasted onto the ground
-const blobTex = (function () { const cv = document.createElement('canvas'); cv.width = cv.height = 64; const x = cv.getContext('2d'), g = x.createRadialGradient(32, 32, 0, 32, 32, 32);
-  g.addColorStop(0, 'rgba(0,0,0,.9)'); g.addColorStop(0.5, 'rgba(0,0,0,.45)'); g.addColorStop(1, 'rgba(0,0,0,0)'); x.fillStyle = g; x.fillRect(0, 0, 64, 64); return cv; })();
-const blobMat = new THREE.MeshBasicMaterial({ color: 0x000000, map: new THREE.CanvasTexture(blobTex), transparent: true, opacity: 0.5, depthWrite: false,
-  polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -6 }), blobGeo = new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2);
-function blob(parent, w, l) { const m = new THREE.Mesh(blobGeo, blobMat); m.scale.set(w, 1, l); m.position.y = 0.06; m.renderOrder = 3; parent.add(m); return m; }
-sun.castShadow = true;
-sun.shadow.mapSize.set(2048, 2048);
-Object.assign(sun.shadow.camera, { left: -110, right: 110, top: 110, bottom: -110, near: 50, far: 800 });
-sun.shadow.bias = -0.0006; sun.shadow.normalBias = 0.05;
-scene.add(sun, sun.target);
+setUpRenderer(renderer, coarse);
+const { scene, camera, sun, skyDome } = buildStage(coarse, location.search);
+const maxAnisotropy = renderer.capabilities.getMaxAnisotropy();
 
 // ---------- lab: opt-in experiments, switched on with ?lab=<id>,<id> (src/lab/) ----------
 // each one is imported only when its flag is on, so with everything off the game runs exactly as without the lab;
@@ -109,72 +75,19 @@ scene.add(sun, sun.target);
 const lab = LabFlags.fromSearch(location.search);
 if (lab.on('hello')) import('../lab/hello').then(m => m.startHello()).catch(err => console.warn('Lab: hello failed', err));
 
-// ---------- ground texture (also feeds the minimap) ----------
-const CW = (coarse || renderer.capabilities.maxTextureSize < 4096) ? 2048 : 4096, K = CW / S;
-const tex2d = document.createElement('canvas'); tex2d.width = tex2d.height = CW;
-const ctx = tex2d.getContext('2d');
-const P = v => (v + HALF) * K;
-function trace(p, close) { ctx.moveTo(P(p[0]), P(p[1])); for (let i = 2; i < p.length; i += 2) ctx.lineTo(P(p[i]), P(p[i + 1])); if (close) ctx.closePath(); }
-const HOUSE_MIN_M2 = 40, HOUSE_MAX_M2 = 1500;   // footprints in this range count as homes and shops
-(function paint() {
-  const land = ['#a6c083', '#d9cf8b', '#b9b4a8', '#8fc072', '#93b77d', '#6f9a5e', '#7cc163'];
-  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-  ctx.fillStyle = '#9db87a'; ctx.fillRect(0, 0, CW, CW);
-  const fillLand = k => { ctx.fillStyle = land[k]; ctx.beginPath(); for (const l of D.l) if (l.k === k) trace(l.p, true); ctx.fill(); };
-  const GRASS = [0, 3];   // residential and grass/parks; farmland, industrial, cemetery, forest and pitches are filled over the mottling
-  GRASS.forEach(fillLand);
-  // mottled grass: its own generator, so the look doesn't shift the seeded rnd() sequence
-  let ns = 7; const nr = () => (ns = ns * 48271 % 2147483647) / 2147483647;
-  for (let i = 0; i < 2600; i++) { const cx = nr() * CW, cy = nr() * CW, r = (6 + nr() * 24) * K, g = ctx.createRadialGradient(cx, cy, 0, cx, cy, r), c = ['143,176,111', '169,196,134', '120,150,95', '179,201,141'][i % 4];
-    g.addColorStop(0, 'rgba(' + c + ',.35)'); g.addColorStop(1, 'rgba(' + c + ',0)'); ctx.fillStyle = g; ctx.fillRect(cx - r, cy - r, r * 2, r * 2); }
-  ctx.globalAlpha = 0.45;
-  for (const c of ['#86a866', '#b0c88e', '#7c9d5c', '#c3cf98']) { ctx.fillStyle = c; for (let i = 0; i < 40000; i++) ctx.fillRect(nr() * CW, nr() * CW, 1 + nr() * 1.5, 1 + nr() * 1.5); }
-  ctx.globalAlpha = 1;
-  for (let k = 0; k < 7; k++) if (!GRASS.includes(k)) fillLand(k);
-  ctx.strokeStyle = 'rgba(172,199,138,.55)'; ctx.lineWidth = 9 * K; ctx.beginPath();   // mown lawns around homes (not the church, barns or halls)
-  for (const b of D.b) { const a = polyArea(b.p); if (b.k !== 1 && a >= HOUSE_MIN_M2 && a <= HOUSE_MAX_M2) trace(b.p, true); } ctx.stroke();
-  ctx.strokeStyle = '#4f8fb8';
-  for (const w of D.ww) { ctx.lineWidth = (w.k === 0 ? 6 : 2) * K; ctx.beginPath(); trace(w.p); ctx.stroke(); }
-  ctx.fillStyle = '#4f8fb8';
-  for (const w of D.w) { ctx.beginPath(); for (const ring of w) trace(ring, true); ctx.fill('evenodd'); }
-  const fill = ['#55585a', '#5d6062', '#66696a', '#77776f', '#a08c6c', '#b8ab90'];
-  for (const pass of [2, 1, 0]) for (const c of [5, 4, 3, 2, 1, 0]) {   // 2: soft outer edge of the verge, 1: gravel verge, 0: the road
-    if (pass && c > 3) continue;
-    ctx.strokeStyle = pass === 2 ? 'rgba(179,167,140,.35)' : pass ? '#b3a78c' : fill[c]; ctx.lineWidth = (ROAD_W[c] + (pass === 2 ? 4.4 : pass ? 2.4 : 0)) * K;
-    ctx.beginPath(); for (const r of D.r) if (r.c === c) trace(r.p); ctx.stroke();
-  }
-  ctx.shadowColor = 'rgba(0,0,0,.45)'; ctx.shadowBlur = 3 * K;   // contact shadow around every footprint
-  ctx.fillStyle = '#8a8378'; ctx.beginPath(); for (const b of D.b) trace(b.p, true); ctx.fill();
-  ctx.shadowBlur = 0; ctx.shadowColor = 'transparent';
-})();
-const texture = new THREE.CanvasTexture(tex2d);
-texture.anisotropy = renderer.capabilities.getMaxAnisotropy(); texture.colorSpace = THREE.SRGBColorSpace;
+// ---------- ground texture (also feeds the minimap: src/game/render/ground-texture.ts) ----------
+const ground = new GroundTexture(D, { coarse, maxTextureSize: renderer.capabilities.maxTextureSize, maxAnisotropy });
+const { canvas: tex2d, texture, K, P } = ground;
 
-// ---------- terrain ----------
-const SKIRT_DEPTH_M = 1.5;   // the skirt round the edge, and the far ground plane, sit this far below height 0
-const terrain = new TerrainMesh(heightfield, { skirtDepthM: SKIRT_DEPTH_M, material: new THREE.MeshLambertMaterial({ map: texture }),
-  skirtMaterial: new THREE.MeshLambertMaterial({ color: col(0x6f8a58), side: THREE.DoubleSide }) });
-const far = new THREE.Mesh(new THREE.PlaneGeometry(14000, 14000), new THREE.MeshLambertMaterial({ color: col(0x6f9a5e) }));
-far.rotation.x = -Math.PI / 2; far.position.y = -SKIRT_DEPTH_M;
-scene.add(terrain.surface, far, terrain.skirt);
+// ---------- terrain (its mesh, and the roads', buildings', streetscape's and trees': src/game/render/world-meshes.ts) ----------
+addTerrain(scene, heightfield, texture);
 
 // ---------- roads: crisp ribbons on the terrain + lookup grid + junction graph ----------
 const roads = new RoadNetwork(D, heightfield), { lines: R } = roads;
 let streetIndex = null;   // the streetscape's walkable height, built further down once the buildings and trees are known
 // what people, cats and cars stand on: the road, or the curb, pavement or parking area above it
 const groundAt = (x, z) => { const g = roads.groundAt(x, z), s = streetIndex && streetIndex.surfaceAt(x, z); return s !== null && s > g ? s : g; };
-const ROAD_COLOURS = [0x4c4f52, 0x55585b, 0x606365, 0x74746d, 0xa08c6c, 0xbcae92] as const, CENTRE_LINE_COLOUR = 0xe9e7da;   // sRGB, by road class
-const asphalt = (() => {   // a light, speckled tile that the road colours tint, so asphalt and gravel aren't flat
-  const cv = document.createElement('canvas'); cv.width = cv.height = 256;
-  const x = cv.getContext('2d') as CanvasRenderingContext2D;
-  let seed = 11; const next = () => (seed = (seed * 48271) % 2147483647) / 2147483647;   // its own generator, so the look doesn't shift the seeded rnd() sequence
-  x.fillStyle = '#f7f7f7'; x.fillRect(0, 0, 256, 256); x.globalAlpha = 0.7;
-  for (const c of ['#ffffff', '#cdcdcd', '#dedede']) { x.fillStyle = c; for (let i = 0; i < 1600; i++) x.fillRect(next() * 256, next() * 256, 1, 1); }
-  const t = new THREE.CanvasTexture(cv); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace;
-  t.anisotropy = renderer.capabilities.getMaxAnisotropy(); return t;
-})();
-const roadRibbons = new RoadRibbons(roads, heightfield, { asphalt, roadColours: ROAD_COLOURS, centreLineColour: CENTRE_LINE_COLOUR });
-scene.add(...roadRibbons.meshes);
+const roadRibbons = addRoadRibbons(scene, roads, heightfield, maxAnisotropy);
 
 // ---------- water ----------
 const water = new Water(D, roads), inWater = water.inWater.bind(water);
@@ -182,195 +95,25 @@ const water = new Water(D, roads), inWater = water.inWater.bind(water);
 // ---------- buildings (painted in Swedish house colours) + collision grid ----------
 const buildings = new BuildingIndex(D), { footprints: bPolys } = buildings;
 const addFootprint = buildings.addFootprint.bind(buildings), collide = buildings.collide.bind(buildings);
-// house details: windows (a texture on a skin just outside the walls), white corner boards and eave boards, a dark plinth, and a chimney on gabled roofs
-const WIN_W = 2.6, STOREY = 2.8;   // window spacing and storey height (m)
-const winTex = (function () {
-  const cv = document.createElement('canvas'); cv.width = cv.height = 128; const x = cv.getContext('2d'), u = v => v / WIN_W * 128, y = v => 128 - v / STOREY * 128;
-  x.fillStyle = '#f1efe8'; x.fillRect(u(0.8), y(2.15), u(1), y(0.9) - y(2.15));                    // frame: 1.0 x 1.25 m, sill 0.9 m up
-  x.fillStyle = '#26323a'; x.fillRect(u(0.88), y(2.07), u(0.84), y(0.98) - y(2.07));
-  x.fillStyle = '#f1efe8'; x.fillRect(u(1.265), y(2.07), u(0.07), y(0.98) - y(2.07)); x.fillRect(u(0.88), y(1.75), u(0.84), y(1.68) - y(1.75));   // cross bars
-  const t = new THREE.CanvasTexture(cv); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = renderer.capabilities.getMaxAnisotropy();
-  t.generateMipmaps = false; t.minFilter = THREE.LinearFilter; return t;   // mips average the mostly transparent tile below alphaTest, so windows would vanish at a distance
-})();
-(function () {
-  const c = new THREE.Color(), c2 = new THREE.Color(), c3 = new THREE.Color(), paint = { wall: c, wallFoot: c3, roof: c2 };
-  const wp = [], wu = [], tp = [], tc = [], WHITE = col('#f1efe8'), PLINTH = col('#5b5d5b');
-  const house = ['#9c3a2c', '#9c3a2c', '#a8452f', '#e8e2d2', '#e8e2d2', '#d9b65a', '#cfc8b8', '#8d9a8f'], big = ['#c9c5bb', '#b8b3a6', '#d6d0c0', '#a7aeb0'];
-  // a vertical quad from (x1, z1) to (x2, z2), bottom and top heights at each end
-  const quad = (out, x1, z1, x2, z2, b1, t1, b2, t2) => out.push(x1, b1, z1, x2, b2, z2, x2, t2, z2, x1, b1, z1, x2, t2, z2, x1, t1, z1);
-  const trim = (k, ...q) => { quad(tp, ...q); for (let i = 0; i < 6; i++) tc.push(k.r, k.g, k.b); };
-  const box = (emit, x, z, y0, y1, s, k) => { const h = s / 2, P = [[x - h, z - h], [x + h, z - h], [x + h, z + h], [x - h, z + h]], pos = [];
-    for (let i = 0; i < 4; i++) { const a = P[i], d = P[(i + 1) % 4]; quad(pos, a[0], a[1], d[0], d[1], y0, y1, y0, y1); }
-    pos.push(x - h, y1, z - h, x + h, y1, z + h, x + h, y1, z - h, x - h, y1, z - h, x - h, y1, z + h, x + h, y1, z + h);
-    for (let i = 0; i < pos.length; i += 3) emit(pos[i], pos[i + 1], pos[i + 2], k); };
-  // the colours roll rnd() once or twice per house, in data order, before any tree spot
-  const colours = ({ building: b, area }) => {
-    c.set(b.k === 2 ? '#9c3a2c' : b.k ? '#efece3' : area > 450 ? pick(big) : pick(house)).convertSRGBToLinear();
-    c2.set(b.k === 2 ? '#a8573f' : b.k ? '#3f4447' : rnd() < 0.35 ? '#4d4a48' : '#a8573f').convertSRGBToLinear();
-    c3.copy(c).multiplyScalar(0.62);   // walls darken towards the ground
-    return paint;
-  };
-  const details = ({ building: b, ring, yAt, base, top, hi, area, winding: wind }, emit) => {
-    if (b.k === 1 || area < HOUSE_MIN_M2 || area > HOUSE_MAX_M2) return;   // not the church and its tower, not sheds or barns
-    const m = ring.length, yb = hi + 0.2, yt = top - 0.25, rows = Math.max(1, Math.round((yt - yb) / STOREY));
-    for (let i = 0; i < m; i++) {
-      const a = ring[i], d = ring[(i + 1) % m], ex = d.x - a.x, ez = d.z - a.z, len = Math.hypot(ex, ez); if (len < 0.4) continue;
-      const ux = ex / len, uz = ez / len, ox = wind * uz, oz = -wind * ux, o = (k, s) => [a.x + ox * k - ux * s, a.z + oz * k - uz * s, d.x + ox * k + ux * s, d.z + oz * k + uz * s];
-      const nwin = Math.round(len / WIN_W);   // whole windows only: the tile stretches a little to fit the wall
-      if (len >= 1.6 && nwin > 0) { quad(wp, ...o(0.04, 0), yb, yt, yb, yt); wu.push(0, 0, nwin, 0, nwin, rows, 0, 0, nwin, rows, 0, rows); }
-      trim(PLINTH, ...o(0.05, 0.05), base, hi + 0.45, base, hi + 0.45);
-      trim(WHITE, ...o(0.06, 0.06), yAt(a) - 0.22, yAt(a) + 0.02, yAt(d) - 0.22, yAt(d) + 0.02);
-      for (const [v, p, s] of [[a, ring[(i + m - 1) % m], 1], [d, ring[(i + 2) % m], -1]]) {   // corner boards where the outline turns
-        const fx = s > 0 ? v.x - p.x : p.x - v.x, fz = s > 0 ? v.z - p.z : p.z - v.z, fl = Math.hypot(fx, fz) || 1;
-        if (Math.abs((fx * uz - fz * ux) / fl) < 0.3) continue;
-        const k = Math.min(0.18, len / 2), cx = v.x + ox * 0.07, cz = v.z + oz * 0.07;
-        trim(WHITE, cx, cz, cx + ux * k * s, cz + uz * k * s, base, yAt(v) - 0.2, base, yAt(v) - 0.2);
-      }
-    }
-    if (b.g) { const [ax, az, bx, bz] = b.g, cx = ax + (bx - ax) * 0.3, cz = az + (bz - az) * 0.3, ry = yAt({ x: cx, z: cz });   // chimney, in the shell's own mesh
-      if (inPoly(b.p, cx, cz)) box(emit, cx, cz, ry - 0.6, ry + 0.9, 0.6, hAt(cx, cz) * 7 % 1 < 0.5 ? col('#8a3b2d') : col('#d8d2c4')); }
-  };
-  scene.add(new PaintedBuildingShells(D, heightfield, { material: new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }), colours, extra: details }).mesh);
-  // window skin first, trim after: one mesh, two materials
-  const sg = new THREE.BufferGeometry(), nw = wp.length / 3, nt = tp.length / 3, sc = new Float32Array((nw + nt) * 3).fill(1);
-  sc.set(tc, nw * 3);
-  sg.setAttribute('position', new THREE.Float32BufferAttribute(wp.concat(tp), 3)); sg.setAttribute('uv', new THREE.Float32BufferAttribute(wu.concat(new Array(nt * 2).fill(0)), 2));
-  sg.setAttribute('color', new THREE.BufferAttribute(sc, 3)); sg.computeVertexNormals(); sg.addGroup(0, nw, 0); sg.addGroup(nw, nt, 1);
-  const skin = new THREE.Mesh(sg, [new THREE.MeshLambertMaterial({ map: winTex, alphaTest: 0.5, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -2 }),
-    new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -2 })]);
-  skin.receiveShadow = true; scene.add(skin);
-})();
+addBuildings(scene, D, heightfield, { rnd, pick, maxAnisotropy });   // rolls rnd() for the house colours, before any tree spot
 
 // ---------- trees: spruces and birches, each with its own shade, size and lean ----------
 const TREE_M2_PER_TRY = 110, TREE_ROAD_CLEARANCE_M = 2.5;   // one try at a tree per this much of a wood's bounding box; no trunk closer to a road's edge
 const forestSpots = treeSpots(D, rnd, { squareMetresPerTry: TREE_M2_PER_TRY, minScale: 0.7, scaleSpread: 0.8, roads, roadClearanceM: TREE_ROAD_CLEARANCE_M });
 
 // ---------- streetscape: curbs, pavements, verges, crossings and parking from OSM, rules where OSM says nothing (#187) ----------
-const STREET_TREE_SCALE = 0.75, DEBUG_STREETSCAPE = new URLSearchParams(location.search).get('debug') === 'streetscape';   // ?debug=streetscape tints by evidence
+const DEBUG_STREETSCAPE = new URLSearchParams(location.search).get('debug') === 'streetscape';   // ?debug=streetscape tints by evidence
 const street = (function () {
   const t0 = performance.now(), sides = classifyStreetscape(D, roads, buildings, STREETSCAPE_OVERRIDES);
   const layout = buildStreetscape({ data: D, roads, heightfield, buildings, water, sides, avoidTrees: forestSpots.filter((_, i) => i % 3 < 2), treeRoadClearanceM: TREE_ROAD_CLEARANCE_M });
   streetIndex = new StreetscapeIndex(layout, D, heightfield);
-  const surface = new THREE.MeshLambertMaterial({ vertexColors: true }), paint = new THREE.MeshLambertMaterial({ color: col(0xe9e7da), polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -40 });
-  const sidewalks = new SidewalkMesh(layout, { surface, markings: paint, debugSources: DEBUG_STREETSCAPE, roadMaterials: roadRibbons.materials });
-  const parking = new ParkingMesh(layout, D, heightfield, { surface, markings: paint, debugSources: DEBUG_STREETSCAPE });
-  const meshes = [...sidewalks.meshes, ...parking.meshes]; scene.add(...meshes);
-  const tris = meshes.reduce((n, m) => n + m.geometry.getAttribute('position').count / 3, 0);
+  const { meshes, tris } = addStreetscapeMeshes(scene, layout, D, heightfield, roadRibbons.materials, DEBUG_STREETSCAPE);
   return { layout, sides, meshes, tris, ms: performance.now() - t0 };
 })();
 // the pavement's centre line where a side has one, else today's walking line on the shoulder
 const walkOffset = (ri, side) => { const sp = side < 0 ? street.sides[ri].left : street.sides[ri].right; return sidewalkCentreM(sp, R[ri].c) ?? ROAD_W[R[ri].c] / 2 + 0.8; };
-
-(function () {
-  // street trees (mapped and inferred) join the forest's instanced meshes as birches, the deciduous kind
-  const FOREST_N = forestSpots.length / 3, spots = forestSpots.slice();
-  for (const t of street.layout.trees) spots.push(t.x, t.z, STREET_TREE_SCALE);
-  // variety comes from a hash of the position, so the trees don't consume rnd() and shift the rest of the world
-  const hash = (x, z, k) => { const v = Math.sin(x * 12.9898 + z * 78.233 + k * 37.719) * 43758.5453; return v - Math.floor(v); };
-  const cone = (r, h, y) => new THREE.ConeGeometry(r, h, 7, 1, true).translate(0, y + h / 2, 0);
-  const KINDS = [
-    { crown: mergeGeo([[cone(3.2, 6.5, 1.4)], [cone(2.5, 5.6, 4.6)], [cone(1.7, 4.6, 7.9)]]), trunk: new THREE.CylinderGeometry(0.22, 0.3, 2.2, 7, 1, true).translate(0, 1.1, 0),
-      bark: '#5a4632', leaf: ['#2f5a36', '#4d7d48'] },                                                           // spruce
-    { crown: mergeGeo([[new THREE.SphereGeometry(2.7, 7, 5).scale(1, 1.25, 1).translate(0, 6.6, 0)], [new THREE.SphereGeometry(1.9, 6, 4).translate(0.9, 8.6, 0.4)],
-      [new THREE.SphereGeometry(1.6, 6, 4).translate(-1, 7.8, -0.6)]]), trunk: new THREE.CylinderGeometry(0.14, 0.2, 6, 6, 1, true).translate(0, 3, 0),
-      bark: '#e9e6dc', leaf: ['#5f8f3e', '#93b55a'] }                                                            // birch
-  ];
-  const BIRCH_SHARE = 0.3, m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), v = new THREE.Vector3(), s = new THREE.Vector3(), c = new THREE.Color();
-  const N = spots.length / 3, kind = i => i >= FOREST_N || hash(spots[i * 3], spots[i * 3 + 1], 1) < BIRCH_SHARE ? 1 : 0;
-  // one InstancedMesh per kind and cell, so the main and shadow passes cull whole cells (three bounds an InstancedMesh by its instances)
-  const TREE_CELL_M = 400, cellOf = v => Math.floor((v + HALF) / TREE_CELL_M);
-  KINDS.forEach((kd, ki) => {
-    const cells = new Map(); for (let i = 0; i < N; i++) if (kind(i) === ki) { const k = cellOf(spots[i * 3]) + ',' + cellOf(spots[i * 3 + 1]); let l = cells.get(k); if (!l) cells.set(k, l = []); l.push(i); }
-    const crownMat = new THREE.MeshLambertMaterial({ color: 0xffffff }), trunkMat = new THREE.MeshLambertMaterial({ color: col(kd.bark), side: THREE.DoubleSide });
-    const lo = col(kd.leaf[0]), hiC = col(kd.leaf[1]);
-    for (const idx of cells.values()) {
-      const crown = new THREE.InstancedMesh(kd.crown, crownMat, idx.length), trunk = new THREE.InstancedMesh(kd.trunk, trunkMat, idx.length);
-      idx.forEach((i, j) => { const x = spots[i * 3], z = spots[i * 3 + 1], sc = spots[i * 3 + 2];
-        e.set((hash(x, z, 2) - 0.5) * 0.1, hash(x, z, 3) * 6.283, (hash(x, z, 4) - 0.5) * 0.1); q.setFromEuler(e);
-        m4.compose(v.set(x, hAt(x, z) - 0.3, z), q, s.set(sc, sc * (0.85 + hash(x, z, 5) * 0.3), sc));
-        crown.setMatrixAt(j, m4); trunk.setMatrixAt(j, m4); crown.setColorAt(j, c.copy(lo).lerp(hiC, hash(x, z, 6))); });
-      for (const m of [crown, trunk]) { m.castShadow = true; scene.add(m); } }
-  });
-  // bake a soft shadow under every tree into the ground texture (the minimap shows them too)
-  ctx.globalAlpha = 0.5;
-  for (let i = 0; i < N; i++) { const r = 3.4 * spots[i * 3 + 2] * K; ctx.drawImage(blobTex, P(spots[i * 3]) - r, P(spots[i * 3 + 1]) - r, r * 2, r * 2); }
-  ctx.globalAlpha = 1; texture.needsUpdate = true;
-})();
-
-// ---------- low-poly models ----------
-// one geometry from [geometry, sRGB colour] parts; the colour attribute is left out when the parts have no colour
-function mergeGeo(parts) {
-  const pos = [], nor = [], cs = [], c = new THREE.Color();
-  for (const [g0, hex] of parts) { const g = g0.index ? g0.toNonIndexed() : g0, a = g.attributes.position.array, n = g.attributes.normal.array;
-    if (hex) c.set(hex).convertSRGBToLinear();
-    for (let i = 0; i < a.length; i += 3) { pos.push(a[i], a[i + 1], a[i + 2]); nor.push(n[i], n[i + 1], n[i + 2]); if (hex) cs.push(c.r, c.g, c.b); } }
-  const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
-  if (cs.length) g.setAttribute('color', new THREE.Float32BufferAttribute(cs, 3)); return g;
-}
-const boxPart = p => [new THREE.BoxGeometry(p[0], p[1], p[2]).translate(p[3], p[4], p[5]), p[6]];   // [sx, sy, sz, x, y, z, colour]
-const boxGeo = parts => mergeGeo(parts.map(boxPart));
-// a side profile (z, y; the front is -z) extruded across the car, with rounded edges
-function extrude(pts, width, bevel) {
-  const s = new THREE.Shape(); s.moveTo(pts[0][0], pts[0][1]); for (const p of pts.slice(1)) s.lineTo(p[0], p[1]);
-  const depth = width - 2 * bevel, g = new THREE.ExtrudeGeometry(s, { depth, bevelEnabled: true, bevelThickness: bevel, bevelSize: bevel * 0.8, bevelSegments: 3, curveSegments: 4 });
-  return g.rotateY(-Math.PI / 2).translate(depth / 2, 0, 0);
-}
-const paintMat = new THREE.MeshLambertMaterial({ vertexColors: true });
-const carMat = new THREE.MeshPhongMaterial({ vertexColors: true, shininess: 60, specular: col(0x555555) });   // glossy paint and glass
-const GLASS = '#26323a', TYRE = '#1c1c1c';
-const lamps = z => [[0.34, 0.16, 0.06, -0.6, 0.72, -z, '#fff6c8'], [0.34, 0.16, 0.06, 0.6, 0.72, -z, '#fff6c8'], [0.34, 0.16, 0.06, -0.6, 0.72, z, '#c8261c'], [0.34, 0.16, 0.06, 0.6, 0.72, z, '#c8261c']];
-// car bodies: a bevelled side profile, round wheels and big black bumpers
-const VOLVO_BODY = [[-2.4, 0.36], [2.4, 0.36], [2.4, 0.98], [-0.9, 0.98], [-2.4, 0.9]];
-const PROFILES = {
-  volvo: { body: VOLVO_BODY, glass: [[-0.9, 0.97], [2.1, 0.97], [1.95, 1.48], [-0.35, 1.48]], roof: [[-0.35, 1.47], [1.95, 1.47], [1.93, 1.54], [-0.33, 1.54]],
-    w: 1.74, gw: 1.56, wz: [-1.5, 1.45], len: 4.8 },
-  saab: { body: [[-2.3, 0.34], [2.3, 0.34], [2.3, 0.95], [-0.8, 0.92], [-2.3, 0.84]], glass: [[-0.8, 0.91], [2.15, 0.91], [2.1, 1.02], [0.75, 1.4], [-0.3, 1.4]],
-    roof: [[-0.3, 1.39], [0.75, 1.39], [0.73, 1.45], [-0.28, 1.45]], w: 1.7, gw: 1.5, wz: [-1.45, 1.35], len: 4.6 },
-  epa: { body: VOLVO_BODY, glass: [[-1.1, 0.97], [0.4, 0.97], [0.35, 1.5], [-0.7, 1.5]], roof: [[-0.7, 1.49], [0.35, 1.49], [0.33, 1.56], [-0.68, 1.56]],
-    w: 1.74, gw: 1.56, wz: [-1.5, 1.4], len: 4.8,
-    extra: c => [[1.74, 0.3, 0.08, 0, 1.1, 2.3, c], [0.08, 0.3, 1.8, -0.83, 1.1, 1.4, c], [0.08, 0.3, 1.8, 0.83, 1.1, 1.4, c], [0.5, 0.44, 0.05, 0, 1.2, 2.37, '#ff7a1a']] }
-};
-PROFILES.polis = Object.assign({}, PROFILES.volvo, { extra: () => [[1.78, 0.2, 3.2, 0, 0.7, 0.2, '#1f4fa3'], [1.79, 0.08, 3.2, 0, 0.56, 0.2, '#f2d21f']] });
-const tyreGeo = new THREE.CylinderGeometry(0.32, 0.32, 0.24, 16).rotateZ(Math.PI / 2), hubGeo = new THREE.CylinderGeometry(0.17, 0.17, 0.26, 10).rotateZ(Math.PI / 2);
-const TRACTOR_CAB = { glass: [[0.05, 1.38], [1.45, 1.38], [1.45, 2.62], [0.25, 2.62], [0.05, 2.3]], gw: 1.35 };
-// tractor: big rear wheels, small front wheels, a sloped bonnet and a glass cab (same size as the old box model)
-function softTractor(c) {
-  const parts = [[extrude([[-2.15, 0.78], [0.35, 0.78], [0.35, 1.52], [-1.85, 1.52], [-2.15, 1.3]], 0.95, 0.08), c],
-    [extrude(TRACTOR_CAB.glass, TRACTOR_CAB.gw, 0.05), GLASS],
-    [extrude([[-0.02, 2.6], [1.52, 2.6], [1.52, 2.72], [-0.02, 2.72]], 1.45, 0.04), c],
-    [new THREE.CylinderGeometry(0.06, 0.06, 0.7, 8).translate(0.3, 1.85, -1.6), '#333']];
-  for (const x of [-1, 1]) {
-    parts.push([new THREE.CylinderGeometry(0.8, 0.8, 0.5, 20).rotateZ(Math.PI / 2).translate(x * 0.95, 0.8, 0.9), TYRE], [new THREE.CylinderGeometry(0.42, 0.42, 0.52, 12).rotateZ(Math.PI / 2).translate(x * 0.95, 0.8, 0.9), c],
-      [new THREE.CylinderGeometry(0.45, 0.45, 0.32, 16).rotateZ(Math.PI / 2).translate(x * 0.75, 0.45, -1.5), TYRE], [new THREE.CylinderGeometry(0.22, 0.22, 0.34, 10).rotateZ(Math.PI / 2).translate(x * 0.75, 0.45, -1.5), c]);
-  }
-  return mergeGeo(parts);
-}
-function softCar(t, c) {
-  if (t === 'traktor') return softTractor(c);
-  const P = PROFILES[t];
-  const parts = [[extrude(P.body, P.w, 0.07), c], [extrude(P.glass, P.gw, 0.05), GLASS], [extrude(P.roof, P.gw + 0.04, 0.03), c]];
-  for (const x of [-0.8, 0.8]) for (const z of P.wz) parts.push([tyreGeo.clone().translate(x, 0.32, z), TYRE], [hubGeo.clone().translate(x, 0.32, z), '#a3a39e']);
-  for (const z of [-1, 1]) parts.push(boxPart([P.w + 0.1, 0.17, 0.18, 0, 0.5, z * (P.len / 2 + 0.05), '#2b2b2b']));
-  for (const p of [...lamps(P.len / 2 + 0.07), ...(P.extra ? P.extra(c) : [])]) parts.push(boxPart(p));
-  return mergeGeo(parts);
-}
-const geoCache = {};
-const carGeo = (t, c) => geoCache[t + c] || (geoCache[t + c] = softCar(t, c));
-const BAR_BLUE = col(0x2f6bff), BAR_RED = col(0xff3b30);
-const barMat = new THREE.MeshBasicMaterial({ color: BAR_BLUE.clone() }), barGeo = new THREE.BoxGeometry(1.1, 0.16, 0.3);
-function personParts(shirt, pants, hair, arms) {     // arms: separate meshes that swing from the shoulder (two more draw calls, so only the player has them)
-  hair = hair || '#5a4632';
-  const bk = shirt + hair + (arms ? '+arms' : ''), body = geoCache[bk] || (geoCache[bk] = boxGeo([[0.5, 0.65, 0.28, 0, 1.13, 0, shirt], [0.27, 0.27, 0.27, 0, 1.62, 0, '#e2b796'], [0.29, 0.1, 0.29, 0, 1.78, 0, hair]]
-    .concat(arms ? [] : [[0.14, 0.6, 0.16, -0.33, 1.12, 0, shirt], [0.14, 0.6, 0.16, 0.33, 1.12, 0, shirt]])));
-  const leg = geoCache[pants] || (geoCache[pants] = boxGeo([[0.19, 0.8, 0.21, 0, -0.4, 0, pants]]));
-  const g = new THREE.Group(), b = new THREE.Mesh(body, paintMat), l = new THREE.Mesh(leg, paintMat), r = new THREE.Mesh(leg, paintMat);
-  l.position.set(-0.13, 0.8, 0); r.position.set(0.13, 0.8, 0); b.castShadow = l.castShadow = r.castShadow = true;
-  g.add(b, l, r); g.legs = [l, r]; g.blob = blob(g, 0.9, 0.9);
-  if (arms) { const ag = geoCache['arm' + shirt] || (geoCache['arm' + shirt] = boxGeo([[0.14, 0.6, 0.16, 0, -0.3, 0, shirt]]));
-    g.arms = [-0.33, 0.33].map(x => { const a = new THREE.Mesh(ag, paintMat); a.position.set(x, 1.42, 0); a.castShadow = true; g.add(a); return a; }); }
-  return g;
-}
+// the forests' trees and the street trees, with a soft shadow under each baked into the ground texture (the minimap shows them too)
+ground.bakeTreeShadows(addTrees(scene, forestSpots, street.layout.trees, heightfield, HALF), blobTex);
 
 // ---------- cars ----------
 // the rules (driving, traffic, the parked cars) are in src/game/cars.ts; the meshes in src/game/render/car-meshes.ts
