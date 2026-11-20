@@ -9,10 +9,6 @@
 # - tools/trailer/rig.js reads inpage.js with fs.readFileSync and runs it in the page.
 entry = ["src/map/main.ts", "tools/trailer/inpage.js"]
 
-# The world/mesh builders free what they made in dispose() (ARCHITECTURE.md), even when a page never unmounts them.
-# This applies to every class, so an unused dispose() anywhere goes unreported.
-usedClassMembers = ["dispose"]
-
 # Simulation must not import three.js or call into the DOM (ARCHITECTURE.md, rule 2).
 rulePacks = ["fallow-rules.jsonc"]
 
