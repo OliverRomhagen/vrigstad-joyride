@@ -33,16 +33,43 @@ export class ActionPrompt {
 
   update() {
     const { $, game, places, wanted, coarse, nearPlace, nearCat, nearestCar, catFirst, carName, esc } = this.g;
-    const pr = $('prompt'), pl = game.started && !places.inside ? nearPlace() : null, kt = game.started ? nearCat() : null, c = game.started && !game.inCar && !places.inside ? nearestCar() : null;
+    const pr = $('prompt'),
+      pl = game.started && !places.inside ? nearPlace() : null,
+      kt = game.started ? nearCat() : null,
+      c = game.started && !game.inCar && !places.inside ? nearestCar() : null;
     $('hide').hidden = !places.inside;
-    if (places.inside) { $('hide').innerHTML = wanted.stars ? 'Lying low<b>' + Math.floor(Math.ceil(Math.max(0, wanted.hideLeft)) / 60) + ':' + String(Math.ceil(Math.max(0, wanted.hideLeft)) % 60).padStart(2, '0') + '</b>' : 'Safehouse · ' + places.inside.name;
-      pr.hidden = false; pr.innerHTML = '<kbd>E</kbd>Go outside'; }
-    else if (kt && catFirst(kt, pl)) { pr.hidden = this.g.menuOpen; pr.innerHTML = '<kbd>E</kbd>' + (kt.owned ? 'Hang out with ' + esc(kt.name) : 'Pet the cat' + (game.treats ? ' (offer a treat)' : '')); }
-    else if (pl) { pr.hidden = this.g.menuOpen; pr.innerHTML = '<kbd>E</kbd>' + (pl.kind === 'safe' ? 'Go inside the safehouse' : 'Handla i kiosken'); }
-    else if (game.inCar && game.pcar && !coarse) { pr.hidden = tooFastToGetOut(game.pcar); pr.innerHTML = '<kbd>E</kbd>Get out'; }
-    else if (c) { pr.hidden = false; pr.innerHTML = '<kbd>E</kbd>' + (c.owned ? 'Get in the ' : 'Steal the ') + carName(c) + (wrecked(c) ? ' (wrecked)' : ''); }
-    else pr.hidden = true;
-    const bl = game.inCar ? 'Brake' : 'Jump'; if ($('p-brake').textContent !== bl) $('p-brake').textContent = bl;
-    $('speed').hidden = !game.inCar; if (game.inCar && game.pcar) { $('kmh').textContent = String(Math.round(Math.abs(game.pcar.v) * 3.6)); $('carname').textContent = carName(game.pcar) + (wrecked(game.pcar) ? ' · wrecked' : ''); }
+    if (places.inside) {
+      $('hide').innerHTML = wanted.stars
+        ? 'Lying low<b>' +
+          Math.floor(Math.ceil(Math.max(0, wanted.hideLeft)) / 60) +
+          ':' +
+          String(Math.ceil(Math.max(0, wanted.hideLeft)) % 60).padStart(2, '0') +
+          '</b>'
+        : 'Safehouse · ' + places.inside.name;
+      pr.hidden = false;
+      pr.innerHTML = '<kbd>E</kbd>Go outside';
+    } else if (kt && catFirst(kt, pl)) {
+      pr.hidden = this.g.menuOpen;
+      pr.innerHTML =
+        '<kbd>E</kbd>' +
+        (kt.owned ? 'Hang out with ' + esc(kt.name) : 'Pet the cat' + (game.treats ? ' (offer a treat)' : ''));
+    } else if (pl) {
+      pr.hidden = this.g.menuOpen;
+      pr.innerHTML = '<kbd>E</kbd>' + (pl.kind === 'safe' ? 'Go inside the safehouse' : 'Handla i kiosken');
+    } else if (game.inCar && game.pcar && !coarse) {
+      pr.hidden = tooFastToGetOut(game.pcar);
+      pr.innerHTML = '<kbd>E</kbd>Get out';
+    } else if (c) {
+      pr.hidden = false;
+      pr.innerHTML =
+        '<kbd>E</kbd>' + (c.owned ? 'Get in the ' : 'Steal the ') + carName(c) + (wrecked(c) ? ' (wrecked)' : '');
+    } else pr.hidden = true;
+    const bl = game.inCar ? 'Brake' : 'Jump';
+    if ($('p-brake').textContent !== bl) $('p-brake').textContent = bl;
+    $('speed').hidden = !game.inCar;
+    if (game.inCar && game.pcar) {
+      $('kmh').textContent = String(Math.round(Math.abs(game.pcar.v) * 3.6));
+      $('carname').textContent = carName(game.pcar) + (wrecked(game.pcar) ? ' · wrecked' : '');
+    }
   }
 }

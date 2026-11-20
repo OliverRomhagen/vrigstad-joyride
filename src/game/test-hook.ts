@@ -31,9 +31,60 @@ export interface TestHookDeps {
 /** Puts the hook on `window.__joyride`. */
 export function installTestHook(g: TestHookDeps) {
   const { game, view, player, health, cars, vehicleVisuals, bodyMotion, skyDome, street } = g;
-  function streetscapeState() { const L = street.layout, m = L.sidewalkM, r = (v: number) => Math.round(v);
-    return { sidewalkM: { mapped: r(m.mapped), derived: r(m.derived), inferred: r(m.inferred) }, parkingAreas: L.lots.length, crossings: L.crossings,
-      streetTrees: { mapped: L.trees.filter(t => t.source === 'mapped').length, inferred: L.trees.filter(t => t.source === 'inferred').length },
-      meshes: street.meshes.length, triangles: street.tris, buildMs: Math.round(street.ms), debug: g.debugStreetscape }; }
-  (window as unknown as { __joyride: unknown }).__joyride = { state: () => { const n = g.nearestCar(), displayCar = g.displayCar; return { started: game.started, lab: g.labs, x: player.x, z: player.z, y: player.y, yaw: view.camYaw, inCar: game.inCar, car: game.pcar ? game.pcar.type : null, near: n ? n.mode : null, speed: game.pcar ? game.pcar.v : 0, drift: game.pcar ? game.pcar.drift : 0, boost: game.pcar ? game.pcar.boost : 0, charge: game.pcar ? game.pcar.charge : 0, loose: game.pcar ? game.pcar.loose : 0, flickDir: game.pcar ? game.pcar.flickDir : 0, flickHeld: game.pcar ? game.pcar.flickHeld : 0, stars: g.stars, cats: g.cats, treats: game.treats, hp: health.hp, carDmg: game.pcar ? game.pcar.dmg : null, ownCat: g.ownCat, vehicle: displayCar ? vehicleVisuals.state(displayCar) : null, nearSelectedVehicle: n === displayCar, activeVehicle: game.pcar ? vehicleVisuals.state(game.pcar) : null, body: game.pcar ? bodyMotion.state(game.pcar) : null, wheelbase: (game.pcar || displayCar)?.T.handling.wheelbaseM ?? 0, traffic: cars.filter(c => c.mode === 'ai').map(c => ({ type: c.type, vehicle: vehicleVisuals.state(c) })), clouds: skyDome.state(), streetscape: streetscapeState() }; } };
+  function streetscapeState() {
+    const L = street.layout,
+      m = L.sidewalkM,
+      r = (v: number) => Math.round(v);
+    return {
+      sidewalkM: { mapped: r(m.mapped), derived: r(m.derived), inferred: r(m.inferred) },
+      parkingAreas: L.lots.length,
+      crossings: L.crossings,
+      streetTrees: {
+        mapped: L.trees.filter(t => t.source === 'mapped').length,
+        inferred: L.trees.filter(t => t.source === 'inferred').length,
+      },
+      meshes: street.meshes.length,
+      triangles: street.tris,
+      buildMs: Math.round(street.ms),
+      debug: g.debugStreetscape,
+    };
+  }
+  (window as unknown as { __joyride: unknown }).__joyride = {
+    state: () => {
+      const n = g.nearestCar(),
+        displayCar = g.displayCar;
+      return {
+        started: game.started,
+        lab: g.labs,
+        x: player.x,
+        z: player.z,
+        y: player.y,
+        yaw: view.camYaw,
+        inCar: game.inCar,
+        car: game.pcar ? game.pcar.type : null,
+        near: n ? n.mode : null,
+        speed: game.pcar ? game.pcar.v : 0,
+        drift: game.pcar ? game.pcar.drift : 0,
+        boost: game.pcar ? game.pcar.boost : 0,
+        charge: game.pcar ? game.pcar.charge : 0,
+        loose: game.pcar ? game.pcar.loose : 0,
+        flickDir: game.pcar ? game.pcar.flickDir : 0,
+        flickHeld: game.pcar ? game.pcar.flickHeld : 0,
+        stars: g.stars,
+        cats: g.cats,
+        treats: game.treats,
+        hp: health.hp,
+        carDmg: game.pcar ? game.pcar.dmg : null,
+        ownCat: g.ownCat,
+        vehicle: displayCar ? vehicleVisuals.state(displayCar) : null,
+        nearSelectedVehicle: n === displayCar,
+        activeVehicle: game.pcar ? vehicleVisuals.state(game.pcar) : null,
+        body: game.pcar ? bodyMotion.state(game.pcar) : null,
+        wheelbase: (game.pcar || displayCar)?.T.handling.wheelbaseM ?? 0,
+        traffic: cars.filter(c => c.mode === 'ai').map(c => ({ type: c.type, vehicle: vehicleVisuals.state(c) })),
+        clouds: skyDome.state(),
+        streetscape: streetscapeState(),
+      };
+    },
+  };
 }
