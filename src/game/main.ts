@@ -106,7 +106,7 @@ if (lab.on('hello')) import('../lab/hello').then(m => m.startHello()).catch(err 
 // ---------- time of day: 05:00 to 19:00, then a short blend into the next morning (src/game/day-cycle.ts) ----------
 // ?time=18.5 starts at that hour; ?cycle=off holds it there
 const dayQs = new URLSearchParams(location.search);
-const dayClock = makeClock(dayQs.has('time') ? Number(dayQs.get('time')) : START_H), dayRuns = dayQs.get('cycle') !== 'off';
+const dayClock = makeClock(dayQs.get('time') ? Number(dayQs.get('time')) : START_H), dayRuns = dayQs.get('cycle') !== 'off';
 const daylight = new Daylight({ sun, hemi, sunDir: SUN_DIR, dome: dome.material.uniforms, fog: scene.fog.color, background: scene.background });
 const sky = skyAt(dayClock, { x: 0, y: 1, z: 0, sun: 1, warm: 0, light: 1 });
 daylight.apply(sky);
@@ -665,7 +665,7 @@ function frame(now) {
   const cp = Math.cos(camPitch), cx = T.x - Math.sin(camYaw) * dist * cp, cz = T.z + Math.cos(camYaw) * dist * cp;
   camera.position.set(cx, Math.max(ty + 1.5 + dist * Math.sin(camPitch), hAt(cx, cz) + 0.8), cz);
   camera.lookAt(T.x, ty + 1.5, T.z);
-  if (dayRuns) { tickClock(dayClock, dt); daylight.apply(skyAt(dayClock, sky)); }
+  if (dayRuns && started) { tickClock(dayClock, dt); daylight.apply(skyAt(dayClock, sky)); }   // not on the title screen: Start begins at the start hour
   if (shakeT > 0) { shakeT -= dt; const k = Math.max(0, shakeT / SHAKE_S) ** 2 * shakeM * 2;   // eases out, so the jolt fades instead of stopping dead
     camera.position.x += (dmgRnd() - 0.5) * k; camera.position.y += (dmgRnd() - 0.5) * k; camera.position.z += (dmgRnd() - 0.5) * k; }
   sun.target.position.set(T.x, ty, T.z); sun.position.copy(sun.target.position).addScaledVector(SUN_DIR, 400);

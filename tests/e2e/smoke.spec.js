@@ -401,12 +401,16 @@ test.describe('game (index.html)', () => {
     const errors = watchErrors(page);
     await page.goto('/index.html?time=18.99');
     await expectWebGL(page);
-    // 0.01 h of day is well under a second of game time. Headless frames are slow and dt is capped per frame, so the
-    // whole skip to 05:00 would take minutes here; the unit tests cover that, this checks the page runs the cycle.
-    await expect.poll(async () => (await state(page)).night).toBeGreaterThan(0);
-    const { night } = await state(page);
-    await expect.poll(async () => (await state(page)).night).toBeGreaterThan(night);
-    expect((await state(page)).hour).toBe(19);
+    await frames(page, 5);
+    expect(await state(page)).toMatchObject({ hour: 18.99, night: 0 }); // the clock waits on the title screen
+    await page.locator('#go').click();
+    // 0.01 h of day is well under a second of game time, and the skip lasts NIGHT_S = 10 s: a fast runner can be through
+    // it by the next poll, so either the skip has started or the clock has wrapped to the next morning
+    const begun = s => s.night > 0 || s.hour < 6;
+    await expect.poll(async () => begun(await state(page))).toBe(true);
+    const s = await state(page);
+    if (s.night > 0) expect(s.hour).toBe(19);
+    else expect(s.hour).toBeGreaterThanOrEqual(5);
     expect(errors).toEqual([]);
   });
 });
