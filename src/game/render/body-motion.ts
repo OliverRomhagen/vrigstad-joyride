@@ -61,8 +61,18 @@ export class BodyMotion {
         Math.hypot(car.x - e.x, car.z - e.z) > TELEPORT_M ||
         Math.hypot(car.x - focus.x, car.z - focus.z) > ACTIVE_RANGE_M
       ) {
-        Object.assign(e.state, restingBody());
+        const st = e.state,
+          level = !st.roll && !st.pitch && !st.heave && !st.rollV && !st.pitchV && !st.heaveV;
+        st.roll = st.rollV = st.pitch = st.pitchV = st.heave = st.heaveV = 0; // in place: no allocation per car per frame
         e.vy = 0;
+        if (level && !e.fresh) {
+          e.x = car.x;
+          e.z = car.z;
+          e.h = car.h;
+          e.v = car.v;
+          e.y = y;
+          continue; // already resting level: nothing to write to its nodes
+        }
       } else {
         _forces.lateral = clampForce((car.v * wrap(car.h - e.h)) / dt); // centripetal: v × yaw rate
         _forces.longitudinal = clampForce((car.v - e.v) / dt);
