@@ -337,7 +337,7 @@ def crossing_kind(t):
 
 
 # street furniture (#144): codes as src/world/data.ts FurnitureCode; bus stops are context, not drawn
-FU_LAMP, FU_BENCH, FU_BIN, FU_BUS_STOP = 0, 1, 2, 3
+FU_LAMP, FU_BENCH, FU_BIN, FU_BUS_STOP, FU_CABINET = 0, 1, 2, 3, 4
 LIT = {'yes': 1, 'no': 2}   # lit=* on a road; anything else (24/7, automatic, ...) is left out as not plainly yes or no
 CARDINAL = {k: i * 22.5 for i, k in enumerate('N NNE NE ENE E ESE SE SSE S SSW SW WSW W WNW NW NNW'.split())}
 
@@ -347,6 +347,7 @@ def furniture_code(t):
     if t.get('amenity') == 'bench': return FU_BENCH
     if t.get('amenity') == 'waste_basket': return FU_BIN
     if t.get('highway') == 'bus_stop': return FU_BUS_STOP
+    if t.get('man_made') == 'street_cabinet': return FU_CABINET
     return None
 
 
@@ -652,7 +653,7 @@ print(f'carriageway surface tags: {sum(v for k, v in surf.items() if k)} of {len
 print('\n## Street furniture coverage (OSM, in the world square)')
 fk = collections.Counter(f['k'] for f in furniture)
 print(f'mapped: street lamps {fk[FU_LAMP]}, benches {fk[FU_BENCH]} ({sum("d" in f for f in furniture)} with direction), '
-      f'waste baskets {fk[FU_BIN]}, bus stops {fk[FU_BUS_STOP]}; picnic tables {report["picnic tables"]} (counted only); '
+      f'waste baskets {fk[FU_BIN]}, bus stops {fk[FU_BUS_STOP]}, street cabinets {fk[FU_CABINET]}; picnic tables {report["picnic tables"]} (counted only); '
       f'{report["furniture outside the world"]} outside the world')
 for v, label in ((1, 'yes'), (2, 'no')):
     rs = [r for r in roads if r.get('lt') == v]
