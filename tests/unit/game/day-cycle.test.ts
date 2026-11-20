@@ -46,7 +46,9 @@ describe('skyAt', () => {
   });
 
   it('never gets dark, never lights from below, and changes smoothly through a whole day and night', () => {
-    const c = makeClock(DAWN_H), s = blank(), prev = { ...skyAt(c, s) };
+    const c = makeClock(DAWN_H),
+      s = blank(),
+      prev = { ...skyAt(c, s) };
     for (let t = 0; t < DAY_S + NIGHT_S + 1; t += DT) {
       tickClock(c, DT);
       skyAt(c, s);

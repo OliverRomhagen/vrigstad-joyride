@@ -16,7 +16,7 @@ describe('sunAt', () => {
 
   it('rises in the east, stands in the south at midday and sets in the west', () => {
     expect(sunAt(196, 8).x).toBeGreaterThan(0.5);
-    const noon = sunAt(196, 13.1);   // solar noon in summer time at 14.5° E
+    const noon = sunAt(196, 13.1); // solar noon in summer time at 14.5° E
     expect(noon.z).toBeGreaterThan(0);
     expect(Math.abs(noon.x)).toBeLessThan(0.02);
     expect(sunAt(196, 18).x).toBeLessThan(-0.5);

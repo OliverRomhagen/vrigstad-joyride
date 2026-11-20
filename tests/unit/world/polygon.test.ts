@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { pointInPolygon, polygonArea, polygonBounds, segmentDistance, segmentParam, signedPolygonArea } from '../../../src/world/polygon';
+import {
+  pointInPolygon,
+  polygonArea,
+  polygonBounds,
+  segmentDistance,
+  segmentParam,
+  signedPolygonArea,
+} from '../../../src/world/polygon';
 import { square } from './fixture';
 
 // an L: a 10 m square with its north-east quarter cut out
