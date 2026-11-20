@@ -10,6 +10,11 @@
 entry = ["src/map/main.ts", "tools/trailer/inpage.js"]
 
 # Exceptions: exported, but only used in their own file. Un-export them, or use them in a test, then drop the entry.
+# tools/streetscape-report.mjs loads this through Vite's runnerImport, which Fallow can't follow.
+[[ignoreExports]]
+file = "tools/streetscape-report.ts"
+exports = ["report"]
+
 [[ignoreExports]]
 file = "src/game/health.ts"
 exports = ["CRASH_MIN_MS", "CRASH_DMG_PER_MS", "HURT_MIN_MS", "HURT_HP_PER_MS", "RUN_OVER_MIN_MS", "RUN_OVER_HP_PER_MS", "SMOKE_AT", "BLACK_SMOKE_AT", "LIMP_AT", "CRACK_AT"]

@@ -16,11 +16,16 @@ import { Heightfield } from '../world/heightfield';
 import { parseCloudConfig } from '../world/clouds';
 import { clamp, wrap } from '../world/math';
 import { PaintedBuildingShells } from '../world/mesh/building-shells';
+import { ParkingMesh } from '../world/mesh/parking-mesh';
 import { RoadRibbons } from '../world/mesh/road-ribbons';
+import { SidewalkMesh } from '../world/mesh/sidewalk-mesh';
 import { TerrainMesh } from '../world/mesh/terrain';
 import { pointInPolygon as inPoly, polygonArea as polyArea } from '../world/polygon';
 import { makeRnd } from '../world/random';
 import { RoadNetwork } from '../world/roads';
+import { buildStreetscape, sidewalkCentreM, StreetscapeIndex } from '../world/streetscape';
+import { STREETSCAPE_OVERRIDES } from '../world/streetscape-overrides';
+import { classifyStreetscape } from '../world/streetscape-rules';
 import { LEGACY_LIGHT } from '../world/three-legacy';
 import { treeSpots } from '../world/trees';
 import { Water } from '../world/water';
@@ -147,7 +152,9 @@ scene.add(terrain.surface, far, terrain.skirt);
 
 // ---------- roads: crisp ribbons on the terrain + lookup grid + junction graph ----------
 const roads = new RoadNetwork(D, heightfield), { lines: R } = roads;
-const groundAt = roads.groundAt.bind(roads);
+let streetIndex = null;   // the streetscape's walkable height, built further down once the buildings and trees are known
+// what people, cats and cars stand on: the road, or the curb, pavement or parking area above it
+const groundAt = (x, z) => { const g = roads.groundAt(x, z), s = streetIndex && streetIndex.surfaceAt(x, z); return s !== null && s > g ? s : g; };
 const ROAD_COLOURS = [0x4c4f52, 0x55585b, 0x606365, 0x74746d, 0xa08c6c, 0xbcae92] as const, CENTRE_LINE_COLOUR = 0xe9e7da;   // sRGB, by road class
 const asphalt = (() => {   // a light, speckled tile that the road colours tint, so asphalt and gravel aren't flat
   const cv = document.createElement('canvas'); cv.width = cv.height = 256;
@@ -228,8 +235,28 @@ const winTex = (function () {
 
 // ---------- trees: spruces and birches, each with its own shade, size and lean ----------
 const TREE_M2_PER_TRY = 110, TREE_ROAD_CLEARANCE_M = 2.5;   // one try at a tree per this much of a wood's bounding box; no trunk closer to a road's edge
+const forestSpots = treeSpots(D, rnd, { squareMetresPerTry: TREE_M2_PER_TRY, minScale: 0.7, scaleSpread: 0.8, roads, roadClearanceM: TREE_ROAD_CLEARANCE_M });
+
+// ---------- streetscape: curbs, pavements, verges, crossings and parking from OSM, rules where OSM says nothing (#187) ----------
+const STREET_TREE_SCALE = 0.75, DEBUG_STREETSCAPE = new URLSearchParams(location.search).get('debug') === 'streetscape';   // ?debug=streetscape tints by evidence
+const street = (function () {
+  const t0 = performance.now(), sides = classifyStreetscape(D, roads, buildings, STREETSCAPE_OVERRIDES);
+  const layout = buildStreetscape({ data: D, roads, heightfield, buildings, water, sides, avoidTrees: forestSpots.filter((_, i) => i % 3 < 2), treeRoadClearanceM: TREE_ROAD_CLEARANCE_M });
+  streetIndex = new StreetscapeIndex(layout, D, heightfield);
+  const surface = new THREE.MeshLambertMaterial({ vertexColors: true }), paint = new THREE.MeshLambertMaterial({ color: col(0xe9e7da), polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -40 });
+  const sidewalks = new SidewalkMesh(layout, { surface, markings: paint, debugSources: DEBUG_STREETSCAPE, roadMaterials: roadRibbons.materials });
+  const parking = new ParkingMesh(layout, D, heightfield, { surface, markings: paint, debugSources: DEBUG_STREETSCAPE });
+  const meshes = [...sidewalks.meshes, ...parking.meshes]; scene.add(...meshes);
+  const tris = meshes.reduce((n, m) => n + m.geometry.getAttribute('position').count / 3, 0);
+  return { layout, sides, meshes, tris, ms: performance.now() - t0 };
+})();
+// the pavement's centre line where a side has one, else today's walking line on the shoulder
+const walkOffset = (ri, side) => { const sp = side < 0 ? street.sides[ri].left : street.sides[ri].right; return sidewalkCentreM(sp, R[ri].c) ?? ROAD_W[R[ri].c] / 2 + 0.8; };
+
 (function () {
-  const spots = treeSpots(D, rnd, { squareMetresPerTry: TREE_M2_PER_TRY, minScale: 0.7, scaleSpread: 0.8, roads, roadClearanceM: TREE_ROAD_CLEARANCE_M });
+  // street trees (mapped and inferred) join the forest's instanced meshes as birches, the deciduous kind
+  const FOREST_N = forestSpots.length / 3, spots = forestSpots.slice();
+  for (const t of street.layout.trees) spots.push(t.x, t.z, STREET_TREE_SCALE);
   // variety comes from a hash of the position, so the trees don't consume rnd() and shift the rest of the world
   const hash = (x, z, k) => { const v = Math.sin(x * 12.9898 + z * 78.233 + k * 37.719) * 43758.5453; return v - Math.floor(v); };
   const cone = (r, h, y) => new THREE.ConeGeometry(r, h, 7, 1, true).translate(0, y + h / 2, 0);
@@ -241,7 +268,7 @@ const TREE_M2_PER_TRY = 110, TREE_ROAD_CLEARANCE_M = 2.5;   // one try at a tree
       bark: '#e9e6dc', leaf: ['#5f8f3e', '#93b55a'] }                                                            // birch
   ];
   const BIRCH_SHARE = 0.3, m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), v = new THREE.Vector3(), s = new THREE.Vector3(), c = new THREE.Color();
-  const N = spots.length / 3, kind = i => hash(spots[i * 3], spots[i * 3 + 1], 1) < BIRCH_SHARE ? 1 : 0;
+  const N = spots.length / 3, kind = i => i >= FOREST_N || hash(spots[i * 3], spots[i * 3 + 1], 1) < BIRCH_SHARE ? 1 : 0;
   // one InstancedMesh per kind and cell, so the main and shadow passes cull whole cells (three bounds an InstancedMesh by its instances)
   const TREE_CELL_M = 400, cellOf = v => Math.floor((v + HALF) / TREE_CELL_M);
   KINDS.forEach((kd, ki) => {
@@ -341,6 +368,7 @@ function personParts(shirt, pants, hair, arms) {     // arms: separate meshes th
 // the rules (driving, traffic, the parked cars) are in src/game/cars.ts; the meshes are made here
 // the getters are read when the cars use them, so they can name things declared further down
 const fleet = new Fleet({ roads, buildings, water, half: HALF, rnd, pick, addCar, placeCar, crash,
+  canPark: (x, z) => streetIndex.surfaceAt(x, z) === null,   // streetIndex is built before parkCars runs
   rammed: c => { if (c === pcar && ramCool <= 0) { ramCool = 6; wanted.addStar('Ramming a police car. That will not help.'); } },
   get player() { return player; }, get inCar() { return inCar; } });
 const { cars } = fleet, drive = fleet.drive.bind(fleet), advance = fleet.advance.bind(fleet), spawnTraffic = fleet.spawnTraffic.bind(fleet), updateTraffic = fleet.updateTraffic.bind(fleet);
@@ -482,7 +510,7 @@ const driftFx = new DriftFx({ scene, groundAt, profiles: PROFILES, turboAt: TURB
 
 // ---------- pedestrians: walk the streets and footpaths, now and then stop for a while (src/game/pedestrians.ts) ----------
 // the getters are read when the pedestrians use them, so they can name things declared further down
-const crowd = new Crowd({ scene, roads, buildings, labels: D.labels, groundAt, coarse, wrap, rnd, pick, personParts, advance, cars,
+const crowd = new Crowd({ scene, roads, buildings, labels: D.labels, groundAt, walkOffset, coarse, wrap, rnd, pick, personParts, advance, cars,
   get player() { return player; }, get inCar() { return inCar; } });
 const updateNpcs = crowd.update.bind(crowd);
 
@@ -590,7 +618,11 @@ function updateSmoke(dt, T) {
 // biome-ignore lint/plugin/no-math-random: the known exception in AGENTS.md (rule 5); a ticket's luck isn't world state to replay
 const trisslott = new Trisslott({ random: Math.random, pick, now: () => performance.now() / 1000, toast,
   draw: (bought, won) => { const el = $('triss'); el.hidden = false; el.textContent = 'Trisslotter: ' + bought + ' · Vinster: ' + won; } });
-let camYaw = 0.6, camPitch = 0.34, lookOff = 0, lookIdle = 9;
+const START_CAM = [0.6, 0.34];   // camera yaw and pitch at Start
+let camYaw = START_CAM[0], camPitch = START_CAM[1], lookOff = 0, lookIdle = 9;
+// ?at=x,z[,yaw[,pitch]] starts the player there, looking that way: for review screenshots, such as the streetscape's (#187)
+(function () { const at = (new URLSearchParams(location.search).get('at') || '').split(',').map(Number);
+  if (at.length < 2 || !at.every(Number.isFinite)) return; player.x = at[0]; player.z = at[1]; if (at.length > 2) camYaw = START_CAM[0] = at[2]; if (at.length > 3) START_CAM[1] = clamp(at[3], 0.06, 1.25); })();
 
 // ---------- input: keys, mouse look and the touch controls (src/game/input.ts) ----------
 // the menus see each key first: typing a pet's name, the menu's number keys and Esc, P for your pets
@@ -750,11 +782,15 @@ function frame(now) {
   drawMini(T);
   renderer.render(scene, camera);
 }
-$('go').addEventListener('click', e => { started = true; $('intro').hidden = true; camYaw = 0.6; camPitch = 0.34; canvas.focus();
+$('go').addEventListener('click', e => { started = true; $('intro').hidden = true; camYaw = START_CAM[0]; camPitch = START_CAM[1]; canvas.focus();
   if (e.pointerType ? e.pointerType === 'mouse' : !coarse) input.lockMouse();   // by how Start was pressed: a tap on a touchscreen laptop shouldn't lock
   toast('Find a car and press E to take it. Occupied cars always get you a wanted star.', 5); });
 resize(); requestAnimationFrame(frame);
 
 // ---------- test hook: read-only state for the smoke tests (tests/e2e), so they do not have to read pixels ----------
-window.__joyride = { state: () => { const n = nearestCar(); return { started, lab: lab.list(), x: player.x, z: player.z, y: player.y, yaw: camYaw, inCar, car: pcar ? pcar.type : null, near: n ? n.mode : null, speed: pcar ? pcar.v : 0, drift: pcar ? pcar.drift : 0, boost: pcar ? pcar.boost : 0, charge: pcar ? pcar.charge : 0, loose: pcar ? pcar.loose : 0, flickDir: pcar ? pcar.flickDir : 0, flickHeld: pcar ? pcar.flickHeld : 0, stars: wanted.stars, cats: cats.length, treats, hp: health.hp, carDmg: pcar ? pcar.dmg : null, ownCat: !!colony.owned, vehicle: displayCar ? vehicleVisuals.state(displayCar) : null, nearSelectedVehicle: n === displayCar, activeVehicle: pcar ? vehicleVisuals.state(pcar) : null, body: pcar ? bodyMotion.state(pcar) : null, wheelbase: (pcar || displayCar)?.T.handling.wheelbaseM ?? 0, traffic: cars.filter(c => c.mode === 'ai').map(c => ({ type: c.type, vehicle: vehicleVisuals.state(c) })), clouds: skyDome.state() }; } };
+window.__joyride = { state: () => { const n = nearestCar(); return { started, lab: lab.list(), x: player.x, z: player.z, y: player.y, yaw: camYaw, inCar, car: pcar ? pcar.type : null, near: n ? n.mode : null, speed: pcar ? pcar.v : 0, drift: pcar ? pcar.drift : 0, boost: pcar ? pcar.boost : 0, charge: pcar ? pcar.charge : 0, loose: pcar ? pcar.loose : 0, flickDir: pcar ? pcar.flickDir : 0, flickHeld: pcar ? pcar.flickHeld : 0, stars: wanted.stars, cats: cats.length, treats, hp: health.hp, carDmg: pcar ? pcar.dmg : null, ownCat: !!colony.owned, vehicle: displayCar ? vehicleVisuals.state(displayCar) : null, nearSelectedVehicle: n === displayCar, activeVehicle: pcar ? vehicleVisuals.state(pcar) : null, body: pcar ? bodyMotion.state(pcar) : null, wheelbase: (pcar || displayCar)?.T.handling.wheelbaseM ?? 0, traffic: cars.filter(c => c.mode === 'ai').map(c => ({ type: c.type, vehicle: vehicleVisuals.state(c) })), clouds: skyDome.state(), streetscape: streetscapeState() }; } };
+function streetscapeState() { const L = street.layout, m = L.sidewalkM, r = v => Math.round(v);
+  return { sidewalkM: { mapped: r(m.mapped), derived: r(m.derived), inferred: r(m.inferred) }, parkingAreas: L.lots.length, crossings: L.crossings,
+    streetTrees: { mapped: L.trees.filter(t => t.source === 'mapped').length, inferred: L.trees.filter(t => t.source === 'inferred').length },
+    meshes: street.meshes.length, triangles: street.tris, buildMs: Math.round(street.ms), debug: DEBUG_STREETSCAPE }; }
 })();

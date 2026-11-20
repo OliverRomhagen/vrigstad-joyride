@@ -94,6 +94,7 @@ export interface FleetDeps {
   placeCar: (c: Car) => void; // puts the car's meshes where the car is
   crash: (c: Car, o: Car | null, impact: number) => void; // c hit o, or a wall, at `impact` m/s: the damage, and what you hear and feel
   rammed: (c: Car, o: Car) => void; // c hit police car o at speed
+  canPark: (x: number, z: number) => boolean; // not on a curb, verge or pavement
   readonly player: Point;
   readonly inCar: boolean;
 }
@@ -120,6 +121,7 @@ export class Fleet {
         buildings,
         water,
         half: HALF,
+        canPark,
       } = this.g,
       cars = this.cars;
     let count = 0;
@@ -140,7 +142,7 @@ export class Fleet {
       if (Math.abs(o.x) > HALF - 20 || Math.abs(o.z) > HALF - 20) continue;
       const ox = o.x,
         oz = o.z;
-      if (buildings.collide(o, 2.6) || water.inWater(ox, oz)) continue;
+      if (buildings.collide(o, 2.6) || water.inWater(ox, oz) || !canPark(ox, oz)) continue;
       if (cars.some(c => Math.hypot(c.x - ox, c.z - oz) < 7)) continue;
       this.g.addCar(this.civType(), ox, oz, Math.atan2(dx, -dz) + (side < 0 ? Math.PI : 0), 'parked');
       count++;
