@@ -3,11 +3,12 @@
 import * as THREE from 'three';
 import { AdoptHearts } from './render/adopt-heart';
 import { DriftFx } from './render/drift-fx';
-import { pickVariant, vehicleDefinition } from './render/vehicle-registry';
+import { vehicleDefinition } from './render/vehicle-registry';
 import { Sky } from './render/sky';
 import { VehicleVisuals } from './render/vehicle-visuals';
 import { BodyMotion } from './render/body-motion';
-import { specFor } from './sim/vehicle-spec';
+import { CarDamageFx } from './render/car-damage';
+import { CarMeshes } from './render/car-meshes';
 import D from '../../data/vrigstad.json';
 import { LabFlags } from '../lab/flags';
 import { BuildingIndex } from '../world/buildings';
@@ -36,7 +37,7 @@ import { Input } from './input';
 import { Crowd } from './pedestrians';
 import { Pets } from './pets';
 import { KIOSK, Places } from './places';
-import { CAT_SCRATCH_HP, crackLevel, LOW_HP, CRASH_COOL_S, crashCars, crashDamage, driverHurt, HP_MAX, heal, hurt, KORV_HP, impactSpeed, newHealth, regen, RULLE_HP, runOverHurt, smokeLevel, wakeSpot, wrecked } from './health';
+import { CAT_SCRATCH_HP, LOW_HP, CRASH_COOL_S, crashCars, crashDamage, driverHurt, HP_MAX, heal, hurt, KORV_HP, impactSpeed, newHealth, regen, RULLE_HP, runOverHurt, smokeLevel, wakeSpot, wrecked } from './health';
 import { carInReach, HOME, hop, ride, standAt, stepOut, tooFastToGetOut, walk } from './player';
 import { Wanted } from './police';
 import { PlaceMeshes } from './render/places';
@@ -365,35 +366,20 @@ function personParts(shirt, pants, hair, arms) {     // arms: separate meshes th
 }
 
 // ---------- cars ----------
-// the rules (driving, traffic, the parked cars) are in src/game/cars.ts; the meshes are made here
-// the getters are read when the cars use them, so they can name things declared further down
+// the rules (driving, traffic, the parked cars) are in src/game/cars.ts; the meshes in src/game/render/car-meshes.ts
+// the getters are read when they are used, so they can name things declared further down
+const bodyMotion = new BodyMotion();
+const vehicleVisuals = new VehicleVisuals(coarse, (c, body) => bodyMotion.addNode(c, body));
+const carMeshes = new CarMeshes({ scene, groundAt, normalAt, pick, carGeo, carMat, blob, barGeo, barMat, vehicleVisuals, bodyMotion, get cars() { return cars; } });
+const addCar = carMeshes.addCar.bind(carMeshes), placeCar = carMeshes.placeCar.bind(carMeshes), removeCar = carMeshes.removeCar.bind(carMeshes);
 const fleet = new Fleet({ roads, buildings, water, half: HALF, rnd, pick, addCar, placeCar, crash,
   canPark: (x, z) => streetIndex.surfaceAt(x, z) === null,   // streetIndex is built before parkCars runs
   rammed: c => { if (c === pcar && ramCool <= 0) { ramCool = 6; wanted.addStar('Ramming a police car. That will not help.'); } },
   get player() { return player; }, get inCar() { return inCar; } });
 const { cars } = fleet, drive = fleet.drive.bind(fleet), advance = fleet.advance.bind(fleet), spawnTraffic = fleet.spawnTraffic.bind(fleet), updateTraffic = fleet.updateTraffic.bind(fleet);
-const bodyMotion = new BodyMotion();
-const vehicleVisuals = new VehicleVisuals(coarse, (c, body) => bodyMotion.addNode(c, body));
-const modelRnd = makeRnd(240);                 // own stream: which model a car wears doesn't shift the world's rolls
 const selectedVehicle = vehicleDefinition(new URLSearchParams(location.search).get('vehicle'));
 let displayCar = null;
-const _f = new THREE.Vector3(), _r = new THREE.Vector3(), _m = new THREE.Matrix4();
-function placeCar(c) {
-  const n = normalAt(c.x, c.z);
-  _f.set(Math.sin(c.h), 0, -Math.cos(c.h)); _f.addScaledVector(n, -_f.dot(n)).normalize(); _r.crossVectors(_f, n);
-  _m.makeBasis(_r, n, _f.negate()); c.mesh.quaternion.setFromRotationMatrix(_m);
-  c.mesh.position.set(c.x, groundAt(c.x, c.z) - (c.wet ? 0.55 : 0), c.z);
-  vehicleVisuals.sync(c);
-}
-function addCar(type, x, z, h, mode, assetId = pickVariant(type, modelRnd())) {
-  const T = specFor(type, vehicleDefinition(assetId)), color = pick(T.cols), fallback = new THREE.Mesh(carGeo(type, color), carMat), mesh = new THREE.Group();
-  fallback.castShadow = true; mesh.add(fallback); blob(mesh, 2.8, 5.8);   // the fallback sits apart from the blob, so it can roll on its springs
-  if (type === 'polis') { const bar = new THREE.Mesh(barGeo, barMat); bar.position.set(0, 1.62, 0.2); fallback.add(bar); }
-  const c = { type, T, mesh, x, z, h, vh: h, v: 0, st: 0, thr: 0, slip: 0, drift: 0, charge: 0, yr: 0, spin: 0, loose: 0, flickDir: 0, flickT: 9, flickHeld: 0, boost: 0, mode, wet: false, owned: false, blocked: 0, ghost: 0, stuck: 0, rev: 0, revSteer: 1, dmg: 0, hitAt: -9, body: fallback };
-  scene.add(mesh); cars.push(c); placeCar(c); bodyMotion.add(c, T.suspension, fallback); if (assetId) { vehicleVisuals.attach(c, assetId, fallback, color); } return c;
-}
 function carName(c) { return vehicleVisuals.definition(c)?.name || c.T.name; }
-function removeCar(c) { vehicleVisuals.dispose(c); bodyMotion.remove(c); scene.remove(c.mesh); const i = cars.indexOf(c); if (i >= 0) cars.splice(i, 1); }
 fleet.parkCars();   // parked cars along streets and driveways
 for (let i = 0; i < 18; i++) spawnTraffic(null);
 
@@ -434,76 +420,6 @@ let shakeT = 0, shakeM = 0;
 const dmgRnd = makeRnd(808);                   // own stream for the shake and the smoke puffs, which roll every frame
 function shake(dmg) { if (calmMotion.matches) return; const m = Math.min(SHAKE_MAX_M, SHAKE_MIN_M + dmg * SHAKE_PER_DMG_M); if (shakeT <= 0 || m > shakeM) shakeM = m; shakeT = SHAKE_S; }
 
-// cracked glass: a crack texture laid over the windscreen and rear window (material 0) and the side windows (material 1), worse at each crackLevel
-const CRACK_OUT_M = 0.06;                      // how far the cracks sit outside the glass profile, past its bevel
-function crackTex(dense) {
-  const S = 256, cv = document.createElement('canvas'); cv.width = cv.height = S; const g = cv.getContext('2d'), r = makeRnd(dense ? 81 : 80);
-  g.lineCap = 'round';
-  for (let hit = 0; hit < (dense ? 4 : 1); hit++) {   // each hit: a star of jagged rays, and broken rings round its centre
-    const cx = S * (0.3 + r() * 0.4), cy = S * (0.3 + r() * 0.4), rays = dense ? 14 : 9;
-    g.strokeStyle = 'rgba(235,240,245,.9)'; g.lineWidth = dense ? 2.4 : 2;
-    for (let i = 0; i < rays; i++) { let a = (i / rays) * Math.PI * 2 + r() * 0.4, x = cx, y = cy; const L = S * (0.25 + r() * (dense ? 0.5 : 0.3));
-      g.beginPath(); g.moveTo(x, y); for (let d = 0; d < L; d += 14) { a += (r() - 0.5) * 0.5; x += Math.cos(a) * 14; y += Math.sin(a) * 14; g.lineTo(x, y); } g.stroke(); }
-    g.lineWidth = 1.5;
-    for (let k = 1; k <= (dense ? 3 : 2); k++) { const R = k * S * 0.06 * (1 + r() * 0.5);
-      for (let i = 0; i < rays; i++) if (r() < 0.7) { const a = (i / rays) * Math.PI * 2; g.beginPath(); g.arc(cx, cy, R * (0.9 + r() * 0.2), a, a + (Math.PI * 2) / rays * 0.8); g.stroke(); } }
-    g.fillStyle = 'rgba(235,240,245,.55)'; g.beginPath(); g.arc(cx, cy, dense ? 7 : 5, 0, Math.PI * 2); g.fill();
-  }
-  const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; return t;
-}
-const crackMat = d => new THREE.MeshBasicMaterial({ map: crackTex(d), transparent: true, depthWrite: false, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 });
-const CRACK_OFF = new THREE.MeshBasicMaterial({ visible: false }), CRACK_LIGHT = crackMat(false), CRACK_HEAVY = crackMat(true);
-const CRACK_MATS = [null, [CRACK_LIGHT, CRACK_OFF], [CRACK_HEAVY, CRACK_LIGHT], [CRACK_HEAVY, CRACK_HEAVY]];
-const CRACK_REAR = { saab: 2 };                // index of the glass profile's point where the rear window starts (default 1); the Saab's is its hatch
-const crackGeoCache = {};
-function crackGeo(t) {
-  if (crackGeoCache[t]) return crackGeoCache[t];
-  const P = t === 'traktor' ? TRACTOR_CAB : PROFILES[t], G = P.glass, n = G.length, pos = [], uv = [];
-  const cx = G.reduce((a, p) => a + p[0], 0) / n, cy = G.reduce((a, p) => a + p[1], 0) / n;   // profile x is the car's z (front is -z), profile y is height
-  const pane = (p, q) => {                     // a quad across the car over the profile edge p–q, pushed out away from the middle of the glass
-    let nx = q[1] - p[1], ny = p[0] - q[0]; const L = Math.hypot(nx, ny); nx /= L; ny /= L;
-    if (nx * ((p[0] + q[0]) / 2 - cx) + ny * ((p[1] + q[1]) / 2 - cy) < 0) { nx = -nx; ny = -ny; }
-    const e = (a, b, k) => [a[0] + (b[0] - a[0]) * k + nx * CRACK_OUT_M, a[1] + (b[1] - a[1]) * k + ny * CRACK_OUT_M], A = e(p, q, 0.08), B = e(p, q, 0.92), w = P.gw / 2 - 0.1;
-    pos.push(-w, A[1], A[0], w, A[1], A[0], w, B[1], B[0], -w, A[1], A[0], w, B[1], B[0], -w, B[1], B[0]); uv.push(0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1);
-  };
-  const ri = CRACK_REAR[t] || 1;
-  pane(G[n - 1], G[0]); pane(G[ri], G[ri + 1]);
-  const front = pos.length / 3;
-  const S = G.map(p => [cx + (p[0] - cx) * 0.88, cy + (p[1] - cy) * 0.88]);   // side windows: the profile shrunk a little, so the cracks stay off the pillars
-  const x0 = Math.min(...S.map(p => p[0])), x1 = Math.max(...S.map(p => p[0])), y0 = Math.min(...S.map(p => p[1])), y1 = Math.max(...S.map(p => p[1]));
-  const tri = THREE.ShapeUtils.triangulateShape(S.map(p => new THREE.Vector2(p[0], p[1])), []);
-  for (const side of [-1, 1]) for (const f of tri) for (const i of f) { pos.push(side * (P.gw / 2 + 0.015), S[i][1], S[i][0]); uv.push((S[i][0] - x0) / (x1 - x0), (S[i][1] - y0) / (y1 - y0)); }
-  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
-  g.addGroup(0, front, 0); g.addGroup(front, pos.length / 3 - front, 1);
-  return (crackGeoCache[t] = g);
-}
-// a car model (#176) cracks its own glass: each of its glass_ parts, with texture coordinates added, split like crackGeo into the panes
-// that face forwards or backwards (material 0) and the rest (material 1); the models' glass has no texture coordinates of its own
-const MODEL_GLASS_FLAT = 0.94;                 // glass whose normal is closer to straight up than this (about 20°) gets no cracks: a raked windscreen still does
-const modelCrackGeos = new WeakMap(), _ga = new THREE.Vector3(), _gb = new THREE.Vector3(), _gc = new THREE.Vector3();
-function modelCrackGeo(src) {
-  let g = modelCrackGeos.get(src); if (g) return g;
-  const s = src.index ? src.toNonIndexed() : src, P = s.attributes.position, pos = [[], []], uv = [[], []];
-  s.computeBoundingBox(); const { min: m, max: M } = s.boundingBox, w = M.x - m.x, h = M.y - m.y, l = M.z - m.z;
-  for (let i = 0; i < P.count; i += 3) {
-    _ga.fromBufferAttribute(P, i); _gb.fromBufferAttribute(P, i + 1); _gc.fromBufferAttribute(P, i + 2);
-    const n = _gc.sub(_gb).cross(_gb.clone().sub(_ga)).normalize(); if (Math.abs(n.y) > MODEL_GLASS_FLAT) continue;   // the glass's flat top, hidden under the roof
-    const k = Math.abs(n.z) > Math.abs(n.x) ? 0 : 1;   // the models face -z
-    for (let j = 0; j < 3; j++) { _ga.fromBufferAttribute(P, i + j); pos[k].push(_ga.x, _ga.y, _ga.z); uv[k].push(k ? (_ga.z - m.z) / l : (_ga.x - m.x) / w, (_ga.y - m.y) / h); }
-  }
-  g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute([...pos[0], ...pos[1]], 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute([...uv[0], ...uv[1]], 2));
-  g.addGroup(0, pos[0].length / 3, 0); g.addGroup(pos[0].length / 3, pos[1].length / 3, 1);
-  modelCrackGeos.set(src, g); return g;
-}
-// the procedural cracks go on the procedural body, so they hide with it when the model shows; the model, which loads later, gets its own
-function crackGlass(c) {
-  const lv = crackLevel(c.dmg); if (!lv) return;
-  if (c.crack !== lv) { if (!c.crackMesh) { c.crackMesh = new THREE.Mesh(crackGeo(c.type), CRACK_MATS[lv]); c.body.add(c.crackMesh); }
-    c.crackMesh.material = CRACK_MATS[lv]; if (c.modelCrack) for (const m of c.modelCrack) m.material = CRACK_MATS[lv]; c.crack = lv; }
-  if (!c.modelCrack && vehicleVisuals.loaded(c) && c.mesh.getObjectByName('glass_envelope')) { c.modelCrack = [];
-    c.mesh.traverse(o => { if (o.isMesh && o.name.startsWith('glass_')) c.modelCrack.push(o); });
-    c.modelCrack = c.modelCrack.map(gl => { const m = new THREE.Mesh(modelCrackGeo(gl.geometry), CRACK_MATS[lv]); gl.add(m); return m; }); }
-}
 
 // ---------- drift effects: sparks at the rear wheels, a flame while boosting, skid marks (src/game/render/drift-fx.ts) ----------
 const driftFx = new DriftFx({ scene, groundAt, profiles: PROFILES, turboAt: TURBO_AT }), updateDriftFx = driftFx.update.bind(driftFx);
@@ -595,24 +511,8 @@ kmenu.addEventListener('click', e => { const b = e.target.closest('button'); if 
 function nearPlace() { return inCar ? null : places.nearest(player.x, player.z); }
 function enterHouse(p) { if (places.enter(p, player)) player.mesh.visible = false; }
 function leaveHouse() { if (!places.leave()) return; player.mesh.visible = true; $('hide').hidden = true; }
-// ---------- car damage: smoke from the bonnet, grey past half damage and black when nearly wrecked ----------
-const SMOKE_N = 48, SMOKE_S = 1.8, SMOKE_NEAR_M = 140, SMOKE_RATE = [0, 8, 12];   // puffs in the pool; s each lasts; only cars this close smoke; puffs/s by smoke level
-const SMOKE_COLS = [null, col(0x7c7c78), col(0x2a2826)];
-const smokeTex = (() => { const cv = document.createElement('canvas'); cv.width = cv.height = 64; const g = cv.getContext('2d'), r = g.createRadialGradient(32, 32, 0, 32, 32, 32);
-  r.addColorStop(0, 'rgba(255,255,255,1)'); r.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = r; g.fillRect(0, 0, 64, 64); return new THREE.CanvasTexture(cv); })();
-const puffs = Array.from({ length: SMOKE_N }, () => { const p = new THREE.Sprite(new THREE.SpriteMaterial({ map: smokeTex, transparent: true, depthWrite: false }));
-  p.visible = false; p.age = 0; scene.add(p); return p; });
-let puffI = 0;
-function updateSmoke(dt, T) {
-  for (const c of cars) { const cl = crackLevel(c.dmg); if (cl && (c.crack !== cl || !c.modelCrack && vehicleVisuals.loaded(c))) crackGlass(c);   // after a crash, and once its model loads; one that failed never does
-    const lv = smokeLevel(c.dmg); if (!lv || c.wet || Math.abs(c.x - T.x) > SMOKE_NEAR_M || Math.abs(c.z - T.z) > SMOKE_NEAR_M) continue;
-    c.smokeT = (c.smokeT || 0) + dt * SMOKE_RATE[lv];
-    for (; c.smokeT >= 1; c.smokeT--) { const p = puffs[puffI]; puffI = (puffI + 1) % SMOKE_N;   // a ring: the oldest puff goes first
-      const fwd = c.type === 'traktor' ? 1.4 : 1.7, x = c.x + Math.sin(c.h) * fwd + (dmgRnd() - 0.5) * 0.5, z = c.z - Math.cos(c.h) * fwd + (dmgRnd() - 0.5) * 0.5;
-      p.position.set(x, groundAt(x, z) + 1.1, z); p.age = 0; p.visible = true; p.material.color.copy(SMOKE_COLS[lv]); } }
-  for (const p of puffs) { if (!p.visible) continue; p.age += dt; const t = p.age / SMOKE_S; if (t >= 1) { p.visible = false; continue; }
-    p.position.y += dt * 1.3; p.scale.setScalar(0.6 + t * 2.4); p.material.opacity = 0.75 * (1 - t); }
-}
+// ---------- car damage: cracked glass, and smoke from the bonnet (src/game/render/car-damage.ts) ----------
+const carDamage = new CarDamageFx({ scene, groundAt, profiles: PROFILES, tractorCab: TRACTOR_CAB, vehicleVisuals, rnd: dmgRnd, cars }), updateSmoke = carDamage.updateSmoke.bind(carDamage);
 
 // trisslott (src/game/trisslott.ts)
 // biome-ignore lint/plugin/no-math-random: the known exception in AGENTS.md (rule 5); a ticket's luck isn't world state to replay
