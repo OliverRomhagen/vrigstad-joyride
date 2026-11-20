@@ -113,6 +113,7 @@ Short records so settled questions stay settled. Add one when you make a choice 
 - **World meshes are returned, never added to a scene.** Each `src/world/mesh/` builder is a class that hands back its `Object3D`s and frees what it made in `dispose()`; the page adds them. So the game keeps `scene.add(...)`, and the map can mount the same objects in Threlte (#118). Each page passes its look (materials, colours, details) as options and callbacks.
 - **HUD stays DOM; in-world UI uses canvas textures.** HTML-in-canvas (#56) replaces the canvas textures once browsers support it.
 - **No physics engine yet.** Collisions are hand-rolled. Rapier is the candidate when crashes (#40) need more (#54).
+- **Lab experiments live in `src/lab/`, one folder each, off by default (#227).** `src/lab/flags.ts` lists them, each with an English name and what it costs; `?lab=<id>,<id>` switches them on, and later the settings menu (#78) and the console (#218) set the same flags. The game reads them once, at page load, so a change there takes a reload until experiments can start and stop while it runs. Gameplay asks the flags, never the URL. Each experiment is loaded with a dynamic `import()` only when its flag is on. While the page is built as one file it still ships in that file but doesn't run; with multi-file output it becomes its own chunk. Dropping one means deleting its folder and its entry. `src/lab/hello/` is the template.
 - **No ECS yet.** Plain arrays per system; revisit with miniplex when entity kinds multiply (#55).
 
 ## Coordinates and data

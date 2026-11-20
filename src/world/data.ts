@@ -126,7 +126,15 @@ export interface WorldData {
 export const RoadClass = { PRIMARY: 0, SECONDARY: 1, STREET: 2, SERVICE: 3, TRACK: 4, PATH: 5 } as const;
 export type RoadClass = (typeof RoadClass)[keyof typeof RoadClass];
 
-export const LandUse = { RESIDENTIAL: 0, FARMLAND: 1, INDUSTRIAL: 2, GRASS: 3, CEMETERY: 4, FOREST: 5, PITCH: 6 } as const;
+export const LandUse = {
+  RESIDENTIAL: 0,
+  FARMLAND: 1,
+  INDUSTRIAL: 2,
+  GRASS: 3,
+  CEMETERY: 4,
+  FOREST: 5,
+  PITCH: 6,
+} as const;
 export type LandUse = (typeof LandUse)[keyof typeof LandUse];
 
 /** OTHER is every building that is not the church or the hotel: homes, shops, barns, sheds */

@@ -15,7 +15,11 @@ const ROAD_COLOURS = [0x101010, 0x202020, 0x303030, 0x404040, 0x505050, 0x606060
 describe('RoadRibbons', () => {
   const asphalt = new THREE.Texture();
   const roads = new RoadNetwork(makeWorld({ r: [MAIN_ROAD] }), terrainAt(TERRAIN_M));
-  const ribbons = new RoadRibbons(roads, terrainAt(TERRAIN_M), { asphalt, roadColours: ROAD_COLOURS, centreLineColour: 0xffffff });
+  const ribbons = new RoadRibbons(roads, terrainAt(TERRAIN_M), {
+    asphalt,
+    roadColours: ROAD_COLOURS,
+    centreLineColour: 0xffffff,
+  });
 
   it('tints the asphalt it is given on the road, and not on the centre line', () => {
     expect(ribbons.meshes).toHaveLength(2);

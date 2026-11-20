@@ -4,19 +4,21 @@ Instructions for AI coding agents (and a quick start for humans) working on Vrig
 
 ## The project in one paragraph
 
-A browser open-world driving game set in the real village of Vrigstad, Sweden, built from OpenStreetMap data and elevation tiles, plus a 3D map of the same area. Rendering is three.js. The codebase is in transition from a single-file prototype to a modular Vite + TypeScript app; the plan is tracked in [#61](https://github.com/OliverRomhagen/vrigstad-joyride/issues/61). The build is Vite ([#44](https://github.com/OliverRomhagen/vrigstad-joyride/issues/44)), but the code is only starting to split: the game is still mostly one file, `src/game/main.ts`, and the map another, `src/map/main.ts`, both reading the world's data and queries from `src/world/` ([#48](https://github.com/OliverRomhagen/vrigstad-joyride/issues/48)).
+A browser open-world driving game set in the real village of Vrigstad, Sweden, built from OpenStreetMap data and elevation tiles, plus a 3D map of the same area. Rendering is three.js. The codebase is in transition from a single-file prototype to a modular Vite + TypeScript app; the plan is tracked in [#61](https://github.com/OliverRomhagen/vrigstad-joyride/issues/61). The build is Vite ([#44](https://github.com/OliverRomhagen/vrigstad-joyride/issues/44)), and the code is splitting into modules ([#177](https://github.com/OliverRomhagen/vrigstad-joyride/issues/177)): input, the HUD, health, the police, the player on foot, cats, pets and pedestrians have their own files in `src/game/`, but cars, places, what pressing E does, the camera and the main loop are still in `src/game/main.ts`. The map is one file, `src/map/main.ts`. Both read the world's data and queries from `src/world/` ([#48](https://github.com/OliverRomhagen/vrigstad-joyride/issues/48)).
 
 ## Commands
 
 ```sh
 npm install                 # once
 npm run dev                 # dev server with hot reload: the game at http://localhost:5173/, the map at /map.html
-npm run check               # typecheck; run before every commit, with npm test, and CI runs it on every PR that changes code (lint joins them in #46)
+npm run check               # typecheck, lint and format check (Biome), then the static gate (Fallow); run before every commit, with npm test, and CI runs it on every PR that changes code
+npm run format              # apply Biome's formatting and safe lint fixes
 npm test                    # unit tests (Vitest), once
+npm run analyze:report      # reading passes (Fallow): copied code and complexity hotspots; reported, never fails
 npm run build               # production build into dist/ (index.html, map.html)
 npm run preview             # serve the built dist/ locally
 npx playwright install chromium   # once, for the smoke tests
-npm run test:e2e            # Playwright smoke tests against the built pages in dist/; build first
+npm run test:e2e            # Playwright smoke tests against the built pages in dist/; build first. Before a commit, run only yours (see Tests)
 npm run data                # rebuild data/vrigstad.json from data/raw/ (Python standard library only); run npm run build after, the data is built into the pages
 npm run data:report         # what the streetscape rules infer from data/vrigstad.json (the second half of the coverage report)
 tools/fetch.sh              # re-download OSM + elevation (rarely needed; hits public APIs)
@@ -71,14 +73,14 @@ GitHub issues are the backlog: every bug, idea and piece of work is one issue.
 ### Several agents at once
 
 - One branch (and worktree) per agent and task. Bring your branch up to date with `main` before opening a PR and again before merging.
-- Until #44 splits the code, every feature edits `src/game/main.ts`, so expect conflicts. Keep changes in their own section of the file where you can.
+- Until #177 finishes splitting the code, most features edit `src/game/main.ts`, so expect conflicts. Keep changes in their own section of the file where you can.
 - Say how you tested in the PR, and be honest about what wasn't tested ("not played by hand on a phone").
 
 ## Code style
 
 - **Match the surrounding code.** Same naming, comment density and idiom as the file you're in.
 - Current single-file code is dense: 2-space indent, single quotes, semicolons, short local names for hot math (`x`, `z`, `h`, `v`, `dt`), sections marked `// ---------- name ----------`. Keep that style inside `src/game/main.ts` and `src/map/main.ts` until they are split up.
-- New TypeScript code: formatted by Biome (after #46), so don't hand-format. Prefer clear names over the dense style, small modules with one responsibility, named exports, no default exports, `strict` types, no `any` without a comment saying why.
+- New TypeScript code: formatted by Biome (`npm run format`), so don't hand-format. The pages (`src/*.html`, `src/game/main.ts`, `src/map/main.ts`) aren't formatted until #177 splits them (`biome.jsonc`), but the two scripts are still checked for undeclared names, unused variables and unused imports. The repo's `.vscode/` settings make Biome the formatter in VS Code, so a Prettier you set up for other projects doesn't reformat files on save. Prefer clear names over the dense style, small modules with one responsibility, named exports, no default exports, `strict` types, no `any` without a comment saying why.
 - Classes, data or functions, by what the thing is:
   - **A class** for something built once and then queried, or that holds state or resources with a lifecycle: a world index (`Heightfield`, `RoadNetwork`, `BuildingIndex`), a controller, an object that owns meshes and disposes them, a Svelte store with `$state` fields. Depend on the narrow part you use (`Pick<Heightfield, 'heightAt'>`), so a test can pass a stub.
   - **Plain data** for simulation state (#49): it has to be copied to a worker or over the network, snapshotted for replays and compared in tests. No methods on entities.
@@ -107,7 +109,13 @@ Until the migration reaches a given rule, don't make the existing code worse in 
 - **No pixel-diff tests.** Headless WebGL output varies. Assert on state exposed through the test hook instead, and attach screenshots to the PR when visuals change.
 - For review screenshots, `?at=x,z,yaw,pitch` starts the player at (x, z) looking that way, and `?debug=streetscape` tints the streetscape by its evidence (mapped, derived, inferred).
 - The smoke tests live in `tests/e2e/` and run in CI on every PR that changes more than docs, labels, issue forms, agent files or other workflows (`.github/workflows/e2e.yml`), which also fails if the committed `data/vrigstad.json` is stale and uploads screenshots of both pages as the `e2e-screenshots` artifact. They read game state from `window.__joyride.state()` (defined at the end of `src/game/main.ts`); add a field there when a new smoke step needs one, and keep the hook read-only.
-- Most gameplay still lives in `src/game/main.ts`, out of the unit tests' reach until #49 splits it: test changes there in a browser too, and describe what you did in the PR.
+- **Static analysis** ([Fallow](https://github.com/fallow-rs/fallow), [#107](https://github.com/OliverRomhagen/vrigstad-joyride/issues/107)), configured in `fallow.toml`, is the last step of `npm run check`, so it runs before every commit and in CI (`.github/workflows/check.yml`), and takes well under a second:
+  - The gate (`fallow dead-code`) fails on: an unused file, export, class member or dependency; a circular import; an import across the layers in `fallow.toml` (`world` imports only `world`; `sim` only `sim` and `world`; `render` anything but the page code); and, from the rule pack `fallow-rules.jsonc`, three.js imported in `sim` or `world` code, or a DOM call by name (`document.*`, `window.*`, `fetch`, `addEventListener`, …) in either (ARCHITECTURE.md, rule 2). Property reads such as `window.innerWidth` aren't calls, and a call through an alias (`const w = window`) has no DOM name, so the DOM rule misses both.
+  - A new module in `src/game/` is `sim` code by default, so the rules above apply from its first commit. A page module, one that uses the DOM or the HUD, goes in the `page` list in `fallow.toml` instead, until #177 gives the rules their own `src/game/sim/`.
+  - The exceptions for code that breaks a rule today are listed in those two files, each with what ends it. Remove an entry when its code is fixed; don't add one for new code: fix the finding, or say in the PR why the rule is wrong. For a single line, `// fallow-ignore-next-line <rule>` with a reason works too, with the name Fallow prints (`unused-export`, `boundary-violation`); a rule-pack finding needs its full name, such as `policy-violation:joyride/no-dom`. When an export is only used by a test, that counts as used.
+  - `npm run analyze:report` prints copied code (`fallow dupes`) and the files where complexity meets churn (`fallow health --hotspots`). Read it before refactoring; it doesn't fail.
+- **Before a commit**, run `npm run check` and `npm test` in full: they take seconds. The smoke tests render WebGL in software and keep every core busy for minutes, so run only the ones for what you changed, plus the ones that load the page and get into the Volvo, on one or two workers, after a build, since they test `dist/`: `npm run build && npx playwright test -g "kiosk|loads with no console errors|gets you in" --workers=2`. CI runs the whole suite on every PR. Until #177 splits `src/game/main.ts`, a change there can break another feature's test, so a red CI run after a green subset is expected now and then, not a reason to run everything locally.
+- Much of the gameplay still lives in `src/game/main.ts`, out of the unit tests' reach until #177 moves it into modules: test changes there in a browser too, and describe what you did in the PR.
 
 ## Data and coordinates
 
