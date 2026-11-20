@@ -32,7 +32,7 @@ export const CLOUD_ALTITUDE_M = 1800;
 /** size of one unit of the cloud field (m); cloud bodies come out a few hundred metres to about 2 km across */
 export const CLOUD_SCALE_M = 1600;
 /** the noise lattice repeats every this many units */
-export const CLOUD_PERIOD = 256;
+const CLOUD_PERIOD = 256;
 /**
  * the whole field repeats every this many units: a multiple of the lattice period at every frequency used (1, 1/2, 1/4).
  * The wind and time offsets wrap at it, so nothing jumps however long the game runs, and float32 keeps its precision.
@@ -46,7 +46,7 @@ export const CLOUD_CURVE = 0.07;
 /** distance over which clouds thin out and sink into the haze towards the horizon (m) */
 export const CLOUD_FADE_M = 16000;
 /** how fast the shapes change, in field units per second of the third (time) axis */
-export const CLOUD_EVOLVE_PER_S = 1 / 420;
+const CLOUD_EVOLVE_PER_S = 1 / 420;
 /** how long the sunlight takes to follow a cloud passing in front of the sun (s, exponential time constant) */
 export const SUN_SHADE_TAU_S = 1.6;
 
@@ -99,7 +99,7 @@ const fract = (v: number) => v - Math.floor(v);
 const mod = (v: number, m: number) => v - m * Math.floor(v / m);
 
 /** Hash of an integer lattice point to [0, 1). The GLSL hash3 in sky.ts is the same formula. */
-export function hash3(x: number, y: number, z: number) {
+function hash3(x: number, y: number, z: number) {
   x = mod(x, CLOUD_PERIOD);
   y = mod(y, CLOUD_PERIOD);
   z = mod(z, CLOUD_PERIOD);
@@ -114,7 +114,7 @@ export function hash3(x: number, y: number, z: number) {
 }
 
 /** Value noise in [0, 1), smooth, periodic every CLOUD_PERIOD on each axis. */
-export function valueNoise(x: number, y: number, z: number) {
+function valueNoise(x: number, y: number, z: number) {
   const ix = Math.floor(x);
   const iy = Math.floor(y);
   const iz = Math.floor(z);
@@ -134,7 +134,7 @@ export function valueNoise(x: number, y: number, z: number) {
 }
 
 /** Fractal sum of `octaves` noise layers, each twice the frequency and half the weight; normalised to [0, 1). */
-export function fbm(x: number, y: number, z: number, octaves: number) {
+function fbm(x: number, y: number, z: number, octaves: number) {
   let sum = 0;
   let amp = 0.5;
   let norm = 0;
@@ -151,7 +151,7 @@ export function fbm(x: number, y: number, z: number, octaves: number) {
 }
 
 /** Billowy fractal sum: |2n - 1| per octave gives rounded lobes with creases between them, like heaped cumulus. */
-export function billow(x: number, y: number, z: number, octaves: number) {
+function billow(x: number, y: number, z: number, octaves: number) {
   let sum = 0;
   let amp = 0.5;
   let norm = 0;
@@ -172,7 +172,11 @@ export function seedOffset(seed: number): [number, number] {
 }
 
 /** Where the wind has carried the field after `t` seconds, in field units, wrapped into [0, FIELD_PERIOD). */
-export function windOffset(cfg: Pick<CloudConfig, 'windFromDeg' | 'windSpeedMps'>, t: number, out: [number, number] = [0, 0]) {
+export function windOffset(
+  cfg: Pick<CloudConfig, 'windFromDeg' | 'windSpeedMps'>,
+  t: number,
+  out: [number, number] = [0, 0],
+) {
   // the wind blows from windFromDeg: the clouds travel the other way. North is -z, east is +x.
   const to = ((cfg.windFromDeg + 180) * Math.PI) / 180;
   const metres = cfg.windSpeedMps * t;
@@ -192,7 +196,15 @@ export const LOW_OCTAVES = 3;
  * are (domain-warped, with large clusters that open clear areas); `detail` is the billowy noise that erodes their edges
  * into heaped lobes. The shader computes the same, step for step.
  */
-export function cloudField(x: number, z: number, u: number, v: number, w: number, seed: [number, number], octaves = HIGH_OCTAVES) {
+export function cloudField(
+  x: number,
+  z: number,
+  u: number,
+  v: number,
+  w: number,
+  seed: [number, number],
+  octaves = HIGH_OCTAVES,
+) {
   // the world moves against the wind offset: the field at a world point is the field at (point - offset)
   const px = x / CLOUD_SCALE_M - u + seed[0];
   const pz = z / CLOUD_SCALE_M - v + seed[1];
@@ -227,7 +239,16 @@ const smooth = (a: number, b: number, v: number) => {
  * How much cloud is in front of the sun, 0..1, seen from (cx, cy, cz) along the unit direction to the sun (sx, sy, sz).
  * The sky shader draws the same cloud there, so the light dims when the player sees the sun go behind one.
  */
-export function sunCover(cfg: CloudConfig, cx: number, cy: number, cz: number, sx: number, sy: number, sz: number, t: number) {
+export function sunCover(
+  cfg: CloudConfig,
+  cx: number,
+  cy: number,
+  cz: number,
+  sx: number,
+  sy: number,
+  sz: number,
+  t: number,
+) {
   if (cfg.cover === 'off' || sy <= 0.02) return 0;
   const reach = (CLOUD_ALTITUDE_M - cy) / (sy + CLOUD_CURVE);
   if (reach <= 0) return 0;
@@ -236,8 +257,13 @@ export function sunCover(cfg: CloudConfig, cx: number, cy: number, cz: number, s
   // the same thinning with distance and towards the horizon as the shader, so what you see is what dims the sun
   const h = Math.min(1, Math.max(0, (sy - 0.012) / (0.13 - 0.012)));
   const fade = Math.exp(-reach / CLOUD_FADE_M) * h * h * (3 - 2 * h);
-  return (cloudAlpha(f.base, f.cluster, f.detail, CLOUD_PRESETS[cfg.cover], cfg.softness) / CLOUD_PRESETS[cfg.cover].opacity) * fade;
+  return (
+    (cloudAlpha(f.base, f.cluster, f.detail, CLOUD_PRESETS[cfg.cover], cfg.softness) /
+      CLOUD_PRESETS[cfg.cover].opacity) *
+    fade
+  );
 }
 
 /** Moves `current` towards `target` with time constant `tau` (s); the same result whatever the frame rate. */
-export const approach = (current: number, target: number, dt: number, tau: number) => target + (current - target) * Math.exp(-dt / tau);
+export const approach = (current: number, target: number, dt: number, tau: number) =>
+  target + (current - target) * Math.exp(-dt / tau);
