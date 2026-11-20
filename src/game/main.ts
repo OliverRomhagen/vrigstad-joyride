@@ -26,7 +26,7 @@ import { Input } from './input';
 import { Crowd } from './pedestrians';
 import { Pets } from './pets';
 import { CAT_SCRATCH_HP, crackLevel, LOW_HP, CRASH_COOL_S, crashCars, crashDamage, driverHurt, HP_MAX, heal, hurt, KORV_HP, impactSpeed, newHealth, regen, RULLE_HP, runOverHurt, smokeLevel, topSpeedShare, wakeSpot, wrecked } from './health';
-import { HOME, hop, nearestCar as carInReach, ride, standAt, stepOut, tooFastToGetOut, walk } from './player';
+import { carInReach, HOME, hop, ride, standAt, stepOut, tooFastToGetOut, walk } from './player';
 import { Wanted } from './police';
 
 (function () {
@@ -781,7 +781,7 @@ function drawHealth() { hud.drawHealth(health.hp, inCar ? pcar.dmg : null); }
 let signT = 0, blink = false, blinkT = 0;
 
 // ---------- stealing and getting caught (the wanted level and the police: src/game/police.ts) ----------
-const nearestCar = () => carInReach(player, cars);
+function nearestCar() { return carInReach(player, cars); }
 function action() {
   if (!started || bigT > 0) return;
   if (inside) { leaveHouse(); return; }
@@ -815,7 +815,7 @@ function busted() { respawn(); health.hp = HP_MAX; drawHealth(); bigScreen('Grip
 function knockedOut() {
   if (wanted.stars) { wanted.clear(); busted(); return; }   // Gripen! expects the stars cleared
   const spot = wakeSpot(player.x, player.z, HOME, places);
-  respawn(); player.x = spot.x; player.z = spot.z; collide(player, 0.6); health.hp = HP_MAX; drawHealth();
+  respawn(); standAt(player, spot.x, spot.z); collide(player, 0.6); health.hp = HP_MAX; drawHealth();
   bigScreen('Däckad!', 'Knocked out. You come to ' + (spot.name ? 'at the safehouse on ' + spot.name : 'at Torget') + '.'); sayLater(pickLine(WAKE_LINES));
 }
 const WAKE_LINES = ['”Va hände? Ja minns ingenting.”', '”Aj, mitt huve…”'];

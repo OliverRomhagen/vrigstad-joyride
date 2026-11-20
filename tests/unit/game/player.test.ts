@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { hop, nearestCar, type PlayerState, standAt, stepOut, tooFastToGetOut, walk } from '../../../src/game/player';
+import { carInReach, hop, type PlayerState, standAt, stepOut, tooFastToGetOut, walk } from '../../../src/game/player';
 
 const you = (x = 0, z = 0): PlayerState => ({ x, z, y: 0, vy: 0, h: 0, speed: 0, phase: 0 });
 const car = (x: number, z: number, mode = 'parked', h = 0, v = 0) => ({ x, z, h, v, mode });
@@ -12,11 +12,11 @@ function walkFor(p: PlayerState, secs: number, mx: number, my: number, yaw: numb
 describe('player', () => {
   it('reaches the closest car within 4.4 m, never a police car', () => {
     const near = car(3, 0), cars = [car(0, 1, 'police'), car(4, 0), near, car(0, 5)];
-    expect(nearestCar(you(), cars)).toBe(near);
-    expect(nearestCar(you(), [car(4.4, 0), car(0, 1, 'police')])).toBeNull();   // just out of reach
+    expect(carInReach(you(), cars)).toBe(near);
+    expect(carInReach(you(), [car(4.4, 0), car(0, 1, 'police')])).toBeNull();   // just out of reach
   });
 
-  it('gets out only below 3 m/s, either way', () => {
+  it('gets out at up to 3 m/s, either way', () => {
     expect(tooFastToGetOut({ v: 3 })).toBe(false);
     expect(tooFastToGetOut({ v: 3.1 })).toBe(true);
     expect(tooFastToGetOut({ v: -3.1 })).toBe(true);
