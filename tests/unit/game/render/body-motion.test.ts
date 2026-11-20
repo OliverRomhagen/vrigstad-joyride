@@ -1,13 +1,13 @@
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 import { BodyMotion } from '../../../../src/game/render/body-motion';
-import { suspensionFor } from '../../../../src/game/render/suspension';
+import { VEHICLE_SPECS } from '../../../../src/game/sim/vehicle-spec';
 
 const setup = () => {
   const car = { mesh: new THREE.Group(), x: 0, z: 0, h: 0, v: 0 },
     node = new THREE.Group(),
     motion = new BodyMotion();
-  motion.add(car, suspensionFor('volvo'), node);
+  motion.add(car, VEHICLE_SPECS.volvo.suspension, node);
   motion.update(car, 1 / 60); // the first frame only records the pose
   return { car, node, motion };
 };

@@ -1,22 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { approach, HANDLING, handlingFor, rearPivotShift, yawRate } from '../../../../src/game/sim/handling';
-
-describe('handlingFor', () => {
-  it('uses the type and lets a model bring its own wheelbase', () => {
-    expect(handlingFor('traktor')).toBe(HANDLING.traktor);
-    expect(handlingFor('volvo', 3.02)).toEqual({ ...HANDLING.volvo, wheelbaseM: 3.02 });
-    expect(handlingFor('ufo')).toBe(HANDLING.volvo);
-  });
-  it('makes the tractor slower to answer than the police car', () => {
-    expect(HANDLING.traktor.steerResponseS).toBeGreaterThan(HANDLING.polis.steerResponseS);
-    expect(HANDLING.traktor.throttleResponseS).toBeGreaterThan(HANDLING.polis.throttleResponseS);
-  });
-});
+import { approach, rearPivotShift, yawRate } from '../../../../src/game/sim/handling';
 
 describe('yawRate', () => {
   it('is the bicycle model: v / L · tan(lock)', () => {
-    // at 11 m/s the lock has halved: 0.6 rad · 1 / 2
-    expect(yawRate(11, 1, 2.75)).toBeCloseTo((11 / 2.75) * Math.tan(0.3), 10);
+    // at 13 m/s the lock has halved: 0.6 rad · 1 / 2
+    expect(yawRate(13, 1, 2.75)).toBeCloseTo((13 / 2.75) * Math.tan(0.3), 10);
+  });
+  it('keeps a fast car at full lock under 3.5 g sideways, so a correction at speed stays small', () => {
+    for (const v of [20, 30, 38]) expect((v * yawRate(v, 1, 2.65)) / 9.81).toBeLessThan(3.5);
   });
   it('turns a longer car wider at the same speed and stick', () => {
     expect(Math.abs(yawRate(10, 1, 3.02))).toBeLessThan(Math.abs(yawRate(10, 1, 2.36)));
@@ -43,18 +34,18 @@ describe('approach', () => {
 
 describe('rearPivotShift', () => {
   it('keeps the rear axle where it was', () => {
-    const L = 2.6,
+    const r = 1.5, // an axle well off the middle, like the Duett's
       h0 = 0.4,
       h1 = 0.55;
-    const p = rearPivotShift(h0, h1, L);
-    // rear axle = centre − forward · L/2, forward = (sin h, −cos h)
-    const rear0 = { x: -Math.sin(h0) * (L / 2), z: Math.cos(h0) * (L / 2) };
-    const rear1 = { x: p.dx - Math.sin(h1) * (L / 2), z: p.dz + Math.cos(h1) * (L / 2) };
+    const p = rearPivotShift(h0, h1, r);
+    // rear axle = centre − forward · r, forward = (sin h, −cos h)
+    const rear0 = { x: -Math.sin(h0) * r, z: Math.cos(h0) * r };
+    const rear1 = { x: p.dx - Math.sin(h1) * r, z: p.dz + Math.cos(h1) * r };
     expect(rear1.x).toBeCloseTo(rear0.x, 10);
     expect(rear1.z).toBeCloseTo(rear0.z, 10);
   });
   it('moves the centre into a right turn when facing north', () => {
-    expect(rearPivotShift(0, 0.1, 2.6).dx).toBeGreaterThan(0);
-    expect(rearPivotShift(0.3, 0.3, 2.6)).toEqual({ dx: 0, dz: -0 });
+    expect(rearPivotShift(0, 0.1, 1.3).dx).toBeGreaterThan(0);
+    expect(rearPivotShift(0.3, 0.3, 1.3)).toEqual({ dx: 0, dz: -0 });
   });
 });
