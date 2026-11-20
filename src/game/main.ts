@@ -44,6 +44,8 @@ import { Wanted } from './police';
 import { PlaceMeshes } from './render/places';
 import { newGameState, newViewState } from './state';
 import { Trisslott } from './trisslott';
+import { makeClock, skyAt, START_H, tickClock } from './day-cycle';
+import { Daylight } from './render/daylight';
 
 (function () {
 'use strict';
@@ -80,12 +82,11 @@ const scene = new THREE.Scene();
 scene.background = new THREE.Color(HORIZON);
 scene.fog = new THREE.FogExp2(HORIZON, FOG_PER_M);
 const camera = new THREE.PerspectiveCamera(58, 1, 0.8, 4200);
-scene.add(new THREE.HemisphereLight(0xffffff, col(0x9aa58a), 0.62 * LEGACY_LIGHT));
-const sun = new THREE.DirectionalLight(col(0xfff4dd), 0.95 * LEGACY_LIGHT);   // intensity: SUN_I, times the clouds' sunFactor
+const hemi = new THREE.HemisphereLight(0xffffff, col(0x9aa58a), 0.62 * LEGACY_LIGHT); scene.add(hemi);
+const sun = new THREE.DirectionalLight(col(0xfff4dd), 0.95 * LEGACY_LIGHT);   // intensity: the time of day's (daylight.sunIntensity), times the clouds' sunFactor
 const SUN_DIR = new THREE.Vector3(-0.55, 0.75, 0.37).normalize();
 // sky: a gradient dome with the sun's glow and drifting fair-weather clouds (src/game/render/sky.ts); it follows the camera
 // and fades into the fog at the horizon. ?clouds=clear|scattered|partly|mostly|off, cloudSeed, wind=from°,m/s (see clouds.ts)
-const SUN_I = 0.95 * LEGACY_LIGHT;   // the sun's intensity under a clear sky; a cloud in front of it takes some away
 const skyDome = new Sky({ top: 0x5f97c9, horizon: HORIZON, sunColour: 0xfff1d0, sunDir: SUN_DIR, clouds: parseCloudConfig(new URLSearchParams(location.search), coarse) });
 const dome = skyDome.mesh; scene.add(dome);
 // soft round shadow under cars, people and trees, so nothing looks pasted onto the ground
@@ -105,6 +106,14 @@ scene.add(sun, sun.target);
 // after the WebGL check, so none starts behind the fail screen, and one that fails to load or start only warns
 const lab = LabFlags.fromSearch(location.search);
 if (lab.on('hello')) import('../lab/hello').then(m => m.startHello()).catch(err => console.warn('Lab: hello failed', err));
+
+// ---------- time of day: 05:00 to 19:00, then a short blend into the next morning (src/game/day-cycle.ts) ----------
+// ?time=18.5 starts at that hour; ?cycle=off holds it there
+const dayQs = new URLSearchParams(location.search);
+const dayClock = makeClock(dayQs.get('time') ? Number(dayQs.get('time')) : START_H), dayRuns = dayQs.get('cycle') !== 'off';
+const daylight = new Daylight({ sun, hemi, sunDir: SUN_DIR, dome: dome.material.uniforms, fog: scene.fog.color, background: scene.background });
+const sky = skyAt(dayClock, { x: 0, y: 1, z: 0, sun: 1, warm: 0, light: 1 });
+daylight.apply(sky);
 
 // ---------- ground texture (also feeds the minimap) ----------
 const CW = (coarse || renderer.capabilities.maxTextureSize < 4096) ? 2048 : 4096, K = CW / S;
@@ -636,10 +645,11 @@ function frame(now) {
   const cp = Math.cos(view.camPitch), cx = T.x - Math.sin(view.camYaw) * dist * cp, cz = T.z + Math.cos(view.camYaw) * dist * cp;
   camera.position.set(cx, Math.max(ty + 1.5 + dist * Math.sin(view.camPitch), hAt(cx, cz) + 0.8), cz);
   camera.lookAt(T.x, ty + 1.5, T.z);
+  if (dayRuns && game.started) { tickClock(dayClock, dt); daylight.apply(skyAt(dayClock, sky)); }   // not on the title screen: Start begins at the start hour
   if (shakeT > 0) { shakeT -= dt; const k = Math.max(0, shakeT / SHAKE_S) ** 2 * shakeM * 2;   // eases out, so the jolt fades instead of stopping dead
     camera.position.x += (dmgRnd() - 0.5) * k; camera.position.y += (dmgRnd() - 0.5) * k; camera.position.z += (dmgRnd() - 0.5) * k; }
   sun.target.position.set(T.x, ty, T.z); sun.position.copy(sun.target.position).addScaledVector(SUN_DIR, 400);
-  skyDome.update(camera.position, now / 1000, dt); sun.intensity = SUN_I * skyDome.sunFactor;   // also centres the dome
+  skyDome.update(camera.position, now / 1000, dt); sun.intensity = daylight.sunIntensity * skyDome.sunFactor;   // also centres the dome; the time of day sets the base, a cloud in front of the sun takes some away
 
   // HUD
   drawHearts(dt);
@@ -668,7 +678,7 @@ $('go').addEventListener('click', e => { game.started = true; $('intro').hidden 
 resize(); requestAnimationFrame(frame);
 
 // ---------- test hook: read-only state for the smoke tests (tests/e2e), so they do not have to read pixels ----------
-window.__joyride = { state: () => { const n = nearestCar(); return { started: game.started, lab: lab.list(), x: player.x, z: player.z, y: player.y, yaw: view.camYaw, inCar: game.inCar, car: game.pcar ? game.pcar.type : null, near: n ? n.mode : null, speed: game.pcar ? game.pcar.v : 0, drift: game.pcar ? game.pcar.drift : 0, boost: game.pcar ? game.pcar.boost : 0, charge: game.pcar ? game.pcar.charge : 0, loose: game.pcar ? game.pcar.loose : 0, flickDir: game.pcar ? game.pcar.flickDir : 0, flickHeld: game.pcar ? game.pcar.flickHeld : 0, stars: wanted.stars, cats: cats.length, treats: game.treats, hp: health.hp, carDmg: game.pcar ? game.pcar.dmg : null, ownCat: !!colony.owned, vehicle: displayCar ? vehicleVisuals.state(displayCar) : null, nearSelectedVehicle: n === displayCar, activeVehicle: game.pcar ? vehicleVisuals.state(game.pcar) : null, body: game.pcar ? bodyMotion.state(game.pcar) : null, wheelbase: (game.pcar || displayCar)?.T.handling.wheelbaseM ?? 0, traffic: cars.filter(c => c.mode === 'ai').map(c => ({ type: c.type, vehicle: vehicleVisuals.state(c) })), clouds: skyDome.state(), streetscape: streetscapeState() }; } };
+window.__joyride = { state: () => { const n = nearestCar(); return { started: game.started, lab: lab.list(), x: player.x, z: player.z, y: player.y, yaw: view.camYaw, inCar: game.inCar, car: game.pcar ? game.pcar.type : null, near: n ? n.mode : null, speed: game.pcar ? game.pcar.v : 0, drift: game.pcar ? game.pcar.drift : 0, boost: game.pcar ? game.pcar.boost : 0, charge: game.pcar ? game.pcar.charge : 0, loose: game.pcar ? game.pcar.loose : 0, flickDir: game.pcar ? game.pcar.flickDir : 0, flickHeld: game.pcar ? game.pcar.flickHeld : 0, stars: wanted.stars, cats: cats.length, treats: game.treats, hp: health.hp, carDmg: game.pcar ? game.pcar.dmg : null, ownCat: !!colony.owned, vehicle: displayCar ? vehicleVisuals.state(displayCar) : null, nearSelectedVehicle: n === displayCar, activeVehicle: game.pcar ? vehicleVisuals.state(game.pcar) : null, body: game.pcar ? bodyMotion.state(game.pcar) : null, wheelbase: (game.pcar || displayCar)?.T.handling.wheelbaseM ?? 0, traffic: cars.filter(c => c.mode === 'ai').map(c => ({ type: c.type, vehicle: vehicleVisuals.state(c) })), clouds: skyDome.state(), streetscape: streetscapeState(), hour: dayClock.hour, night: dayClock.night, sunLight: sky.sun }; } };
 function streetscapeState() { const L = street.layout, m = L.sidewalkM, r = v => Math.round(v);
   return { sidewalkM: { mapped: r(m.mapped), derived: r(m.derived), inferred: r(m.inferred) }, parkingAreas: L.lots.length, crossings: L.crossings,
     streetTrees: { mapped: L.trees.filter(t => t.source === 'mapped').length, inferred: L.trees.filter(t => t.source === 'inferred').length },
