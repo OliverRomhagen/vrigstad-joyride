@@ -1,5 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { DAWN_H, DAY_S, DUSK_H, makeClock, NIGHT_S, type Sky, skyAt, tickClock } from '../../../src/game/day-cycle';
+import {
+  DAWN_H,
+  DAY_S,
+  DUSK_H,
+  makeClock,
+  NIGHT_S,
+  type Sky,
+  START_H,
+  skyAt,
+  tickClock,
+} from '../../../src/game/day-cycle';
 
 const blank = (): Sky => ({ x: 0, y: 1, z: 0, sun: 0, warm: 0, light: 0 });
 const DT = 1 / 30;
@@ -8,7 +18,16 @@ describe('day clock', () => {
   it('starts inside the day', () => {
     expect(makeClock(2).hour).toBe(DAWN_H);
     expect(makeClock(23).hour).toBe(DUSK_H);
-    expect(makeClock(Number.NaN).hour).toBeGreaterThan(DAWN_H);
+    expect(makeClock(Number.NaN).hour).toBe(START_H);
+  });
+
+  it('carries time past dusk and past the skip, so one long step lands where many short ones would', () => {
+    const big = makeClock(DAWN_H);
+    tickClock(big, DAY_S + NIGHT_S / 2);
+    expect(big).toEqual({ hour: DUSK_H, night: 0.5 });
+    tickClock(big, NIGHT_S / 2 + DAY_S / 4);
+    expect(big.night).toBe(0);
+    expect(big.hour).toBeCloseTo(DAWN_H + (DUSK_H - DAWN_H) / 4, 9);
   });
 
   it('runs from dawn to dusk in DAY_S, then skips the night in NIGHT_S', () => {
@@ -21,7 +40,8 @@ describe('day clock', () => {
     expect(c.night).toBeCloseTo(0.5, 9);
     expect(c.hour).toBe(DUSK_H);
     tickClock(c, NIGHT_S / 2 + DT);
-    expect(c).toEqual({ hour: DAWN_H, night: 0 });
+    expect(c.night).toBe(0);
+    expect(c.hour).toBeCloseTo(DAWN_H + (DT * (DUSK_H - DAWN_H)) / DAY_S, 9); // the frame past the skip counts into the morning
   });
 });
 

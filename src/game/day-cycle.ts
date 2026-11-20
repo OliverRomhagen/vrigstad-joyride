@@ -35,25 +35,31 @@ export function makeClock(hour = START_H): DayClock {
   return { hour: clamp(Number.isFinite(hour) ? hour : START_H, DAWN_H, DUSK_H), night: 0 };
 }
 
+/** Advances the clock by dt real seconds. Time past dusk or past the skip carries on, so a long step lands where it should. */
 export function tickClock(c: DayClock, dt: number) {
-  if (c.night > 0 || c.hour >= DUSK_H) {
-    c.night += dt / NIGHT_S;
-    if (c.night >= 1) {
-      c.night = 0;
-      c.hour = DAWN_H;
+  let left = dt;
+  while (left > 0) {
+    if (c.night > 0 || c.hour >= DUSK_H) {
+      const used = Math.min(left, (1 - c.night) * NIGHT_S);
+      c.night += used / NIGHT_S;
+      left -= used;
+      if (left > 0 || c.night >= 1) {
+        c.night = 0;
+        c.hour = DAWN_H;
+      }
+    } else {
+      const used = Math.min(left, ((DUSK_H - c.hour) * DAY_S) / (DUSK_H - DAWN_H));
+      c.hour = left > used ? DUSK_H : c.hour + (used * (DUSK_H - DAWN_H)) / DAY_S;
+      left -= used;
     }
-  } else c.hour = Math.min(DUSK_H, c.hour + (dt * (DUSK_H - DAWN_H)) / DAY_S);
+  }
 }
 
 const smoothstep = (a: number, b: number, x: number) => {
   const t = clamp((x - a) / (b - a), 0, 1);
   return t * t * (3 - 2 * t);
 };
-const _dusk: SunPosition = { x: 0, y: 1, z: 0, elevationDeg: 90 },
-  _dawn: SunPosition = { ..._dusk },
-  _now: SunPosition = { ..._dusk };
-const _a: Sky = { x: 0, y: 1, z: 0, sun: 1, warm: 0, light: 1 },
-  _b: Sky = { ..._a };
+const _now: SunPosition = { x: 0, y: 1, z: 0, elevationDeg: 90 };
 
 // Direction keeps the sun at least MIN_SUN_Y up; the levels are artistic, picked to keep midday as the game was tuned.
 function skyFor(p: SunPosition, out: Sky) {
@@ -74,13 +80,17 @@ function aim(x: number, y: number, z: number, out: Sky) {
   return out;
 }
 
+// the date is fixed, so dusk and dawn always look the same: worked out once, not every frame of the skip
+const DUSK_SKY = skyFor(sunAt(SEASON_DAY, DUSK_H), { x: 0, y: 1, z: 0, sun: 1, warm: 0, light: 1 });
+const DAWN_SKY = skyFor(sunAt(SEASON_DAY, DAWN_H), { x: 0, y: 1, z: 0, sun: 1, warm: 0, light: 1 });
+
 /** The light for the clock's current time. Writes into `out`. */
 export function skyAt(c: DayClock, out: Sky): Sky {
   if (c.night <= 0) return skyFor(sunAt(SEASON_DAY, c.hour, _now), out);
   const t = smoothstep(0, 1, c.night),
     mid = Math.sin(Math.PI * c.night);
-  const a = skyFor(sunAt(SEASON_DAY, DUSK_H, _dusk), _a),
-    b = skyFor(sunAt(SEASON_DAY, DAWN_H, _dawn), _b);
+  const a = DUSK_SKY,
+    b = DAWN_SKY;
   const mix = (u: number, v: number) => u + (v - u) * t;
   // the sun swings round through the north, where it really is at night; it gives no direct light midway
   aim(mix(a.x, b.x), mix(a.y, b.y), mix(a.z, b.z), out);

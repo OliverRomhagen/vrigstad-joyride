@@ -1,6 +1,8 @@
 // Where the sun stands over Vrigstad, from the NOAA approximations for solar declination and the equation of time.
 // Good to a fraction of a degree, which is plenty for lighting.
+import { clamp } from './math';
 
+// the world's origin: tools/process.py projects the map from the same point (LAT0, LON0); move both together
 const LAT_DEG = 57.3555;
 const LON_DEG = 14.4756;
 /** Swedish summer time (CEST); the game only uses summer dates. */
@@ -47,6 +49,6 @@ export function sunAt(
   out.x = east;
   out.y = up;
   out.z = -north;
-  out.elevationDeg = Math.asin(Math.max(-1, Math.min(1, up))) / DEG;
+  out.elevationDeg = Math.asin(clamp(up, -1, 1)) / DEG;
   return out;
 }
