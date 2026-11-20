@@ -13,6 +13,7 @@
     "check": "tsc --noEmit && tsc --noEmit -p tsconfig.tests.json && tsc --noEmit -p tsconfig.sim.json && biome check --error-on-warnings && fallow dead-code",
     "format": "biome check --write",
     "data": "python3 tools/process.py data/raw data/vrigstad.json",
+    "data:report": "node tools/streetscape-report.mjs",
     "test": "vitest run",
     "analyze:report": "fallow dupes && fallow health --hotspots",
     "test:e2e": "playwright test",

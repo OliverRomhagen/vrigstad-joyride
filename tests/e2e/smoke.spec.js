@@ -61,6 +61,46 @@ test.describe('game (index.html)', () => {
     });
   });
 
+  test('builds the streetscape and reports it on the hook, also in the debug view', async ({ page }, testInfo) => {
+    const errors = watchErrors(page);
+    await page.goto('/index.html?debug=streetscape');
+    await expectWebGL(page);
+    const { streetscape: s } = await state(page);
+    // every count is there; what is mapped depends on the OSM snapshot, but the centre always gets inferred pavement
+    for (const k of ['mapped', 'derived', 'inferred']) expect(s.sidewalkM[k]).toBeGreaterThanOrEqual(0);
+    expect(s.sidewalkM.inferred).toBeGreaterThan(0);
+    for (const k of ['parkingAreas', 'crossings', 'meshes', 'triangles']) expect(s[k]).toBeGreaterThanOrEqual(0);
+    expect(s.streetTrees).toEqual({ mapped: expect.any(Number), inferred: expect.any(Number) });
+    expect(s.meshes).toBeGreaterThan(0);
+    expect(s.debug).toBe(true);
+    await page.locator('#go').click();
+    await frames(page, 5);
+    await page.screenshot({ path: testInfo.outputPath('game-streetscape-debug.png') });
+    expect(errors).toEqual([]);
+  });
+
+  test('draws the clouds in every quality and preset without shader errors, and they drift with time', async ({
+    page,
+  }) => {
+    const errors = watchErrors(page);
+    await page.goto('/index.html');
+    await expectWebGL(page);
+    const first = (await state(page)).clouds;
+    expect(first).toMatchObject({ cover: 'partly', seed: 1, quality: 'high' });
+    await frames(page, 3);
+    const later = (await state(page)).clouds;
+    expect(later.timeS).toBeGreaterThan(first.timeS);
+    expect(later.sunFactor).toBeGreaterThan(0.4);
+    expect(later.sunFactor).toBeLessThanOrEqual(1);
+    for (const query of ['clouds=mostly&cloudSeed=3&wind=90,12&cloudQuality=low', 'clouds=off']) {
+      await page.goto('/index.html?' + query);
+      await expectWebGL(page);
+      await frames(page, 2);
+    }
+    expect((await state(page)).clouds).toMatchObject({ cover: 'off', sunFactor: 1 });
+    expect(errors).toEqual([]);
+  });
+
   test('loads with no console errors, a WebGL canvas and the default fleet, and Start shows the HUD', async ({
     page,
   }, testInfo) => {
@@ -123,7 +163,12 @@ test.describe('game (index.html)', () => {
     await expect(page.locator('#speed')).toBeVisible();
     await expect(page.locator('#carname')).toHaveText('Volvo 240');
     await expect(page.locator('#dmg')).toHaveAttribute('aria-valuenow', '0'); // the car's damage bar, empty
-    expect(await state(page)).toMatchObject({ inCar: true, car: 'volvo', stars: 0, carDmg: 0 });
+    const s = await state(page);
+    expect(s).toMatchObject({ inCar: true, car: 'volvo', carDmg: 0 });
+    // a neighbour sees a parked car taken on rnd() < 0.35, so whether this one does depends on how many rolls the world
+    // took before it: any change to world generation can flip it (AGENTS.md rule 5). A carjack would be a star for
+    // sure, but getInVolvo already made sure the car was a parked one.
+    expect(s.stars).toBeLessThanOrEqual(1);
     // Every model shares the loader, materials and controller, and the unit tests decode each GLB, so one is driven here.
     await expect
       .poll(async () => (await state(page)).activeVehicle)
