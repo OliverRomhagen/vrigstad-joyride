@@ -12,7 +12,7 @@ import type { GameState, ViewState } from './state';
 type Point = { x: number; z: number };
 const WAKE_LINES = ['”Va hände? Ja minns ingenting.”', '”Aj, mitt huve…”'];
 
-/** What E reads from the rest of the game. The getters are read when used, so main.ts can declare those later. */
+/** What E reads from the rest of the game. */
 export interface ActionsDeps {
   game: GameState;
   view: ViewState;

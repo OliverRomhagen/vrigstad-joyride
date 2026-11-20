@@ -30,9 +30,18 @@ const parked = (o: Partial<Car> = {}) =>
 
 // You at (0, 0) next to whatever `cars` holds; `roll` is what rnd() returns. Calls record what E did, in order.
 function actions(
-  o: { cars?: Car[]; roll?: number; stars?: number; place?: Place | null; cat?: Cat | null; menuOpen?: boolean } = {},
+  o: {
+    cars?: Car[];
+    roll?: number;
+    stars?: number;
+    place?: Place | null;
+    places?: Place[];
+    cat?: Cat | null;
+    menuOpen?: boolean;
+  } = {},
 ) {
-  const calls: string[] = [];
+  const calls: string[] = [],
+    screens: string[] = [];
   const game = { ...newGameState(), started: true },
     view = newViewState(0, 0);
   const player = { x: 0, z: 0, y: 1, vy: 2, h: 0, speed: 0, phase: 0, mesh: { visible: true } };
@@ -51,7 +60,7 @@ function actions(
     view,
     player,
     cars: o.cars ?? [],
-    places: { inside: null, list: [] },
+    places: { inside: null, list: o.places ?? [] },
     wanted,
     health,
     kmenu: { hidden: !o.menuOpen },
@@ -75,11 +84,14 @@ function actions(
     spawnTraffic: () => void calls.push('traffic'),
     drawStolen: () => void calls.push('stolen ' + game.stolen),
     drawHealth: () => {},
-    bigScreen: t => void calls.push('big ' + t),
+    bigScreen: (t, msg) => {
+      calls.push('big ' + t);
+      screens.push(msg);
+    },
     sayLater: l => void calls.push('later ' + l),
     pickLine: a => a[0],
   };
-  return { a: new Actions(g), calls, game, view, player, wanted, health };
+  return { a: new Actions(g), calls, screens, game, view, player, wanted, health };
 }
 
 describe('Actions.action', () => {
@@ -190,5 +202,13 @@ describe('Actions after a chase or a crash', () => {
     t.a.knockedOut();
     expect(t.calls).toEqual(['big Däckad!', 'later ”Va hände? Ja minns ingenting.”']);
     expect(t.health.hp).toBe(HP_MAX);
+    expect(t.screens.at(-1)).toBe('Knocked out. You come to at Torget.');
+  });
+
+  it('a knock-out wakes you at the nearest safehouse when it is nearer than Torget', () => {
+    const safe: Place = { kind: 'safe', name: 'Storgatan', x: 1, z: 0 };
+    const t = actions({ places: [safe, { kind: 'kiosk', name: 'Kiosken', x: 0, z: 0 }] });
+    t.a.knockedOut();
+    expect(t.screens.at(-1)).toBe('Knocked out. You come to at the safehouse on Storgatan.');
   });
 });

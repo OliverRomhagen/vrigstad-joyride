@@ -11,7 +11,7 @@ const TREAT_BAG = 3,
   TREAT_MAX = 9; // treats per bag from the kiosk; how many fit in your pockets
 const CAT_MENU_M = 4; // a cat's menu (the adopt question, or your own cat's) closes when you get further than this from it (m), or it bolts, or you get in a car
 
-/** What the menus read from the rest of the game. The getter is read when used, so main.ts can declare it later. */
+/** What the menus read from the rest of the game. */
 export interface MenusDeps {
   game: Pick<GameState, 'inCar' | 'treats'>;
   readonly player: Point;
