@@ -18,9 +18,9 @@ exports = ["CRASH_MIN_MS", "CRASH_DMG_PER_MS", "HURT_MIN_MS", "HURT_HP_PER_MS", 
 file = "src/game/cats.ts"
 exports = ["CAT_NAME", "CAT_NAME_MAX"]
 
-# Layers, from ARCHITECTURE.md. A file belongs to the first zone that matches it. biome.jsonc checks three.js and the
-# DOM, which Fallow can't see, on the world, world-mesh and sim zones: keep the paths of its rule-2 plugin and overrides
-# the same as these.
+# Layers, from ARCHITECTURE.md. A file belongs to the first zone that matches it. biome.jsonc and tsconfig.sim.json
+# check three.js and the DOM, which Fallow can't see, on the world, world-mesh and sim zones: keep the paths of
+# biome.jsonc's rule-2 override and of tsconfig.sim.json the same as these.
 [boundaries]
 # src/world/: the world's data and queries, shared by both pages. Its three.js code lives only in mesh/ and three-legacy.ts.
 [[boundaries.zones]]

@@ -29,7 +29,7 @@ function colony(water: (x: number, z: number) => boolean = () => false) {
     player,
     keys: {},
     joy: { on: false },
-    kmenu: { hidden: true } as HTMLElement,
+    kmenu: { hidden: true },
     get inCar() {
       return drive.inCar;
     },

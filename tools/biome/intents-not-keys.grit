@@ -1,6 +1,7 @@
 // AGENTS.md, architecture rule 3: gameplay reads intents (throttle / steer / brake / action), never key codes or touch
-// events. Only the input module turns keys, mouse and touch into intents. A `.code` or `.key` read can't be told apart
-// from any other property without types, so this flags the event types and the event names instead.
+// events. Only the input module turns keys, mouse, touch and gamepads into intents. A `.code` or `.key` read can't be told apart
+// from any other property without types, so this flags the event types and the event names instead. Not "wheel", which
+// in a driving game names a mesh as often as an event; WheelEvent still catches a handler.
 language js
 
 or {
@@ -8,16 +9,31 @@ or {
   `TouchEvent`,
   `PointerEvent`,
   `MouseEvent`,
+  `WheelEvent`,
+  `GamepadEvent`,
   `"keydown"`,
   `"keyup"`,
   `"keypress"`,
   `"touchstart"`,
   `"touchmove"`,
   `"touchend"`,
+  `"touchcancel"`,
   `"pointerdown"`,
   `"pointermove"`,
   `"pointerup"`,
-  `"pointercancel"`
+  `"pointercancel"`,
+  `"pointerenter"`,
+  `"pointerleave"`,
+  `"pointerover"`,
+  `"pointerout"`,
+  `"mousedown"`,
+  `"mousemove"`,
+  `"mouseup"`,
+  `"click"`,
+  `"dblclick"`,
+  `"contextmenu"`,
+  `"gamepadconnected"`,
+  `"gamepaddisconnected"`
 } as $input where {
   register_diagnostic(span=$input, message="Gameplay reads intents, not keys or touches: turn this input into an intent in src/game/input.ts (AGENTS.md, architecture rule 3).", severity="error")
 }

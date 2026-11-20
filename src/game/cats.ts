@@ -146,8 +146,7 @@ export interface CatDeps {
   readonly player: Point & { speed: number };
   readonly keys: Record<string, boolean | undefined>;
   readonly joy: { on: boolean };
-  // biome-ignore lint/style/noRestrictedGlobals: rule 2: main.ts still hands the cats the menu element; drop this once it moves into the HUD and the cats reads state instead (rule 4)
-  readonly kmenu: HTMLElement;
+  readonly kmenu: { readonly hidden: boolean }; // the menu element main.ts hands in, until the menu moves into the HUD (rule 4)
   readonly inCar: boolean;
   readonly pcar: CatCar | null; // the player's car, if they drive one
   readonly inside: unknown;
