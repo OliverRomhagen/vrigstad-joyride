@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { makeRnd } from '../../../src/world/random';
+import { fnv1a, hash01, makeRnd } from '../../../src/world/random';
 
 const take = (seed: number, count: number) => {
   const rnd = makeRnd(seed);
@@ -25,5 +25,19 @@ describe('makeRnd', () => {
       expect(v).toBeGreaterThanOrEqual(0);
       expect(v).toBeLessThan(1);
     }
+  });
+});
+
+describe('fnv1a', () => {
+  it('matches the reference FNV-1a values', () => {
+    expect(fnv1a('')).toBe(0x811c9dc5);
+    expect(fnv1a('a')).toBe(0xe40c292c);
+    expect(fnv1a('foobar')).toBe(0xbf9cf968);
+  });
+
+  it('joins parts with a colon and scales into [0, 1)', () => {
+    expect(fnv1a(12, 'verge')).toBe(fnv1a('12:verge'));
+    expect(hash01(12, 'verge')).toBeGreaterThanOrEqual(0);
+    expect(hash01(12, 'verge')).toBeLessThan(1);
   });
 });
