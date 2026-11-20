@@ -11,7 +11,10 @@ describe('PaintedBuildingShells', () => {
     const grey = new THREE.Color(0.5, 0.5, 0.5);
     const red = new THREE.Color(1, 0, 0);
     const material = new THREE.MeshBasicMaterial({ vertexColors: true });
-    const plain = new PaintedBuildingShells(world, new Heightfield(world), { material, colours: () => ({ wall: grey, wallFoot: grey, roof: grey }) });
+    const plain = new PaintedBuildingShells(world, new Heightfield(world), {
+      material,
+      colours: () => ({ wall: grey, wallFoot: grey, roof: grey }),
+    });
     const shellVertices = plain.mesh.geometry.getAttribute('position').count;
     const shells = new PaintedBuildingShells(world, new Heightfield(world), {
       material,
@@ -26,7 +29,9 @@ describe('PaintedBuildingShells', () => {
     const colour = shells.mesh.geometry.getAttribute('color');
     expect(pos.count).toBe(shellVertices + 3);
     expect([pos.getX(shellVertices), pos.getY(shellVertices), pos.getZ(shellVertices)]).toEqual([1, 6, 1]);
-    expect([colour.getX(shellVertices + 2), colour.getY(shellVertices + 2), colour.getZ(shellVertices + 2)]).toEqual([1, 0, 0]);
+    expect([colour.getX(shellVertices + 2), colour.getY(shellVertices + 2), colour.getZ(shellVertices + 2)]).toEqual([
+      1, 0, 0,
+    ]);
     expect(colour.getX(0)).toBe(0.5);
     plain.dispose();
     shells.dispose();

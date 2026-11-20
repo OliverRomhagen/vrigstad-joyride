@@ -10,7 +10,8 @@
     "dev": "vite",
     "build": "node tools/build.mjs",
     "preview": "vite preview",
-    "check": "tsc --noEmit && tsc --noEmit -p tsconfig.tests.json",
+    "check": "tsc --noEmit && tsc --noEmit -p tsconfig.tests.json && biome check --error-on-warnings",
+    "format": "biome check --write",
     "data": "python3 tools/process.py data/raw data/vrigstad.json",
     "test": "vitest run",
     "analyze": "fallow dead-code",
@@ -19,6 +20,7 @@
     "compress:vehicles": "node tools/compress-vehicles.mjs"
   },
   "devDependencies": {
+    "@biomejs/biome": "2.6.8",
     "@playwright/test": "^1.65.0",
     "@types/node": "24.19.2",
     "@types/three": "0.187.0",
