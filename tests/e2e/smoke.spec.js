@@ -27,8 +27,8 @@ const keysNow = (page, events) =>
     for (const [type, code] of events) document.body.dispatchEvent(new KeyboardEvent(type, { code, bubbles: true }));
   }, events);
 
-// From Start, walks to the parked Volvo next to Torget and gets in.
-async function getInVolvo(page) {
+// From Start, walks to the parked car next to Torget (the Volvo 240, or the model `?vehicle=` picks) and gets in.
+async function getInVolvo(page, name = 'Volvo 240') {
   // With the camera as Start leaves it, the parked Volvo is about 7 m to the player's right.
   // Release D as soon as any car is in reach, so a slow runner can't walk past it between polls.
   await page.keyboard.down('KeyD');
@@ -38,16 +38,16 @@ async function getInVolvo(page) {
   // and press E in one browser task: E acts in its keydown handler, so no frame can bring a passing car closer in between.
   await expect
     .poll(() =>
-      page.evaluate(() => {
+      page.evaluate(want => {
         if (window.__joyride.state().near !== 'parked') return null;
         const prompt = document.getElementById('prompt').textContent;
-        if (prompt === 'ESteal the Volvo 240')
+        if (prompt === want)
           for (const type of ['keydown', 'keyup'])
             document.body.dispatchEvent(new KeyboardEvent(type, { code: 'KeyE', bubbles: true }));
         return prompt;
-      }),
+      }, 'ESteal the ' + name),
     )
-    .toBe('ESteal the Volvo 240');
+    .toBe('ESteal the ' + name);
   await expect.poll(async () => (await state(page)).inCar).toBe(true);
 }
 
@@ -223,10 +223,11 @@ test.describe('game (index.html)', () => {
     test.setTimeout(120_000);
     await page.setViewportSize({ width: 640, height: 360 });
     const errors = watchErrors(page);
-    await page.goto('/index.html');
+    // the Impala's 3.02 m differs from its type's 2.65 m, so this fails if the model's wheelbase is ignored
+    await page.goto('/index.html?vehicle=impala1970');
     await page.locator('#go').click();
-    await getInVolvo(page);
-    expect((await state(page)).wheelbase).toBeCloseTo(2.65, 2); // the parked Volvo 240 brings its model's wheelbase
+    await getInVolvo(page, 'Chevrolet Impala 1970 hardtop');
+    expect((await state(page)).wheelbase).toBeCloseTo(3.02, 2);
     await page.keyboard.down('KeyW');
     await expect
       .poll(async () => (await state(page)).body.pitch, { intervals: [50], timeout: 30_000 })
