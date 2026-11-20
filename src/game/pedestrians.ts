@@ -17,7 +17,7 @@ const SHIRTS = ['#b5463a', '#3f6b8a', '#5c7a4a', '#7a5a8a', '#d8d4c8', '#2b3a55'
   HAIR = ['#5a4632', '#2a2320', '#c9a560', '#8a8580', '#7a3f22'];
 
 type Point = { x: number; z: number };
-/** A person's mesh, as personParts in main.ts builds it. */
+/** A person's mesh, as personParts in src/game/render/models.ts builds it. */
 export type PersonMesh = THREE.Object3D & { legs: THREE.Object3D[] };
 /** Where a pedestrian is on the walk graph: road ri, from vertex a towards a + dir, t metres along; the same shape as a car's. */
 export interface Npc extends Point {
