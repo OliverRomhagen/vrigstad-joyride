@@ -25,9 +25,9 @@
   ],
   "overrides": [
     {
-      // The two single-file scripts keep their dense style until #177 splits them, so only formatting is off. These rules
-      // still run: @ts-nocheck hides undeclared names from tsc, and a split that moves a name out of main.ts while another
-      // branch still uses it would otherwise only fail at runtime.
+      // The two page scripts keep their dense style, so only formatting is off: reformatting the game's main.ts is its own
+      // PR now that #177 has split it. These rules still run: the map's @ts-nocheck hides undeclared names from tsc, and a
+      // move that takes a name out of a main.ts while another branch still uses it would otherwise only fail at runtime.
       "includes": ["src/game/main.ts", "src/map/main.ts"],
       "formatter": { "enabled": false },
       "assist": { "enabled": false },
