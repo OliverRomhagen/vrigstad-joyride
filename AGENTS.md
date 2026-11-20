@@ -76,7 +76,7 @@ GitHub issues are the backlog: every bug, idea and piece of work is one issue.
 ## Code style
 
 - **Match the surrounding code.** Same naming, comment density and idiom as the file you're in.
-- Current single-file code is dense: 2-space indent, single quotes, semicolons, short local names for hot math (`x`, `z`, `h`, `v`, `dt`), sections marked `// ---------- name ----------`. Keep that style inside `src/game/main.ts` and `src/map/main.ts` until they are split up.
+- Current single-file code is dense: 2-space indent, single quotes, semicolons, short local names for hot math (`x`, `z`, `h`, `v`, `dt`), sections marked `// ---------- name ----------`. Keep that style inside `src/game/main.ts` and `src/map/main.ts` until they are split up, and in code moved out of them (see Naming).
 - New TypeScript code: formatted by Biome (after #46), so don't hand-format. Prefer clear names over the dense style, small modules with one responsibility, named exports, no default exports, `strict` types, no `any` without a comment saying why.
 - Classes, data or functions, by what the thing is:
   - **A class** for something built once and then queried, or that holds state or resources with a lifecycle: a world index (`Heightfield`, `RoadNetwork`, `BuildingIndex`), a controller, an object that owns meshes and disposes them, a Svelte store with `$state` fields. Depend on the narrow part you use (`Pick<Heightfield, 'heightAt'>`), so a test can pass a stub.
@@ -104,6 +104,7 @@ Defaults for new code; review checks them, no linter does.
 **When to break them:**
 - **Names someone else owns keep their spelling:** three.js and the DOM (`visible`, `castShadow`, `needsUpdate`, `hidden`), OSM tags and the data in `data/vrigstad.json`.
 - **Existing code isn't renamed just to follow these.** Rename when you're changing that code anyway; a rename that touches many lines is its own `refactor` PR.
+- **Code moved out of a `main.ts` keeps its names and dense idiom** (short names, one-line loops) in the PR that moves it (#177), so a reviewer can compare it line for line with the old code. Formatting is still Biome's. Clear names can follow in a later PR.
 - **Inside `src/game/main.ts` and `src/map/main.ts`, match the surrounding code**, as above, until #177 splits them.
 - **When a name reads better another way, use it** and say why in the PR. Consistency with nearby code beats a general rule.
 
