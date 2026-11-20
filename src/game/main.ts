@@ -502,7 +502,7 @@ function drive(c, thr, steer, brake, dt, canDrift) {
   for (const o of cars) { if (o === c) continue; const dx = c.x - o.x, dz = c.z - o.z, d = Math.hypot(dx, dz);
     if (d < 2.7 && d > 0.01) { const push = 2.7 - d, oh = o.mode === 'ai' ? o.h : o.vh;   // traffic steers by h alone
       crash(c, o, impactSpeed(vx - Math.sin(oh) * o.v, vz + Math.cos(oh) * o.v, dx / d, dz / d)); c.x += dx / d * push; c.z += dz / d * push;
-      if (Math.abs(c.v) > 6 && c === pcar && o.mode === 'police' && ramCool <= 0) { ramCool = 6; wanted.addStar('Ramming a police car. That will not help.'); }
+      if (Math.abs(c.v) > 6 && c === pcar && o.mode === 'police' && ramCool <= 0) { ramCool = 6; wanted.addStar(pickLine(WANTED_LINES) + ' Ramming a police car. That will not help.'); }
       if (o.mode === 'parked' || o.mode === 'idle') { o.x -= dx / d * push * 0.4; o.z -= dz / d * push * 0.4; placeCar(o); }
       c.v *= Math.pow(0.05, dt); } }
   placeCar(c);
@@ -516,7 +516,7 @@ function crash(c, o, impact) {
   let said = false;   // one line per crash: wrecked, then smoke, then the crash itself
   for (const { car: k, wrecked: w, smokeUp } of hits) {
     if (w && k === pcar) { const cat = catAboard(); toast((cat ? '”Ut, ' + cat.name + '! Den här bilen ä slut.”\n”Mjäu.”' : pickLine(WRECK_LINES)) + ' The car is wrecked. Get out and find another.', 4); said = true; }
-    else if (w && k.mode === 'police' && Math.hypot(k.x - camera.position.x, k.z - camera.position.z) < POLICE_WRECK_SEEN_M) { toast('The police car is wrecked.', 3); said = true; }
+    else if (w && k.mode === 'police' && Math.hypot(k.x - camera.position.x, k.z - camera.position.z) < POLICE_WRECK_SEEN_M) { toast(pickLine(POLICE_WRECK_LINES) + ' The police car is wrecked.', 3); said = true; }
     else if (smokeUp && k === pcar) { toast(SMOKE_LINES[smokeLevel(k.dmg)], 3); said = true; } }
   if (hits.some(h => h.car === pcar)) { const n = driverHurt(impact); hurtPlayer(n); shake(crashDamage(impact));
     const cat = catAboard();   // with your cat along, any real crash is about the cat; without, only one that hurts you
@@ -525,8 +525,10 @@ function crash(c, o, impact) {
 // what you say about a crash (#213 moves these into a speech bubble over you); picked from their own random stream, so they don't shift the world's rolls
 const lineRnd = makeRnd(213), pickLine = a => a[Math.floor(lineRnd() * a.length)];
 const CRASH_LINE_S = 6;                        // at most one "that hurt" line this often (s)
-const CRASH_LINES = ['”AJ! Dä där kändes i nacken.”', '”Hoppsan. Dä där va inte meningen.”', '”Va fan, vem satte dit den där?!”'];
-const WRECK_LINES = ['”Nä, nu ä den kaputt.”', '”Dä va dä, den bilen.”', '”Den rullar inte mer, den.”'];
+const CRASH_LINES = ['”AJ! Dä där kändes i nacken.”', '”Hoppsan. Dä där va inte meningen.”', '”Va fan, vem satte dit den där?!”', '”Oj oj, nu blev hon lite fördärvad.”'];
+const WRECK_LINES = ['”Nä, nu ä den kaputt.”', '”Dä va dä, den bilen.”', '”Den rullar inte mer, den.”', '”Ajaj, nu ä denna bilen fördärvad.”', '”Nu ä hon fördärvad, hela bilen.”'];
+const POLICE_WRECK_LINES = ['”Hoppsan, nu ä länsmans bil fördärvad.”', '”Dä där fick snuten inte betalt för.”'];
+const WANTED_LINES = ['”Oj, nu ä länsman efter mä!”', '”Ajaj, nu kommer snuten.”', '”Fan, nu ä snuten på mä.”', '”Nu blir dä bråk mä länsman, dä.”'];   // yours, on a new star
 const SMOKE_LINES = [null, '”Hörru, dä ryker ur motorn!”', '”Svart rök… dä ä inte bra, dä.”'];   // by smokeLevel
 let crashLineAt = -9;
 let runOverAt = -9;   // the player's own cooldown for being run over, apart from the cars' crash cooldowns
@@ -860,10 +862,10 @@ function action() {
   if (c.mode === 'ai') {
     const p = personParts(pick(['#b5463a', '#3f6b8a', '#5c7a4a', '#7a5a8a']), '#3a3a3a');
     p.position.set(c.x - Math.cos(c.h) * 2.2, 0, c.z - Math.sin(c.h) * 2.2); p.position.y = groundAt(p.position.x, p.position.z); p.ttl = 14; scene.add(p); peds.push(p);
-    toast(pick(['”Hörru! Det där är min bil!”', '”Men va fan gör du?!”', '”Polisen! Han tar ' + (vehicleVisuals.definition(c)?.spokenName || 'min ' + c.T.name) + '!”']) + ' The driver calls the police.');
+    toast(pick(['”Hörru! Det där är min bil!”', '”Men va fan gör du?!”', '”Polisen! Han tar ' + (vehicleVisuals.definition(c)?.spokenName || 'min ' + c.T.name) + '!”', '”Ring snuten! Han snor min bil!”']) + ' The driver calls the police.');
     wanted.addStar(); spawnTraffic(player);
   } else if (!c.owned) {
-    if (wanted.police.length || rnd() < 0.35) wanted.addStar('A neighbour saw you take the ' + carName(c) + ' and called the police.');
+    if (wanted.police.length || rnd() < 0.35) wanted.addStar(pickLine(WANTED_LINES) + ' A neighbour saw you take the ' + carName(c) + ' and called the police.');
     else toast(c.type === 'epa' ? 'EPA-traktor: legally limited to 30 km/h. Good luck outrunning anyone.' : 'You took the ' + carName(c) + '. Nobody noticed.');
   }
   if (!c.owned) { c.owned = true; stolen++; $('count').textContent = 'Cars stolen: ' + stolen; }
