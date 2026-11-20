@@ -19,14 +19,59 @@ export type Suspension = {
 
 // Keyed by simulation type (TYPES in main.ts).
 export const SUSPENSION: Readonly<Record<string, Suspension>> = {
-  volvo: { freqHz: 1.3, damping: 0.6, rollPerAcc: 0.0045, maxRollRad: 0.07, pitchPerAcc: 0.0026, maxPitchRad: 0.045, heavePerAcc: 0.004, maxHeaveM: 0.06 },
-  saab: { freqHz: 1.6, damping: 0.7, rollPerAcc: 0.0035, maxRollRad: 0.055, pitchPerAcc: 0.0022, maxPitchRad: 0.04, heavePerAcc: 0.003, maxHeaveM: 0.05 },
-  epa: { freqHz: 1.2, damping: 0.5, rollPerAcc: 0.005, maxRollRad: 0.08, pitchPerAcc: 0.003, maxPitchRad: 0.05, heavePerAcc: 0.005, maxHeaveM: 0.07 },
-  traktor: { freqHz: 2.2, damping: 0.35, rollPerAcc: 0.002, maxRollRad: 0.035, pitchPerAcc: 0.002, maxPitchRad: 0.03, heavePerAcc: 0.006, maxHeaveM: 0.08 },
-  polis: { freqHz: 1.8, damping: 0.75, rollPerAcc: 0.003, maxRollRad: 0.05, pitchPerAcc: 0.002, maxPitchRad: 0.035, heavePerAcc: 0.0025, maxHeaveM: 0.04 },
+  volvo: {
+    freqHz: 1.3,
+    damping: 0.6,
+    rollPerAcc: 0.0045,
+    maxRollRad: 0.07,
+    pitchPerAcc: 0.0026,
+    maxPitchRad: 0.045,
+    heavePerAcc: 0.004,
+    maxHeaveM: 0.06,
+  },
+  saab: {
+    freqHz: 1.6,
+    damping: 0.7,
+    rollPerAcc: 0.0035,
+    maxRollRad: 0.055,
+    pitchPerAcc: 0.0022,
+    maxPitchRad: 0.04,
+    heavePerAcc: 0.003,
+    maxHeaveM: 0.05,
+  },
+  epa: {
+    freqHz: 1.2,
+    damping: 0.5,
+    rollPerAcc: 0.005,
+    maxRollRad: 0.08,
+    pitchPerAcc: 0.003,
+    maxPitchRad: 0.05,
+    heavePerAcc: 0.005,
+    maxHeaveM: 0.07,
+  },
+  traktor: {
+    freqHz: 2.2,
+    damping: 0.35,
+    rollPerAcc: 0.002,
+    maxRollRad: 0.035,
+    pitchPerAcc: 0.002,
+    maxPitchRad: 0.03,
+    heavePerAcc: 0.006,
+    maxHeaveM: 0.08,
+  },
+  polis: {
+    freqHz: 1.8,
+    damping: 0.75,
+    rollPerAcc: 0.003,
+    maxRollRad: 0.05,
+    pitchPerAcc: 0.002,
+    maxPitchRad: 0.035,
+    heavePerAcc: 0.0025,
+    maxHeaveM: 0.04,
+  },
 };
 // Models that ride differently from the rest of their type.
-export const MODEL_SUSPENSION: Readonly<Record<string, Partial<Suspension>>> = {
+const MODEL_SUSPENSION: Readonly<Record<string, Partial<Suspension>>> = {
   impala1970: { freqHz: 1.0, damping: 0.45, rollPerAcc: 0.006, maxRollRad: 0.09 }, // a soft American barge
   'micra-k11': { freqHz: 1.9, rollPerAcc: 0.004 }, // short, light and busy
 };
