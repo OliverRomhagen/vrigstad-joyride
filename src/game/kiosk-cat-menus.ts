@@ -1,6 +1,6 @@
 // The kiosk's and the cats' menus, on the menu plate (src/game/menu.ts): what the kiosk sells, petting and adopting a stray, your own cat's menu.
 // Moved from src/game/main.ts (#177); main.ts passes in the plate, the cats, your health and what the HUD draws. No three.js or DOM here.
-import type { Cat, CatColony } from './cats';
+import { type Cat, type CatColony, canTend } from './cats';
 import { type Health, HP_MAX, heal, KORV_HP, RULLE_HP } from './health';
 import type { MenuItem } from './pets';
 import type { Place } from './places';
@@ -9,7 +9,6 @@ import type { GameState } from './state';
 type Point = { x: number; z: number };
 const TREAT_BAG = 3,
   TREAT_MAX = 9; // treats per bag from the kiosk; how many fit in your pockets
-const CAT_MENU_M = 4; // a cat's menu (the adopt question, or your own cat's) closes when you get further than this from it (m), or it bolts, or you get in a car
 
 /** What the menus read from the rest of the game. */
 export interface KioskCatMenusDeps {
@@ -91,11 +90,9 @@ export class KioskCatMenus {
     toast('”En påse kattgodis, varsågo. Kattera ä tôcka i dä.”', 4);
   }
 
+  // a cat's menu stays open while canTend holds (src/game/cats.ts)
+  private nearMenuCat = (k: Cat) => () => canTend(k, this.g.player, this.g.game.inCar);
   // a good pet that makes a cat ready to be adopted asks whether it comes home with you
-  private nearMenuCat = (k: Cat) => () => {
-    const { game, player } = this.g;
-    return !game.inCar && k.state !== 'flee' && Math.hypot(k.x - player.x, k.z - player.z) < CAT_MENU_M;
-  };
   petCat = (k: Cat) => {
     const { colony, openMenu, showHeart, drawPets } = this.g;
     const ready = colony.pet(k);
