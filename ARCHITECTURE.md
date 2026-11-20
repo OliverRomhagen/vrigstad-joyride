@@ -37,6 +37,8 @@ data/vrigstad.json ──► streetscape-rules.ts ──► StreetSides per road
 - A missing OSM tag means unknown, never "no". Explicit tags beat inference; overrides (by OSM way id, empty by default) beat both, but fixing OSM is the better fix.
 - Choices hash the OSM way id (`fnv1a` in `random.ts`), never data order or the game's `rnd()`.
 
+- The sky is one dome (`src/game/render/sky.ts`): the blue gradient, the sun's glow and procedural fair-weather clouds in a single shader, so the clouds add no draw call. Each pixel meets a gently curved cloud layer about 1.8 km up and reads a deterministic, periodic noise field there (`src/world/clouds.ts`), so the clouds stay put in the world, drift with the wind by time rather than frames, and pass with parallax. The same field in TypeScript says once a frame whether the sun is behind a cloud, and the sun's intensity eases down while it is. The clouds take their colours from the dome's sun, horizon and zenith colours and their light from the shared sun direction, so whatever drives the daylight drives them too.
+
 This was the right shape for a prototype. It stops scaling once several people add features at the same time, which is happening now.
 
 ## Target

@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import { AdoptHearts } from './render/adopt-heart';
 import { DriftFx } from './render/drift-fx';
 import { pickVariant, vehicleDefinition } from './render/vehicle-registry';
+import { Sky } from './render/sky';
 import { VehicleVisuals } from './render/vehicle-visuals';
 import { BodyMotion } from './render/body-motion';
 import { approach, rearPivotShift, yawRate } from './sim/handling';
@@ -13,6 +14,7 @@ import { LabFlags } from '../lab/flags';
 import { BuildingIndex } from '../world/buildings';
 import { ROAD_WIDTH_M as ROAD_W } from '../world/data';
 import { Heightfield } from '../world/heightfield';
+import { parseCloudConfig } from '../world/clouds';
 import { clamp, wrap } from '../world/math';
 import { PaintedBuildingShells } from '../world/mesh/building-shells';
 import { ParkingMesh } from '../world/mesh/parking-mesh';
@@ -74,17 +76,13 @@ scene.background = new THREE.Color(HORIZON);
 scene.fog = new THREE.FogExp2(HORIZON, FOG_PER_M);
 const camera = new THREE.PerspectiveCamera(58, 1, 0.8, 4200);
 scene.add(new THREE.HemisphereLight(0xffffff, col(0x9aa58a), 0.62 * LEGACY_LIGHT));
-const sun = new THREE.DirectionalLight(col(0xfff4dd), 0.95 * LEGACY_LIGHT);
+const sun = new THREE.DirectionalLight(col(0xfff4dd), 0.95 * LEGACY_LIGHT);   // intensity: SUN_I, times the clouds' sunFactor
 const SUN_DIR = new THREE.Vector3(-0.55, 0.75, 0.37).normalize();
-// sky: a gradient dome that follows the camera and fades into the fog at the horizon
-const dome = new THREE.Mesh(new THREE.SphereGeometry(3000, 32, 16), new THREE.ShaderMaterial({
-  side: THREE.BackSide, depthWrite: false, fog: false,
-  uniforms: { top: { value: new THREE.Color(0x5f97c9) }, hor: { value: new THREE.Color(HORIZON) }, sunC: { value: new THREE.Color(0xfff1d0) }, sunDir: { value: SUN_DIR } },
-  vertexShader: 'varying vec3 vDir; void main() { vDir = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
-  fragmentShader: `uniform vec3 top, hor, sunC, sunDir; varying vec3 vDir;
-    void main() { vec3 d = normalize(vDir); vec3 c = mix(hor, top, pow(max(d.y, 0.0), 0.55)); float s = max(dot(d, sunDir), 0.0);
-      gl_FragColor = vec4(c + sunC * (pow(s, 48.0) * 0.6 + pow(s, 6.0) * 0.12), 1.0); }` }));
-dome.renderOrder = -1; scene.add(dome);
+// sky: a gradient dome with the sun's glow and drifting fair-weather clouds (src/game/render/sky.ts); it follows the camera
+// and fades into the fog at the horizon. ?clouds=clear|scattered|partly|mostly|off, cloudSeed, wind=from°,m/s (see clouds.ts)
+const SUN_I = 0.95 * LEGACY_LIGHT;   // the sun's intensity under a clear sky; a cloud in front of it takes some away
+const skyDome = new Sky({ top: 0x5f97c9, horizon: HORIZON, sunColour: 0xfff1d0, sunDir: SUN_DIR, clouds: parseCloudConfig(new URLSearchParams(location.search), coarse) });
+const dome = skyDome.mesh; scene.add(dome);
 // soft round shadow under cars, people and trees, so nothing looks pasted onto the ground
 const blobTex = (function () { const cv = document.createElement('canvas'); cv.width = cv.height = 64; const x = cv.getContext('2d'), g = x.createRadialGradient(32, 32, 0, 32, 32, 32);
   g.addColorStop(0, 'rgba(0,0,0,.9)'); g.addColorStop(0.5, 'rgba(0,0,0,.45)'); g.addColorStop(1, 'rgba(0,0,0,0)'); x.fillStyle = g; x.fillRect(0, 0, 64, 64); return cv; })();
@@ -866,7 +864,7 @@ function frame(now) {
   if (shakeT > 0) { shakeT -= dt; const k = Math.max(0, shakeT / SHAKE_S) ** 2 * shakeM * 2;   // eases out, so the jolt fades instead of stopping dead
     camera.position.x += (dmgRnd() - 0.5) * k; camera.position.y += (dmgRnd() - 0.5) * k; camera.position.z += (dmgRnd() - 0.5) * k; }
   sun.target.position.set(T.x, ty, T.z); sun.position.copy(sun.target.position).addScaledVector(SUN_DIR, 400);
-  dome.position.copy(camera.position);
+  skyDome.update(camera.position, now / 1000, dt); sun.intensity = SUN_I * skyDome.sunFactor;   // also centres the dome
 
   // HUD
   drawHearts(dt);
@@ -895,7 +893,7 @@ $('go').addEventListener('click', e => { started = true; $('intro').hidden = tru
 resize(); requestAnimationFrame(frame);
 
 // ---------- test hook: read-only state for the smoke tests (tests/e2e), so they do not have to read pixels ----------
-window.__joyride = { state: () => { const n = nearestCar(); return { started, lab: lab.list(), x: player.x, z: player.z, y: player.y, yaw: camYaw, inCar, car: pcar ? pcar.type : null, near: n ? n.mode : null, speed: pcar ? pcar.v : 0, drift: pcar ? pcar.drift : 0, boost: pcar ? pcar.boost : 0, charge: pcar ? pcar.charge : 0, loose: pcar ? pcar.loose : 0, flickDir: pcar ? pcar.flickDir : 0, flickHeld: pcar ? pcar.flickHeld : 0, stars: wanted.stars, cats: cats.length, treats, hp: health.hp, carDmg: pcar ? pcar.dmg : null, ownCat: !!colony.owned, vehicle: displayCar ? vehicleVisuals.state(displayCar) : null, nearSelectedVehicle: n === displayCar, activeVehicle: pcar ? vehicleVisuals.state(pcar) : null, body: pcar ? bodyMotion.state(pcar) : null, wheelbase: (pcar || displayCar)?.T.handling.wheelbaseM ?? 0, traffic: cars.filter(c => c.mode === 'ai').map(c => ({ type: c.type, vehicle: vehicleVisuals.state(c) })), streetscape: streetscapeState() }; } };
+window.__joyride = { state: () => { const n = nearestCar(); return { started, lab: lab.list(), x: player.x, z: player.z, y: player.y, yaw: camYaw, inCar, car: pcar ? pcar.type : null, near: n ? n.mode : null, speed: pcar ? pcar.v : 0, drift: pcar ? pcar.drift : 0, boost: pcar ? pcar.boost : 0, charge: pcar ? pcar.charge : 0, loose: pcar ? pcar.loose : 0, flickDir: pcar ? pcar.flickDir : 0, flickHeld: pcar ? pcar.flickHeld : 0, stars: wanted.stars, cats: cats.length, treats, hp: health.hp, carDmg: pcar ? pcar.dmg : null, ownCat: !!colony.owned, vehicle: displayCar ? vehicleVisuals.state(displayCar) : null, nearSelectedVehicle: n === displayCar, activeVehicle: pcar ? vehicleVisuals.state(pcar) : null, body: pcar ? bodyMotion.state(pcar) : null, wheelbase: (pcar || displayCar)?.T.handling.wheelbaseM ?? 0, traffic: cars.filter(c => c.mode === 'ai').map(c => ({ type: c.type, vehicle: vehicleVisuals.state(c) })), clouds: skyDome.state(), streetscape: streetscapeState() }; } };
 function streetscapeState() { const L = street.layout, m = L.sidewalkM, r = v => Math.round(v);
   return { sidewalkM: { mapped: r(m.mapped), derived: r(m.derived), inferred: r(m.inferred) }, parkingAreas: L.lots.length, crossings: L.crossings,
     streetTrees: { mapped: L.trees.filter(t => t.source === 'mapped').length, inferred: L.trees.filter(t => t.source === 'inferred').length },
