@@ -1,8 +1,8 @@
-# Fallow (#107): the static gate behind `npm run analyze`. AGENTS.md (Tests) says what each pass checks.
+# Fallow (#107): the static gate at the end of `npm run check`. AGENTS.md (Tests) says what each pass checks.
 # Fallow finds the Vite, Vitest and Playwright entry points itself; this file adds only what it can't see, the
 # architecture rules, and today's exceptions. Shrink the exceptions; don't grow them.
 # package.json pins Fallow exactly: it is young, and `fallow dead-code` checking cycles, boundaries and the rule pack is
-# due to move to `fallow architecture` in a later major version, so an upgrade must add that command to `analyze`.
+# due to move to `fallow architecture` in a later major version, so an upgrade must add that command to `check`.
 
 # Loaded in ways Fallow can't follow:
 # - src/map/main.ts is map.html's script, and tools/build.mjs builds map.html, but Fallow's Vite plugin finds only index.html.

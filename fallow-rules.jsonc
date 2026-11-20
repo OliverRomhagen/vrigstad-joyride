@@ -16,14 +16,23 @@
     {
       "id": "no-dom",
       "kind": "banned-call",
-      // Calls only: a property read such as `window.innerWidth` isn't a call, so this catches most DOM use, not all of it.
+      // Calls by name only: a property read such as `window.innerWidth`, or a call through an alias (`const w = window`),
+      // gets past it. Biome's noRestrictedGlobals is to replace this rule with one that sees every use of a DOM global.
       "callees": [
         "document.*",
         "window.*",
+        "globalThis.*",
         "localStorage.*",
         "sessionStorage.*",
+        "navigator.*",
+        "location.*",
+        "fetch",
         "requestAnimationFrame",
-        "*.addEventListener"
+        "cancelAnimationFrame",
+        "addEventListener",
+        "removeEventListener",
+        "*.addEventListener",
+        "*.removeEventListener"
       ],
       "zones": ["sim", "world", "world-mesh"],
       "message": "Simulation doesn't touch the DOM: input arrives as intents, and the HUD reads state."
