@@ -37,6 +37,15 @@ data/vrigstad.json ──► streetscape-rules.ts ──► StreetSides per road
 - A missing OSM tag means unknown, never "no". Explicit tags beat inference; overrides (by OSM way id, empty by default) beat both, but fixing OSM is the better fix.
 - Choices hash the OSM way id (`fnv1a` in `random.ts`), never data order or the game's `rnd()`.
 
+### Street furniture (#144)
+
+- `src/world/furniture/` decides where street lamps, benches and waste bins stand; `src/world/mesh/street-furniture.ts` models and draws them. Placement knows each kind's footprint (`definitions.ts`), never its model; the models know nothing about OSM.
+- **Source priority:** OSM objects (`fu` in the JSON) stand where mapped and are never moved; overrides (`overrides.ts`, empty by default) add, remove or move by id; then rules fill in, and their objects are labelled `procedural`. A generated object never duplicates a mapped one of its kind, and a road with two or more mapped lamps gets no generated ones.
+- **Context per road** (`context.ts`): the streetscape's profile (`centre`, `residential`, `outskirts`) decides it, so streets aren't classified twice; lit paths (`lit=yes`) are `path`, and Torget's own outline is `torget`. Lamp spacing, benches and bins follow the context (`placement.ts` names the numbers).
+- **Checks** keep every generated object out of carriageways, buildings, water, parking lots, crossing openings, other furniture and the game's places (safehouse doors, the kiosk's lucka), and off steep ground.
+- **Deterministic:** every choice hashes a stable id (the OSM way id and piece), never the game's `rnd()` or data order, so furniture shifts no other roll. Ids are stable too: an override names one.
+- **Drawing:** one `InstancedMesh` per model body and per lamp glass for the whole world (6 draw calls), set once, at `groundAt`. The lamp glass is one shared material, and `lampEmitters()` gives each lamp's light position, both for the night (#99). No collision yet: cars and people pass through furniture. `?debug=furniture` tints by source, and `npm run data:report` sums it.
+
 - The sky is one dome (`src/game/render/sky.ts`): the blue gradient, the sun's glow and procedural fair-weather clouds in a single shader, so the clouds add no draw call. Each pixel meets a gently curved cloud layer about 1.8 km up and reads a deterministic, periodic noise field there (`src/world/clouds.ts`), so the clouds stay put in the world, drift with the wind by time rather than frames, and pass with parallax. The same field in TypeScript says once a frame whether the sun is behind a cloud, and the sun's intensity eases down while it is. The clouds take their colours from the dome's sun, horizon and zenith colours and their light from the shared sun direction, so whatever drives the daylight drives them too.
 
 This was the right shape for a prototype. It stops scaling once several people add features at the same time, which is happening now.
@@ -129,7 +138,7 @@ Metres; origin 57.3555° N, 14.4756° E; x east, z south, y up; the world spans 
 | `size`, `n` | World side in metres (2200) and elevation grid size (89 × 89, 25 m spacing) |
 | `elev` | Row-major heights in **decimetres** |
 | `b` | Buildings: `p` flat `[x, z, x, z, ...]` footprint, `h` height (guessed), `k` kind |
-| `r` | Roads: `c` class, `n` street name, `p` polyline; optional `i` OSM way id, `j` piece number when clipping split the way, `s` service/footway use, `sf` surface, `w` width, and per side [left, right] of the way's own direction: `sw` sidewalk state, `sww` width, `ssf` surface, `pk` street parking, `po` its orientation |
+| `r` | Roads: `c` class, `n` street name, `p` polyline; optional `i` OSM way id, `j` piece number when clipping split the way, `s` service/footway use, `sf` surface, `w` width, `lt` lit (1 yes, 2 no), and per side [left, right] of the way's own direction: `sw` sidewalk state, `sww` width, `ssf` surface, `pk` street parking, `po` its orientation |
 | `w` | Water polygons |
 | `ww` | Waterways: `k` kind, `p` polyline |
 | `l` | Land use: `k` class, `p` polygon |
@@ -139,5 +148,6 @@ Metres; origin 57.3555° N, 14.4756° E; x east, z south, y up; the world spans 
 | `x` | Crossing nodes: `i`, `x`, `z`, `k` kind, `kb` kerb, `r`/`v` the road and vertex it sits on (optional key) |
 | `kb` | Kerb nodes that are not crossings: `i`, `x`, `z`, `kb` (optional key) |
 | `t` | Mapped trees, flat `[x, z, ...]`, tree rows sampled every 8 m (optional key) |
+| `fu` | Mapped street furniture: `i` OSM id, `k` kind (`FurnitureCode`: street lamp, bench, waste basket, bus stop), `x`, `z`, `d` a bench's `direction` in degrees from north (optional key); bus stops are context only, never drawn |
 
-Class codes are assigned in `tools/process.py`; `src/world/data.ts` types the file and names them (`RoadClass`, `LandUse`, `BuildingKind`, `WaterwayKind`, and the streetscape's `RoadUse`, `SideState`, `Surface`, `StreetParking`, `ParkingOrientation`, `ParkingKind`, `CrossingKind`, `Kerb`). Change both together. Raw OSM tags never reach the JSON: everything is reduced to these codes, and 0 always means "not mapped".
+Class codes are assigned in `tools/process.py`; `src/world/data.ts` types the file and names them (`RoadClass`, `LandUse`, `BuildingKind`, `WaterwayKind`, and the streetscape's `RoadUse`, `SideState`, `Surface`, `StreetParking`, `ParkingOrientation`, `ParkingKind`, `CrossingKind`, `Kerb`, and `FurnitureCode`). Change both together. Raw OSM tags never reach the JSON: everything is reduced to these codes, and 0 always means "not mapped".
