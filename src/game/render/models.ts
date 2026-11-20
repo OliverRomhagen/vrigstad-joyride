@@ -6,7 +6,7 @@ import { col } from './stage';
 /** One part of a model: a geometry and its sRGB colour; the colour attribute is left out when the parts have none. */
 type Part = [geometry: THREE.BufferGeometry, colour?: string];
 /** One box of a model: size, position and colour. */
-type BoxPart = [sx: number, sy: number, sz: number, x: number, y: number, z: number, colour?: string];
+type BoxPart = [sx: number, sy: number, sz: number, x: number, y: number, z: number, colour: string];
 type Profile = {
   body: number[][];
   glass: number[][];

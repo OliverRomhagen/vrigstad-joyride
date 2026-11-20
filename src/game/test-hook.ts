@@ -19,7 +19,7 @@ export interface TestHookDeps {
   readonly cats: number;
   readonly ownCat: boolean;
   readonly displayCar: Car | null; // the car parked by Torget at the start, ?vehicle= picks it
-  // what the car's model and springs are doing; every car in the game has its meshes (render/car-meshes.ts attaches them)
+  // what the car's model and springs are doing
   vehicleVisuals: { state(car: Car): unknown };
   bodyMotion: { state(car: Car): unknown };
   skyDome: Pick<Sky, 'state'>;

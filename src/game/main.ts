@@ -1,19 +1,19 @@
-// @ts-nocheck
-// Moved as-is from the single-file prototype (#44); it gets types as it is split into modules.
+// The game page: creates the modules and connects them (#177). What each does is in its own file; the sections below
+// say where.
 import * as THREE from 'three';
 import { AdoptHearts } from './render/adopt-heart';
 import { DriftFx } from './render/drift-fx';
-import { vehicleDefinition } from './render/vehicle-registry';
+import { type VehicleId, vehicleDefinition } from './render/vehicle-registry';
 import { VehicleVisuals } from './render/vehicle-visuals';
 import { BodyMotion } from './render/body-motion';
 import { CarDamageFx } from './render/car-damage';
-import { CarMeshes } from './render/car-meshes';
+import { CarMeshes, type RenderedCar } from './render/car-meshes';
 import { CameraRig } from './render/camera-rig';
 import { ShoutingDrivers } from './render/shouting-drivers';
-import D from '../../data/vrigstad.json';
+import data from '../../data/vrigstad.json';
 import { LabFlags } from '../lab/flags';
 import { BuildingIndex } from '../world/buildings';
-import { ROAD_WIDTH_M as ROAD_W } from '../world/data';
+import { ROAD_WIDTH_M as ROAD_W, type WorldData } from '../world/data';
 import { Heightfield } from '../world/heightfield';
 import { clamp, wrap } from '../world/math';
 import { makeRnd } from '../world/random';
@@ -23,7 +23,7 @@ import { STREETSCAPE_OVERRIDES } from '../world/streetscape-overrides';
 import { classifyStreetscape } from '../world/streetscape-rules';
 import { treeSpots } from '../world/trees';
 import { Water } from '../world/water';
-import { Fleet, newCar, TURBO_AT } from './cars';
+import { type Car, type CarMode, Fleet, newCar, TURBO_AT } from './cars';
 import { CatColony } from './cats';
 import { Hud } from './hud';
 import { Input } from './input';
@@ -36,7 +36,7 @@ import { installTestHook } from './test-hook';
 import { esc, MenuPlate } from './menu';
 import { KioskCatMenus } from './kiosk-cat-menus';
 import { Pets } from './pets';
-import { KIOSK, Places } from './places';
+import { KIOSK, type Place, Places } from './places';
 import { CAT_SCRATCH_HP, LOW_HP, hurt, newHealth } from './health';
 import { HOME } from './player';
 import { Wanted } from './police';
@@ -45,31 +45,34 @@ import { GroundTexture } from './render/ground-texture';
 import { BAR_BLUE, BAR_RED, barGeo, barMat, blob, blobTex, boxGeo, carGeo, carMat, GLASS, geoCache, PROFILES, paintMat, personParts, TRACTOR_CAB } from './render/models';
 import { buildStage, col, setUpRenderer } from './render/stage';
 import { addBuildings, addRoadRibbons, addStreetscapeMeshes, addTerrain, addTrees } from './render/world-meshes';
-import { specFor } from './sim/vehicle-spec';
+import { type CarType, specFor } from './sim/vehicle-spec';
 import { newGameState, newViewState } from './state';
 import { Trisslott } from './trisslott';
 
 (function () {
 'use strict';
-const $ = id => document.getElementById(id);
+// the optional fields are absent from the JSON's inferred type when the snapshot has none, so read it as WorldData
+const D = data as unknown as WorldData;
+// every id asked for is in index.html
+const $ = (id: string) => document.getElementById(id) as HTMLElement;
 const S = D.size, HALF = S / 2;
 // seeded streams: rnd() drives the world and gameplay; side systems get their own stream so they don't shift its rolls
 const rnd = makeRnd(57355);
-const pick = a => a[Math.floor(rnd() * a.length)];
+const pick = <T>(a: readonly T[]) => a[Math.floor(rnd() * a.length)];
 // the shared state that the sections below and the modules read and write (src/game/state.ts)
 const game = newGameState();
-const START_CAM = [0.6, 0.34];   // camera yaw and pitch at Start
+const START_CAM: [yaw: number, pitch: number] = [0.6, 0.34];   // camera yaw and pitch at Start
 const view = newViewState(START_CAM[0], START_CAM[1]);
 
 // ---------- terrain height (matches the mesh triangles exactly) ----------
 // the world's queries are bound once, so the code below calls them as plain functions
 const heightfield = new Heightfield(D), hAt = heightfield.heightAt.bind(heightfield);
 const _n = new THREE.Vector3();
-const normalAt = (x, z) => heightfield.normalAt(x, z, _n);
+const normalAt = (x: number, z: number) => heightfield.normalAt(x, z, _n);
 
 // ---------- renderer and stage: fog, lights, sky and camera (src/game/render/stage.ts) ----------
-const canvas = $('gl');
-let renderer;
+const canvas = $('gl') as HTMLCanvasElement;
+let renderer: THREE.WebGLRenderer;
 try { renderer = new THREE.WebGLRenderer({ canvas, antialias: true }); }
 catch { $('fail').hidden = false; $('ui').hidden = true; $('intro').hidden = true; return; }
 const coarse = matchMedia('(pointer: coarse)').matches;
@@ -92,9 +95,9 @@ addTerrain(scene, heightfield, texture);
 
 // ---------- roads: crisp ribbons on the terrain + lookup grid + junction graph ----------
 const roads = new RoadNetwork(D, heightfield), { lines: R } = roads;
-let streetIndex = null;   // the streetscape's walkable height, built further down once the buildings and trees are known
+let streetIndex: StreetscapeIndex | null = null;   // the streetscape's walkable height, built further down once the buildings and trees are known
 // what people, cats and cars stand on: the road, or the curb, pavement or parking area above it
-const groundAt = (x, z) => { const g = roads.groundAt(x, z), s = streetIndex && streetIndex.surfaceAt(x, z); return s !== null && s > g ? s : g; };
+const groundAt = (x: number, z: number) => { const g = roads.groundAt(x, z), s = streetIndex && streetIndex.surfaceAt(x, z); return s !== null && s > g ? s : g; };
 const roadRibbons = addRoadRibbons(scene, roads, heightfield, maxAnisotropy);
 
 // ---------- water ----------
@@ -119,7 +122,7 @@ const street = (function () {
   return { layout, sides, meshes, tris, ms: performance.now() - t0 };
 })();
 // the pavement's centre line where a side has one, else today's walking line on the shoulder
-const walkOffset = (ri, side) => { const sp = side < 0 ? street.sides[ri].left : street.sides[ri].right; return sidewalkCentreM(sp, R[ri].c) ?? ROAD_W[R[ri].c] / 2 + 0.8; };
+const walkOffset = (ri: number, side: number) => { const sp = side < 0 ? street.sides[ri].left : street.sides[ri].right; return sidewalkCentreM(sp, R[ri].c) ?? ROAD_W[R[ri].c] / 2 + 0.8; };
 // the forests' trees and the street trees, with a soft shadow under each baked into the ground texture (the minimap shows them too)
 ground.bakeTreeShadows(addTrees(scene, forestSpots, street.layout.trees, heightfield, HALF), blobTex);
 
@@ -127,23 +130,25 @@ ground.bakeTreeShadows(addTrees(scene, forestSpots, street.layout.trees, heightf
 // the rules (driving, traffic, the parked cars) are in src/game/cars.ts; the meshes in src/game/render/car-meshes.ts
 // the getters are read when they are used, so they can name things declared further down
 const bodyMotion = new BodyMotion();
-const vehicleVisuals = new VehicleVisuals(coarse, (c, body) => bodyMotion.addNode(c, body));
+const vehicleVisuals = new VehicleVisuals(coarse, (c, body) => bodyMotion.addNode(c as RenderedCar, body));
 const carMeshes = new CarMeshes({ scene, groundAt, normalAt, carGeo, carMat, blob, barGeo, barMat, vehicleVisuals, bodyMotion });
 const placeCar = carMeshes.placeCar.bind(carMeshes);
+// every car has its meshes: addCar attaches them before the Fleet holds it, so the sim's Car is a RenderedCar here
+const meshed = (c: Car) => c as RenderedCar;
 // the car gets its meshes, then the Fleet holds it, so a car in the list always has them; the rolls keep their order: the model (its own stream), then the colour (rnd)
-function addCar(type, x, z, h, mode, assetId = carMeshes.pickModel(type)) {
+function addCar(type: CarType, x: number, z: number, h: number, mode: CarMode, assetId: VehicleId | undefined = carMeshes.pickModel(type)) {
   const T = specFor(type, vehicleDefinition(assetId ?? null));
   return fleet.add(carMeshes.attach(newCar(type, x, z, h, mode, T, pick(T.cols)), assetId));
 }
-function removeCar(c) { carMeshes.detach(c); fleet.remove(c); }
-const fleet = new Fleet({ roads, buildings, water, half: HALF, rnd, pick, addCar, placeCar, crash: (c, o, impact) => crashes.crash(c, o, impact),
-  canPark: (x, z) => streetIndex.surfaceAt(x, z) === null,   // streetIndex is built before parkCars runs
+function removeCar(c: Car) { carMeshes.detach(meshed(c)); fleet.remove(c); }
+const fleet = new Fleet({ roads, buildings, water, half: HALF, rnd, pick, addCar, placeCar: c => placeCar(meshed(c)), crash: (c, o, impact) => crashes.crash(c, o, impact),
+  canPark: (x, z) => streetIndex!.surfaceAt(x, z) === null,   // streetIndex is built before parkCars runs
   rammed: c => { if (c === game.pcar && game.ramCool <= 0) { game.ramCool = 6; wanted.addStar('Ramming a police car. That will not help.'); } },
   get player() { return player; }, get inCar() { return game.inCar; } });
-const { cars } = fleet, drive = fleet.drive.bind(fleet), advance = fleet.advance.bind(fleet), spawnTraffic = fleet.spawnTraffic.bind(fleet), updateTraffic = fleet.updateTraffic.bind(fleet);
+const cars = fleet.cars as RenderedCar[], drive = fleet.drive.bind(fleet), advance = fleet.advance.bind(fleet), spawnTraffic = fleet.spawnTraffic.bind(fleet), updateTraffic = fleet.updateTraffic.bind(fleet);
 const selectedVehicle = vehicleDefinition(new URLSearchParams(location.search).get('vehicle'));
-let displayCar = null;
-function carName(c) { return vehicleVisuals.definition(c)?.name || c.T.name; }
+let displayCar: RenderedCar | null = null;
+function carName(c: Car) { return vehicleVisuals.definition(meshed(c))?.name || c.T.name; }
 fleet.parkCars();   // parked cars along streets and driveways
 for (let i = 0; i < 18; i++) spawnTraffic(null);
 
@@ -166,7 +171,7 @@ const updateNpcs = crowd.update.bind(crowd);
 // ---------- cats: lounge by the house walls, wander a little, bolt from cars and running feet (src/game/cats.ts) ----------
 // the getters are read when the cats use them, so they can name things declared further down
 const colony = new CatColony({ scene, buildings, inWater, groundAt, half: HALF, coarse, wrap, geoCache, boxGeo, paintMat, blob, cars, toast,
-  get player() { return player; }, get keys() { return keys; }, get joy() { return joy; }, get kmenu() { return kmenu; }, get inCar() { return game.inCar; }, get pcar() { return game.pcar; }, get inside() { return places.inside; },
+  get player() { return player; }, get keys() { return keys; }, get joy() { return joy; }, get kmenu() { return kmenu; }, get inCar() { return game.inCar; }, get pcar() { return game.pcar && meshed(game.pcar); }, get inside() { return places.inside; },
   useTreat() { if (game.treats <= 0) return false; game.treats--; drawTreats(); return true; }, scratched() { hurtPlayer(CAT_SCRATCH_HP); } });
 const { cats } = colony, updateCats = colony.update.bind(colony), catFirst = colony.catFirst.bind(colony), nearCat = colony.nearest.bind(colony);
 
@@ -181,7 +186,7 @@ const kmenu = $('kmenu');
 const menuPlate = new MenuPlate({ kmenu, canvas, doc: document, get input() { return input; }, get hasPets() { return !!colony.owned; }, openPets: () => openPets(), toast });
 const { openMenu, closeMenu, openRename, menuKey } = menuPlate;
 // the getter is read when a pet is called, so it can name things declared further down
-const pets = new Pets({ colony, button: $('pets'), openMenu, openRename, esc, get caller() { return game.inCar ? game.pcar : player; } });
+const pets = new Pets({ colony, button: $('pets'), openMenu, openRename, esc, get caller() { return game.inCar && game.pcar ? game.pcar : player; } });
 const openPets = pets.open.bind(pets), drawPets = pets.draw.bind(pets);
 // ---------- the adopt heart: hovers over a stray once it has had a good pet, a third fuller for each good pet in a row (src/game/render/adopt-heart.ts) ----------
 const adoptHearts = new AdoptHearts({ scene, colony }), showHeart = adoptHearts.show.bind(adoptHearts), drawHearts = adoptHearts.update.bind(adoptHearts);
@@ -208,7 +213,7 @@ addFootprint([KIOSK.x - KIOSK.w / 2, KIOSK.z - KIOSK.d / 2, KIOSK.x + KIOSK.w / 
 const kioskCatMenus = new KioskCatMenus({ game, player, colony, health, openMenu, esc, toast, scratch: () => trisslott.scratch(), nearPlace, showHeart, drawPets, drawTreats, drawHealth });
 const { openKiosk, petCat, openOwnCat } = kioskCatMenus;
 function nearPlace() { return game.inCar ? null : places.nearest(player.x, player.z); }
-function enterHouse(p) { if (places.enter(p, player)) player.mesh.visible = false; }
+function enterHouse(p: Place) { if (places.enter(p, player)) player.mesh.visible = false; }
 function leaveHouse() { if (!places.leave()) return; player.mesh.visible = true; $('hide').hidden = true; }
 // ---------- car damage: cracked glass, and smoke from the bonnet (src/game/render/car-damage.ts) ----------
 const carDamage = new CarDamageFx({ scene, groundAt, profiles: PROFILES, tractorCab: TRACTOR_CAB, vehicleVisuals, rnd: dmgRnd, cars }), updateSmoke = carDamage.updateSmoke.bind(carDamage);
@@ -236,21 +241,21 @@ const { keys, joy } = input;
 const hud = new Hud({ $, ground: tex2d, P, K, roads, labels: D.labels, cars, places: places.list,
   get stars() { return wanted.stars; }, get pcar() { return game.pcar; }, get blink() { return loop.blink; } });
 // a declaration, not a bound const, so the sections above can pass toast on before the HUD exists
-function toast(msg, secs, cls) { hud.toast(msg, secs, cls); }
+function toast(msg: string, secs?: number, cls?: string) { hud.toast(msg, secs, cls); }
 const drawStars = hud.drawStars.bind(hud), drawMini = hud.drawMini.bind(hud), updateSign = hud.updateSign.bind(hud);
 drawStars();
-function drawHealth() { hud.drawHealth(health.hp, game.inCar ? game.pcar.dmg : null); }
+function drawHealth() { hud.drawHealth(health.hp, game.inCar && game.pcar ? game.pcar.dmg : null); }
 // the big screen (Gripen!, Däckad!) stays up this long
-function bigScreen(title, msg) { hud.showBig(title, msg); game.bigT = 3; }
+function bigScreen(title: string, msg: string) { hud.showBig(title, msg); game.bigT = 3; }
 
 // ---------- stealing and getting caught (the wanted level and the police: src/game/police.ts) ----------
 // the driver of a car you steal gets out, and stands there shouting for a while (src/game/render/shouting-drivers.ts)
 const drivers = new ShoutingDrivers({ scene, groundAt, personParts, pick }), driverOut = drivers.driverOut;
 // what E does, and putting you back on your feet after Gripen! or a knock-out (src/game/actions.ts)
 const actions = new Actions({ game, view, player, cars, places, wanted, health, menuOpen: () => !kmenu.hidden, closeMenu, showPlayer: v => { player.mesh.visible = v; }, nearPlace, enterHouse, leaveHouse, nearCat, catFirst, openOwnCat, petCat, openKiosk, collide, placeCar, rnd, pick, toast, carName,
-  spokenName: c => vehicleVisuals.definition(c)?.spokenName, driverOut, spawnTraffic, drawStolen: () => { $('count').textContent = 'Cars stolen: ' + game.stolen; }, drawHealth, bigScreen, sayLater: line => loop.sayLater(line), pickLine });
+  spokenName: c => vehicleVisuals.definition(meshed(c))?.spokenName, driverOut, spawnTraffic, drawStolen: () => { $('count').textContent = 'Cars stolen: ' + game.stolen; }, drawHealth, bigScreen, sayLater: line => loop.sayLater(line), pickLine });
 const { nearestCar, action, respawn, busted, knockedOut } = actions;
-function hurtPlayer(n) { if (n <= 0) return; const was = health.hp;
+function hurtPlayer(n: number) { if (n <= 0) return; const was = health.hp;
   hud.flashHurt(n); hurt(health, n); drawHealth();
   if (was >= LOW_HP && health.hp < LOW_HP && health.hp > 0) loop.sayLater('”Ja behöver nog en korv me brö.”'); }   // a hint at the kiosk
 
@@ -268,5 +273,5 @@ loop.start();
 
 // ---------- test hook: read-only state for the smoke tests (src/game/test-hook.ts) ----------
 installTestHook({ game, view, player, health, cars, labs: lab.list(), get stars() { return wanted.stars; }, get cats() { return cats.length; }, get ownCat() { return !!colony.owned; }, get displayCar() { return displayCar; },
-  vehicleVisuals, bodyMotion, skyDome, street, debugStreetscape: DEBUG_STREETSCAPE, nearestCar });
+  vehicleVisuals: { state: c => vehicleVisuals.state(meshed(c)) }, bodyMotion: { state: c => bodyMotion.state(meshed(c)) }, skyDome, street, debugStreetscape: DEBUG_STREETSCAPE, nearestCar });
 })();

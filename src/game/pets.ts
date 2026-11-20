@@ -18,7 +18,7 @@ export type MenuItem = [key: string, label: string];
 /** What the pets read from the rest of the game. The getter is read when used, so main.ts can declare it later. */
 export interface PetsDeps {
   colony: Pick<CatColony, 'owned' | 'home' | 'rename' | 'call' | 'sendHome' | 'setFree'>;
-  button: { hidden: boolean }; // the Pets button: shown while you own a pet. main.ts hands it in until it moves into the HUD (rule 4)
+  button: { hidden: boolean | 'until-found' }; // the Pets button (`hidden` as the DOM types it): shown while you own a pet. main.ts hands it in until it moves into the HUD (rule 4)
   openMenu(kind: string, title: string, items: MenuItem[], pick: (k: string) => void): void;
   openRename(p: Pet): void; // the menu with a text field for the new name
   esc(t: string): string; // escapes a name for the menu's HTML
