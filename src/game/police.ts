@@ -102,6 +102,7 @@ export class Wanted {
       if (this.evade > EVADE_S) {
         this.clear();
         this.g.toast('You lost them.');
+        return true; // lost: the safehouse timer mustn't clear them again
       }
     } else this.evade = 0;
     this.g.showEvading(this.evade > EVADE_SHOW_S);
