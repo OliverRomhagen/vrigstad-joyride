@@ -56,7 +56,7 @@ export class CarMeshes {
   pickModel(type: CarType): VehicleId | undefined {
     return pickVariant(type, this.modelRnd());
   }
-  /** Gives a car the Fleet already holds its meshes: the procedural body, the police light bar, and its model if `assetId` names one. */
+  /** Gives a new car its meshes, before the Fleet holds it: the procedural body, the police light bar, and its model if `assetId` names one. */
   attach(car: Car, assetId: VehicleId | undefined): RenderedCar {
     const { scene, carGeo, carMat, blob, barGeo, barMat, vehicleVisuals, bodyMotion } = this.g;
     const { type, T, color } = car,
