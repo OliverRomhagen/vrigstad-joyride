@@ -62,17 +62,20 @@ Refresh the map data with `tools/fetch.sh` and then `npm run data` if you want t
 
 ## Tests
 
-A small Playwright suite in `tests/e2e/` smoke-tests the built pages: both load without console errors, Start shows the HUD, and the player can walk and get into the parked Volvo at Torget. It needs Node, and runs on every pull request.
+A small Playwright suite in `tests/e2e/` smoke-tests the built pages: both load without console errors, Start shows the HUD, and the player can walk and get into the parked Volvo at Torget. It needs Node, and runs on every pull request that touches more than docs and repo settings.
 
 ```sh
 npm install
 npx playwright install chromium   # once
+npm run build                     # the tests run against the built pages in dist/
 npm run test:e2e
 ```
 
 ## Preview links
 
 A `feat` pull request gets a playable build at `https://oliverromhagen.github.io/vrigstad-joyride/pr-preview/pr-<number>/`, and a bot comments the link on the PR a minute or two after each push. Any other PR gets one when you add the `preview` label. The preview is removed when the PR closes, or when it loses the label or the `feat` title. PRs from forks get no preview.
+
+Add `?lab=<id>,<id>` to the game's link, a preview's or the live one, to switch on lab experiments, which are off for everyone else. `src/lab/flags.ts` lists them, with what each one costs.
 
 ## Releases
 
@@ -87,6 +90,8 @@ gh release create v0.1.0 --generate-notes
 ```
 
 `--generate-notes` builds the changelog from merged PR titles, so keep those titles descriptive.
+
+Publishing a release also announces it in the Discord server: a repository webhook (Settings → Webhooks) posts `release` events to the channel's Discord webhook URL with `/github` appended. The URL is a secret, so it lives only in the webhook settings.
 
 ## Known simplifications
 

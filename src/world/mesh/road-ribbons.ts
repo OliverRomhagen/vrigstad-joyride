@@ -43,7 +43,8 @@ export class RoadRibbons {
         const a = points[i - 1];
         const b = points[i];
         const steps = Math.max(1, Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]) / STEP_M));
-        for (let s = 1; s <= steps; s++) q.push([a[0] + ((b[0] - a[0]) * s) / steps, a[1] + ((b[1] - a[1]) * s) / steps]);
+        for (let s = 1; s <= steps; s++)
+          q.push([a[0] + ((b[0] - a[0]) * s) / steps, a[1] + ((b[1] - a[1]) * s) / steps]);
       }
       let pl: number[] = [];
       let pr: number[] = [];
@@ -66,7 +67,26 @@ export class RoadRibbons {
         r[1] = heightfield.heightAt(r[0], r[2]) + lift;
         if (i > 0) {
           v += Math.hypot(q[i][0] - q[i - 1][0], q[i][1] - q[i - 1][1]) / TILE_M;
-          out.push(pl[0], pl[1], pl[2], l[0], l[1], l[2], r[0], r[1], r[2], pl[0], pl[1], pl[2], r[0], r[1], r[2], pr[0], pr[1], pr[2]);
+          out.push(
+            pl[0],
+            pl[1],
+            pl[2],
+            l[0],
+            l[1],
+            l[2],
+            r[0],
+            r[1],
+            r[2],
+            pl[0],
+            pl[1],
+            pl[2],
+            r[0],
+            r[1],
+            r[2],
+            pr[0],
+            pr[1],
+            pr[2],
+          );
           uvOut.push(0, pv, 0, v, u, v, 0, pv, u, v, u, pv);
         }
         pl = l;
@@ -109,4 +129,3 @@ export class RoadRibbons {
     }
   }
 }
-

@@ -37,7 +37,7 @@ const isDark = () => { const t = document.documentElement.dataset.theme;
 const canvas = document.getElementById('gl');
 let renderer;
 try { renderer = new THREE.WebGLRenderer({ canvas, antialias: true }); }
-catch (err) { document.getElementById('fail').hidden = false; document.getElementById('ui').hidden = true; return; }
+catch { document.getElementById('fail').hidden = false; document.getElementById('ui').hidden = true; return; }
 renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
 renderer.outputColorSpace = THREE.LinearSRGBColorSpace;   // as in r128: the map's look was tuned without sRGB output encoding
 renderer.shadowMap.enabled = true;
