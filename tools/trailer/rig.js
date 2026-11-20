@@ -75,4 +75,4 @@ async function modelsReady(page, timeout = 30000) {
   await page.evaluate(() => __step(1));
 }
 
-module.exports = { open, modelsReady, WORK, ROOT };
+module.exports = { open, modelsReady, hookSource, MARKS: { BOOT, RENDER, RENDER_HOOKED, HOOK }, WORK, ROOT };
