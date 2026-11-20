@@ -78,18 +78,37 @@ GitHub issues are the backlog: every bug, idea and piece of work is one issue.
 ## Code style
 
 - **Match the surrounding code.** Same naming, comment density and idiom as the file you're in.
-- Current single-file code is dense: 2-space indent, single quotes, semicolons, short local names for hot math (`x`, `z`, `h`, `v`, `dt`), sections marked `// ---------- name ----------`. Keep that style inside `src/game/main.ts` and `src/map/main.ts` until they are split up.
-- New TypeScript code: formatted by Biome (`npm run format`), so don't hand-format. The pages (`src/*.html`, `src/game/main.ts`, `src/map/main.ts`) aren't formatted until #177 splits them (`biome.jsonc`), but the two scripts are still checked for undeclared names, unused variables and unused imports. The repo's `.vscode/` settings make Biome the formatter in VS Code, so a Prettier you set up for other projects doesn't reformat files on save. Prefer clear names over the dense style, small modules with one responsibility, named exports, no default exports, `strict` types, no `any` without a comment saying why.
+- Current single-file code is dense: 2-space indent, single quotes, semicolons, short local names for hot math (`x`, `z`, `h`, `v`, `dt`), sections marked `// ---------- name ----------`. Keep that style inside `src/game/main.ts` and `src/map/main.ts` until they are split up, and keep the names of code moved out of them (see Naming).
+- New TypeScript code: formatted by Biome (`npm run format`), so don't hand-format. When a PR that reformats code merges, its author adds the squash commit to `.git-blame-ignore-revs` in a follow-up PR, so `git blame` skips the reformat. The pages (`src/*.html`, `src/game/main.ts`, `src/map/main.ts`) aren't formatted until #177 splits them (`biome.jsonc`), but the two scripts are still checked for undeclared names, unused variables and unused imports. The repo's `.vscode/` settings make Biome the formatter in VS Code, so a Prettier you set up for other projects doesn't reformat files on save. Prefer clear names over the dense style, small modules with one responsibility, named exports, no default exports, `strict` types, no `any` without a comment saying why.
 - Classes, data or functions, by what the thing is:
   - **A class** for something built once and then queried, or that holds state or resources with a lifecycle: a world index (`Heightfield`, `RoadNetwork`, `BuildingIndex`), a controller, an object that owns meshes and disposes them, a Svelte store with `$state` fields. Depend on the narrow part you use (`Pick<Heightfield, 'heightAt'>`), so a test can pass a stub.
   - **Plain data** for simulation state (#49): it has to be copied to a worker or over the network, snapshotted for replays and compared in tests. No methods on entities.
   - **Functions** for pure helpers (`pointInPolygon`).
 
-  A method passed around as a function loses `this`: call it on its object, or `bind` it once.
+  A method passed around as a function loses `this`: call it on its object, `bind` it once, or make it an arrow field (`toggle = () => { … }`) when it's meant to be handed out.
 - Comments explain *why* and non-obvious units or conventions, not what the next line does.
 - No new runtime dependency without saying why in the PR. Dev dependencies (tooling, tests) are fine.
 - Gameplay numbers (speeds, radii, timers) go in named constants near the top of their module, with units in the name or a comment (`EVADE_DIST_M = 170`).
 - Avoid per-frame allocations in the game loop: reuse vectors (`const _v = new THREE.Vector3()` at module level) as the existing code does.
+
+### Naming
+
+Defaults for new code; review checks them, no linter does.
+
+- **Name a thing for what it is.** If a reviewer has to ask what a name holds ("is `idx` a node or a road?"), rename it. A domain word and a structural word aren't interchangeable: a `car` (the sim object) isn't its `VehicleVisuals` model, and a `footprint` isn't a `building`.
+- **Booleans read as a question or a state:** `canDrift`, `inCar`, `dragging`, `menuOpen`. Add `is`, `has`, `can` or `should` when the bare word could be read as a noun or a verb: a flag beside the function `busted()` would be `isBusted`, not `busted`.
+- **Handlers and callbacks are named by what they do** (`endDrag`, `closeMenu`, `spawnTraffic`), not by the event (`handleClick`, `onPointerUp`). Pass a named handler by reference when it's used more than once or is longer than a line; a short one-off can stay an inline arrow. The callbacks a module takes in its `*Deps` object are named the same way: `caught`, `spawnCar`, `drawStars` (`src/game/police.ts`).
+- **Getters over `getX()` on classes** for a value the object already has (`get dragging()` in `src/game/input.ts`). Sim entities stay plain data with no methods, as above. Keep `getX()` or `loadX()` for work that costs something, such as an async load.
+- **Fixed sets of values are `as const` maps with upper-case keys, not enums:** `RoadClass = { PRIMARY: 0, SECONDARY: 1, … } as const` (`src/world/data.ts`). An `Error` subclass only when a caller branches on it.
+- **A leading `_`** marks a module-level scratch object (`_v`, above) or an unused parameter (`(_e, i) => …`). For an array slot you skip, leave it out: `const [, x, z] = row`. Biome's unused-variable and unused-parameter rules skip `_` names.
+- **Private members** use TypeScript's `private`, as the existing classes do, not `#`.
+
+**When to break them:**
+- **Names someone else owns keep their spelling:** three.js and the DOM (`visible`, `castShadow`, `needsUpdate`, `hidden`), OSM tags and the data in `data/vrigstad.json`.
+- **Existing code isn't renamed just to follow these.** Rename when you're changing that code anyway; a rename that touches many lines is its own `refactor` PR.
+- **Code moved out of a `main.ts` keeps its names** in the PR that moves it (#177), so a reviewer can compare it with the old code. Biome reformats it in its new module, so move it in one commit, changing only what the move needs (exports, imports, reads through its `*Deps`), and run `npm run format` in the next; `git diff --color-moved` on the first commit then shows what really changed. The move commit is the one commit that may fail `npm run check`; the PR's last commit passes it. Clear names can follow in a later PR.
+- **Inside `src/game/main.ts` and `src/map/main.ts`, match the surrounding code**, as above, until #177 splits them.
+- **When a name reads better another way, use it** and say why in the PR. Consistency with nearby code beats a general rule.
 
 ## Architecture rules (summary; details in ARCHITECTURE.md)
 
