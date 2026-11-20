@@ -36,17 +36,23 @@ patterns = ["src/world/mesh/**", "src/world/three-legacy.ts"]
 name = "world"
 patterns = ["src/world/**"]
 
-# Game rules as plain data: src/game/sim/ once #177 makes it; until then, the modules that are already rules.
+# The page modules in src/game/, which would otherwise fall into sim below. They are page code (see the last zone).
 [[boundaries.zones]]
-name = "sim"
-patterns = ["src/game/sim/**", "src/game/health.ts", "src/game/police.ts", "src/game/pets.ts", "src/game/cats.ts", "src/game/pedestrians.ts"]
+name = "page"
+patterns = ["src/game/main.ts", "src/game/hud.ts", "src/game/input.ts"]
 
 [[boundaries.zones]]
 name = "render"
 patterns = ["src/game/render/**"]
 
-# Everything else in src/: each page's main.ts, the HUD, input, the lab. It may import anything (it has no rule), but
-# the zones above may not import it.
+# Game rules as plain data: everything else in src/game/, src/game/sim/ once #177 makes it, so a new module is checked
+# from its first commit. A new page module goes in the page list above instead.
+[[boundaries.zones]]
+name = "sim"
+patterns = ["src/game/**"]
+
+# Everything else in src/: the map page and the lab, with the page modules listed above. It may import anything (it has
+# no rule), but the other zones may not import it.
 [[boundaries.zones]]
 name = "page"
 patterns = ["src/**"]
