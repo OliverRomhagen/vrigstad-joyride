@@ -50,6 +50,8 @@
 
   X.start = () => { document.getElementById('go').click(); document.getElementById('toast').hidden = true; };
   X.hideToast = () => { document.getElementById('toast').hidden = true; };
+  // at the kiosk: E buys a trisslott; since the kiosk got a menu, E opens it and Trisslott is picked from it
+  X.buyTriss = () => { G.action(); const b = document.querySelector('#kmenu [data-k="triss"]'); if (b) b.click(); };
 
   // ----- route along the street network, always taking the straightest continuation -----
   X.route = (x, z, heading, length, maxClass = 2) => {
@@ -95,11 +97,16 @@
 
   // ----- staging -----
   // a car of a given type and paint colour (the game picks colours at random, so keep trying)
-  X.makeCar = (type, hex, x, z, h) => { const want = new G.THREE.Color(hex).convertSRGBToLinear();   // vertex colours are linear (see mergeGeo)
-    for (let t = 0; t < 80; t++) { const c = G.addCar(type, x, z, h, 'parked'), col = c.mesh.geometry.attributes.color.array, k = 144 * 3;
-      if (Math.abs(col[k] - want.r) + Math.abs(col[k + 1] - want.g) + Math.abs(col[k + 2] - want.b) < 0.02) return c; G.removeCar(c); }
+  // hex must be one of the type's colours (T.cols in src/game/sim/vehicle-spec.ts). Every version caches car geometry per type and colour (carGeo),
+  // so the car's own box mesh tells its colour: the car's mesh, or the fallback inside its group once cars got models.
+  X.makeCar = (type, hex, x, z, h) => { const want = G.carGeo(type, hex);
+    const box = c => c.body || (c.mesh.geometry ? c.mesh : c.mesh.children.find(o => o.geometry));
+    for (let t = 0; t < 80; t++) { const c = G.addCar(type, x, z, h, 'parked'); if (box(c).geometry === want) return c; G.removeCar(c); }
     return G.addCar(type, x, z, h, 'parked'); };
-  X.recolor = (c, type, hex) => { const t = X.makeCar(type, hex, c.x, c.z, c.h); c.mesh.geometry = t.mesh.geometry; c.type = type; c.T = G.TYPES[type]; G.removeCar(t); return c; };
+  // a car's model is attached in its colour, so swap the car for a new one in the same place, keeping its place in traffic
+  X.recolor = (c, type, hex) => { const n = X.makeCar(type, hex, c.x, c.z, c.h);
+    for (const k of ['mode', 'ri', 'a', 'dir', 't', 'v', 'first']) if (k in c) n[k] = c[k];
+    G.removeCar(c); return n; };
   X.getIn = (car, silent) => { G.player.x = car.x - Math.cos(car.h) * 2.2; G.player.z = car.z - Math.sin(car.h) * 2.2; if (silent) car.owned = true; G.action(); };
   X.clearTraffic = pts => { for (const c of G.cars.slice()) { if (c.mode !== 'ai' && c.mode !== 'parked') continue;
     let near = false; for (let i = 1; i < pts.length && !near; i++) { const a = pts[i - 1], b = pts[i], dx = b[0] - a[0], dz = b[1] - a[1], L = dx * dx + dz * dz, t = L ? clamp(((c.x - a[0]) * dx + (c.z - a[1]) * dz) / L, 0, 1) : 0; if (Math.hypot(c.x - a[0] - dx * t, c.z - a[1] - dz * t) < (c.mode === 'ai' ? 30 : 4.5)) near = true; }
