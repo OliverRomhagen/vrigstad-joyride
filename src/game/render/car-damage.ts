@@ -1,16 +1,14 @@
 // Car damage you can see: cracked glass, worse at each crackLevel, and smoke from the bonnet, grey past half damage and
 // black when nearly wrecked. Moved from src/game/main.ts (#177); main.ts passes in what the effects read from the rest of the game.
 import * as THREE from 'three';
-import '../../world/three-legacy'; // before SMOKE_COLS: with colour management on, col() would convert twice
 import { makeRnd } from '../../world/random';
+import { col } from '../../world/three-legacy';
 import { crackLevel, smokeLevel } from '../health';
 import type { RenderedCar } from './car-meshes';
 import type { VehicleVisuals } from './vehicle-visuals';
 
-const col = (c: number) => new THREE.Color(c).convertSRGBToLinear();
-
-/** A car as the damage effects see it: the crack meshes they have added, and the smoke still owed (puffs). */
-type DamagedCar = RenderedCar & { crack?: number; crackMesh?: THREE.Mesh; modelCrack?: THREE.Mesh[]; smokeT?: number };
+/** What the damage effects keep for one car: the crack level its glass shows, the crack meshes they have added, and the smoke still owed (puffs). */
+type DamageView = { crack: number; crackMesh?: THREE.Mesh; modelCrack?: THREE.Mesh[]; smokeT: number };
 /** The side profile of a car's glass: x is the car's z (front is -z), y is height (m); gw is its width (m). */
 type GlassProfile = { glass: readonly (readonly number[])[]; gw: number };
 type Puff = THREE.Sprite & { age: number };
@@ -23,7 +21,7 @@ export interface CarDamageFxDeps {
   tractorCab: GlassProfile;
   vehicleVisuals: VehicleVisuals;
   rnd: () => number; // main.ts's own stream for the shake and the smoke puffs, which roll every frame
-  cars: readonly DamagedCar[];
+  cars: readonly RenderedCar[];
 }
 
 // cracked glass: a crack texture laid over the windscreen and rear window (material 0) and the side windows (material 1), worse at each crackLevel
@@ -129,6 +127,7 @@ export class CarDamageFx {
   private readonly puffs: Puff[];
   private puffI = 0;
   private readonly crackMats = crackMaterials();
+  private readonly views = new WeakMap<RenderedCar, DamageView>(); // kept here, not on the car: the car stays the game rules' (#49)
 
   constructor(g: CarDamageFxDeps) {
     this.g = g;
@@ -239,25 +238,33 @@ export class CarDamageFx {
     return g;
   }
   // the procedural cracks go on the procedural body, so they hide with it when the model shows; the model, which loads later, gets its own
-  private crackGlass(c: DamagedCar) {
+  private view(c: RenderedCar) {
+    let v = this.views.get(c);
+    if (!v) {
+      v = { crack: 0, smokeT: 0 };
+      this.views.set(c, v);
+    }
+    return v;
+  }
+  private crackGlass(c: RenderedCar, v: DamageView) {
     const { vehicleVisuals } = this.g;
     const lv = crackLevel(c.dmg);
     if (!lv) return;
-    if (c.crack !== lv) {
-      if (!c.crackMesh) {
-        c.crackMesh = new THREE.Mesh(this.crackGeo(c.type), this.crackMats[lv]!);
-        c.body.add(c.crackMesh);
+    if (v.crack !== lv) {
+      if (!v.crackMesh) {
+        v.crackMesh = new THREE.Mesh(this.crackGeo(c.type), this.crackMats[lv]!);
+        c.body.add(v.crackMesh);
       }
-      c.crackMesh.material = this.crackMats[lv]!;
-      if (c.modelCrack) for (const m of c.modelCrack) m.material = this.crackMats[lv]!;
-      c.crack = lv;
+      v.crackMesh.material = this.crackMats[lv]!;
+      if (v.modelCrack) for (const m of v.modelCrack) m.material = this.crackMats[lv]!;
+      v.crack = lv;
     }
-    if (!c.modelCrack && vehicleVisuals.loaded(c) && c.mesh.getObjectByName('glass_envelope')) {
+    if (!v.modelCrack && vehicleVisuals.loaded(c) && c.mesh.getObjectByName('glass_envelope')) {
       const glass: THREE.Mesh[] = [];
       c.mesh.traverse(o => {
         if (o instanceof THREE.Mesh && o.name.startsWith('glass_')) glass.push(o);
       });
-      c.modelCrack = glass.map(gl => {
+      v.modelCrack = glass.map(gl => {
         const m = new THREE.Mesh(this.modelCrackGeo(gl.geometry), this.crackMats[lv]!);
         gl.add(m);
         return m;
@@ -271,11 +278,15 @@ export class CarDamageFx {
       { puffs } = this;
     for (const c of cars) {
       const cl = crackLevel(c.dmg);
-      if (cl && (c.crack !== cl || (!c.modelCrack && vehicleVisuals.loaded(c)))) this.crackGlass(c); // after a crash, and once its model loads; one that failed never does
+      if (cl) {
+        const v = this.view(c);
+        if (v.crack !== cl || (!v.modelCrack && vehicleVisuals.loaded(c))) this.crackGlass(c, v); // after a crash, and once its model loads; one that failed never does
+      }
       const lv = smokeLevel(c.dmg);
       if (!lv || c.wet || Math.abs(c.x - T.x) > SMOKE_NEAR_M || Math.abs(c.z - T.z) > SMOKE_NEAR_M) continue;
-      c.smokeT = (c.smokeT || 0) + dt * SMOKE_RATE[lv];
-      for (; c.smokeT >= 1; c.smokeT--) {
+      const v = this.view(c);
+      v.smokeT += dt * SMOKE_RATE[lv];
+      for (; v.smokeT >= 1; v.smokeT--) {
         const p = puffs[this.puffI];
         this.puffI = (this.puffI + 1) % SMOKE_N; // a ring: the oldest puff goes first
         const fwd = c.type === 'traktor' ? 1.4 : 1.7,

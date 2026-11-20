@@ -2,11 +2,10 @@
 // Moved from src/game/main.ts (#177); main.ts makes the renderer, since it shows the fail screen when WebGL is missing, and passes it in.
 import * as THREE from 'three';
 import { parseCloudConfig } from '../../world/clouds';
-import { LEGACY_LIGHT } from '../../world/three-legacy';
+import { col, LEGACY_LIGHT } from '../../world/three-legacy';
 import { Sky } from './sky';
 
 // filmic tone mapping on an sRGB pipeline: colours below are written in sRGB and converted to linear with col()
-export const col = (c: THREE.ColorRepresentation) => new THREE.Color(c).convertSRGBToLinear();
 // three applies fog after the output colour space conversion, so the fog, clear and sky colours stay in sRGB
 const HORIZON = 0xd6e4e6,
   FOG_PER_M = 0.0007; // FogExp2 density: about 40% haze at 1 km

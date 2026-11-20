@@ -13,8 +13,8 @@ import { TerrainMesh } from '../../world/mesh/terrain';
 import { pointInPolygon as inPoly } from '../../world/polygon';
 import type { RoadNetwork } from '../../world/roads';
 import type { StreetscapeLayout } from '../../world/streetscape';
+import { col } from '../../world/three-legacy';
 import { mergeGeo } from './models';
-import { col } from './stage';
 
 // ---------- terrain ----------
 const SKIRT_DEPTH_M = 1.5; // the skirt round the edge, and the far ground plane, sit this far below height 0

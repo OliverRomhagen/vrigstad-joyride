@@ -1,7 +1,7 @@
 // The low-poly models: merged box and extruded geometry, the procedural cars and tractor, people, and the soft blob shadow under them.
 // Moved from src/game/main.ts (#177); main.ts hands these to the modules that build the cars, people, cats and places.
 import * as THREE from 'three';
-import { col } from './stage';
+import { col } from '../../world/three-legacy';
 
 /** One part of a model: a geometry and its sRGB colour; the colour attribute is left out when the parts have none. */
 type Part = [geometry: THREE.BufferGeometry, colour?: string];
