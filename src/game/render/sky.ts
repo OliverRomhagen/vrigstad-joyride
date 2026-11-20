@@ -4,7 +4,6 @@
 // drift past with parallax when it moves. The field is src/world/clouds.ts's, mirrored in GLSL below.
 import * as THREE from 'three';
 import {
-  approach,
   CLOUD_ALTITUDE_M,
   CLOUD_CURVE,
   CLOUD_FADE_M,
@@ -20,6 +19,7 @@ import {
   sunCover,
   windOffset,
 } from '../../world/clouds';
+import { approach } from '../sim/handling';
 
 export interface SkyOptions {
   /** sRGB colours, used as written (colour management is off, see three-legacy.ts) */
@@ -186,7 +186,7 @@ export class Sky {
     u.evolve.value = evolveAt(timeS);
     const d = this.sunDir;
     const cover = sunCover(this.cfg, camera.x, camera.y, camera.z, d.x, d.y, d.z, timeS);
-    this.shade = this.shade < 0 ? cover : approach(this.shade, cover, dt, SUN_SHADE_TAU_S);
+    this.shade = this.shade < 0 ? cover : approach(this.shade, cover, SUN_SHADE_TAU_S, dt);
     this.sunFactor = 1 - CLOUD_PRESETS[this.cfg.cover].sunDim * this.shade;
   }
 

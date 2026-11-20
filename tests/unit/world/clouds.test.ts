@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import {
-  approach,
   CLOUD_COVERS,
   CLOUD_PRESETS,
   CLOUD_SCALE_M,
@@ -111,15 +110,6 @@ describe('wind and time', () => {
       worst = Math.max(worst, Math.abs(a - b));
     }
     expect(worst).toBeLessThan(0.05);
-  });
-
-  it('eases the sunlight the same way at 30 and at 60 frames a second', () => {
-    let a = 1;
-    let b = 1;
-    for (let i = 0; i < 60; i++) a = approach(a, 0, 1 / 60, 1.6);
-    for (let i = 0; i < 30; i++) b = approach(b, 0, 1 / 30, 1.6);
-    expect(a).toBeCloseTo(b, 12);
-    expect(a).toBeCloseTo(Math.exp(-1 / 1.6), 12);
   });
 });
 

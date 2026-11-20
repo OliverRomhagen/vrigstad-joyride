@@ -263,7 +263,3 @@ export function sunCover(
     fade
   );
 }
-
-/** Moves `current` towards `target` with time constant `tau` (s); the same result whatever the frame rate. */
-export const approach = (current: number, target: number, dt: number, tau: number) =>
-  target + (current - target) * Math.exp(-dt / tau);
