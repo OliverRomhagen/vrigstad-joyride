@@ -356,7 +356,6 @@ function placeCar(c) {
   _f.set(Math.sin(c.h), 0, -Math.cos(c.h)); _f.addScaledVector(n, -_f.dot(n)).normalize(); _r.crossVectors(_f, n);
   _m.makeBasis(_r, n, _f.negate()); c.mesh.quaternion.setFromRotationMatrix(_m);
   c.mesh.position.set(c.x, groundAt(c.x, c.z) - (c.wet ? 0.55 : 0), c.z);
-  if (c.slip) c.mesh.rotateZ(c.slip * DRIFT_ROLL);           // lean out of the slide
   vehicleVisuals.sync(c);
 }
 function addCar(type, x, z, h, mode, assetId = pickVariant(type, modelRnd())) {
@@ -426,7 +425,6 @@ const DRIFT_MIN_V = 7.5, DRIFT_KEEP_V = 4;     // m/s to start a drift, and belo
 const GRIP = 12, DRIFT_GRIP = 1.6;             // 1/s: how fast the line of travel swings round to where the nose points
 const DRIFT_YAW = 1.7, DRIFT_MAX_SLIP = 1.0;   // yaw rate multiplier in a drift; rad, the most the nose can point off the line (no spin-outs)
 const DRIFT_DRAG = 2.5, DRIFT_THR = 0.35;      // m/s² lost to sideways scrub; share of normal acceleration the throttle still gives
-const DRIFT_ROLL = 0.08;                       // rad of body lean per rad of slip
 const RECOVER_S = 0.9, SPIN_DECAY = 2.5;       // s for grip to come back after a drift; 1/s fade of the yaw the nose carries out of it (counter-steer to catch it)
 const FLICK_LOOSE = 0.5, FLICK_S = 0.6;        // s of looseness each quick left-right reversal adds (up to RECOVER_S); s apart that still counts as quick
 const FLICK_SPIN = 1.5;                        // rad/s the rear's swing adds to the new direction at full looseness, on top of the steering
