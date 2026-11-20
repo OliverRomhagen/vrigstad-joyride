@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { restingBody, stepBody, type BodyForces } from '../../../../src/game/render/suspension';
+import { type BodyForces, restingBody, stepBody } from '../../../../src/game/render/suspension';
 import { type CarType, VEHICLE_SPECS } from '../../../../src/game/sim/vehicle-spec';
 
 const run = (forces: BodyForces, seconds: number, type: CarType = 'volvo', dt = 1 / 60) => {

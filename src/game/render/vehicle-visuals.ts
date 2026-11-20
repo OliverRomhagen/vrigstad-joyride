@@ -1,7 +1,8 @@
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
-import { BODY_NODE, WHEEL_NODES, vehicleDefinition, type VehicleId } from './vehicle-registry';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { BODY_NODE, type VehicleId, vehicleDefinition, WHEEL_NODES } from './vehicle-registry';
+
 type Car = { mesh: THREE.Object3D; x: number; z: number; h: number };
 type Definition = NonNullable<ReturnType<typeof vehicleDefinition>>;
 type Wheel = { pivot: THREE.Group; spin: THREE.Group; front: boolean };
@@ -46,17 +47,16 @@ export class VehicleVisuals {
     view.status = 'loading';
     let task = this.templates.get(view.definition.id);
     if (!task) {
-      task = this.loader.loadAsync(view.definition.url).then((g) => g.scene);
+      task = this.loader.loadAsync(view.definition.url).then(g => g.scene);
       this.templates.set(view.definition.id, task);
     }
     task
-      .then((template) => {
+      .then(template => {
         if (view.removed) return;
         const root = template.clone(true);
         root.updateMatrixWorld(true);
-        const nodes = WHEEL_NODES.map((name) => root.getObjectByName(name));
-        if (nodes.some((n) => !n) || !root.getObjectByName(BODY_NODE))
-          throw new Error('Missing body/wheel nodes');
+        const nodes = WHEEL_NODES.map(name => root.getObjectByName(name));
+        if (nodes.some(n => !n) || !root.getObjectByName(BODY_NODE)) throw new Error('Missing body/wheel nodes');
         for (let i = 0; i < nodes.length; i++) {
           const node = nodes[i]!,
             pivot = new THREE.Group(),
@@ -75,7 +75,7 @@ export class VehicleVisuals {
         root.attach(body);
         sprung.add(body);
         root.add(sprung);
-        root.traverse((node) => {
+        root.traverse(node => {
           if (!(node instanceof THREE.Mesh)) return;
           node.castShadow = !this.coarse;
           node.receiveShadow = true;
@@ -93,7 +93,7 @@ export class VehicleVisuals {
         if (view.color) this.paint(view.car, view.color);
         this.updateVisibility(view);
       })
-      .catch((error) => {
+      .catch(error => {
         if (!view.removed) {
           view.status = 'failed';
           console.warn('Vehicle asset failed:', view.definition.id, error);
@@ -117,15 +117,9 @@ export class VehicleVisuals {
       view.materials.add(m);
       return m;
     };
-    body?.traverse((node) => {
-      if (
-        !(node instanceof THREE.Mesh) ||
-        (node !== body && !node.name.startsWith(BODY_NODE + '_'))
-      )
-        return;
-      node.material = Array.isArray(node.material)
-        ? node.material.map(recolor)
-        : recolor(node.material);
+    body?.traverse(node => {
+      if (!(node instanceof THREE.Mesh) || (node !== body && !node.name.startsWith(BODY_NODE + '_'))) return;
+      node.material = Array.isArray(node.material) ? node.material.map(recolor) : recolor(node.material);
     });
   }
   attach(car: Car, id: VehicleId, fallback: THREE.Mesh, color?: string) {
@@ -179,8 +173,7 @@ export class VehicleVisuals {
     if (this.elapsed >= REFRESH_SECONDS) {
       this.elapsed = 0;
       for (const view of this.views)
-        view.distance =
-          Math.hypot(view.car.x - focus.x, view.car.z - focus.z) - (view.selected ? DETAIL_KEEP_M : 0);
+        view.distance = Math.hypot(view.car.x - focus.x, view.car.z - focus.z) - (view.selected ? DETAIL_KEEP_M : 0);
       this.views.sort((a, b) => a.distance - b.distance);
       let count = 0;
       for (const view of this.views) {
@@ -196,6 +189,10 @@ export class VehicleVisuals {
       for (const beacon of view.beacons)
         beacon.emissiveIntensity = view.selected && Math.floor(this.time / 0.22) % 2 ? 1.8 : 0;
   }
+  /** Whether the car's detailed model has loaded (false while loading, if it failed, or for a car without one). */
+  loaded(car: Car) {
+    return this.records.get(car)?.status === 'loaded';
+  }
   definition(car: Car) {
     return this.records.get(car)?.definition;
   }
@@ -206,7 +203,7 @@ export class VehicleVisuals {
           id: view.definition.id,
           status: view.status,
           detailed: !!view.root?.visible,
-          wheels: view.wheels.map((w) => ({
+          wheels: view.wheels.map(w => ({
             steer: w.pivot.rotation.y,
             spin: w.spin.rotation.x,
           })),

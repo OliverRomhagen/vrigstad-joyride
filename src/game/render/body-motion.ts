@@ -1,6 +1,6 @@
 import type * as THREE from 'three';
 import type { Suspension } from '../sim/vehicle-spec';
-import { restingBody, stepBody, type BodyForces, type BodyState } from './suspension';
+import { type BodyForces, type BodyState, restingBody, stepBody } from './suspension';
 
 // Reads only what the simulation already has: position, heading and speed. The ride height comes from the
 // mesh, which placeCar puts on the ground.
@@ -29,7 +29,18 @@ const _forces: BodyForces = { lateral: 0, longitudinal: 0, vertical: 0 };
 export class BodyMotion {
   private readonly entries = new Map<Car, Entry>();
   add(car: Car, suspension: Suspension, ...nodes: THREE.Object3D[]) {
-    this.entries.set(car, { suspension, state: restingBody(), nodes, x: car.x, z: car.z, h: car.h, v: car.v, y: 0, vy: 0, fresh: true });
+    this.entries.set(car, {
+      suspension,
+      state: restingBody(),
+      nodes,
+      x: car.x,
+      z: car.z,
+      h: car.h,
+      v: car.v,
+      y: 0,
+      vy: 0,
+      fresh: true,
+    });
   }
   /** Adds a part that loads later, such as the detailed model's body. */
   addNode(car: Car, node: THREE.Object3D) {
@@ -46,7 +57,11 @@ export class BodyMotion {
     for (const [car, e] of this.entries) {
       const y = car.mesh.position.y,
         vy = (y - e.y) / dt;
-      if (e.fresh || Math.hypot(car.x - e.x, car.z - e.z) > TELEPORT_M || Math.hypot(car.x - focus.x, car.z - focus.z) > ACTIVE_RANGE_M) {
+      if (
+        e.fresh ||
+        Math.hypot(car.x - e.x, car.z - e.z) > TELEPORT_M ||
+        Math.hypot(car.x - focus.x, car.z - focus.z) > ACTIVE_RANGE_M
+      ) {
         Object.assign(e.state, restingBody());
         e.vy = 0;
       } else {
