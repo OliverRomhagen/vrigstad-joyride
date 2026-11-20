@@ -36,7 +36,7 @@ Three houses are safehouses, shown as green houses on the minimap and marked wit
 
 You start with 200 kr, shown under the stars. The kiosk on Torget sells trisslotter (30 kr), cat treats and food. One ticket in ten wins, from 30 kr up to a rare 10 000 kr, and the more losing tickets you scratch in a row, the worse your language gets. Getting *gripen* costs a fine: a quarter of your money, or 100 kr per star if that is more. And if 1 000 kr is burning a hole in your pocket, press L.
 
-For testing, `npm run dev` or `?cheats` on any build's URL turns on cheats: type MYNT to get 1 000 kr.
+For testing, `npm run dev` or `?dev` on any build's URL turns on dev mode: `§` (or `` ` ``) opens a console, where `help` lists the commands, `kr 500` adds 500 kr, `mynt` adds 1 000 kr and `adopt cat` gives you a new cat.
 
 ## How it is built
 

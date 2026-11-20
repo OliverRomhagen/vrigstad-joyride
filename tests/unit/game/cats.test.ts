@@ -120,6 +120,18 @@ describe('owning a cat', () => {
     expect(Math.hypot(cat.x - x, cat.z - z)).toBeCloseTo(0.8);
   });
 
+  it('spawnNear makes a new stray on dry land right by the player, ready to adopt', () => {
+    const { c, player } = colony(x => x > 0);   // water east of x = 0: the cat must land west of it
+    player.x = 50; player.z = -20;
+    const k = c.spawnNear({ x: 0, z: -20 });
+    expect(c.cats).toHaveLength(2);
+    expect(k).toMatchObject({ owned: false, pets: 0, name: 'Kisse' });
+    expect(Math.hypot(k.x, k.z + 20)).toBeCloseTo(1.5);   // CAT_NEW_M: every try is this far out, and one of them is dry
+    expect(k.x <= 0).toBe(true);
+    c.adopt(k);
+    expect(c.owned).toBe(k);
+  });
+
   it('a second cat cannot be adopted while you own one', () => {
     const { c, cat } = colony();
     petUntilReady(c, cat);
