@@ -695,6 +695,7 @@ function updateSmoke(dt, T) {
 }
 
 // trisslott (src/game/trisslott.ts)
+// biome-ignore lint/plugin/no-math-random: the known exception in AGENTS.md (rule 5); a ticket's luck isn't world state to replay
 const trisslott = new Trisslott({ random: Math.random, pick, now: () => performance.now() / 1000, toast,
   draw: (bought, won) => { const el = $('triss'); el.hidden = false; el.textContent = 'Trisslotter: ' + bought + ' · Vinster: ' + won; } });
 let camYaw = 0.6, camPitch = 0.34, lookOff = 0, lookIdle = 9;
