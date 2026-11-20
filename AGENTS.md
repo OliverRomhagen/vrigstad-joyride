@@ -4,19 +4,21 @@ Instructions for AI coding agents (and a quick start for humans) working on Vrig
 
 ## The project in one paragraph
 
-A browser open-world driving game set in the real village of Vrigstad, Sweden, built from OpenStreetMap data and elevation tiles, plus a 3D map of the same area. Rendering is three.js. The codebase is in transition from a single-file prototype to a modular Vite + TypeScript app; the plan is tracked in [#61](https://github.com/OliverRomhagen/vrigstad-joyride/issues/61). The build is Vite ([#44](https://github.com/OliverRomhagen/vrigstad-joyride/issues/44)), but the code is only starting to split: the game is still mostly one file, `src/game/main.ts`, and the map another, `src/map/main.ts`, both reading the world's data and queries from `src/world/` ([#48](https://github.com/OliverRomhagen/vrigstad-joyride/issues/48)).
+A browser open-world driving game set in the real village of Vrigstad, Sweden, built from OpenStreetMap data and elevation tiles, plus a 3D map of the same area. Rendering is three.js. The codebase is in transition from a single-file prototype to a modular Vite + TypeScript app; the plan is tracked in [#61](https://github.com/OliverRomhagen/vrigstad-joyride/issues/61). The build is Vite ([#44](https://github.com/OliverRomhagen/vrigstad-joyride/issues/44)), and the code is splitting into modules ([#177](https://github.com/OliverRomhagen/vrigstad-joyride/issues/177)): input, the HUD, health, the police, the player on foot, cats, pets and pedestrians have their own files in `src/game/`, but cars, places, what pressing E does, the camera and the main loop are still in `src/game/main.ts`. The map is one file, `src/map/main.ts`. Both read the world's data and queries from `src/world/` ([#48](https://github.com/OliverRomhagen/vrigstad-joyride/issues/48)).
 
 ## Commands
 
 ```sh
 npm install                 # once
 npm run dev                 # dev server with hot reload: the game at http://localhost:5173/, the map at /map.html
-npm run check               # typecheck; run before every commit, with npm test, and CI runs it on every PR (lint joins them in #46)
+npm run check               # typecheck, lint and format check (Biome), then the static gate (Fallow); run before every commit, with npm test, and CI runs it on every PR that changes code
+npm run format              # apply Biome's formatting and safe lint fixes
 npm test                    # unit tests (Vitest), once
+npm run analyze:report      # reading passes (Fallow): copied code and complexity hotspots; reported, never fails
 npm run build               # production build into dist/ (index.html, map.html)
 npm run preview             # serve the built dist/ locally
 npx playwright install chromium   # once, for the smoke tests
-npm run test:e2e            # Playwright smoke tests against the built pages in dist/; build first
+npm run test:e2e            # Playwright smoke tests against the built pages in dist/; build first. Before a commit, run only yours (see Tests)
 npm run data                # rebuild data/vrigstad.json from data/raw/ (Python standard library only); run npm run build after, the data is built into the pages
 tools/fetch.sh              # re-download OSM + elevation (rarely needed; hits public APIs)
 ```
@@ -43,10 +45,10 @@ Every commit message **and every PR title** follows [Conventional Commits](https
 - Types: `feat` (new gameplay or feature), `fix`, `perf`, `refactor` (no behaviour change), `docs`, `test`, `build` (Vite, npm, `tools/build.mjs`), `ci`, `style` (formatting only), `chore`, `data` for changes to `data/` or the map pipeline, and `revert`.
 - Scopes are optional and name the area. They are the same list as the `scope:` labels (see Tickets): `world`, `npc`, `police`, `vehicles`, `player`, `hud`, `audio`, `minigames`, `multiplayer`, `architecture`.
 - Examples: `feat(police): add roadblocks at three stars`, `fix(hud): keep street sign inside safe area on iPhone`, `refactor(world): share terrain code between game and map`, `data: refresh OSM extract`.
-- Summary under ~70 characters. Add a body for the *why* when it isn't obvious.
+- The whole first line is at most 72 characters, which is where GitHub cuts a commit subject off with "…". For a PR title, count the ` (#123)` that the squash merge adds: a title can use 72 minus the length of ` (#n)`, so 65 for now (64 from #1000 on). CI checks only the PR title, which is enough while every merge is a squash; keep commit subjects on a branch within 72 too. Use the room, rather than cutting the summary shorter than it needs to be. Add a body for the *why* when it isn't obvious.
 - Release notes are generated from PR titles (see "Releases" in the README), and the type sets the version bump: `feat` → minor, `fix` / `perf` → patch.
 - Merge PRs with **squash**. The PR title becomes the commit subject, so it must follow the same format.
-- The `PR title` check (`.github/workflows/pr-title.yml`) enforces the types and the lower-case summary with no period. The summary length isn't checked. A summary can't start with a capital, so rephrase one that would start with a place name (`fix(world): fill Slättsjön to the shore`, not `fix(world): Slättsjön fills to the shore`), and retitle a GitHub "Revert" PR as `revert: …`.
+- The `PR title` check (`.github/workflows/pr-title.yml`) enforces the types, the lower-case summary with no period, and the length of the PR title. A summary can't start with a capital, so rephrase one that would start with a place name (`fix(world): fill Slättsjön to the shore`, not `fix(world): Slättsjön fills to the shore`), and retitle a GitHub "Revert" PR as `revert: …`.
 
 ### Tickets
 
@@ -55,8 +57,9 @@ GitHub issues are the backlog: every bug, idea and piece of work is one issue.
 - **Write** the outcome in the title ("Police lose you after 18 s out of sight", not "police fix"). The body says the problem, the proposal and when it's done; the issue forms in `.github/ISSUE_TEMPLATE/` ask for exactly that.
 - **Type** every issue in GitHub's Type field, not with a label: `Bug`, `Feature` (new gameplay or content) or `Task` (tech, tooling, docs, or improving an existing feature). The forms set it; from the CLI, `gh issue create --type Feature`. A PR has no type field: its Conventional Commits title is its type.
 - **Label** every issue when you file it, and every PR when you open it:
-  - **A priority**, on issues: `prio:high`, `prio:mid` or `prio:low`. Use `status:future` for options to decide on later. A collaborator who files an issue picks the priority they think fits; for issues from people who can't set labels, triage adds it. The maintainers change it when they rank differently.
+  - **A priority**, on issues: `prio:high`, `prio:mid` or `prio:low`. Use `status:future` for options to decide on later. Use `status:blocked` on a PR that waits for something outside it, such as another PR or a decision; an issue that waits on another gets a **blocked by** link instead (see **Link** below). A collaborator who files an issue picks the priority they think fits; for issues from people who can't set labels, triage adds it. The maintainers change it when they rank differently.
   - **At most one scope**, if one fits: `scope:world`, `npc`, `police`, `vehicles`, `player`, `hud`, `audio`, `minigames`, `multiplayer`, `architecture` (`.github/labels.yml` says what each covers). If two fit, the issue is probably two issues. When a PR is opened, the same workflow adds its scope from the title (`feat(world): …` gives `scope:world`), else from the referenced issue when that has one scope. A retitle changes it while it is still the scope the old title gave; a scope set or removed by hand stays.
+  - **`lab`** (an opt-in experiment), **`accessibility`** (a barrier for people with disabilities) and **`security`** (hardening that is fine to discuss in public; not a vulnerability) describe the change itself, so they also carry over from the referenced issue to the PR when it is opened, or when an edit makes the description reference a different issue. Priority and status labels stay on the issue.
 - **Labels live in `.github/labels.yml`.** Add or rename one there, in a PR: the PR shows what would change, and the merge applies it. Rename with `from_name: <old name>` on the entry, or a new label is created and the old one stays on its issues. The sync never deletes a label: to delete one, remove it from the file and run `gh label delete`. A label made in GitHub's settings or with `gh label create` isn't in the file; add it there. Add a new `scope:<area>` only when several issues need it, with a one-line description, and add it to the commit scopes above in the same PR. Don't create one-off labels for a single issue or PR.
 - **Link** issues by what the link means:
   - `#12` in text is a mention: it shows in #12's timeline and nowhere else. Use it for "related" and "see also".
@@ -69,24 +72,43 @@ GitHub issues are the backlog: every bug, idea and piece of work is one issue.
 ### Several agents at once
 
 - One branch (and worktree) per agent and task. Bring your branch up to date with `main` before opening a PR and again before merging.
-- Until #44 splits the code, every feature edits `src/game/main.ts`, so expect conflicts. Keep changes in their own section of the file where you can.
+- Until #177 finishes splitting the code, most features edit `src/game/main.ts`, so expect conflicts. Keep changes in their own section of the file where you can.
 - Say how you tested in the PR, and be honest about what wasn't tested ("not played by hand on a phone").
 
 ## Code style
 
 - **Match the surrounding code.** Same naming, comment density and idiom as the file you're in.
-- Current single-file code is dense: 2-space indent, single quotes, semicolons, short local names for hot math (`x`, `z`, `h`, `v`, `dt`), sections marked `// ---------- name ----------`. Keep that style inside `src/game/main.ts` and `src/map/main.ts` until they are split up.
-- New TypeScript code: formatted by Biome (after #46), so don't hand-format. Prefer clear names over the dense style, small modules with one responsibility, named exports, no default exports, `strict` types, no `any` without a comment saying why.
+- Current single-file code is dense: 2-space indent, single quotes, semicolons, short local names for hot math (`x`, `z`, `h`, `v`, `dt`), sections marked `// ---------- name ----------`. Keep that style inside `src/game/main.ts` and `src/map/main.ts` until they are split up, and keep the names of code moved out of them (see Naming).
+- New TypeScript code: formatted by Biome (`npm run format`), so don't hand-format. The pages (`src/*.html`, `src/game/main.ts`, `src/map/main.ts`) aren't formatted until #177 splits them (`biome.jsonc`), but the two scripts are still checked for undeclared names, unused variables and unused imports. The repo's `.vscode/` settings make Biome the formatter in VS Code, so a Prettier you set up for other projects doesn't reformat files on save. Prefer clear names over the dense style, small modules with one responsibility, named exports, no default exports, `strict` types, no `any` without a comment saying why.
 - Classes, data or functions, by what the thing is:
   - **A class** for something built once and then queried, or that holds state or resources with a lifecycle: a world index (`Heightfield`, `RoadNetwork`, `BuildingIndex`), a controller, an object that owns meshes and disposes them, a Svelte store with `$state` fields. Depend on the narrow part you use (`Pick<Heightfield, 'heightAt'>`), so a test can pass a stub.
   - **Plain data** for simulation state (#49): it has to be copied to a worker or over the network, snapshotted for replays and compared in tests. No methods on entities.
   - **Functions** for pure helpers (`pointInPolygon`).
 
-  A method passed around as a function loses `this`: call it on its object, or `bind` it once.
+  A method passed around as a function loses `this`: call it on its object, `bind` it once, or make it an arrow field (`toggle = () => { … }`) when it's meant to be handed out.
 - Comments explain *why* and non-obvious units or conventions, not what the next line does.
 - No new runtime dependency without saying why in the PR. Dev dependencies (tooling, tests) are fine.
 - Gameplay numbers (speeds, radii, timers) go in named constants near the top of their module, with units in the name or a comment (`EVADE_DIST_M = 170`).
 - Avoid per-frame allocations in the game loop: reuse vectors (`const _v = new THREE.Vector3()` at module level) as the existing code does.
+
+### Naming
+
+Defaults for new code; review checks them, no linter does.
+
+- **Name a thing for what it is.** If a reviewer has to ask what a name holds ("is `idx` a node or a road?"), rename it. A domain word and a structural word aren't interchangeable: a `car` (the sim object) isn't its `VehicleVisuals` model, and a `footprint` isn't a `building`.
+- **Booleans read as a question or a state:** `canDrift`, `inCar`, `dragging`, `menuOpen`. Add `is`, `has`, `can` or `should` when the bare word could be read as a noun or a verb: a flag beside the function `busted()` would be `isBusted`, not `busted`.
+- **Handlers and callbacks are named by what they do** (`endDrag`, `closeMenu`, `spawnTraffic`), not by the event (`handleClick`, `onPointerUp`). Pass a named handler by reference when it's used more than once or is longer than a line; a short one-off can stay an inline arrow. The callbacks a module takes in its `*Deps` object are named the same way: `caught`, `spawnCar`, `drawStars` (`src/game/police.ts`).
+- **Getters over `getX()` on classes** for a value the object already has (`get dragging()` in `src/game/input.ts`). Sim entities stay plain data with no methods, as above. Keep `getX()` or `loadX()` for work that costs something, such as an async load.
+- **Fixed sets of values are `as const` maps with upper-case keys, not enums:** `RoadClass = { PRIMARY: 0, SECONDARY: 1, … } as const` (`src/world/data.ts`). An `Error` subclass only when a caller branches on it.
+- **A leading `_`** marks a module-level scratch object (`_v`, above) or an unused parameter (`(_e, i) => …`). For an array slot you skip, leave it out: `const [, x, z] = row`. Biome's unused-variable and unused-parameter rules skip `_` names.
+- **Private members** use TypeScript's `private`, as the existing classes do, not `#`.
+
+**When to break them:**
+- **Names someone else owns keep their spelling:** three.js and the DOM (`visible`, `castShadow`, `needsUpdate`, `hidden`), OSM tags and the data in `data/vrigstad.json`.
+- **Existing code isn't renamed just to follow these.** Rename when you're changing that code anyway; a rename that touches many lines is its own `refactor` PR.
+- **Code moved out of a `main.ts` keeps its names** in the PR that moves it (#177), so a reviewer can compare it with the old code. Biome reformats it in its new module, so move it in one commit, changing only what the move needs (exports, imports, reads through its `*Deps`), and run `npm run format` in the next; `git diff --color-moved` on the first commit then shows what really changed. The move commit is the one commit that may fail `npm run check`; the PR's last commit passes it. Clear names can follow in a later PR.
+- **Inside `src/game/main.ts` and `src/map/main.ts`, match the surrounding code**, as above, until #177 splits them.
+- **When a name reads better another way, use it** and say why in the PR. Consistency with nearby code beats a general rule.
 
 ## Architecture rules (summary; details in ARCHITECTURE.md)
 
@@ -101,10 +123,16 @@ Until the migration reaches a given rule, don't make the existing code worse in 
 ## Tests
 
 - **Smoke tests** (Playwright, [#43](https://github.com/OliverRomhagen/vrigstad-joyride/issues/43)): the pages load without console errors, Start works, the player can move and get into a car. Every PR keeps them green. When you add a major feature, add one smoke step for it.
-- **Unit tests** (Vitest, [#52](https://github.com/OliverRomhagen/vrigstad-joyride/issues/52)): game rules and pure helpers such as height lookup, driving model, wanted level, police AI and spatial queries. Write them for new gameplay rules; use the seeded RNG for deterministic scenarios. They live in `tests/unit/`, mirroring `src/`, and run in CI on every PR (`.github/workflows/unit.yml`). Build test worlds small and by hand (`tests/unit/world/fixture.ts`), not from `data/vrigstad.json`, so each expected value can be worked out.
+- **Unit tests** (Vitest, [#52](https://github.com/OliverRomhagen/vrigstad-joyride/issues/52)): game rules and pure helpers such as height lookup, driving model, wanted level, police AI and spatial queries. Write them for new gameplay rules; use the seeded RNG for deterministic scenarios. They live in `tests/unit/`, mirroring `src/`, and run in CI on every PR that changes more than docs, labels, issue forms, agent files or other workflows (`.github/workflows/unit.yml`). Build test worlds small and by hand (`tests/unit/world/fixture.ts`), not from `data/vrigstad.json`, so each expected value can be worked out.
 - **No pixel-diff tests.** Headless WebGL output varies. Assert on state exposed through the test hook instead, and attach screenshots to the PR when visuals change.
-- The smoke tests live in `tests/e2e/` and run in CI on every PR (`.github/workflows/e2e.yml`), which also fails if the committed `data/vrigstad.json` is stale and uploads screenshots of both pages as the `e2e-screenshots` artifact. They read game state from `window.__joyride.state()` (defined at the end of `src/game/main.ts`); add a field there when a new smoke step needs one, and keep the hook read-only.
-- Most gameplay still lives in `src/game/main.ts`, out of the unit tests' reach until #49 splits it: test changes there in a browser too, and describe what you did in the PR.
+- The smoke tests live in `tests/e2e/` and run in CI on every PR that changes more than docs, labels, issue forms, agent files or other workflows (`.github/workflows/e2e.yml`), which also fails if the committed `data/vrigstad.json` is stale and uploads screenshots of both pages as the `e2e-screenshots` artifact. They read game state from `window.__joyride.state()` (defined at the end of `src/game/main.ts`); add a field there when a new smoke step needs one, and keep the hook read-only.
+- **Static analysis** ([Fallow](https://github.com/fallow-rs/fallow), [#107](https://github.com/OliverRomhagen/vrigstad-joyride/issues/107)), configured in `fallow.toml`, is the last step of `npm run check`, so it runs before every commit and in CI (`.github/workflows/check.yml`), and takes well under a second:
+  - The gate (`fallow dead-code`) fails on: an unused file, export, class member or dependency; a circular import; an import across the layers in `fallow.toml` (`world` imports only `world`; `sim` only `sim` and `world`; `render` anything but the page code); and, from the rule pack `fallow-rules.jsonc`, three.js imported in `sim` or `world` code, or a DOM call by name (`document.*`, `window.*`, `fetch`, `addEventListener`, …) in either (ARCHITECTURE.md, rule 2). Property reads such as `window.innerWidth` aren't calls, and a call through an alias (`const w = window`) has no DOM name, so the DOM rule misses both.
+  - A new module in `src/game/` is `sim` code by default, so the rules above apply from its first commit. A page module, one that uses the DOM or the HUD, goes in the `page` list in `fallow.toml` instead, until #177 gives the rules their own `src/game/sim/`.
+  - The exceptions for code that breaks a rule today are listed in those two files, each with what ends it. Remove an entry when its code is fixed; don't add one for new code: fix the finding, or say in the PR why the rule is wrong. For a single line, `// fallow-ignore-next-line <rule>` with a reason works too, with the name Fallow prints (`unused-export`, `boundary-violation`); a rule-pack finding needs its full name, such as `policy-violation:joyride/no-dom`. When an export is only used by a test, that counts as used.
+  - `npm run analyze:report` prints copied code (`fallow dupes`) and the files where complexity meets churn (`fallow health --hotspots`). Read it before refactoring; it doesn't fail.
+- **Before a commit**, run `npm run check` and `npm test` in full: they take seconds. The smoke tests render WebGL in software and keep every core busy for minutes, so run only the ones for what you changed, plus the ones that load the page and get into the Volvo, on one or two workers, after a build, since they test `dist/`: `npm run build && npx playwright test -g "kiosk|loads with no console errors|gets you in" --workers=2`. CI runs the whole suite on every PR. Until #177 splits `src/game/main.ts`, a change there can break another feature's test, so a red CI run after a green subset is expected now and then, not a reason to run everything locally.
+- Much of the gameplay still lives in `src/game/main.ts`, out of the unit tests' reach until #177 moves it into modules: test changes there in a browser too, and describe what you did in the PR.
 
 ## Data and coordinates
 

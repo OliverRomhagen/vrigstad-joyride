@@ -37,3 +37,24 @@ jobs:
           subjectPattern: ^(?![A-ZÅÄÖ]).+[^.]$
           subjectPatternError: |
             The summary "{subject}" in "{title}" should start in lower case and not end with a period.
+
+  length:
+    name: Title length
+    runs-on: ubuntu-latest
+    steps:
+      # The squash merge appends " (#123)", and GitHub cuts a commit subject off after 72 characters.
+      - name: Title fits in 72 characters with the PR number
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+          NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          export LC_ALL=C.UTF-8 # count characters, not bytes (å, ä, ö)
+          suffix=" (#$NUMBER)"
+          max=$((72 - ${#suffix}))
+          # The title stays out of the ::error line: the runner would decode %25, %0A and %0D in it.
+          echo "Title: $TITLE"
+          if [ "${#TITLE}" -gt "$max" ]; then
+            echo "::error title=PR title too long::The title is ${#TITLE} characters; with \"$suffix\" it must be at most $max."
+            exit 1
+          fi
+          echo "${#TITLE} of $max characters."
