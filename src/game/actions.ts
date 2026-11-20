@@ -3,9 +3,9 @@
 import { wrap } from '../world/math';
 import type { Car } from './cars';
 import type { Cat } from './cats';
-import { HP_MAX, type Health, wakeSpot } from './health';
-import { carInReach, HOME, type PlayerState, standAt, stepOut, tooFastToGetOut } from './player';
+import { type Health, HP_MAX, wakeSpot } from './health';
 import type { Place, Places } from './places';
+import { carInReach, HOME, type PlayerState, standAt, stepOut, tooFastToGetOut } from './player';
 import type { Wanted } from './police';
 import type { GameState, ViewState } from './state';
 
@@ -55,43 +55,153 @@ export class Actions {
     this.g = g;
   }
 
-  nearestCar = () => { const { player, cars } = this.g; return carInReach(player, cars); };
+  nearestCar = () => {
+    const { player, cars } = this.g;
+    return carInReach(player, cars);
+  };
   // park the car where it stands and put you on foot; the caller places you
-  leaveCar = () => { const { game, player, placeCar } = this.g; const c = game.pcar!; c.mode = 'idle'; c.v = c.slip = c.drift = c.boost = c.thr = c.st = 0; placeCar(c); game.pcar = null; game.inCar = false; player.mesh.visible = true; };
+  leaveCar = () => {
+    const { game, player, placeCar } = this.g;
+    const c = game.pcar!;
+    c.mode = 'idle';
+    c.v = c.slip = c.drift = c.boost = c.thr = c.st = 0;
+    placeCar(c);
+    game.pcar = null;
+    game.inCar = false;
+    player.mesh.visible = true;
+  };
   action = () => {
-    const { game, view, player, places, wanted, kmenu, closeMenu, nearPlace, enterHouse, leaveHouse, nearCat, catFirst, openOwnCat, petCat, openKiosk, collide, rnd, pick, toast, carName, spokenName, driverOut, spawnTraffic, drawStolen } = this.g;
+    const {
+      game,
+      view,
+      player,
+      places,
+      wanted,
+      kmenu,
+      closeMenu,
+      nearPlace,
+      enterHouse,
+      leaveHouse,
+      nearCat,
+      catFirst,
+      openOwnCat,
+      petCat,
+      openKiosk,
+      collide,
+      rnd,
+      pick,
+      toast,
+      carName,
+      spokenName,
+      driverOut,
+      spawnTraffic,
+      drawStolen,
+    } = this.g;
     if (!game.started || game.bigT > 0) return;
-    if (places.inside) { leaveHouse(); return; }
-    if (!kmenu.hidden) { closeMenu(); return; }
-    const pl = nearPlace(), kt = nearCat();
-    if (catFirst(kt, pl)) { if (kt!.owned) openOwnCat(kt!); else petCat(kt!); return; }
-    if (pl) { if (pl.kind === 'safe') enterHouse(pl); else openKiosk(); return; }
-    if (game.inCar) {
-      if (tooFastToGetOut(game.pcar!)) { toast('Slow down before you get out.', 2); return; }
-      stepOut(player, game.pcar!); collide(player, 0.5);
-      this.leaveCar(); game.jumpQ = false; view.camYaw = wrap(view.camYaw + view.lookOff); view.lookOff = 0; return;
+    if (places.inside) {
+      leaveHouse();
+      return;
     }
-    const c = this.nearestCar(); if (!c) return;
+    if (!kmenu.hidden) {
+      closeMenu();
+      return;
+    }
+    const pl = nearPlace(),
+      kt = nearCat();
+    if (catFirst(kt, pl)) {
+      if (kt!.owned) openOwnCat(kt!);
+      else petCat(kt!);
+      return;
+    }
+    if (pl) {
+      if (pl.kind === 'safe') enterHouse(pl);
+      else openKiosk();
+      return;
+    }
+    if (game.inCar) {
+      if (tooFastToGetOut(game.pcar!)) {
+        toast('Slow down before you get out.', 2);
+        return;
+      }
+      stepOut(player, game.pcar!);
+      collide(player, 0.5);
+      this.leaveCar();
+      game.jumpQ = false;
+      view.camYaw = wrap(view.camYaw + view.lookOff);
+      view.lookOff = 0;
+      return;
+    }
+    const c = this.nearestCar();
+    if (!c) return;
     if (c.mode === 'ai') {
       driverOut(c);
-      toast(pick(['”Hörru! Det där är min bil!”', '”Men va fan gör du?!”', '”Polisen! Han tar ' + (spokenName(c) || 'min ' + c.T.name) + '!”']) + ' The driver calls the police.');
-      wanted.addStar(); spawnTraffic(player);
+      toast(
+        pick([
+          '”Hörru! Det där är min bil!”',
+          '”Men va fan gör du?!”',
+          '”Polisen! Han tar ' + (spokenName(c) || 'min ' + c.T.name) + '!”',
+        ]) + ' The driver calls the police.',
+      );
+      wanted.addStar();
+      spawnTraffic(player);
     } else if (!c.owned) {
-      if (wanted.police.length || rnd() < 0.35) wanted.addStar('A neighbour saw you take the ' + carName(c) + ' and called the police.');
-      else toast(c.type === 'epa' ? 'EPA-traktor: legally limited to 30 km/h. Good luck outrunning anyone.' : 'You took the ' + carName(c) + '. Nobody noticed.');
+      if (wanted.police.length || rnd() < 0.35)
+        wanted.addStar('A neighbour saw you take the ' + carName(c) + ' and called the police.');
+      else
+        toast(
+          c.type === 'epa'
+            ? 'EPA-traktor: legally limited to 30 km/h. Good luck outrunning anyone.'
+            : 'You took the ' + carName(c) + '. Nobody noticed.',
+        );
     }
-    if (!c.owned) { c.owned = true; game.stolen++; drawStolen(); }
-    c.mode = 'player'; c.vh = c.h; c.slip = c.drift = c.boost = c.loose = c.thr = c.st = 0; game.pcar = c; game.inCar = true; player.y = player.vy = 0; player.mesh.visible = false; view.lookOff = 0; view.camYaw = c.h;
+    if (!c.owned) {
+      c.owned = true;
+      game.stolen++;
+      drawStolen();
+    }
+    c.mode = 'player';
+    c.vh = c.h;
+    c.slip = c.drift = c.boost = c.loose = c.thr = c.st = 0;
+    game.pcar = c;
+    game.inCar = true;
+    player.y = player.vy = 0;
+    player.mesh.visible = false;
+    view.lookOff = 0;
+    view.camYaw = c.h;
   };
-  respawn = () => { const { game, player, leaveHouse, collide } = this.g; leaveHouse(); if (game.inCar) this.leaveCar();
-    standAt(player, HOME.x, HOME.z); game.jumpQ = false; collide(player, 0.6); };
-  busted = () => { const { health, drawHealth, bigScreen } = this.g; this.respawn(); health.hp = HP_MAX; drawHealth(); bigScreen('Gripen!', 'Busted. The police drop you off at Torget.'); };
+  respawn = () => {
+    const { game, player, leaveHouse, collide } = this.g;
+    leaveHouse();
+    if (game.inCar) this.leaveCar();
+    standAt(player, HOME.x, HOME.z);
+    game.jumpQ = false;
+    collide(player, 0.6);
+  };
+  busted = () => {
+    const { health, drawHealth, bigScreen } = this.g;
+    this.respawn();
+    health.hp = HP_MAX;
+    drawHealth();
+    bigScreen('Gripen!', 'Busted. The police drop you off at Torget.');
+  };
   // health at zero: with the police after you it's Gripen!, otherwise you come to at the nearest safehouse, or Torget
   knockedOut = () => {
     const { player, places, wanted, health, collide, drawHealth, bigScreen, sayLater, pickLine } = this.g;
-    if (wanted.stars) { wanted.clear(); this.busted(); return; }   // Gripen! expects the stars cleared
+    if (wanted.stars) {
+      wanted.clear();
+      this.busted();
+      return;
+    } // Gripen! expects the stars cleared
     const spot = wakeSpot(player.x, player.z, HOME, places.list);
-    this.respawn(); standAt(player, spot.x, spot.z); collide(player, 0.6); health.hp = HP_MAX; drawHealth();
-    bigScreen('Däckad!', 'Knocked out. You come to ' + ('name' in spot ? 'at the safehouse on ' + spot.name : 'at Torget') + '.'); sayLater(pickLine(WAKE_LINES));
+    this.respawn();
+    standAt(player, spot.x, spot.z);
+    collide(player, 0.6);
+    health.hp = HP_MAX;
+    drawHealth();
+    bigScreen(
+      'Däckad!',
+      'Knocked out. You come to ' + ('name' in spot ? 'at the safehouse on ' + spot.name : 'at Torget') + '.',
+    );
+    sayLater(pickLine(WAKE_LINES));
   };
 }
