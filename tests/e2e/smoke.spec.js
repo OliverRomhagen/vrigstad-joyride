@@ -61,6 +61,28 @@ test.describe('game (index.html)', () => {
     });
   });
 
+  test('draws the clouds in every quality and preset without shader errors, and they drift with time', async ({
+    page,
+  }) => {
+    const errors = watchErrors(page);
+    await page.goto('/index.html');
+    await expectWebGL(page);
+    const first = (await state(page)).clouds;
+    expect(first).toMatchObject({ cover: 'partly', seed: 1, quality: 'high' });
+    await frames(page, 3);
+    const later = (await state(page)).clouds;
+    expect(later.timeS).toBeGreaterThan(first.timeS);
+    expect(later.sunFactor).toBeGreaterThan(0.4);
+    expect(later.sunFactor).toBeLessThanOrEqual(1);
+    for (const query of ['clouds=mostly&cloudSeed=3&wind=90,12&cloudQuality=low', 'clouds=off']) {
+      await page.goto('/index.html?' + query);
+      await expectWebGL(page);
+      await frames(page, 2);
+    }
+    expect((await state(page)).clouds).toMatchObject({ cover: 'off', sunFactor: 1 });
+    expect(errors).toEqual([]);
+  });
+
   test('loads with no console errors, a WebGL canvas and the default fleet, and Start shows the HUD', async ({
     page,
   }, testInfo) => {
