@@ -418,8 +418,10 @@ describe('naming your cat', () => {
 
 describe("a cat's menu", () => {
   const player = { x: 0, z: 0 };
-  it('stays open while you are on foot within 4 m and the cat sits still', () => {
+  it("stays open while you are on foot within 4 m and the cat isn't running off", () => {
     expect(canTend({ x: 3.9, z: 0, state: 'sit' }, player, false)).toBe(true);
+    expect(canTend({ x: 0, z: 2, state: 'follow' }, player, false)).toBe(true); // your own cat, following you
+    expect(canTend({ x: 4, z: 0, state: 'sit' }, player, false)).toBe(false);
     expect(canTend({ x: 3, z: 3, state: 'follow' }, player, false)).toBe(false); // 4.24 m away
   });
   it('closes when the cat bolts or you get in a car', () => {
