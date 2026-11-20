@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   CrossingKind,
+  FurnitureCode,
   Kerb,
   ParkingKind,
   ParkingOrientation,
@@ -128,6 +129,32 @@ const elements = [
   way(15, ring(200, 200, 20, 20), { amenity: 'parking', parking: 'underground' }),
   way(16, ring(-200, -200, 20, 20), { amenity: 'parking', parking: 'carports' }),
   way(17, ring(-195, -195, 2.5, 5), { amenity: 'parking_space' }),
+  // street furniture (#144)
+  node(20, 10, 20, { highway: 'street_lamp' }),
+  node(21, 12.04, 20, { amenity: 'bench', direction: 'SW' }),
+  node(22, 14, 20, { amenity: 'bench', direction: '95' }),
+  node(23, 16, 20, { amenity: 'bench', direction: 'towards the lake' }), // doesn't parse: left out
+  way(24, ring(30, 30, 2, 0.6), { amenity: 'bench' }), // a way-mapped bench: its middle
+  node(25, 18, 20, { amenity: 'waste_basket' }),
+  node(26, 22, 20, { highway: 'bus_stop', name: 'Vrigstad Torget' }),
+  node(27, 5000, 20, { amenity: 'bench' }), // outside the world: dropped
+  node(28, 24, 20, { leisure: 'picnic_table' }), // counted only
+  way(
+    29,
+    [
+      [0, 50],
+      [80, 50],
+    ],
+    { highway: 'residential', lit: 'yes' },
+  ),
+  way(
+    30,
+    [
+      [0, 60],
+      [80, 60],
+    ],
+    { highway: 'residential', lit: 'automatic' }, // neither yes nor no: left out
+  ),
 ];
 
 let dir = '';
@@ -143,6 +170,26 @@ beforeAll(() => {
 });
 
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
+
+describe('tools/process.py street furniture data', () => {
+  it('keeps mapped lamps, benches, bins and bus stops, with a bench direction when it parses', () => {
+    expect(out.fu).toEqual([
+      { i: 20, k: FurnitureCode.STREET_LAMP, x: 10, z: 20 },
+      { i: 21, k: FurnitureCode.BENCH, x: 12, z: 20, d: 225 },
+      { i: 22, k: FurnitureCode.BENCH, x: 14, z: 20, d: 95 },
+      { i: 23, k: FurnitureCode.BENCH, x: 16, z: 20 },
+      { i: 24, k: FurnitureCode.BENCH, x: 31, z: 30.3 },
+      { i: 25, k: FurnitureCode.WASTE_BASKET, x: 18, z: 20 },
+      { i: 26, k: FurnitureCode.BUS_STOP, x: 22, z: 20 },
+    ]);
+    expect(log).toContain('picnic tables 1 (counted only); 1 outside the world');
+  });
+  it('keeps lit=yes and lit=no on roads, and nothing else', () => {
+    expect(out.r.find(r => r.i === 29)?.lt).toBe(1);
+    expect(out.r.find(r => r.i === 30)?.lt).toBeUndefined();
+    expect(out.r.find(r => r.i === 1)?.lt).toBeUndefined();
+  });
+});
 
 describe('tools/process.py streetscape data', () => {
   it('de-duplicates by type and id, and skips incomplete elements', () => {
