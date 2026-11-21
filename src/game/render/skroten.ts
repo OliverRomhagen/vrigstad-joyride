@@ -42,7 +42,8 @@ const RUST = '#8a4a2a', // the boards
   TYRE = '#1c1c1c',
   CREAM = '#e8e2d2';
 const GATE_SIGN_Y_M = 4.6;
-const SALE_BOARD = { w: 4, h: 1.4, y: 1.9 } as const; // the TILL SALU board's size and the height of its middle (m)
+const GATE_POST_U_M = YARD.gateHalf + 0.6; // the gate's posts stand this far either side of its middle
+const SALE_BOARD = { w: 5, h: 1.7, y: 2 } as const; // the TILL SALU board's size and the height of its middle (m)
 const OWNER_SEES_M = 30; // he turns to face you inside this distance
 const OWNER_TURN_K = 3; // how quickly he turns, per second
 const CAR_DETAIL_M = 150, // the cars wear the game's car models inside this distance of the yard's middle, on a computer
@@ -275,9 +276,10 @@ export class SkrotenMeshes {
     }
 
     // the gate's posts, and the posts of the arrow signs
-    for (const u of [-YARD.gateHalf - 0.6, YARD.gateHalf + 0.6])
+    for (const u of [-GATE_POST_U_M, GATE_POST_U_M])
       put(boxGeo([[0.3, GATE_SIGN_Y_M + 0.7, 0.3, 0, (GATE_SIGN_Y_M + 0.7) / 2, 0, POST]]), u, groundY(u, 0), 0);
-    for (const s of layout.signs) put(boxGeo([[0.1, 2.6, 0.1, 0, 1.3, 0, '#9a9a92']]), s.u, groundY(s.u, s.v), s.v);
+    for (const s of layout.signs) // behind the board, whose front faces the drivers coming towards the yard
+      put(boxGeo([[0.1, 2.6, 0.1, 0, 1.3, 0, '#9a9a92']]), s.u + s.facing * 0.1, groundY(s.u, s.v), s.v);
 
     // inside the workshop, on its floor: the bench, shelves, the tyre rack and the lift's posts
     for (const pr of layout.workshop?.props ?? []) put(boxGeo(propParts(pr)), pr.u, standY(pr.u, pr.v), pr.v, pr.turn);
@@ -290,8 +292,8 @@ export class SkrotenMeshes {
     yard.add(baked, ground(YARD.uMin, uEast, -5.5, vBack));
 
     // the boards: SKROTEN over the gate, BILAR KÖPES on the fence, and an arrow sign either way along the road
-    const gate = board(12, 1.5, 'SKROTEN', null);
-    gate.position.set(0, groundY(0, 0) + GATE_SIGN_Y_M, 0);
+    const gate = board(2 * GATE_POST_U_M + 0.7, 1.5, 'SKROTEN', null); // across both posts, fixed to their road side
+    gate.position.set(0, groundY(0, 0) + GATE_SIGN_Y_M, -0.2);
     const buys = board(4, 1, 'BILAR KÖPES', null);
     buys.position.set(-22, groundY(-22, 0) + 1.3, -0.08);
     gate.rotation.y = buys.rotation.y = Math.PI; // their fronts face the road
@@ -933,7 +935,13 @@ function board(w: number, h: number, text: string, arrow: 1 | -1 | null) {
   c.fillStyle = CREAM;
   c.textAlign = 'center';
   c.textBaseline = 'middle';
-  c.font = 'bold ' + Math.round(H * (arrow ? 0.36 : 0.55)) + 'px sans-serif';
+  let fontPx = Math.round(H * (arrow ? 0.36 : 0.55));
+  c.font = 'bold ' + fontPx + 'px sans-serif';
+  const fits = (W - 24) / c.measureText(text).width; // the text is shrunk to fit inside the frame, with a margin
+  if (fits < 1) {
+    fontPx = Math.floor(fontPx * fits);
+    c.font = 'bold ' + fontPx + 'px sans-serif';
+  }
   c.fillText(text, W / 2, arrow ? H * 0.32 : H * 0.54);
   if (arrow) {
     const y = H * 0.7,
