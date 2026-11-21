@@ -12,6 +12,11 @@ export interface LabExperiment {
 /** Every experiment there is. Dropping one means deleting its entry here and its folder under src/lab/. */
 export const LAB_EXPERIMENTS = [
   { id: 'hello', name: 'Hello lab', cost: 'Nothing: logs one line, as a template for real experiments' },
+  {
+    id: 'fonts',
+    name: 'Choose your font',
+    cost: 'One font family download (33-448 KB) when ?font= picks one; nothing without it',
+  },
 ] as const satisfies readonly LabExperiment[];
 
 export type LabId = (typeof LAB_EXPERIMENTS)[number]['id'];

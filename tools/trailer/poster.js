@@ -11,11 +11,11 @@ const { open, ROOT } = require('./rig');
     const css = document.createElement('style');
     css.textContent = `
     #gl { filter: saturate(1.18) contrast(1.06); }
-    #po { position: absolute; inset: 0; z-index: 60; color: #f4f1e6; font-family: "Barlow Condensed", "Arial Narrow", sans-serif; text-align: center; text-transform: uppercase; }
+    #po { position: absolute; inset: 0; z-index: 60; color: #f4f1e6; font-family: var(--display); text-align: center; text-transform: uppercase; }
     #po .sky { position: absolute; inset: 0 0 auto 0; height: 34%; background: linear-gradient(to bottom, rgba(14,32,48,.82), rgba(14,32,48,0)); }
     #po .ground { position: absolute; inset: auto 0 0 0; height: 50%; background: linear-gradient(to top, #0b0f0e 0%, rgba(11,15,14,.97) 42%, rgba(11,15,14,.55) 72%, rgba(11,15,14,0) 100%); }
     #po .top { position: absolute; top: 5.2%; left: 0; right: 0; }
-    #po .top small { display: block; font: 500 21px "Barlow", sans-serif; letter-spacing: .3em; color: #f2c230; }
+    #po .top small { display: block; font: 500 21px var(--body); letter-spacing: .3em; color: #f2c230; }
     #po .top b { display: block; margin-top: 14px; font-weight: 700; font-size: 64px; letter-spacing: .05em; line-height: 1; text-shadow: 0 3px 18px rgba(0,0,0,.35); }
     #po .bot { position: absolute; bottom: 4.2%; left: 0; right: 0; }
     #po h1 { margin: 0; font-weight: 700; font-size: 208px; line-height: .84; letter-spacing: .005em; }
@@ -23,9 +23,9 @@ const { open, ROOT } = require('./rig');
     #po .rule { width: 150px; height: 7px; background: #f2c230; margin: 34px auto 0; }
     #po .facts { margin-top: 28px; font-weight: 600; font-size: 27px; letter-spacing: .13em; }
     #po .facts i { font-style: normal; color: #f2c230; padding: 0 .5em; }
-    #po .play { margin-top: 22px; font: 500 21px "Barlow", sans-serif; letter-spacing: .2em; color: rgba(244,241,230,.82); }
+    #po .play { margin-top: 22px; font: 500 21px var(--body); letter-spacing: .2em; color: rgba(244,241,230,.82); }
     #po .play u { text-decoration: none; text-transform: none; letter-spacing: .05em; color: #f4f1e6; }
-    #po .fine { margin-top: 18px; font: 400 13px "Barlow", sans-serif; letter-spacing: .08em; text-transform: none; color: rgba(244,241,230,.45); }`;
+    #po .fine { margin-top: 18px; font: 400 13px var(--body); letter-spacing: .08em; text-transform: none; color: rgba(244,241,230,.45); }`;
     document.head.appendChild(css);
     const po = document.createElement('div'); po.id = 'po';
     po.innerHTML = `<div class="sky"></div><div class="ground"></div>

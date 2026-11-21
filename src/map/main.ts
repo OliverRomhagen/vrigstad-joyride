@@ -16,9 +16,12 @@ import { classifyStreetscape } from '../world/streetscape-rules';
 import { LEGACY_LIGHT } from '../world/three-legacy';
 import { treeSpots } from '../world/trees';
 import { Water } from '../world/water';
+import { applyFont, BARLOW } from '../fonts/fonts';
+import { labFont } from '../lab/fonts';
 
 (function () {
 'use strict';
+applyFont(document, labFont(location.search) ?? BARLOW); // Barlow, or ?lab=fonts&font=<id> (src/lab/fonts/)
 const S = D.size, HALF = S / 2, N = D.n, EX = 2;
 const heightfield = new Heightfield(D, { exaggeration: EX }), hAt = heightfield.heightAt.bind(heightfield);
 const minE = heightfield.minElevationM, maxE = heightfield.maxElevationM;
@@ -138,7 +141,7 @@ function streetNames(pal) {
     if (!best[r.n] || best[r.n].len < len) best[r.n] = { r, len };
   }
   const fs = Math.round(9.5 * K);
-  ctx.font = '600 ' + fs + 'px "Barlow Condensed","Arial Narrow",Arial,sans-serif';
+  ctx.font = '600 ' + fs + 'px ' + getComputedStyle(document.documentElement).getPropertyValue('--display'); // the page's display font
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineJoin = 'round';
   const at = (p, dist) => { let acc = 0;
     for (let i = 2; i < p.length; i += 2) { const l = Math.hypot(p[i] - p[i - 2], p[i + 1] - p[i - 1]);

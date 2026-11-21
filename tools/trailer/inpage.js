@@ -8,21 +8,21 @@
   // ----- overlay layer: letterbox bars, fades, captions, title cards -----
   const css = document.createElement('style');
   css.textContent = `
-  #tx { position: absolute; inset: 0; pointer-events: none; z-index: 50; font-family: "Barlow Condensed", "Arial Narrow", sans-serif; color: #f4f1e6; }
+  #tx { position: absolute; inset: 0; pointer-events: none; z-index: 50; font-family: var(--display); color: #f4f1e6; }
   #tx .bar { position: absolute; left: 0; right: 0; height: 9.5%; background: #000; }
   #tx .bar.t { top: 0; } #tx .bar.b { bottom: 0; }
   #tx .fade { position: absolute; inset: 0; background: #0b0f0e; opacity: 0; }
   #tx .cap { position: absolute; left: 0; right: 0; bottom: 19%; text-align: center; font-weight: 700; font-size: 46px; letter-spacing: .06em; text-transform: uppercase;
     text-shadow: 0 2px 0 rgba(0,0,0,.55), 0 0 24px rgba(0,0,0,.6); opacity: 0; }
-  #tx .cap small { display: block; font: 500 19px "Barlow", sans-serif; letter-spacing: .22em; color: #f2c230; margin-bottom: 6px; }
+  #tx .cap small { display: block; font: 500 19px var(--body); letter-spacing: .22em; color: #f2c230; margin-bottom: 6px; }
   #tx .card { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; opacity: 0; }
   #tx .card h1 { margin: 0; font-weight: 700; font-size: 150px; line-height: .86; letter-spacing: .01em; text-transform: uppercase; }
   #tx .card h1 span { color: #f2c230; display: block; }
   #tx .card h2 { margin: 0; font-weight: 700; font-size: 96px; letter-spacing: .05em; text-transform: uppercase; }
   #tx .card h3 { margin: 14px 0 0; font-weight: 600; font-size: 54px; letter-spacing: .08em; }
-  #tx .card p { margin: 18px 0 0; font: 500 22px "Barlow", sans-serif; letter-spacing: .24em; text-transform: uppercase; color: #f2c230; }
+  #tx .card p { margin: 18px 0 0; font: 500 22px var(--body); letter-spacing: .24em; text-transform: uppercase; color: #f2c230; }
   #tx .card .rule { width: 120px; height: 5px; background: #f2c230; margin: 26px auto 0; }
-  #tx .card .url { margin-top: 22px; font: 500 20px "Barlow", sans-serif; letter-spacing: .06em; color: rgba(244,241,230,.75); }
+  #tx .card .url { margin-top: 22px; font: 500 20px var(--body); letter-spacing: .06em; color: rgba(244,241,230,.75); }
   body.cine #ui, body.cine #prompt, body.cine #toast, body.cine #hide, body.cine #intro { display: none !important; }
   /* keep the game's HUD inside the letterbox */
   #ui { padding-block: calc(9.5vh + 12px) !important; }

@@ -18,6 +18,20 @@ Third-party components keep their own licenses:
   ODbL, including its attribution and share-alike terms.
 - Elevation tiles: Mapzen terrarium terrain tiles on AWS Open Data.
   See the dataset's terms before reusing them.
+- Fonts, served beside the pages from their npm packages (src/fonts/fonts.ts
+  and the fonts lab experiment in src/lab/fonts/),
+  each under the SIL Open Font License 1.1 (https://openfontlicense.org),
+  whose full text ships in each package's LICENSE or OFL file:
+  Barlow and Barlow Condensed © 2017 The Barlow Project Authors; Allo
+  © 2026 Josh Puckett and © 2016 The Inter Project Authors; Atkinson
+  Hyperlegible Next © 2020-2024 The Atkinson Hyperlegible Next Project
+  Authors; Archivo © 2020 The Archivo Project Authors;
+  Bricolage Grotesque © 2022 The Bricolage Grotesque Project Authors;
+  Encode Sans © 2020 The Encode Project Authors (Reserved Font Name
+  "Encode Sans"); Inter © 2016 The Inter Project Authors; Mona Sans
+  © 2022 The Mona Sans Project Authors (Reserved Font Name "Mona");
+  Roboto Flex © 2017 The Roboto Flex Project Authors; Saira © 2020 The
+  Saira Project Authors.
 
 ---
 
