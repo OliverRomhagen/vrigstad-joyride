@@ -221,7 +221,7 @@ const places = new Places({ footprints: bPolys, roads: R, police: wanted.police,
 const placeMeshes = new PlaceMeshes({ scene, places, heightAt: hAt, col, boxGeo, paintMat, glass: GLASS });
 addFootprint([KIOSK.x - KIOSK.w / 2, KIOSK.z - KIOSK.d / 2, KIOSK.x + KIOSK.w / 2, KIOSK.z - KIOSK.d / 2, KIOSK.x + KIOSK.w / 2, KIOSK.z + KIOSK.d / 2, KIOSK.x - KIOSK.w / 2, KIOSK.z + KIOSK.d / 2]);   // the kiosk collides like a building
 // the kiosk's and the cats' menus (src/game/kiosk-cat-menus.ts); trisslott is declared further down
-const kioskCatMenus = new KioskCatMenus({ game, player, colony, health, openMenu, esc, toast, scratch: () => trisslott.scratch(), pay: kr => { if (!pay(wallet, kr)) return false; drawKr(); return true; }, broke: kr => broke(kr), nearPlace, showHeart, drawPets, drawTreats, drawHealth });
+const kioskCatMenus = new KioskCatMenus({ game, player, colony, health, openMenu, esc, toast, scratch: () => trisslott.scratch(), pay: spend, broke: kr => broke(kr), nearPlace, showHeart, drawPets, drawTreats, drawHealth });
 const { openKiosk, petCat, openOwnCat } = kioskCatMenus;
 function nearPlace() { return game.inCar ? null : places.nearest(player.x, player.z); }
 function enterHouse(p: Place) { if (places.enter(p, player)) player.mesh.visible = false; }
@@ -237,9 +237,9 @@ const RAIN_LINES = ['”Låt dä regna!”', '”Pengar ä bara papper, dä.”'
 const GAWK_LINES = ['”Va i hela friden!”', '”Ä du inte klok, människa?!”', '”Hörru, ja tar en sån där!”'];
 function makeItRain() {
   if (!game.started || game.bigT > 0 || places.inside || !kmenu.hidden) return;
-  if (!pay(wallet, RAIN_KR)) { toast('”Låta dä regna? Mä ' + fmtKr(wallet.kr) + '? Nä.”', 2.5); return; }
-  drawKr(); const o = game.inCar && game.pcar ? game.pcar : player; banknotes.drop(o);
-  const seen = crowd.stare(o, RAIN_SEEN_M, RAIN_GAWK_S);
+  if (!spend(RAIN_KR)) { toast('”Låta dä regna? Mä ' + fmtKr(wallet.kr) + '? Nä.”', 2.5); return; }
+  const you = game.inCar && game.pcar ? game.pcar : player; banknotes.drop(you);
+  const seen = crowd.stare(you, RAIN_SEEN_M, RAIN_GAWK_S);
   toast(pickLine(RAIN_LINES), 2.5); if (seen) loop.sayLater(pickLine(GAWK_LINES));
 }
 
@@ -249,8 +249,8 @@ const confetti = new Confetti($('confetti') as HTMLCanvasElement, cashRnd);
 const TRISS_SEED = Number(new URLSearchParams(location.search).get('seed')) || crypto.getRandomValues(new Uint32Array(1))[0];
 const trissRnd = makeRnd(TRISS_SEED);
 const trisslott = new Trisslott({ random: trissRnd, pick, now: () => performance.now() / 1000, toast,
-  buy: () => { if (!pay(wallet, TRISS_KR)) { toast(broke(TRISS_KR), 3); return false; } drawKr(); return true; },
-  win: kr => { earn(wallet, kr); drawKr(); if (!calmMotion.matches) confetti.burst(confettiCount(kr)); if (kr >= BIG_WIN_KR) banknotes.drop(player); },
+  buy: () => { if (!spend(TRISS_KR)) { toast(broke(TRISS_KR), 3); return false; } return true; },
+  win: kr => { gain(kr); if (!calmMotion.matches) confetti.burst(confettiCount(kr)); if (kr >= BIG_WIN_KR) banknotes.drop(player); },
   draw: (bought, won, wonKr) => { const el = $('triss'); el.hidden = false; el.innerHTML = 'Trisslotter: ' + bought + ' · Vinster: ' + won + '<br>Insatt: ' + fmtKr(bought * TRISS_KR) + ' · Vunnit: ' + fmtKr(wonKr); } });   // numbers only, so innerHTML is safe
 // ?at=x,z[,yaw[,pitch]] starts the player there, looking that way: for review screenshots, such as the streetscape's (#187)
 (function () { const at = (new URLSearchParams(location.search).get('at') || '').split(',').map(Number);
@@ -285,8 +285,10 @@ drawStars();
 function drawHealth() { hud.drawHealth(health.hp, game.inCar && game.pcar ? game.pcar.dmg : null); }
 // the big screen (Gripen!, Däckad!) stays up this long
 function bigScreen(title: string, msg: string) { hud.showBig(title, msg); game.bigT = 3; }
-// money on its plate (fmtKr: 10 000 kr)
+// money on its plate (fmtKr: 10 000 riksdaler); every change to the wallet goes through spend or gain, which redraw it
 function drawKr() { $('kr').textContent = fmtKr(wallet.kr); }
+function spend(kr: number) { if (!pay(wallet, kr)) return false; drawKr(); return true; }   // false, and nothing taken, when you have less
+function gain(kr: number) { earn(wallet, kr); drawKr(); }
 
 // ---------- dev console ----------
 // Each module's commands are registered here until main.ts is split up; a module that owns its state can register its own.
@@ -296,7 +298,7 @@ const devcon = new DevConsole({ root: $('devcon'), commands,
   onOpen: () => { for (const k of Object.keys(keys) as (keyof typeof keys)[]) keys[k] = false; conRelock = input.locked(); if (conRelock) document.exitPointerLock(); },
   onClose: () => { canvas.focus(); if (conRelock && kmenu.hidden) input.lockMouse(); conRelock = false; } });   // an open menu needs the cursor
 const MYNT_KR = 1000;   // what the mynt cheat adds
-function addKr(n: number) { if (n >= 0) earn(wallet, n); else pay(wallet, Math.min(-n, wallet.kr)); drawKr(); return 'Wallet: ' + fmtKr(wallet.kr) + '.'; }
+function addKr(kr: number) { if (kr >= 0) gain(kr); else spend(Math.min(-kr, wallet.kr)); return 'Wallet: ' + fmtKr(wallet.kr) + '.'; }
 commands.register('kr', { usage: '<amount>', help: 'add riksdaler to your wallet; a negative amount takes them', run: a => addKr(parseKr(a[0])) });
 // adopt <pet>: a new random pet of that kind, right by you. Only cats so far; another kind of pet adds its entry here.
 const ADOPT = new Map([['cat', () => { if (colony.owned) return 'You already have a cat, ' + colony.owned.name + '. Set it free first (P).';
@@ -312,7 +314,7 @@ const broke = (kr: number) => '”Dä blir ' + fmtKr(kr) + '. Va, har du inga pe
 // the driver of a car you steal gets out, and stands there shouting for a while (src/game/render/shouting-drivers.ts)
 const drivers = new ShoutingDrivers({ scene, groundAt, personParts, pick }), driverOut = drivers.driverOut;
 // what E does, and putting you back on your feet after Gripen! or a knock-out (src/game/actions.ts)
-const actions = new Actions({ game, view, player, cars, places, wanted, health, wallet, drawKr, menuOpen: () => !kmenu.hidden, closeMenu, showPlayer: v => { player.mesh.visible = v; }, nearPlace, enterHouse, leaveHouse, nearCat, catFirst, openOwnCat, petCat, openKiosk, collide, placeCar, rnd, pick, toast, carName,
+const actions = new Actions({ game, view, player, cars, places, wanted, health, get kr() { return wallet.kr; }, spend, menuOpen: () => !kmenu.hidden, closeMenu, showPlayer: v => { player.mesh.visible = v; }, nearPlace, enterHouse, leaveHouse, nearCat, catFirst, openOwnCat, petCat, openKiosk, collide, placeCar, rnd, pick, toast, carName,
   spokenName: c => vehicleVisuals.definition(meshed(c))?.spokenName, driverOut, spawnTraffic, drawStolen: () => { $('count').textContent = 'Cars stolen: ' + game.stolen; }, drawHealth, bigScreen, sayLater: line => loop.sayLater(line), pickLine });
 const { nearestCar, action, respawn, busted, knockedOut } = actions;
 function hurtPlayer(n: number) { if (n <= 0) return; const was = health.hp;

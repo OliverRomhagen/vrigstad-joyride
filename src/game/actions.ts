@@ -3,7 +3,7 @@
 import { wrap } from '../world/math';
 import type { Car } from './cars';
 import type { Cat } from './cats';
-import { fine, fmtKr, pay, type Wallet } from './economy';
+import { fine, fmtKr } from './economy';
 import { type Health, HP_MAX, wakeSpot } from './health';
 import type { Place, Places } from './places';
 import { carInReach, HOME, type PlayerState, standAt, stepOut, tooFastToGetOut } from './player';
@@ -29,8 +29,8 @@ export interface ActionsDeps {
   places: Pick<Places, 'inside' | 'list'>;
   wanted: Pick<Wanted, 'addStar' | 'police' | 'stars' | 'clear'>;
   health: Health;
-  wallet: Wallet;
-  drawKr(): void;
+  readonly kr: number; // in your wallet
+  spend(kr: number): boolean; // takes kr from your wallet and redraws it
   menuOpen(): boolean; // the menu plate is up: E closes it
   closeMenu(): void;
   showPlayer(shown: boolean): void; // the player's mesh: hidden while you drive
@@ -193,27 +193,26 @@ export class Actions {
     game.jumpQ = false;
     collide(player, 0.6);
   };
-  // n: the stars you had, already cleared; the fine goes by them
-  busted = (n = 0) => {
-    const { health, wallet, drawKr, drawHealth, bigScreen } = this.g;
-    const f = fine(wallet.kr, n);
-    pay(wallet, f);
-    drawKr();
+  // the fine goes by the stars you had, which are already cleared
+  busted = (stars = 0) => {
+    const { health, spend, drawHealth, bigScreen } = this.g;
+    const fineKr = fine(this.g.kr, stars);
+    spend(fineKr);
     this.respawn();
     health.hp = HP_MAX;
     drawHealth();
     bigScreen(
       'Gripen!',
-      'Busted. The police ' + (f ? 'fine you ' + fmtKr(f) + ' and ' : '') + 'drop you off at Torget.',
+      'Busted. The police ' + (fineKr ? 'fine you ' + fmtKr(fineKr) + ' and ' : '') + 'drop you off at Torget.',
     );
   };
   // health at zero: with the police after you it's Gripen!, otherwise you come to at the nearest safehouse, or Torget
   knockedOut = () => {
     const { player, places, wanted, health, collide, drawHealth, bigScreen, sayLater, pickLine } = this.g;
     if (wanted.stars) {
-      const n = wanted.stars;
+      const stars = wanted.stars;
       wanted.clear();
-      this.busted(n);
+      this.busted(stars);
       return;
     } // Gripen! expects the stars cleared
     const spot = wakeSpot(player.x, player.z, HOME, places.list);

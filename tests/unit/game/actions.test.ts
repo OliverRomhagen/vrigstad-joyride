@@ -67,8 +67,14 @@ function actions(
     places: { inside: null, list: o.places ?? [] },
     wanted,
     health,
-    wallet,
-    drawKr: () => {},
+    get kr() {
+      return wallet.kr;
+    },
+    spend: kr => {
+      if (wallet.kr < kr) return false;
+      wallet.kr -= kr;
+      return true;
+    },
     menuOpen: () => !!o.menuOpen,
     showPlayer: v => {
       mesh.visible = v;
