@@ -24,8 +24,12 @@ const JOY_RADIUS_PX = 44; // the joystick knob's travel; full deflection there
 // camera zoom (#208): the wheel, a trackpad pinch (ctrl + wheel) and a two-finger pinch zoom the camera, not the page
 const WHEEL_ZOOM_K = 0.0015,
   PINCH_WHEEL_ZOOM_K = 0.01; // zoom per pixel of wheel delta: a trackpad pinch sends small deltas
+const PINCH_MAX_PX = 40; // a ctrl + wheel event above this is a mouse wheel turned with ctrl held (a notch is ~100 px), not a pinch
 const WHEEL_LINE_PX = 16; // a wheel that reports lines instead of pixels (deltaMode 1)
-const PAGE_ZOOM_KEYS = /^(Equal|Minus|Digit0|NumpadAdd|NumpadSubtract|Numpad0)$/; // ctrl/⌘ with these zooms the page
+// ctrl/⌘ with these zooms the page. The typed character covers every layout (on a Nordic or German one, `-` is on `Slash`),
+// the physical keys cover the numpad and shifted `+`. Ctrl/⌘ + 0 stays free: it resets a page zoom the browser remembers.
+const PAGE_ZOOM_CHARS = /^[-+=]$/,
+  PAGE_ZOOM_KEYS = /^(Equal|Minus|NumpadAdd|NumpadSubtract)$/;
 
 export type Key = 'up' | 'down' | 'left' | 'right' | 'brake' | 'run';
 /** The touch joystick: x right, y up, each -1..1; `on` while a finger holds it. */
@@ -144,17 +148,19 @@ export class Input {
       e => {
         e.preventDefault();
         const px = e.deltaY * (e.deltaMode ? WHEEL_LINE_PX : 1);
-        this.g.zoom(Math.exp(px * (e.ctrlKey ? PINCH_WHEEL_ZOOM_K : WHEEL_ZOOM_K)));
+        const isPinch = e.ctrlKey && !e.deltaMode && Math.abs(px) < PINCH_MAX_PX;
+        this.g.zoom(Math.exp(px * (isPinch ? PINCH_WHEEL_ZOOM_K : WHEEL_ZOOM_K)));
       },
       { passive: false },
     );
     win.addEventListener('keydown', ev => {
       const e = ev as KeyboardEvent;
-      if ((e.ctrlKey || e.metaKey) && PAGE_ZOOM_KEYS.test(e.code)) e.preventDefault();
+      if ((e.ctrlKey || e.metaKey) && (PAGE_ZOOM_CHARS.test(e.key) || PAGE_ZOOM_KEYS.test(e.code))) e.preventDefault();
     });
     for (const t of ['gesturestart', 'gesturechange', 'gestureend']) doc.addEventListener(t, e => e.preventDefault());
     // Two fingers on the game pinch instead of turning the camera; the joystick and buttons are other elements, so they
-    // don't count. Registered after the drag's pointerdown, so a second finger ends the drag it started.
+    // don't count. Registered after the drag's pointerdown, so a second (or third) finger ends the drag it started; when only
+    // one finger is left, it turns the camera again.
     const { pinch } = this;
     const spread = () => {
       const [a, b] = pinch.values();
@@ -163,10 +169,8 @@ export class Input {
     canvas.addEventListener('pointerdown', e => {
       if (e.pointerType !== 'touch') return;
       pinch.set(e.pointerId, { x: e.clientX, y: e.clientY });
-      if (pinch.size === 2) {
-        this.pinchD = spread();
-        this.dragId = null;
-      }
+      if (pinch.size >= 2) this.dragId = null;
+      if (pinch.size === 2) this.pinchD = spread();
     });
     canvas.addEventListener('pointermove', e => {
       const p = pinch.get(e.pointerId);
@@ -179,7 +183,13 @@ export class Input {
       this.pinchD = d;
     });
     const endPinch = (e: PointerEvent) => {
-      if (pinch.delete(e.pointerId)) this.pinchD = 0;
+      if (!pinch.delete(e.pointerId)) return;
+      this.pinchD = 0;
+      if (pinch.size !== 1) return;
+      const [[id, p]] = pinch;
+      this.dragId = id;
+      this.lx = p.x;
+      this.ly = p.y;
     };
     canvas.addEventListener('pointerup', endPinch);
     canvas.addEventListener('pointercancel', endPinch);
