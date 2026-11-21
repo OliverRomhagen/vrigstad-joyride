@@ -1,6 +1,7 @@
-// Skroten's yard (#76), at the welding workshop's hall on the south side of Stockarydsvägen, east of the village: the fence, the gate,
-// the hut, the containers, the rows of wrecks and the scrap heaps, laid out once from their own random stream. The hall becomes Skroten's
-// workshop: hollow, with a garage door wide enough to drive a car in. Plain data: render/skroten.ts draws it, and main.ts adds the outlines
+// Skroten's yard (#76), at the welding workshop on the south side of Stockarydsvägen, east of the village, as it stands there: a low
+// brick workshop to the east, a long open carport to the south, and the yard between them and the road. The fence, the gate, the hut, the
+// containers, the wrecks and the scrap heaps are laid out once from their own random stream. The workshop is hollow, with a garage door
+// wide enough to drive a car in, and the carport's bays open onto the yard. Plain data: render/skroten.ts draws it, and main.ts adds the outlines
 // to the buildings so cars and people collide with them. No three.js or DOM here.
 import { pointInPolygon } from '../world/polygon';
 import { makeRnd } from '../world/random';
@@ -16,6 +17,11 @@ const ALONG = { x: 0.9944, z: 0.1059 }, // the road's direction along the yard, 
 export const YARD_TURN = -Math.atan2(ALONG.z, ALONG.x);
 /** A point inside the hall that becomes Skroten's workshop, to find its outline among the buildings. */
 export const SKROT_HALL = { x: 945, z: 88 } as const;
+/** A point inside the long open carport behind the yard. */
+export const SKROT_CARPORT = { x: 913, z: 123 } as const;
+const CARPORT_BAYS = 6,
+  CARPORT_POST_M = 0.3,
+  CARPORT_PARK_M = 5.5; // a car in a bay stands this far in from the open front
 
 /**
  * The fence runs from 36 m west of the gate's middle to the hall, and 44 m back from the road, short of the building behind; the gate is
@@ -26,7 +32,7 @@ const { uMin: U_MIN, depth: DEPTH_M, gateHalf: GATE_HALF_M } = YARD;
 const FENCE_THICK_M = 0.3; // what you collide with; the panels themselves are thinner
 const WALL_THICK_M = 0.3; // the workshop's walls, the same
 /** The workshop's garage door: wide and tall enough to drive in, in the middle of the wall facing the yard. */
-export const WORKSHOP_DOOR = { w: 6.5, h: 4.6 } as const;
+export const WORKSHOP_DOOR = { w: 6.5, h: 3.8 } as const;
 /** The arrow signs, about 70 m either way, 6 m off the road's middle on the yard's side: where the road bends, so given in world metres. */
 const SIGNS_XZ = [
   { x: 823.4, z: 43.1, facing: 1 },
@@ -110,6 +116,13 @@ export const PROP_SIZE = {
 } as const;
 const BAY_IN_M = 15, // the bay's middle, this far in from the door
   LIFT_HALF_M = 2.1; // the lift's posts, this far either side of the bay's middle: a car's 1.5 m collision radius passes between
+/** The carport: its outline and walls, the open front, and the posts along it (world metres). */
+export interface Carport {
+  outline: readonly number[];
+  walls: Wall[];
+  front: Wall;
+  posts: { x: number; z: number }[];
+}
 export interface YardLayout {
   fence: FenceRun[];
   wrecks: Wreck[];
@@ -118,8 +131,9 @@ export interface YardLayout {
   /** Arrow signs by the road: where they stand, and whether the yard is to the driver's right as they pass it. */
   signs: { u: number; v: number; facing: 1 | -1 }[];
   workshop: Workshop | null;
-  /** The index of the hall among the footprints, which stops colliding as a block; its walls are in `outlines` instead. -1 without it. */
-  hallIndex: number;
+  carport: Carport | null;
+  /** The indices among the footprints of the workshop and the carport, which stop colliding as blocks; their walls are in `outlines`. */
+  passable: number[];
   /** World outlines (flat [x, z, ...]) that cars and people collide with. */
   outlines: number[][];
 }
@@ -217,16 +231,15 @@ const WRECK_ROWS = [
   // rows of wrecks parked side by side, noses towards the road or away: from u0 to u1, at v; cars are stacked only in the back row
   { u0: -33, u1: -17, v: 20, stacks: false },
   { u0: -33, u1: -17, v: 29, stacks: false },
-  { u0: 12, u1: 22, v: 25, stacks: false },
-  { u0: 12, u1: 22, v: 33, stacks: false },
-  { u0: -33, u1: 22, v: 40.5, stacks: true },
+  { u0: 16, u1: 26, v: 30, stacks: false }, // between the workshop's door and the carport, leaving the way to both clear
+  { u0: -33, u1: -8, v: 43, stacks: true }, // in the back corner, clear of the carport's bays
 ];
 const WRECK_GAP_M = 2.6; // between the middles of neighbours in a row
 const WRECK_HALF_LEN_M = 2.7; // half the longest car's length, for the row's outline
 const TRACTORS = [
   // two old tractors, parked on their own
   { u: -27, v: 14, turn: 0.4 },
-  { u: 6, v: 22, turn: 0.2 },
+  { u: -5, v: 22, turn: 0.2 },
 ];
 
 /**
@@ -237,14 +250,44 @@ export function yardLayout(footprints: readonly { p: readonly number[] }[] = [],
   const rnd = makeRnd(seed),
     pick = <T>(a: readonly T[]) => a[Math.floor(rnd() * a.length)]!;
   const hallIndex = footprints.findIndex(b => pointInPolygon(b.p as number[], SKROT_HALL.x, SKROT_HALL.z)),
+    shedIndex = footprints.findIndex(b => pointInPolygon(b.p as number[], SKROT_CARPORT.x, SKROT_CARPORT.z)),
     outline = hallIndex >= 0 ? footprints[hallIndex]!.p : null,
+    shedOutline = shedIndex >= 0 ? footprints[shedIndex]!.p : null,
+    shedWalls = shedOutline ? outlineWalls(shedOutline) : [],
+    shedFront = wallFacing(shedWalls, -INTO.x, -INTO.z), // open towards the road
     walls = outline ? outlineWalls(outline) : [],
     doorWall = wallFacing(walls, -INTO.z, INTO.x), // the wall facing back along u, towards the yard
     outlines: number[][] = [];
 
-  // the fence: along the road, then back to the hall's corners on the yard's side, so the yard opens onto the workshop's door
-  let east: FenceRun[];
-  if (doorWall) {
+  // the fence: along the road, then back to the workshop's corner on the yard's side, so the yard opens onto its door; behind, from the
+  // workshop to the carport, and from the carport's far end back to the road, so the yard opens onto the bays
+  let east: FenceRun[],
+    westBack = DEPTH_M;
+  if (doorWall && shedFront && outline) {
+    const a = worldToYard(doorWall.x0, doorWall.z0),
+      b = worldToYard(doorWall.x0 + doorWall.ux * doorWall.len, doorWall.z0 + doorWall.uz * doorWall.len),
+      front = a.v < b.v ? a : b,
+      s0 = worldToYard(shedFront.x0, shedFront.z0),
+      s1 = worldToYard(shedFront.x0 + shedFront.ux * shedFront.len, shedFront.z0 + shedFront.uz * shedFront.len),
+      [shedW, shedE] = s0.u < s1.u ? [s0, s1] : [s1, s0],
+      shedEW = yardToWorld(shedE.u, shedE.v);
+    let corner = { u: 0, v: 0 },
+      best = Infinity; // the workshop's corner nearest the carport's east end
+    for (let i = 0; i < outline.length; i += 2) {
+      const d = Math.hypot(outline[i]! - shedEW.x, outline[i + 1]! - shedEW.z);
+      if (d < best) {
+        best = d;
+        corner = worldToYard(outline[i]!, outline[i + 1]!);
+      }
+    }
+    westBack = shedW.v + ((shedW.v - shedE.v) / (shedE.u - shedW.u)) * (shedW.u - U_MIN); // the carport's line, carried on to the west
+    east = [
+      { u0: GATE_HALF_M, v0: 0, u1: front.u, v1: 0 },
+      { u0: front.u, v0: 0, u1: front.u, v1: front.v },
+      { u0: corner.u, v0: corner.v, u1: shedE.u, v1: shedE.v },
+      { u0: shedW.u, v0: shedW.v, u1: U_MIN, v1: westBack },
+    ];
+  } else if (doorWall) {
     const a = worldToYard(doorWall.x0, doorWall.z0),
       b = worldToYard(doorWall.x0 + doorWall.ux * doorWall.len, doorWall.z0 + doorWall.uz * doorWall.len),
       [front, back] = a.v < b.v ? [a, b] : [b, a];
@@ -263,7 +306,7 @@ export function yardLayout(footprints: readonly { p: readonly number[] }[] = [],
   const fence: FenceRun[] = [
     { u0: U_MIN, v0: 0, u1: -GATE_HALF_M, v1: 0 },
     ...east,
-    { u0: U_MIN, v0: DEPTH_M, u1: U_MIN, v1: 0 },
+    { u0: U_MIN, v0: westBack, u1: U_MIN, v1: 0 },
   ];
   for (const f of fence) {
     const len = Math.hypot(f.u1 - f.u0, f.v1 - f.v0);
@@ -316,6 +359,21 @@ export function yardLayout(footprints: readonly { p: readonly number[] }[] = [],
     workshop = { outline, walls, doorWall, doorFrom, doorTo, bay, props };
   }
 
+  // the carport: walls on three sides, posts along the open front between its bays
+  let carport: Carport | null = null;
+  if (shedOutline && shedFront) {
+    const posts: { x: number; z: number }[] = [];
+    for (const w of shedWalls) if (w !== shedFront) outlines.push(wallStrip(w, 0, w.len, WALL_THICK_M));
+    for (let k = 0; k <= CARPORT_BAYS; k++) {
+      const s = (shedFront.len * k) / CARPORT_BAYS,
+        x = shedFront.x0 + shedFront.ux * s - shedFront.nx * 0.2,
+        z = shedFront.z0 + shedFront.uz * s - shedFront.nz * 0.2;
+      posts.push({ x, z });
+      outlines.push(wallStrip({ ...shedFront, x0: x, z0: z }, -CARPORT_POST_M / 2, CARPORT_POST_M / 2, CARPORT_POST_M));
+    }
+    carport = { outline: shedOutline, walls: shedWalls, front: shedFront, posts };
+  }
+
   outlines.push(rect(HUT.u, HUT.v, HUT.w, HUT.d));
   outlines.push(rect(CONTAINERS.u, CONTAINERS.v, CONTAINERS.w, CONTAINERS.d * 2));
   outlines.push(rect(NISSE_UV.u, NISSE_UV.v, 0.7, 0.7)); // Skrot-Nisse stands his ground
@@ -353,10 +411,25 @@ export function yardLayout(footprints: readonly { p: readonly number[] }[] = [],
     outlines.push(rect(t.u, t.v, 2.3, 3.6, t.turn));
   }
 
+  // old cars parked nose in under the carport, in four of its six bays
+  if (carport) {
+    const f = carport.front,
+      du = -(f.nx * ALONG.x + f.nz * ALONG.z),
+      dv = -(f.nx * INTO.x + f.nz * INTO.z),
+      turn = Math.atan2(-du, -dv); // a car's nose, -z, points into the carport
+    for (const k of [0, 1, 3, 4]) {
+      const s = (f.len * (k + 0.5)) / CARPORT_BAYS,
+        p = worldToYard(f.x0 + f.ux * s - f.nx * CARPORT_PARK_M, f.z0 + f.uz * s - f.nz * CARPORT_PARK_M),
+        t = turn + (rnd() - 0.5) * 0.15;
+      wrecks.push({ ...p, turn: t, tilt: 0, model: pick(WRECK_MODELS), colour: pick(WRECK_COLOURS), stack: 0 });
+      outlines.push(rect(p.u, p.v, 2.1, 5, t));
+    }
+  }
+
   const heaps: Heap[] = [
     { u: 0, v: 33, r: 5 }, // the big heap at the back of the drive
     { u: -27, v: 6, r: 3 },
-    { u: 27.5, v: 37, r: 2.5 },
+    { u: -25, v: 36, r: 2.5 },
   ];
   for (const h of heaps)
     outlines.push(rect(h.u, h.v, h.r * 1.6, h.r * 1.6, Math.PI / 4), rect(h.u, h.v, h.r * 1.6, h.r * 1.6));
@@ -365,7 +438,7 @@ export function yardLayout(footprints: readonly { p: readonly number[] }[] = [],
     { u: -19, v: 4, n: 5 },
     { u: -19.9, v: 4.7, n: 3 },
     { u: 22.5, v: 3.5, n: 6 },
-    { u: 9, v: 29.5, n: 4 },
+    { u: -9, v: 27, n: 4 },
   ];
   for (const t of tyres) outlines.push(rect(t.u, t.v, 0.8, 0.8));
 
@@ -376,7 +449,8 @@ export function yardLayout(footprints: readonly { p: readonly number[] }[] = [],
     tyres,
     signs: SIGNS_XZ.map(s => ({ ...worldToYard(s.x, s.z), facing: s.facing })),
     workshop,
-    hallIndex,
+    carport,
+    passable: [hallIndex, shedIndex].filter(i => i >= 0),
     outlines,
   };
 }
