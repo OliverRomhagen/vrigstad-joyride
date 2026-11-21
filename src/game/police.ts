@@ -1,6 +1,6 @@
 // The wanted level and the police: stars, police cars that chase you, losing them, lying low and getting caught.
 // Moved from src/game/main.ts (#177); main.ts passes in car spawning, removal and the driving model, the roads, the seeded rolls and what the HUD shows. No three.js or DOM here.
-import { clamp } from '../world/math';
+import { clamp, wrap } from '../world/math';
 import type { RoadNetwork } from '../world/roads';
 import { wrecked } from './health';
 
@@ -39,14 +39,13 @@ export interface WantedDeps {
   roads: Pick<RoadNetwork, 'lines' | 'driveable'>;
   rnd(): number; // the seeded stream: police rolls are part of gameplay
   pick<T>(a: readonly T[]): T; // a random element, from the same stream
-  wrap(a: number): number; // an angle into -π..π
   spawnCar(x: number, z: number, h: number): PoliceCar; // adds a police car to the world
   removeCar(c: PoliceCar): void;
   drive(c: PoliceCar, throttle: number, steer: number, brake: boolean, dt: number): void; // the shared driving model
   toast(msg: string): void;
   drawStars(): void; // the HUD reads `stars` and redraws them
   showEvading(on: boolean): void; // the stars show that you're getting away
-  caught(): void; // Gripen!: back to Torget; the stars are already cleared
+  caught(stars: number): void; // Gripen! with this many stars: back to Torget; the stars are already cleared
   readonly lyingLow: boolean; // inside a safehouse
 }
 
@@ -115,8 +114,9 @@ export class Wanted {
     } else if (md < BUST_DIST_M && speed < BUST_SPEED_MS) {
       this.bust += dt;
       if (this.bust > BUST_S) {
+        const n = this.stars;
         this.clear();
-        this.g.caught();
+        this.g.caught(n);
       }
     } else this.bust = Math.max(0, this.bust - dt);
     return true;
@@ -145,7 +145,7 @@ export class Wanted {
       this.g.drive(c, 0, 0, false, dt);
       return d;
     } // a wreck only rolls to a stop: no chasing, and no stuck rolls from rnd()
-    const diff = this.g.wrap(Math.atan2(dx, -dz) - c.h);
+    const diff = wrap(Math.atan2(dx, -dz) - c.h);
     let thr = Math.abs(diff) < FULL_ANGLE ? 1 : TURN_THROTTLE,
       steer = clamp(diff * STEER_GAIN, -1, 1),
       brake = false;

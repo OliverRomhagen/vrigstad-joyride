@@ -27,7 +27,6 @@ function wanted() {
     roads,
     rnd,
     pick: a => a[Math.floor(rnd() * a.length)],
-    wrap: a => Math.atan2(Math.sin(a), Math.cos(a)),
     spawnCar: (x, z, h): PoliceCar => ({ x, z, h, v: 0, rev: 0, stuck: 0, revSteer: 1, dmg: 0 }),
     removeCar: () => {
       world.removed++;

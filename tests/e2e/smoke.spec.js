@@ -79,25 +79,44 @@ test.describe('game (index.html)', () => {
     expect(errors).toEqual([]);
   });
 
-  test('draws the clouds in every quality and preset without shader errors, and they drift with time', async ({
-    page,
-  }) => {
+  // The sky with each kind of query, one page load per test: each load renders in software WebGL, so three in one test
+  // ran into the timeout on CI. The sky is a full-screen shader, so the page is kept small. Cloudy skies must drift,
+  // and let through at least minSun of the sunlight.
+  for (const { query, clouds, minSun } of [
+    { query: '', clouds: { cover: 'partly', seed: 1, quality: 'high' }, minSun: 0.4 },
+    {
+      query: 'clouds=mostly&cloudSeed=3&wind=90,12&cloudQuality=low',
+      clouds: { cover: 'mostly', seed: 3, quality: 'low', windFromDeg: 90, windSpeedMps: 12 },
+      minSun: 0,
+    },
+    { query: 'clouds=off', clouds: { cover: 'off', sunFactor: 1 } },
+  ])
+    test(`draws the clouds without shader errors${query ? ' with ?' + query : ''}${minSun === undefined ? '' : ', and they drift'}`, async ({
+      page,
+    }) => {
+      const errors = watchErrors(page);
+      await page.setViewportSize({ width: 640, height: 360 });
+      await page.goto('/index.html' + (query && '?' + query));
+      await expectWebGL(page);
+      const first = (await state(page)).clouds;
+      expect(first).toMatchObject(clouds);
+      if (minSun !== undefined) {
+        await frames(page, 3);
+        const later = (await state(page)).clouds;
+        expect(later.timeS).toBeGreaterThan(first.timeS);
+        expect(later.sunFactor).toBeGreaterThan(minSun);
+        expect(later.sunFactor).toBeLessThanOrEqual(1);
+      }
+      expect(errors).toEqual([]);
+    });
+
+  test('ragdolls are on for everyone, without a lab flag', async ({ page }) => {
     const errors = watchErrors(page);
     await page.goto('/index.html');
-    await expectWebGL(page);
-    const first = (await state(page)).clouds;
-    expect(first).toMatchObject({ cover: 'partly', seed: 1, quality: 'high' });
-    await frames(page, 3);
-    const later = (await state(page)).clouds;
-    expect(later.timeS).toBeGreaterThan(first.timeS);
-    expect(later.sunFactor).toBeGreaterThan(0.4);
-    expect(later.sunFactor).toBeLessThanOrEqual(1);
-    for (const query of ['clouds=mostly&cloudSeed=3&wind=90,12&cloudQuality=low', 'clouds=off']) {
-      await page.goto('/index.html?' + query);
-      await expectWebGL(page);
-      await frames(page, 2);
-    }
-    expect((await state(page)).clouds).toMatchObject({ cover: 'off', sunFactor: 1 });
+    await page.locator('#go').click();
+    expect(await state(page)).toMatchObject({ lab: [], ragdolls: 0 }); // nobody knocked over yet
+    await page.goto('/index.html?lab=ragdoll'); // no longer an experiment: the flag is ignored
+    expect((await state(page)).lab).toEqual([]);
     expect(errors).toEqual([]);
   });
 
@@ -135,6 +154,27 @@ test.describe('game (index.html)', () => {
     const notice = await page.request.get('/media/vehicles/NOTICE.txt');
     expect(notice.ok()).toBe(true);
     expect(await notice.text()).toContain('Vehicle models by Axel Tidehorn');
+    expect(errors).toEqual([]);
+  });
+
+  test('the wheel zooms the camera, and the browser zoom is blocked', async ({ page }) => {
+    const errors = watchErrors(page);
+    await page.goto('/index.html');
+    await page.locator('#go').click();
+    await expect(page.locator('#intro')).toBeHidden();
+    expect(await state(page)).toMatchObject({ zoom: 1 });
+
+    await page.mouse.move(320, 200);
+    await page.mouse.wheel(0, 300); // away from you: further out
+    await expect.poll(async () => (await state(page)).zoom).toBeGreaterThan(1);
+    // ctrl + wheel is also how a trackpad pinch arrives; the page must not zoom, whatever the target
+    const prevented = await page.evaluate(() =>
+      [
+        new WheelEvent('wheel', { deltaY: -50, ctrlKey: true, bubbles: true, cancelable: true }),
+        new KeyboardEvent('keydown', { code: 'Equal', ctrlKey: true, bubbles: true, cancelable: true }),
+      ].map(ev => !document.body.dispatchEvent(ev)),
+    );
+    expect(prevented).toEqual([true, true]);
     expect(errors).toEqual([]);
   });
 
@@ -362,12 +402,15 @@ test.describe('game (index.html)', () => {
     expect(errors).toEqual([]);
   });
 
-  test('cats are around, and the kiosk sells cat treats and food from its menu', async ({ page }, testInfo) => {
+  test('cats are around, and the kiosk sells cat treats and food from its menu, for money', async ({
+    page,
+  }, testInfo) => {
     const errors = watchErrors(page);
     await page.goto('/index.html');
     await page.locator('#go').click();
     await expect.poll(async () => (await state(page)).cats).toBeGreaterThan(0); // Torget is built-up, so cats spawn at once
-    expect(await state(page)).toMatchObject({ treats: 0 });
+    expect(await state(page)).toMatchObject({ treats: 0, kr: 200 });
+    await expect(page.locator('#kr')).toHaveText('200 riksdaler');
 
     // With the camera as Start leaves it, the kiosk lucka is about 4.6 m to the player's left.
     await page.keyboard.down('KeyA');
@@ -380,7 +423,8 @@ test.describe('game (index.html)', () => {
     await page.keyboard.press('Digit2');
     await expect(page.locator('#kmenu')).toBeHidden();
     await expect(page.locator('#treats')).toHaveText('Cat treats: 3');
-    expect(await state(page)).toMatchObject({ treats: 3 });
+    expect(await state(page)).toMatchObject({ treats: 3, kr: 195 });
+    await expect(page.locator('#kr')).toHaveText('195 riksdaler');
 
     await page.keyboard.press('KeyE');
     await expect(page.locator('#kmenu')).toBeVisible();
@@ -393,7 +437,7 @@ test.describe('game (index.html)', () => {
     await page.keyboard.press('Digit3');
     await expect(page.locator('#kmenu')).toBeHidden();
     await expect(page.locator('#toast')).toContainText('mätt');
-    expect(await state(page)).toMatchObject({ hp: 100 });
+    expect(await state(page)).toMatchObject({ hp: 100, kr: 195 }); // and it costs nothing
     expect(errors).toEqual([]);
   });
 
@@ -412,6 +456,54 @@ test.describe('game (index.html)', () => {
     if (s.night > 0) expect(s.hour).toBe(19);
     else expect(s.hour).toBeGreaterThanOrEqual(5);
     expect(errors).toEqual([]);
+  });
+
+  test('with ?dev, the console opens with §, its keys never move the player, kr and mynt add money, adopt cat gives you a cat (and L makes it rain)', async ({
+    page,
+  }) => {
+    await page.goto('/index.html');
+    await page.locator('#go').click();
+    await page.keyboard.press('Backquote'); // no dev mode: no console
+    expect(await state(page)).toMatchObject({ devcon: false });
+    await page.goto('/index.html?dev');
+    await page.locator('#go').click();
+    const { x, z } = await state(page);
+    await page.keyboard.press('Backquote');
+    expect(await state(page)).toMatchObject({ devcon: true });
+    await page.keyboard.down('KeyW'); // held in the console: the player stays put
+    await page.waitForTimeout(400);
+    await page.keyboard.up('KeyW');
+    expect(await state(page)).toMatchObject({ x, z });
+    await page.locator('#devcon input').fill(''); // the held W typed a w
+    await page.locator('#devcon').click({ position: { x: 4, y: 4 } }); // focus off the input, console still open: keys still don't reach the game
+    await page.keyboard.down('KeyW');
+    await page.waitForTimeout(400);
+    await page.keyboard.up('KeyW');
+    expect(await state(page)).toMatchObject({ x, z, devcon: true });
+    await page.keyboard.type('kr 500');
+    await page.keyboard.press('Enter');
+    await expect(page.locator('#kr')).toHaveText('700 riksdaler');
+    await expect(page.locator('#devcon li').last()).toHaveText('Wallet: 700 riksdaler.');
+    await page.keyboard.type('mynt'); // the old cheat word, now a command: 1 000 kr
+    await page.keyboard.press('Enter');
+    await expect(page.locator('#kr')).toHaveText('1 700 riksdaler');
+    const run = async line => {
+      await page.keyboard.type(line);
+      await page.keyboard.press('Enter');
+      return page.locator('#devcon li').last();
+    };
+    await expect(await run('adopt dog')).toHaveText('No pet called dog. Usage: adopt <cat>');
+    await expect(await run('adopt cat')).toHaveText('Adopted a cat.');
+    expect(await state(page)).toMatchObject({ ownCat: true });
+    await expect(page.locator('#pets')).toBeVisible();
+    await expect(await run('adopt cat')).toHaveText('You already have a cat, Kisse. Set it free first (P).');
+    await page.keyboard.press('Escape');
+    expect(await state(page)).toMatchObject({ devcon: false });
+    await page.keyboard.press('KeyL'); // låt det regna: 1 000 kr in the air
+    await expect(page.locator('#kr')).toHaveText('700 riksdaler');
+    expect((await state(page)).banknotes).toBeGreaterThan(0);
+    await page.keyboard.press('KeyL'); // not enough left: nothing is taken
+    expect(await state(page)).toMatchObject({ kr: 700 });
   });
 });
 

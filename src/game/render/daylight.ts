@@ -33,7 +33,7 @@ export interface DaylightTargets {
  * when it gives almost no light, because switching a light or its shadows on or off recompiles every material.
  */
 export class Daylight {
-  /** the sun's intensity for the time of day under a clear sky; the clouds' shade (sky.ts) multiplies it, so main.ts sets sun.intensity */
+  /** the sun's intensity for the time of day under a clear sky; the clouds' shade (sky.ts) multiplies it, so the camera rig sets sun.intensity */
   sunIntensity = SUN_I * LEGACY_LIGHT;
   constructor(private readonly targets: DaylightTargets) {}
 

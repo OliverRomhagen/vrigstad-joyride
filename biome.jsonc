@@ -2,7 +2,7 @@
   "$schema": "https://biomejs.dev/schemas/2.6.8/schema.json",
   "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
   "files": {
-    // The HTML pages keep their hand-formatted style until #177 splits them (AGENTS.md, Code style). tools/trailer is its
+    // The HTML pages keep their hand-formatted style until each is reformatted (AGENTS.md, Code style). tools/trailer is its
     // own package. .github and .claude stay out because check.yml skips PRs that only change them, so such an edit could
     // merge unformatted and fail on main.
     "includes": ["**", "!**/*.md", "!src/*.html", "!data", "!tools/trailer", "!.github", "!.claude"]
@@ -25,9 +25,9 @@
   ],
   "overrides": [
     {
-      // The two single-file scripts keep their dense style until #177 splits them, so only formatting is off. These rules
-      // still run: @ts-nocheck hides undeclared names from tsc, and a split that moves a name out of main.ts while another
-      // branch still uses it would otherwise only fail at runtime.
+      // The two page scripts keep their dense style, so only formatting is off: reformatting the game's main.ts is its own
+      // PR now that #177 has split it. These rules still run: the map's @ts-nocheck hides undeclared names from tsc, and a
+      // move that takes a name out of a main.ts while another branch still uses it would otherwise only fail at runtime.
       "includes": ["src/game/main.ts", "src/map/main.ts"],
       "formatter": { "enabled": false },
       "assist": { "enabled": false },
@@ -41,16 +41,22 @@
     {
       // Rules 2 and 3 on the world and the simulation: they know nothing about the page, so they run in Node, a worker or
       // a server, and they read intents, not input. These are fallow.toml's world, world-mesh and sim zones: all of
-      // src/world/, and src/game/ outside render/ and the page modules. tsconfig.sim.json has the same paths: keep the
+      // src/world/, and src/game/ outside render/, presentation/ and the page modules. tsconfig.sim.json has the same paths: keep the
       // three lists the same (tests/unit/zones.test.ts checks). Fallow checks the imports between our own files; Biome and tsc check what Fallow can't see.
       "includes": [
         "src/world/**",
         "src/game/**",
         "!src/game/render/**",
+        "!src/game/presentation/**",
         "!src/game/main.ts",
         "!src/game/hud.ts",
         "!src/game/input.ts",
-        "!src/game/menu.ts"
+        "!src/game/menu.ts",
+        "!src/game/loop.ts",
+        "!src/game/prompt.ts",
+        "!src/game/test-hook.ts",
+        "!src/game/devconsole.ts",
+        "!src/game/confetti.ts"
       ],
       "plugins": [
         // Rule 2: a listener on any object, such as an element passed in, which noRestrictedGlobals can't see.
@@ -106,7 +112,7 @@
     },
     {
       // The world's three.js side may import it. Exceptions: cats build their own meshes, and pedestrians add theirs to the
-      // scene; drop each once #177 moves that into render/.
+      // scene; drop each once #49 moves that into render/.
       "includes": ["src/world/mesh/**", "src/world/three-legacy.ts", "src/game/cats.ts", "src/game/pedestrians.ts"],
       "linter": { "rules": { "style": { "noRestrictedImports": "off" } } }
     },

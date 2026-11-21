@@ -13,6 +13,8 @@ export interface MenuPlateDeps {
   readonly hasPets: boolean; // P opens your pets only once you have one
   openPets: () => void;
   toast: (msg: string, secs?: number) => void;
+  readonly consoleRelock: boolean; // the dev console freed the cursor and takes it back on close: a menu opened over it takes that over
+  closeConsole: () => void;
 }
 
 /** The one menu that can be open at a time: what it shows, what a choice does, and what keeps it open. */
@@ -70,10 +72,11 @@ export class MenuPlate {
     this.menuPick = pick;
     this.menuStay = stay;
     if (kmenu.hidden) {
-      this.relock = input.locked();
-      if (this.relock) doc.exitPointerLock();
+      this.relock = input.locked() || this.g.consoleRelock;
+      if (input.locked()) doc.exitPointerLock();
     }
     kmenu.hidden = false;
+    this.g.closeConsole(); // after the plate shows, so the console doesn't take the cursor back
   };
   closeMenu = () => {
     const { kmenu, input } = this.g;
