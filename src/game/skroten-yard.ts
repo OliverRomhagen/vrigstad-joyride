@@ -296,9 +296,9 @@ const WRECK_ROWS = [
 const WRECK_GAP_M = 2.6; // between the middles of neighbours in a row
 const WRECK_HALF_LEN_M = 2.7; // half the longest car's length, for the row's outline
 const TRACTORS = [
-  // two old tractors, parked on their own
-  { u: -27, v: 14, turn: 0.4 },
-  { u: -5, v: 22, turn: 0.2 },
+  // two old tractors, parked on their own: a red one and a green one
+  { u: -27, v: 14, turn: 0.4, colour: '#8a2f2a' },
+  { u: -5, v: 22, turn: 0.2, colour: '#4f7a34' },
 ];
 
 /**
@@ -470,7 +470,7 @@ export function yardLayout(
     outlines.push(rect((row.u0 + row.u1) / 2, row.v, row.u1 - row.u0 + 2.2, WRECK_HALF_LEN_M * 2));
   }
   for (const t of TRACTORS) {
-    wrecks.push({ ...t, tilt: 0, model: 'traktor', colour: pick(['#8a2f2a', '#5f7a3a']), stack: 0 });
+    wrecks.push({ ...t, tilt: 0, model: 'traktor', stack: 0 });
     outlines.push(rect(t.u, t.v, 2.3, 3.6, t.turn));
   }
 
