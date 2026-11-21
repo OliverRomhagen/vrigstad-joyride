@@ -92,7 +92,7 @@ const { scene, camera, sun, skyDome } = buildStage(coarse, location.search);
 const maxAnisotropy = renderer.capabilities.getMaxAnisotropy();
 
 // ---------- lab: opt-in experiments, switched on with ?lab=<id>,<id> (src/lab/flags.ts) ----------
-// an experiment's code lives where it belongs, and lab.on('<id>') gates it where it's wired in, below or here (#323);
+// an experiment's code lives where it belongs, and lab.on('<id>') gates it here or where it's wired in below (#323);
 // code behind a gate is loaded with import(), so with everything off the game runs exactly as without the lab.
 // After the WebGL check, so none starts behind the fail screen; one that fails to load or start should only warn
 const lab = LabFlags.fromSearch(location.search);
