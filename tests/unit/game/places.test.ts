@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import { Commands } from '../../../src/game/commands';
 import { DMG_MAX } from '../../../src/game/health';
 import { KIOSK, Places, type PlacesDeps, SKROTEN, streetDoor } from '../../../src/game/places';
+import { HOME } from '../../../src/game/player';
 import { RoadClass } from '../../../src/world/data';
 import { square } from '../world/fixture';
 
@@ -61,6 +63,23 @@ describe('Places', () => {
       { kind: 'kiosk', name: 'Kiosken', x: KIOSK.x, z: KIOSK.z + KIOSK.counterZ },
       { kind: 'skrot', name: 'Skroten', x: SKROTEN.x, z: SKROTEN.z },
     ]);
+  });
+
+  it('takes you to Torget, the kiosk, Skroten or a safehouse with go', () => {
+    const { places: p } = places(),
+      c = new Commands(),
+      went: [number, number][] = [];
+    p.registerCommands(c, (x, z, name) => {
+      went.push([x, z]);
+      return 'You are at ' + name + '.';
+    });
+    expect(c.run('go Skroten')).toBe('You are at Skroten.');
+    expect(went.at(-1)).toEqual([SKROTEN.x, SKROTEN.z]);
+    expect(c.run('go torget')).toBe('You are at Torget.');
+    expect(went.at(-1)).toEqual([HOME.x, HOME.z]);
+    expect(c.run('go kiosk')).toBe('You are at Kiosken.');
+    expect(c.run('go gästgivaregatan')).toBe('You are at Gästgivaregatan.');
+    expect(c.run('go mars')).toBe('No place called mars. Usage: go <torget | gästgivaregatan | kiosk | skroten>');
   });
 
   it('finds Skroten for a car within 4 m of its ring, never for you on foot', () => {

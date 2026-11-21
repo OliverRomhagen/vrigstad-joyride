@@ -482,9 +482,12 @@ test.describe('game (index.html)', () => {
 
   test('Skroten buys the car you drive onto its ring', async ({ page }, testInfo) => {
     const errors = watchErrors(page);
-    await page.goto('/index.html?dev&at=892.8,71.6'); // on Skroten's ring (SKROTEN in src/game/places.ts)
+    await page.goto('/index.html?dev');
     await page.locator('#go').click();
     await page.keyboard.press('Backquote');
+    await page.keyboard.type('go skroten'); // onto Skroten's ring (SKROTEN in src/game/places.ts)
+    await page.keyboard.press('Enter');
+    await expect(page.locator('#devcon li').last()).toHaveText('You are at Skroten.');
     await page.keyboard.type('car volvo240'); // yours, so no star when you get in; parked 3.5 m away, still on the ring
     await page.keyboard.press('Enter');
     await expect(page.locator('#devcon li').last()).toHaveText('Parked a Volvo 240 next to you.');
