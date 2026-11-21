@@ -1,15 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import { VEHICLES } from '../../../src/game/render/vehicle-registry';
 import {
+  floorAt,
   OWNER_UV,
   RAMP_M,
   RING_UV,
   SKROT_HALL,
   WORKSHOP_DOOR,
-  workshopFloorAt,
   worldToYard,
   YARD,
   YARD_CAR_MODELS,
+  yardFloorAt,
   yardLayout,
   yardToWorld,
 } from '../../../src/game/skroten-yard';
@@ -158,7 +159,7 @@ describe('Skroten yard', () => {
   it('gives the workshop an even floor clear of bumpy, rising ground, with a ramp from the door down to the yard', () => {
     const ground = (x: number, z: number) => 0.09 * (x - 900) + 0.3 * Math.sin(x / 7) * Math.cos(z / 5), // rises east, bumpy
       ws = yardLayout(FOOTPRINTS, ground).workshop!,
-      floor = (x: number, z: number) => workshopFloorAt(ws, x, z, ground);
+      floor = (x: number, z: number) => floorAt(ws, x, z, ground);
     for (let x = 923; x < 967; x += 1.3)
       for (let z = 74; z < 98; z += 1.3) {
         const f = floor(x, z);
@@ -203,5 +204,25 @@ describe('Skroten yard', () => {
     expect(broken).toHaveLength(1);
     expect(broken[0]!.tilt).not.toBe(0);
     expect(Math.hypot(y.looseWheel!.u - broken[0]!.u, y.looseWheel!.v - broken[0]!.v)).toBeLessThan(3.5);
+  });
+
+  it('gives the carport an even floor too, with a ramp along its whole open front', () => {
+    const ground = (x: number, z: number) => 0.06 * (x - 890) + 0.2 * Math.sin(z / 3),
+      y = yardLayout(FOOTPRINTS, ground),
+      cp = y.carport!,
+      f = cp.front;
+    for (let x = 892; x < 934; x += 2.1)
+      for (let z = 114; z < 133; z += 2.1) {
+        const h = yardFloorAt(y, x, z, ground);
+        expect(h).not.toBeNull();
+        expect(h!).toBeGreaterThanOrEqual(ground(x, z));
+      }
+    // the ramp reaches the yard's ground at both ends of the front, and in the middle
+    for (const s of [0.5, f.len / 2, f.len - 0.5]) {
+      const x = f.x0 + f.ux * s + f.nx * (RAMP_M - 0.001),
+        z = f.z0 + f.uz * s + f.nz * (RAMP_M - 0.001);
+      expect(floorAt(cp, x, z, ground)).toBeCloseTo(ground(x, z), 2);
+    }
+    expect(yardFloorAt(y, 860, 70, ground)).toBeNull(); // the yard itself is just ground
   });
 });

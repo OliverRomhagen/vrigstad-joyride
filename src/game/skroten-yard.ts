@@ -100,15 +100,21 @@ export interface WorkshopProp {
  * bay is the spot between the lift's posts where a car parks to be worked on, for upgrades and repairs to come; `in` points from the door
  * towards it.
  */
-export interface Workshop {
+/**
+ * A building with an even floor: its outline, the floor (h = a + bx·x + cz·z, fitted to the ground under it and lifted just clear of
+ * it), and the stretch of one wall, from `from` to `to` metres along it, where a ramp runs down from the floor to the yard.
+ */
+export interface FloorArea {
   outline: readonly number[];
+  floor: { a: number; bx: number; cz: number };
+  ramp: { wall: Wall; from: number; to: number };
+}
+export interface Workshop extends FloorArea {
   walls: Wall[];
   doorWall: Wall;
   doorFrom: number;
   doorTo: number;
   bay: { x: number; z: number; inX: number; inZ: number };
-  /** The floor: one even surface, h = a + bx·x + cz·z, fitted to the ground under the hall and lifted just clear of it. */
-  floor: { a: number; bx: number; cz: number };
   props: WorkshopProp[];
 }
 /** The props' size along their turn and across it (m), and height. */
@@ -125,8 +131,7 @@ const FLOOR_STEP_M = 1, // the floor is fitted to the ground sampled this far ap
 const BAY_IN_M = 15, // the bay's middle, this far in from the door
   LIFT_HALF_M = 2.1; // the lift's posts, this far either side of the bay's middle: a car's 1.5 m collision radius passes between
 /** The carport: its outline and walls, the open front, and the posts along it (world metres). */
-export interface Carport {
-  outline: readonly number[];
+export interface Carport extends FloorArea {
   walls: Wall[];
   front: Wall;
   posts: { x: number; z: number }[];
@@ -260,21 +265,30 @@ function fitFloor(p: readonly number[], heightAt: (x: number, z: number) => numb
   return { a: mh - bx * mx - cz * mz + lift + FLOOR_CLEAR_M, bx, cz };
 }
 
-/**
- * The height of the workshop's floor at (x, z): inside the hall, and on the ramp down from its door to the yard; null elsewhere, where the
- * ground is the ground. Everyone stands on it, so main.ts reads it in groundAt.
- */
-export function workshopFloorAt(ws: Workshop, x: number, z: number, heightAt: (x: number, z: number) => number) {
-  const { a, bx, cz } = ws.floor;
-  if (pointInPolygon(ws.outline as number[], x, z)) return a + bx * x + cz * z;
-  const w = ws.doorWall,
-    s = (x - w.x0) * w.ux + (z - w.z0) * w.uz, // along the door's wall
+/** The height of a building's floor at (x, z): inside it, and on its ramp down to the yard; null elsewhere, where the ground is the ground. */
+export function floorAt(area: FloorArea, x: number, z: number, heightAt: (x: number, z: number) => number) {
+  const { a, bx, cz } = area.floor;
+  if (pointInPolygon(area.outline as number[], x, z)) return a + bx * x + cz * z;
+  const { wall: w, from, to } = area.ramp,
+    s = (x - w.x0) * w.ux + (z - w.z0) * w.uz, // along the wall
     out = (x - w.x0) * w.nx + (z - w.z0) * w.nz; // out from it, into the yard
-  if (out < 0 || out > RAMP_M || s < ws.doorFrom || s > ws.doorTo) return null;
+  if (out < 0 || out > RAMP_M || s < from || s > to) return null;
   const sill = a + bx * (x - w.nx * out) + cz * (z - w.nz * out),
     ground = heightAt(x, z),
     t = out / RAMP_M;
   return sill > ground ? sill + (ground - sill) * t : null;
+}
+
+/** The floor under (x, z) in the workshop or the carport, or on their ramps; null elsewhere. Everyone stands on it: main.ts reads it in groundAt. */
+export function yardFloorAt(
+  y: Pick<YardLayout, 'workshop' | 'carport'>,
+  x: number,
+  z: number,
+  heightAt: (x: number, z: number) => number,
+) {
+  return (
+    (y.workshop && floorAt(y.workshop, x, z, heightAt)) ?? (y.carport && floorAt(y.carport, x, z, heightAt)) ?? null
+  );
 }
 
 const WRECK_COLOURS = [
@@ -428,7 +442,17 @@ export function yardLayout(
       post(1),
     ].filter((p): p is WorkshopProp => !!p);
     for (const p of props) outlines.push(rect(p.u, p.v, PROP_SIZE[p.kind].w, PROP_SIZE[p.kind].d, p.turn));
-    workshop = { outline, walls, doorWall, doorFrom, doorTo, bay, props, floor: fitFloor(outline, heightAt) };
+    workshop = {
+      outline,
+      walls,
+      doorWall,
+      doorFrom,
+      doorTo,
+      bay,
+      props,
+      floor: fitFloor(outline, heightAt),
+      ramp: { wall: doorWall, from: doorFrom, to: doorTo },
+    };
   }
 
   // the carport: walls on three sides, posts along the open front between its bays
@@ -443,7 +467,14 @@ export function yardLayout(
       posts.push({ x, z });
       outlines.push(wallStrip({ ...shedFront, x0: x, z0: z }, -CARPORT_POST_M / 2, CARPORT_POST_M / 2, CARPORT_POST_M));
     }
-    carport = { outline: shedOutline, walls: shedWalls, front: shedFront, posts };
+    carport = {
+      outline: shedOutline,
+      walls: shedWalls,
+      front: shedFront,
+      posts,
+      floor: fitFloor(shedOutline, heightAt),
+      ramp: { wall: shedFront, from: 0, to: shedFront.len }, // along the whole open front
+    };
   }
 
   outlines.push(rect(HUT.u, HUT.v, HUT.w, HUT.d));

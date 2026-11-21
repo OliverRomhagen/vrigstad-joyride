@@ -8,6 +8,7 @@ import { makeRnd } from '../../world/random';
 import {
   type Carport,
   CONTAINERS,
+  floorAt,
   HUT,
   OWNER_UV,
   PROP_SIZE,
@@ -16,13 +17,13 @@ import {
   WORKSHOP_DOOR,
   type Workshop,
   type WorkshopProp,
-  workshopFloorAt,
   YARD,
   YARD_GATE,
   YARD_TURN,
   type YardCar,
   type YardCarModel,
   type YardLayout,
+  yardFloorAt,
   yardToWorld,
 } from '../skroten-yard';
 import { boxGeo, carGeo, mergeGeo, type Person, paintMat, personParts } from './models';
@@ -94,6 +95,11 @@ export class SkrotenMeshes {
       groundY = (u: number, v: number) => {
         const p = yardToWorld(u, v);
         return heightAt(p.x, p.z);
+      },
+      // what a car or a prop stands on: the workshop's or the carport's floor, else the ground
+      standY = (u: number, v: number) => {
+        const p = yardToWorld(u, v);
+        return yardFloorAt(layout, p.x, p.z, heightAt) ?? heightAt(p.x, p.z);
       };
     // places a coloured geometry at (u, y, v) of the yard's frame, turned and tilted
     const put = (
@@ -193,7 +199,7 @@ export class SkrotenMeshes {
     let lowerTop = 0;
     for (const w of layout.yardCars) {
       const geo = carGeo(simpleType(w.model), w.colour),
-        y = groundY(w.u, w.v) - (w.wrecked ? WRECK_SINK_M : 0),
+        y = standY(w.u, w.v) - (w.wrecked ? WRECK_SINK_M : 0),
         squash = w.stack === 1 ? STACK_SQUASH : 1;
       if (w.stack === 1) {
         geo.computeBoundingBox();
@@ -274,13 +280,7 @@ export class SkrotenMeshes {
     for (const s of layout.signs) put(boxGeo([[0.1, 2.6, 0.1, 0, 1.3, 0, '#9a9a92']]), s.u, groundY(s.u, s.v), s.v);
 
     // inside the workshop, on its floor: the bench, shelves, the tyre rack and the lift's posts
-    const floorY = (u: number, v: number) => {
-      const q = yardToWorld(u, v);
-      return layout.workshop
-        ? (workshopFloorAt(layout.workshop, q.x, q.z, heightAt) ?? heightAt(q.x, q.z))
-        : heightAt(q.x, q.z);
-    };
-    for (const pr of layout.workshop?.props ?? []) put(boxGeo(propParts(pr)), pr.u, floorY(pr.u, pr.v), pr.v, pr.turn);
+    for (const pr of layout.workshop?.props ?? []) put(boxGeo(propParts(pr)), pr.u, standY(pr.u, pr.v), pr.v, pr.turn);
 
     const yard = new THREE.Group();
     yard.position.set(YARD_GATE.x, 0, YARD_GATE.z);
@@ -311,7 +311,7 @@ export class SkrotenMeshes {
       this.farCars = new THREE.Mesh(bake(farPieces), paintMat);
       this.farCars.castShadow = this.farCars.receiveShadow = true;
       yard.add(this.farCars);
-      this.loadNear = () => void this.loadCars(detailed, yard, groundY);
+      this.loadNear = () => void this.loadCars(detailed, yard, standY);
     }
     scene.add(yard);
     if (layout.workshop) scene.add(hallMeshes(heightAt, layout.workshop));
@@ -339,7 +339,7 @@ export class SkrotenMeshes {
 
   // the game's car models for the cars standing alone: one model loaded per kind, its paint and the rest each drawn as one instanced
   // mesh, so the paint takes each wreck's colour. A model that fails to load leaves the simple shapes up.
-  private async loadCars(list: YardCar[], parent: THREE.Group, groundY: (u: number, v: number) => number) {
+  private async loadCars(list: YardCar[], parent: THREE.Group, standY: (u: number, v: number) => number) {
     const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder),
       group = new THREE.Group(),
       byModel = new Map<YardCarModel, YardCar[]>(),
@@ -361,7 +361,7 @@ export class SkrotenMeshes {
             const body = new THREE.InstancedMesh(paintGeo, paint, cars.length),
               trim = new THREE.InstancedMesh(parts.rest, paintMat, cars.length);
             cars.forEach((w, i) => {
-              const m = placing(w.u, groundY(w.u, w.v) - (w.wrecked ? WRECK_SINK_M : 0), w.v, w.turn, w.tilt, w.pitch);
+              const m = placing(w.u, standY(w.u, w.v) - (w.wrecked ? WRECK_SINK_M : 0), w.v, w.turn, w.tilt, w.pitch);
               body.setMatrixAt(i, m);
               trim.setMatrixAt(i, m);
               body.setColorAt(i, colour.set(w.colour));
@@ -616,7 +616,7 @@ const lowestUnder = (p: readonly number[], heightAt: SkrotenMeshDeps['heightAt']
 function hallMeshes(heightAt: SkrotenMeshDeps['heightAt'], ws: Workshop) {
   const pieces: THREE.BufferGeometry[] = [],
     p = ws.outline,
-    floorAt = (x: number, z: number) => ws.floor.a + ws.floor.bx * x + ws.floor.cz * z,
+    level = (x: number, z: number) => ws.floor.a + ws.floor.bx * x + ws.floor.cz * z,
     lo = lowestUnder(p, heightAt),
     base = lo - 0.5,
     xs = p.filter((_, i) => i % 2 === 0),
@@ -625,10 +625,10 @@ function hallMeshes(heightAt: SkrotenMeshDeps['heightAt'], ws: Workshop) {
     wingX = x0 + (x1 - x0) * 0.25; // walls west of this are the clad wing
   const { doorWall: dw, doorFrom, doorTo } = ws,
     doorMid = (doorFrom + doorTo) / 2,
-    doorFoot = floorAt(dw.x0 + dw.ux * doorMid, dw.z0 + dw.uz * doorMid),
+    doorFoot = level(dw.x0 + dw.ux * doorMid, dw.z0 + dw.uz * doorMid),
     doorTop = doorFoot + WORKSHOP_DOOR.h;
   let highest = -Infinity;
-  for (let i = 0; i < p.length; i += 2) highest = Math.max(highest, floorAt(p[i]!, p[i + 1]!));
+  for (let i = 0; i < p.length; i += 2) highest = Math.max(highest, level(p[i]!, p[i + 1]!));
   const top = Math.max(doorFoot + HALL_H_M, highest + HALL_MIN_H_M); // the walls' level top
   for (const w of ws.walls) {
     const clad = Math.max(w.x0, w.x0 + w.ux * w.len) < wingX,
@@ -651,7 +651,7 @@ function hallMeshes(heightAt: SkrotenMeshDeps['heightAt'], ws: Workshop) {
       const n = Math.floor(w.len / WINDOW_EVERY_M);
       for (let i = 0; i < n; i++) {
         const s = (w.len * (i + 0.5)) / n,
-          y = Math.max(floorAt(w.x0 + w.ux * s, w.z0 + w.uz * s), heightAt(w.x0 + w.ux * s, w.z0 + w.uz * s));
+          y = Math.max(level(w.x0 + w.ux * s, w.z0 + w.uz * s), heightAt(w.x0 + w.ux * s, w.z0 + w.uz * s));
         if (w === dw && s > doorFrom - 1.2 && s < doorTo + 1.2) continue;
         if (w.nz < -0.7 && i % 4 === 2) {
           pieces.push(wallBox(w, s - 0.55, s + 0.55, y, y + 2.15, HALL_WALL_M / 2, 0.06, '#f1efe8'));
@@ -677,14 +677,14 @@ function hallMeshes(heightAt: SkrotenMeshDeps['heightAt'], ws: Workshop) {
   for (let i = 0; i < p.length; i += 2) flat.push(new THREE.Vector2(p[i]!, p[i + 1]!));
   for (const [a, b, c] of THREE.ShapeUtils.triangulateShape(flat, [])) {
     const P = (k: number) => [flat[k]!.x, top, flat[k]!.y],
-      F = (k: number) => [flat[k]!.x, floorAt(flat[k]!.x, flat[k]!.y), flat[k]!.y];
+      F = (k: number) => [flat[k]!.x, level(flat[k]!.x, flat[k]!.y), flat[k]!.y];
     sf.tri(P(a!), P(b!), P(c!), FLAT_ROOF, true);
     sf.tri(F(a!), F(b!), F(c!), CONCRETE, true);
   }
   const ramp = (s: number, out: number) => {
     const x = dw.x0 + dw.ux * s + dw.nx * out,
       z = dw.z0 + dw.uz * s + dw.nz * out;
-    return [x, (workshopFloorAt(ws, x, z, heightAt) ?? heightAt(x, z)) + 0.02, z];
+    return [x, (floorAt(ws, x, z, heightAt) ?? heightAt(x, z)) + 0.02, z];
   };
   for (let out = 0; out < RAMP_M - 0.01; out += RAMP_M / 4)
     sf.quad(
@@ -723,31 +723,53 @@ function hallMeshes(heightAt: SkrotenMeshDeps['heightAt'], ws: Workshop) {
   return g;
 }
 
-// the carport in world coordinates: wooden walls on three sides, posts along the open front, and the long gabled roof over its ridge
+// the carport in world coordinates, built up from its even floor so it has the same headroom at both ends of the slope: wooden walls on
+// three sides, posts along the open front, the long gabled roof over its ridge, a concrete floor and a ramp along the front
 function carportMeshes(heightAt: SkrotenMeshDeps['heightAt'], cp: Carport) {
   const pieces: THREE.BufferGeometry[] = [],
-    lo = lowestUnder(cp.outline, heightAt),
-    base = lo - 0.5,
-    top = lo + SHED_WALL_M,
-    f = cp.front;
-  for (const w of cp.walls)
-    if (w !== f) pieces.push(wallBox(w, -HALL_WALL_M / 2, w.len + HALL_WALL_M / 2, base, top, 0, HALL_WALL_M, WOOD));
-  for (const q of cp.posts)
+    base = lowestUnder(cp.outline, heightAt) - 0.5,
+    fl = (x: number, z: number) => cp.floor.a + cp.floor.bx * x + cp.floor.cz * z,
+    f = cp.front,
+    sf = new Surfaces(),
+    depth = Math.max(...cp.walls.filter(w => w !== f && Math.abs(w.nx * f.nx + w.nz * f.nz) < 0.3).map(w => w.len)),
+    // a point `s` along the front and `d` in from it, `y` over the floor there
+    a = (s: number, d: number, y: number) => {
+      const x = f.x0 + f.ux * s - f.nx * d,
+        z = f.z0 + f.uz * s - f.nz * d;
+      return [x, fl(x, z) + y, z];
+    };
+  // the walls: planks from below the ground up to the eaves, which follow the floor
+  for (const w of cp.walls) {
+    if (w === f) continue;
+    const x1 = w.x0 + w.ux * w.len,
+      z1 = w.z0 + w.uz * w.len,
+      bottom = (x: number, z: number) => [x, base, z],
+      top = (x: number, z: number) => [x, fl(x, z) + SHED_WALL_M, z];
+    sf.quad(bottom(w.x0, w.z0), bottom(x1, z1), top(x1, z1), top(w.x0, w.z0), WOOD, true);
+  }
+  for (const q of cp.posts) {
+    const t = fl(q.x, q.z) + SHED_WALL_M;
     pieces.push(
-      boxGeo([[0.25, top - base, 0.25, 0, (top + base) / 2, 0, WOOD]]).applyMatrix4(
+      boxGeo([[0.25, t - base, 0.25, 0, (t + base) / 2, 0, WOOD]]).applyMatrix4(
         placing(q.x, 0, q.z, -Math.atan2(f.uz, f.ux)),
       ),
     );
-  pieces.push(wallBox(f, -0.2, f.len + 0.2, top - 0.35, top, -0.2, 0.2, '#5a3d29')); // the beam over the bays
-  // the roof: from the front eave and the back eave up to the ridge along the middle, overhanging a little; gable ends of wood
-  const sf = new Surfaces(),
-    over = 0.5,
-    depth = Math.max(...cp.walls.filter(w => w !== f && Math.abs(w.nx * f.nx + w.nz * f.nz) < 0.3).map(w => w.len)),
-    a = (s: number, d: number, y: number) => [f.x0 + f.ux * s - f.nx * d, y, f.z0 + f.uz * s - f.nz * d],
-    ridge = top + SHED_RISE_M;
+  }
+  // the beam over the bays, the roof from both eaves up to the ridge, overhanging a little, and the gable ends
+  const over = 0.5,
+    eave = SHED_WALL_M - 0.15,
+    ridge = SHED_WALL_M + SHED_RISE_M;
   sf.quad(
-    a(-over, -over, top - 0.15),
-    a(f.len + over, -over, top - 0.15),
+    a(-0.2, 0.2, SHED_WALL_M - 0.35),
+    a(f.len + 0.2, 0.2, SHED_WALL_M - 0.35),
+    a(f.len + 0.2, 0.2, SHED_WALL_M),
+    a(-0.2, 0.2, SHED_WALL_M),
+    '#5a3d29',
+    true,
+  );
+  sf.quad(
+    a(-over, -over, eave),
+    a(f.len + over, -over, eave),
     a(f.len + over, depth / 2, ridge),
     a(-over, depth / 2, ridge),
     RUST_ROOF,
@@ -756,12 +778,32 @@ function carportMeshes(heightAt: SkrotenMeshDeps['heightAt'], cp: Carport) {
   sf.quad(
     a(-over, depth / 2, ridge),
     a(f.len + over, depth / 2, ridge),
-    a(f.len + over, depth + over, top - 0.15),
-    a(-over, depth + over, top - 0.15),
+    a(f.len + over, depth + over, eave),
+    a(-over, depth + over, eave),
     RUST_ROOF,
     true,
   );
-  for (const s of [0, f.len]) sf.tri(a(s, 0, top), a(s, depth, top), a(s, depth / 2, ridge), WOOD, true);
+  for (const s of [0, f.len])
+    sf.tri(a(s, 0, SHED_WALL_M), a(s, depth, SHED_WALL_M), a(s, depth / 2, ridge), WOOD, true);
+  // the floor, and the ramp down from the front to the yard
+  const flat: THREE.Vector2[] = [];
+  for (let i = 0; i < cp.outline.length; i += 2) flat.push(new THREE.Vector2(cp.outline[i]!, cp.outline[i + 1]!));
+  for (const [i, j, k] of THREE.ShapeUtils.triangulateShape(flat, [])) {
+    const F = (n: number) => [flat[n]!.x, fl(flat[n]!.x, flat[n]!.y), flat[n]!.y];
+    sf.tri(F(i!), F(j!), F(k!), CONCRETE, true);
+  }
+  const ramp = (s: number, out: number) => {
+    const x = f.x0 + f.ux * s + f.nx * out,
+      z = f.z0 + f.uz * s + f.nz * out;
+    return [x, (floorAt(cp, x, z, heightAt) ?? heightAt(x, z)) + 0.02, z];
+  };
+  const steps = Math.ceil(f.len / 3);
+  for (let i = 0; i < steps; i++)
+    for (let out = 0; out < RAMP_M - 0.01; out += RAMP_M / 4) {
+      const s0 = (f.len * i) / steps,
+        s1 = (f.len * (i + 1)) / steps;
+      sf.quad(ramp(s0, out), ramp(s1, out), ramp(s1, out + RAMP_M / 4), ramp(s0, out + RAMP_M / 4), CONCRETE, true);
+    }
   pieces.push(sf.geometry());
   const m = new THREE.Mesh(bake(pieces), paintMat);
   m.castShadow = m.receiveShadow = true;
