@@ -92,6 +92,10 @@ export class Hud {
     this.hideToast();
   }
 
+  hideBig() {
+    this.g.$('big').hidden = true;
+  }
+
   /** A red flash that fades, stronger for a harder hurt of `n` health. */
   flashHurt(n: number) {
     const el = this.g.$('hurt');

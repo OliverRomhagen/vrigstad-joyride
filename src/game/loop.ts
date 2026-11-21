@@ -49,6 +49,7 @@ export interface GameLoopDeps {
   hurtPlayer(n: number): void;
   shake(dmg: number): void;
   toast(msg: string, secs?: number): void;
+  hideBig(): void; // when bigT runs out
   // stepped every frame, in this order
   updateTrisslott(dt: number): void;
   updatePlaces(dt: number): void; // spins the places' gems
@@ -122,7 +123,6 @@ export class GameLoop {
   private frame = (now: number) => {
     const g = this.g,
       {
-        $,
         game,
         view,
         player,
@@ -141,7 +141,7 @@ export class GameLoop {
     if (health.hp <= 0) g.knockedOut(); // here, not where the hit lands: that can be halfway through moving the car
     if (game.bigT > 0) {
       game.bigT -= dt;
-      if (game.bigT <= 0) $('big').hidden = true;
+      if (game.bigT <= 0) g.hideBig();
     }
     if (game.ramCool > 0) game.ramCool -= dt;
     g.updateTrisslott(dt);
