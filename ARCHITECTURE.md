@@ -88,7 +88,7 @@ tests/
 - **world/ is shared** so the game and the map can't drift apart, and so data-heavy work (mesh building, spatial indexes) is done once and tested once.
 - **sim/ has no three.js** so game rules can be unit-tested in Node, run at a fixed timestep (same feel at any framerate), and later run on a server or in a worker for multiplayer (#1).
 - **The UI only reads a store** so Svelte's reactivity never touches the hot loop. The game writes HUD values when they change (speed throttled to ~10 Hz), not every frame.
-- **Events, not calls, between systems.** The sim says "a star was added"; the UI shows a toast, audio plays a siren, render flashes the lights. New features plug in without editing the sim.
+- **Events, not calls, between sim, render, UI and audio.** The sim says "a star was added"; the UI shows a toast, audio plays a siren, render flashes the lights. New features plug in without editing the sim.
 
 ## Stack
 
@@ -117,7 +117,7 @@ Short records so settled questions stay settled. Add one when you make a choice 
 - **HUD stays DOM; in-world UI uses canvas textures.** HTML-in-canvas (#56) replaces the canvas textures once browsers support it.
 - **No physics engine yet.** Collisions are hand-rolled. Rapier is the candidate when crashes (#40) need more (#54).
 - **Lab experiments live in `src/lab/`, one folder each, off by default (#227).** `src/lab/flags.ts` lists them, each with an English name and what it costs; `?lab=<id>,<id>` switches them on, and later the settings menu (#78) and the console (#218) set the same flags. The game reads them once, at page load, so a change there takes a reload until experiments can start and stop while it runs. Gameplay asks the flags, never the URL. Each experiment is loaded with a dynamic `import()` only when its flag is on. While the page is built as one file it still ships in that file but doesn't run; with multi-file output it becomes its own chunk. Dropping one means deleting its folder and its entry. `src/lab/hello/` is the template.
-- **No ECS yet.** Plain arrays per system; revisit with miniplex when entity kinds multiply (#55).
+- **No ECS yet.** Plain arrays per entity kind; revisit with miniplex when entity kinds multiply (#55).
 
 ## Coordinates and data
 
