@@ -18,6 +18,7 @@ const RAGDOLL_MAX = 6,
   RAGDOLL_MAX_COARSE = 3; // at most this many at once (six draw calls each); on a touch screen. More hits just push people aside
 const MAX_STEPS = 4; // physics steps per frame at most, so a slow frame doesn't snowball
 const CAR_PUSH_M = 1.6; // your car shoves a lying body within this radius of its middle (m)
+const NO_PUSHERS: readonly Pusher[] = []; // on foot, nothing shoves the bodies; shared, so no frame allocates one
 const STAR_COOL_S = 3; // everyone knocked over within this long (s) of a star counts as the same crash: one star, not one each
 
 /** What the ragdolls read from the rest of the game. The getters are read when used. */
@@ -79,7 +80,7 @@ export class Ragdolls {
     this.acc += dt;
     const steps = Math.min(MAX_STEPS, Math.floor(this.acc / STEP_S));
     this.acc = steps === MAX_STEPS ? 0 : this.acc - steps * STEP_S;
-    const pushers = pcar ? this.pushers : [];
+    const pushers = pcar ? this.pushers : NO_PUSHERS;
     if (pcar) {
       this.pushers[0].x = pcar.x;
       this.pushers[0].z = pcar.z;
