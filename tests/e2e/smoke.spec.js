@@ -444,7 +444,7 @@ test.describe('game (index.html)', () => {
     expect(await state(page)).toMatchObject({ devcon: false });
     await page.keyboard.press('KeyL'); // låt det regna: 1 000 kr in the air
     await expect(page.locator('#kr')).toHaveText('700 riksdaler');
-    expect((await state(page)).bills).toBeGreaterThan(0);
+    expect((await state(page)).banknotes).toBeGreaterThan(0);
     await page.keyboard.press('KeyL'); // not enough left: nothing is taken
     expect(await state(page)).toMatchObject({ kr: 700 });
   });

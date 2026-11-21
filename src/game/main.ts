@@ -303,7 +303,7 @@ commands.register('kr', { usage: '<amount>', help: 'add riksdaler to your wallet
 // adopt <pet>: a new random pet of that kind, right by you. Only cats so far; another kind of pet adds its entry here.
 const ADOPT = new Map([['cat', () => { if (colony.owned) return 'You already have a cat, ' + colony.owned.name + '. Set it free first (P).';
   if (game.inCar) return 'Get out of the car first.';   // a cat made by the car would land inside it
-  const k = colony.spawnNear(player); colony.adopt(k); showHeart(k); drawPets(); return 'Adopted a cat.'; }]]);
+  const cat = colony.spawnNear(player); colony.adopt(cat); showHeart(cat); drawPets(); return 'Adopted a cat.'; }]]);
 commands.register('adopt', { usage: '<' + [...ADOPT.keys()].join(' | ') + '>', help: 'adopt a new random pet of that kind',
   run: a => { const f = a[0] && ADOPT.get(a[0].toLowerCase()); if (!f) throw new UsageError(a[0] ? 'No pet called ' + a[0] + '.' : ''); return f(); } });
 commands.register('mynt', { help: 'add ' + fmtKr(MYNT_KR) + ' to your wallet', run: () => addKr(MYNT_KR) });
@@ -327,7 +327,7 @@ const prompt = new ActionPrompt({ $, game, places, wanted, get menuOpen() { retu
 // ---------- main loop (src/game/loop.ts) ----------
 const loop = new GameLoop({ $, renderer, scene, camera, canvas, coarse, half: HALF, game, view, player, health, input, places, wanted, cars, startCam: START_CAM, barMat, barColours: [BAR_BLUE, BAR_RED], cameraRig,
   get toasting() { return hud.toasting; }, inWater, collide, groundAt, drive, updateTraffic, knockedOut, hurtPlayer, shake, toast,
-  updateTrisslott: dt => trisslott.update(dt), updatePlaces: dt => placeMeshes.update(dt), updateDriftFx, updateVehicles: (T, dt) => vehicleVisuals.update(T, dt), updateSmoke, updateCash: dt => { banknotes.update(dt); confetti.update(dt); }, updateNpcs, updateCats,
+  updateTrisslott: dt => trisslott.update(dt), updatePlaces: dt => placeMeshes.update(dt), updateDriftFx, updateVehicles: (T, dt) => vehicleVisuals.update(T, dt), updateSmoke, updateBanknotes: dt => banknotes.update(dt), updateConfetti: dt => confetti.update(dt), updateNpcs, updateCats,
   updateDrivers: (T, dt) => drivers.update(T, dt), updateBodies: (T, dt) => bodyMotion.update(T, dt), drawHearts, updateHud: dt => hud.update(dt), drawMini,
   updateSign, catRideLines: () => crashes.catRideLines(), closeMenuIfLeft: () => menuPlate.closeIfLeft(), updatePrompt: () => prompt.update(), drawHealth });
 $('go').addEventListener('click', loop.startGame);
@@ -336,5 +336,5 @@ loop.start();
 // ---------- test hook: read-only state for the smoke tests (src/game/test-hook.ts) ----------
 installTestHook({ game, view, player, health, cars, labs: lab.list(), get stars() { return wanted.stars; }, get cats() { return cats.length; }, get ownCat() { return !!colony.owned; }, get displayCar() { return displayCar; },
   vehicleVisuals: { state: c => vehicleVisuals.state(meshed(c)) }, bodyMotion: { state: c => bodyMotion.state(meshed(c)) }, skyDome, street, debugStreetscape: DEBUG_STREETSCAPE, nearestCar,
-  get kr() { return wallet.kr; }, get bills() { return banknotes.live; }, get confetti() { return confetti.live; }, get devcon() { return devcon.isOpen; } });
+  get kr() { return wallet.kr; }, get banknotes() { return banknotes.live; }, get confetti() { return confetti.live; }, get devcon() { return devcon.isOpen; } });
 })();

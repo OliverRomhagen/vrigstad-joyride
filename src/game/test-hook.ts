@@ -27,7 +27,7 @@ export interface TestHookDeps {
   debugStreetscape: boolean;
   nearestCar(): Car | null;
   readonly kr: number; // in your wallet
-  readonly bills: number; // banknotes in the air or on the ground
+  readonly banknotes: number; // in the air or on the ground
   readonly confetti: number; // confetti pieces still falling
   readonly devcon: boolean; // the dev console is open
 }
@@ -78,7 +78,7 @@ export function installTestHook(g: TestHookDeps) {
         cats: g.cats,
         treats: game.treats,
         kr: g.kr,
-        bills: g.bills,
+        banknotes: g.banknotes,
         confetti: g.confetti,
         devcon: g.devcon,
         hp: health.hp,
