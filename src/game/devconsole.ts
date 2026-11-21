@@ -1,5 +1,6 @@
 // The dev console (#218): a line to type commands into, over the canvas. DOM only; the commands live in commands.ts.
 // Keys typed into it stop here, so they never reach the game's keydown handler and never drive the player.
+import { clamp } from '../world/math';
 import type { Commands } from './commands';
 
 const MAX_LINES = 60; // older output lines are dropped
@@ -112,7 +113,7 @@ export class DevConsole {
     }
     if (e.code === 'ArrowUp' || e.code === 'ArrowDown') {
       e.preventDefault();
-      const back = Math.max(0, Math.min(this.history.length, this.back + (e.code === 'ArrowUp' ? 1 : -1)));
+      const back = clamp(this.back + (e.code === 'ArrowUp' ? 1 : -1), 0, this.history.length);
       if (back === this.back) return; // past either end: keep the line as it is
       if (this.back === 0) this.draft = this.input.value;
       this.back = back;

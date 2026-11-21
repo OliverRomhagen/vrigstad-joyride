@@ -86,9 +86,7 @@ export class Input {
       const k = KEYMAP[(ev as KeyboardEvent).code];
       if (k) keys[k] = false;
     });
-    win.addEventListener('blur', () => {
-      for (const k in keys) keys[k as Key] = false;
-    });
+    win.addEventListener('blur', () => this.releaseKeys());
     doc.addEventListener('pointerlockchange', () => {
       if (!this.locked() && this.g.started && !this.g.menuOpen) this.g.lockLost();
     });
@@ -187,6 +185,11 @@ export class Input {
 
   locked() {
     return this.g.doc.pointerLockElement === this.g.canvas;
+  }
+
+  /** Lets go of every held key, as when the window loses focus or the dev console takes the keys. */
+  releaseKeys() {
+    for (const k in this.keys) this.keys[k as Key] = false;
   }
 
   lockMouse() {

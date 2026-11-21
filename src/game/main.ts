@@ -295,7 +295,7 @@ function gain(kr: number) { earn(wallet, kr); drawKr(); }
 const commands = new Commands();
 let conRelock = false;
 const devcon = new DevConsole({ root: $('devcon'), commands,
-  onOpen: () => { for (const k of Object.keys(keys) as (keyof typeof keys)[]) keys[k] = false; conRelock = input.locked(); if (conRelock) document.exitPointerLock(); },
+  onOpen: () => { input.releaseKeys(); conRelock = input.locked(); if (conRelock) document.exitPointerLock(); },
   onClose: () => { canvas.focus(); if (conRelock && kmenu.hidden) input.lockMouse(); conRelock = false; } });   // an open menu needs the cursor
 const MYNT_KR = 1000;   // what the mynt cheat adds
 function addKr(kr: number) { if (kr >= 0) gain(kr); else spend(Math.min(-kr, wallet.kr)); return 'Wallet: ' + fmtKr(wallet.kr) + '.'; }
