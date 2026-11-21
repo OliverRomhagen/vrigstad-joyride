@@ -249,12 +249,13 @@ describe('parkCars', () => {
     for (const c of cars.cars) expect(c.z).toBeLessThan(0);
   });
 
-  it('parks one more car out of sight with parkAway, as when Skroten buys one', () => {
+  it('replaces a sold car with one parked out of sight', () => {
     const { cars } = fleet({ r: [STREET] });
     cars.parkCars();
-    const before = cars.cars.length,
+    const sold = cars.cars.pop()!,
+      before = cars.cars.length,
       you = { x: 0, z: 0 };
-    cars.parkAway(you);
+    cars.replaceSold(sold, you);
     expect(cars.cars.length).toBe(before + 1);
     const c = cars.cars[before]!;
     expect(c.mode).toBe('parked');
@@ -302,5 +303,20 @@ describe('the car command', () => {
       x => x.T.name,
     );
     expect(c.run('car lada')).toBe('No car called lada. Usage: car <volvo240 | traktor>');
+  });
+
+  it('gets no replacement when it is sold, so the cheat adds no cars to the village', () => {
+    const { cars } = fleet({ r: [STREET] }),
+      c = new Commands();
+    cars.registerCommands(
+      c,
+      MODELS,
+      () => 0,
+      x => x.T.name,
+    );
+    c.run('car volvo240');
+    const sold = cars.cars.pop()!;
+    cars.replaceSold(sold, { x: 0, z: 0 });
+    expect(cars.cars).toEqual([]);
   });
 });

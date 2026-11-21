@@ -198,10 +198,13 @@ export class Fleet {
         this.g.buildings.collide(o, PARK_CLEAR_M);
         const c = this.g.addCar(type, o.x, o.z, facing(), 'parked', id === type ? undefined : id);
         c.owned = true;
+        this.fromCommand.add(c);
         return 'Parked a ' + carName(c) + ' next to you.';
       },
     });
   }
+
+  private readonly fromCommand = new WeakSet<Car>(); // cars the car command parked
 
   /** Puts a new car in the village. */
   add<C extends Car>(c: C): C {
@@ -222,8 +225,12 @@ export class Fleet {
     let count = 0;
     for (let tries = 0; tries < 900 && count < PARKED_CARS; tries++) if (this.parkOne(null)) count++;
   }
-  /** Parks one more car on a street at least SPAWN_AWAY_M from `farFrom`, out of sight: Skroten's sales keep the village's cars from running out. */
-  parkAway(farFrom: Point) {
+  /**
+   * Replaces `sold` with a car parked on a street at least SPAWN_AWAY_M from `farFrom`, out of sight, so Skroten's sales don't empty
+   * the village. A car the car command made gets none: it was never one of the village's.
+   */
+  replaceSold(sold: Car, farFrom: Point) {
+    if (this.fromCommand.has(sold)) return;
     for (let tries = 0; tries < PARK_AWAY_TRIES; tries++) if (this.parkOne(farFrom)) return;
   }
   // one try at a kerbside spot; with farFrom, only one at least SPAWN_AWAY_M from it
