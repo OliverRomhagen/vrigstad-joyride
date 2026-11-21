@@ -3,7 +3,9 @@
 import { RoadClass } from '../world/data';
 import { pointInPolygon, segmentDistance } from '../world/polygon';
 import type { RoadLine } from '../world/roads';
+import { type Commands, UsageError } from './commands';
 import { wrecked } from './health';
+import { HOME } from './player';
 import { RING_UV, yardToWorld } from './skroten-yard';
 
 const SAFE_S = 60,
@@ -106,6 +108,24 @@ export class Places {
   nearest(x: number, z: number) {
     for (const p of this.list) if (p.kind !== 'skrot' && Math.hypot(p.x - x, p.z - z) < REACH_M) return p;
     return null;
+  }
+
+  /**
+   * go <place>: takes you to Torget or to a place's ring (the kiosk, Skroten, a safehouse by its street), in the car if you are in one.
+   * `goTo` moves you, and says where you are.
+   */
+  registerCommands(commands: Pick<Commands, 'register'>, goTo: (x: number, z: number, name: string) => string) {
+    const spots = new Map<string, { x: number; z: number; name: string }>([['torget', { ...HOME, name: 'Torget' }]]);
+    for (const p of this.list) spots.set(p.kind === 'kiosk' ? 'kiosk' : p.name.toLowerCase(), p);
+    commands.register('go', {
+      usage: '<' + [...spots.keys()].join(' | ') + '>',
+      help: 'go to a place, in the car if you are in one',
+      run: a => {
+        const spot = a[0] && spots.get(a[0].toLowerCase());
+        if (!spot) throw new UsageError(a[0] ? 'No place called ' + a[0] + '.' : '');
+        return goTo(spot.x, spot.z, spot.name);
+      },
+    });
   }
 
   /** Skroten, if a car stands on its ring here. */

@@ -312,6 +312,9 @@ const commands = new Commands();
 const devcon = new DevConsole({ root: $('devcon'), commands, canvas, doc: document, get input() { return input; }, get enabled() { return DEV; }, get menuOpen() { return !kmenu.hidden; } });
 registerWalletCommands(commands, wallet);
 pets.registerCommands(commands);
+// go <place>: you, or the car you drive, straight there, out of any safehouse first
+places.registerCommands(commands, (x, z, name) => { leaveHouse(); const c = game.inCar ? game.pcar : null;
+  if (c) { c.x = x; c.z = z; c.v = 0; placeCar(meshed(c)); } else { player.x = x; player.z = z; player.speed = 0; } return 'You are at ' + name + '.'; });
 fleet.registerCommands(commands, new Map<string, CarType>([...VEHICLES.filter(v => !v.police).map(v => [v.id, v.archetype] as const), ['traktor', 'traktor']]), () => view.camYaw, c => carName(c));   // car <model>
 
 // ---------- input: keys, mouse look and the touch controls (src/game/input.ts) ----------
