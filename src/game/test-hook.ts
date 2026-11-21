@@ -17,6 +17,7 @@ export interface TestHookDeps {
   health: Health;
   cars: readonly Car[];
   labs: readonly string[]; // the lab experiments switched on
+  readonly ragdolls: number; // people knocked over right now
   readonly stars: number;
   readonly cats: number;
   readonly ownCat: boolean;
@@ -30,6 +31,10 @@ export interface TestHookDeps {
   furniture: { layout: FurnitureLayout; draw: { meshes: readonly unknown[]; triangles: number }; ms: number };
   debugFurniture: boolean;
   nearestCar(): Car | null;
+  readonly kr: number; // in your wallet
+  readonly banknotes: number; // in the air or on the ground
+  readonly confetti: number; // confetti pieces still falling
+  readonly devcon: boolean; // the dev console is open
 }
 
 /** Puts the hook on `window.__joyride`. */
@@ -77,10 +82,12 @@ export function installTestHook(g: TestHookDeps) {
       return {
         started: game.started,
         lab: g.labs,
+        ragdolls: g.ragdolls,
         x: player.x,
         z: player.z,
         y: player.y,
         yaw: view.camYaw,
+        zoom: view.zoom,
         inCar: game.inCar,
         car: game.pcar ? game.pcar.type : null,
         near: n ? n.mode : null,
@@ -94,6 +101,10 @@ export function installTestHook(g: TestHookDeps) {
         stars: g.stars,
         cats: g.cats,
         treats: game.treats,
+        kr: g.kr,
+        banknotes: g.banknotes,
+        confetti: g.confetti,
+        devcon: g.devcon,
         hp: health.hp,
         carDmg: game.pcar ? game.pcar.dmg : null,
         ownCat: g.ownCat,

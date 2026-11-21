@@ -59,7 +59,8 @@ describe('Crashes.crash', () => {
     const near = crashes(),
       far = crashes({ viewer: { x: 500, z: 0 } });
     for (const t of [near, far]) t.c.crash(car({ mode: 'police', dmg: 90 }), null, HARD_MS);
-    expect(near.toasts).toEqual(['The police car is wrecked.']);
+    expect(near.toasts).toHaveLength(1);
+    expect(near.toasts[0]).toMatch(/^”.+” The police car is wrecked\.$/); // your line, then what happened
     expect(far.toasts).toEqual([]);
   });
 });

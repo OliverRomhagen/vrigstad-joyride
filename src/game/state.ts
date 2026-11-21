@@ -10,7 +10,7 @@ export interface GameState {
   jumpQ: boolean; // set by a fresh Space / Jump press on foot, used up by the next frame: a held key (braking, then getting out) never jumps, a tap between frames isn't lost
   stolen: number; // cars stolen, each counted the first time you take it
   ramCool: number; // s until ramming a police car can give another star
-  bigT: number; // s the big screen (Gripen!, Däckad!) stays up
+  titleCardT: number; // s the title card (Gripen!, Däckad!) stays up
   treats: number; // cat treats in your pockets
 }
 
@@ -22,7 +22,7 @@ export const newGameState = (): GameState => ({
   jumpQ: false,
   stolen: 0,
   ramCool: 0,
-  bigT: 0,
+  titleCardT: 0,
   treats: 0,
 });
 
@@ -31,6 +31,7 @@ export interface ViewState {
   camPitch: number; // radians above the horizon
   lookOff: number; // radians: in a car, how far you have looked away from straight ahead
   lookIdle: number; // s since you last looked around in a car; the view swings back ahead after a while
+  zoom: number; // times the normal camera distance (#208): above 1 is further out
 }
 
 export const newViewState = (camYaw: number, camPitch: number): ViewState => ({
@@ -38,4 +39,5 @@ export const newViewState = (camYaw: number, camPitch: number): ViewState => ({
   camPitch,
   lookOff: 0,
   lookIdle: 9,
+  zoom: 1,
 });

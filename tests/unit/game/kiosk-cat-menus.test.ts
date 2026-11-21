@@ -1,17 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import type { Cat } from '../../../src/game/cats';
+import { brokeLine, KORV_KR, TREATS_KR } from '../../../src/game/economy';
 import { HP_MAX, KORV_HP } from '../../../src/game/health';
 import { KioskCatMenus, type KioskCatMenusDeps } from '../../../src/game/kiosk-cat-menus';
 import type { MenuItem } from '../../../src/game/pets';
 import { newGameState } from '../../../src/game/state';
 
 // The menus with a stub plate: `open` holds the last menu opened, and `choose` picks from it.
-function menus(o: { hp?: number; treats?: number } = {}) {
+function menus(o: { hp?: number; treats?: number; kr?: number } = {}) {
   const calls: string[] = [];
   let open: { kind: string; items: MenuItem[]; pick: (k: string) => void; stay?: (() => boolean) | null } | null = null;
   const game = { ...newGameState(), treats: o.treats ?? 0 },
     health = { hp: o.hp ?? 50, calm: 0 },
-    player = { x: 0, z: 0 };
+    player = { x: 0, z: 0 },
+    wallet = { kr: o.kr ?? 1000 };
   const colony = {
     pet: () => true,
     adopt: () => void calls.push('adopt'),
@@ -31,6 +33,7 @@ function menus(o: { hp?: number; treats?: number } = {}) {
     esc: t => t,
     toast: m => void calls.push('toast ' + m),
     scratch: () => void calls.push('scratch'),
+    wallet,
     nearPlace: () => null,
     showHeart: () => void calls.push('heart'),
     drawPets: () => {},
@@ -38,10 +41,23 @@ function menus(o: { hp?: number; treats?: number } = {}) {
     drawHealth: () => {},
   };
   const choose = (k: string) => open!.pick(k);
-  return { m: new KioskCatMenus(g), calls, game, health, player, menu: () => open, choose };
+  return { m: new KioskCatMenus(g), calls, game, health, player, wallet, menu: () => open, choose };
 }
 
 describe('the kiosk', () => {
+  it('charges for what it sells, and sells nothing to someone who cannot pay', () => {
+    const t = menus({ hp: 50, kr: KORV_KR + TREATS_KR });
+    t.m.openKiosk();
+    t.choose('korv');
+    t.choose('treats');
+    expect(t.wallet.kr).toBe(0);
+    expect(t.health.hp).toBe(50 + KORV_HP);
+    expect(t.game.treats).toBe(3);
+    t.choose('treats');
+    expect(t.game.treats).toBe(3);
+    expect(t.calls.at(-1)).toBe('toast ' + brokeLine(TREATS_KR));
+  });
+
   it('sells treats a bag at a time, up to what fits in your pockets', () => {
     const t = menus({ treats: 7 });
     t.m.openKiosk();

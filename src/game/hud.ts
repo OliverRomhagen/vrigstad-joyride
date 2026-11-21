@@ -2,6 +2,7 @@
 // Moved from src/game/main.ts (#177); main.ts passes in what the HUD reads from the rest of the game.
 import type { Label } from '../world/data';
 import type { RoadNetwork } from '../world/roads';
+import { fmtKr, TRISS_KR } from './economy';
 import { LOW_HP } from './health';
 import { MAX_STARS } from './police';
 
@@ -23,6 +24,7 @@ export interface HudDeps {
   readonly stars: number;
   readonly pcar: unknown; // the player's car, which the minimap leaves out
   readonly blink: boolean; // the police lights' phase, so the minimap blinks with them
+  readonly kr: number; // in your wallet: the plate follows it, so nothing that spends has to redraw it
 }
 
 /** The HUD drawn over the canvas: shows toasts, the wanted stars, the health and damage bars, the minimap and the street sign. */
@@ -31,12 +33,14 @@ export class Hud {
   private readonly mctx: CanvasRenderingContext2D;
   private readonly MW: number; // minimap side (px)
   private toastT = 0; // s until the toast hides
+  private shownKr = Number.NaN; // what the money plate shows; NaN until the first draw
 
   constructor(g: HudDeps) {
     this.g = g;
     const mini = g.$('mini') as HTMLCanvasElement;
     this.mctx = mini.getContext('2d') as CanvasRenderingContext2D;
     this.MW = mini.width;
+    this.drawKr();
   }
 
   /** whether a toast is showing */
@@ -44,10 +48,15 @@ export class Hud {
     return this.toastT > 0;
   }
 
+  /** cls 'win' pops the toast in; the reflow in between restarts the pop when one win follows another */
   toast(msg: string, secs?: number, cls?: string) {
     const t = this.g.$('toast');
     t.textContent = msg;
-    t.className = 'plate' + (cls ? ' ' + cls : '');
+    t.className = 'plate';
+    if (cls) {
+      void t.offsetWidth;
+      t.className = 'plate ' + cls;
+    }
     t.hidden = false;
     t.style.opacity = '1';
     this.toastT = secs || 3.5;
@@ -73,9 +82,10 @@ export class Hud {
     el.classList.toggle('bad', bad);
   }
 
-  /** Fades the toast out at the end of its time. */
+  /** Keeps the money plate in step with the wallet, and fades the toast out at the end of its time. */
   update(dt: number) {
     const { $ } = this.g;
+    this.drawKr();
     if (this.toastT > 0) {
       this.toastT -= dt;
       if (this.toastT <= 0.3) $('toast').style.opacity = '0';
@@ -83,13 +93,35 @@ export class Hud {
     }
   }
 
-  /** The big screen (Gripen!, Däckad!); it replaces any line from the same moment. The caller times it. */
-  showBig(title: string, msg: string) {
+  /** The money plate (fmtKr: 10 000 riksdaler), redrawn only when the amount changes. */
+  private drawKr() {
+    if (this.g.kr === this.shownKr) return;
+    this.shownKr = this.g.kr;
+    this.g.$('kr').textContent = fmtKr(this.g.kr);
+  }
+
+  /** The trisslott plate: tickets bought and won, and the money in and out. */
+  drawTrisslott(bought: number, won: number, wonKr: number) {
+    const el = this.g.$('triss');
+    el.hidden = false;
+    el.replaceChildren(
+      'Trisslotter: ' + bought + ' · Vinster: ' + won,
+      el.ownerDocument.createElement('br'),
+      'Insatt: ' + fmtKr(bought * TRISS_KR) + ' · Vunnit: ' + fmtKr(wonKr),
+    );
+  }
+
+  /** The title card (Gripen!, Däckad!); it replaces any line from the same moment. The caller times it. */
+  showTitleCard(title: string, msg: string) {
     const { $ } = this.g;
-    $('big-t').textContent = title;
-    $('big-p').textContent = msg;
-    $('big').hidden = false;
+    $('title-card-t').textContent = title;
+    $('title-card-p').textContent = msg;
+    $('title-card').hidden = false;
     this.hideToast();
+  }
+
+  hideTitleCard() {
+    this.g.$('title-card').hidden = true;
   }
 
   /** A red flash that fades, stronger for a harder hurt of `n` health. */

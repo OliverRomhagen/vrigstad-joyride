@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { Actions, type ActionsDeps } from '../../../src/game/actions';
 import type { Car } from '../../../src/game/cars';
 import type { Cat } from '../../../src/game/cats';
+import { FINE_PER_STAR_KR } from '../../../src/game/economy';
 import { HP_MAX } from '../../../src/game/health';
 import type { Place } from '../../../src/game/places';
 import { HOME } from '../../../src/game/player';
@@ -38,6 +39,7 @@ function actions(
     places?: Place[];
     cat?: Cat | null;
     menuOpen?: boolean;
+    kr?: number;
   } = {},
 ) {
   const calls: string[] = [],
@@ -55,7 +57,8 @@ function actions(
       calls.push('clear');
     },
   };
-  const health = { hp: 7, calm: 0 };
+  const health = { hp: 7, calm: 0 },
+    wallet = { kr: o.kr ?? 0 };
   const g: ActionsDeps = {
     game,
     view,
@@ -64,6 +67,7 @@ function actions(
     places: { inside: null, list: o.places ?? [] },
     wanted,
     health,
+    wallet,
     menuOpen: () => !!o.menuOpen,
     showPlayer: v => {
       mesh.visible = v;
@@ -88,23 +92,23 @@ function actions(
     spawnTraffic: () => void calls.push('traffic'),
     drawStolen: () => void calls.push('stolen ' + game.stolen),
     drawHealth: () => {},
-    bigScreen: (t, msg) => {
-      calls.push('big ' + t);
+    titleCard: (t, msg) => {
+      calls.push('title card ' + t);
       screens.push(msg);
     },
     sayLater: l => void calls.push('later ' + l),
     pickLine: a => a[0],
   };
-  return { a: new Actions(g), calls, screens, game, view, player, mesh, wanted, health };
+  return { a: new Actions(g), calls, screens, game, view, player, mesh, wanted, health, wallet };
 }
 
 describe('Actions.action', () => {
-  it('does nothing before Start or under the big screen', () => {
+  it('does nothing before Start or under the title card', () => {
     const t = actions({ cars: [parked()] });
     t.game.started = false;
     t.a.action();
     t.game.started = true;
-    t.game.bigT = 1;
+    t.game.titleCardT = 1;
     t.a.action();
     expect(t.game.inCar).toBe(false);
   });
@@ -151,7 +155,9 @@ describe('Actions.action', () => {
   it('calls the police when a neighbour sees you take a car', () => {
     const t = actions({ cars: [parked()], roll: 0.1 });
     t.a.action();
-    expect(t.calls[0]).toBe('star A neighbour saw you take the Volvo and called the police.');
+    expect(t.calls[0]).toBe(
+      'star ”Oj, nu ä länsman efter mä!” A neighbour saw you take the Volvo and called the police.',
+    );
   });
 
   it('pulls the driver out of a car on the road, who calls the police', () => {
@@ -194,18 +200,29 @@ describe('Actions after a chase or a crash', () => {
     expect(t.mesh.visible).toBe(true);
     expect([t.player.x, t.player.z]).toEqual([HOME.x, HOME.z]);
     expect(t.health.hp).toBe(HP_MAX);
-    expect(t.calls.at(-1)).toBe('big Gripen!');
+    expect(t.calls.at(-1)).toBe('title card Gripen!');
+  });
+
+  it('busted fines you by the stars you had, never more than you have', () => {
+    const t = actions({ kr: 1000 });
+    t.a.busted(3);
+    expect(t.wallet.kr).toBe(1000 - 3 * FINE_PER_STAR_KR);
+    expect(t.screens.at(-1)).toBe('Busted. The police fine you 300 riksdaler and drop you off at Torget.');
+    const poor = actions({ kr: 0 });
+    poor.a.busted(3);
+    expect(poor.wallet.kr).toBe(0);
+    expect(poor.screens.at(-1)).toBe('Busted. The police drop you off at Torget.');
   });
 
   it('a knock-out with stars is Gripen!, without them Däckad! and a line after', () => {
     const chased = actions({ stars: 2 });
     chased.a.knockedOut();
     expect(chased.wanted.stars).toBe(0);
-    expect(chased.calls).toEqual(['clear', 'big Gripen!']);
+    expect(chased.calls).toEqual(['clear', 'title card Gripen!']);
 
     const t = actions();
     t.a.knockedOut();
-    expect(t.calls).toEqual(['big Däckad!', 'later ”Va hände? Ja minns ingenting.”']);
+    expect(t.calls).toEqual(['title card Däckad!', 'later ”Va hände? Ja minns ingenting.”']);
     expect(t.health.hp).toBe(HP_MAX);
     expect(t.screens.at(-1)).toBe('Knocked out. You come to at Torget.');
   });

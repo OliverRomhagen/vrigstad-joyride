@@ -15,8 +15,16 @@ const CRASH_LINES = [
   '”AJ! Dä där kändes i nacken.”',
   '”Hoppsan. Dä där va inte meningen.”',
   '”Va fan, vem satte dit den där?!”',
+  '”Oj oj, nu blev ho lite fördärvad.”',
 ];
-const WRECK_LINES = ['”Nä, nu ä den kaputt.”', '”Dä va dä, den bilen.”', '”Den rullar inte mer, den.”'];
+const WRECK_LINES = [
+  '”Nä, nu ä den kaputt.”',
+  '”Dä va dä, den bilen.”',
+  '”Den rullar inte mer, den.”',
+  '”Ajaj, nu ä denna bilen fördärvad.”',
+  '”Nu ä ho fördärvad, hela bilen.”',
+];
+const POLICE_WRECK_LINES = ['”Hoppsan, nu ä länsmans bil fördärvad.”', '”Dä där fick snuten inte betalt för.”'];
 const SMOKE_LINES = [null, '”Hörru, dä ryker ur motorn!”', '”Svart rök… dä ä inte bra, dä.”']; // by smokeLevel
 const CAT_FAST_MS = 25,
   CAT_CALM_MS = 20; // above ~90 km/h with your cat along you tell it to hold on; it can come again once you've been below ~72 km/h
@@ -67,7 +75,7 @@ export class Crashes {
         );
         said = true;
       } else if (w && k.mode === 'police' && Math.hypot(k.x - viewer.x, k.z - viewer.z) < POLICE_WRECK_SEEN_M) {
-        toast('The police car is wrecked.', 3);
+        toast(pickLine(POLICE_WRECK_LINES) + ' The police car is wrecked.', 3);
         said = true;
       } else if (smokeUp && k === game.pcar) {
         toast(SMOKE_LINES[smokeLevel(k.dmg)]!, 3);

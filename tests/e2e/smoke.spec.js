@@ -122,6 +122,16 @@ test.describe('game (index.html)', () => {
     expect(errors).toEqual([]);
   });
 
+  test('ragdolls are on for everyone, without a lab flag', async ({ page }) => {
+    const errors = watchErrors(page);
+    await page.goto('/index.html');
+    await page.locator('#go').click();
+    expect(await state(page)).toMatchObject({ lab: [], ragdolls: 0 }); // nobody knocked over yet
+    await page.goto('/index.html?lab=ragdoll'); // no longer an experiment: the flag is ignored
+    expect((await state(page)).lab).toEqual([]);
+    expect(errors).toEqual([]);
+  });
+
   test('loads with no console errors, a WebGL canvas and the default fleet, and Start shows the HUD', async ({
     page,
   }, testInfo) => {
@@ -156,6 +166,27 @@ test.describe('game (index.html)', () => {
     const notice = await page.request.get('/media/vehicles/NOTICE.txt');
     expect(notice.ok()).toBe(true);
     expect(await notice.text()).toContain('Vehicle models by Axel Tidehorn');
+    expect(errors).toEqual([]);
+  });
+
+  test('the wheel zooms the camera, and the browser zoom is blocked', async ({ page }) => {
+    const errors = watchErrors(page);
+    await page.goto('/index.html');
+    await page.locator('#go').click();
+    await expect(page.locator('#intro')).toBeHidden();
+    expect(await state(page)).toMatchObject({ zoom: 1 });
+
+    await page.mouse.move(320, 200);
+    await page.mouse.wheel(0, 300); // away from you: further out
+    await expect.poll(async () => (await state(page)).zoom).toBeGreaterThan(1);
+    // ctrl + wheel is also how a trackpad pinch arrives; the page must not zoom, whatever the target
+    const prevented = await page.evaluate(() =>
+      [
+        new WheelEvent('wheel', { deltaY: -50, ctrlKey: true, bubbles: true, cancelable: true }),
+        new KeyboardEvent('keydown', { code: 'Equal', ctrlKey: true, bubbles: true, cancelable: true }),
+      ].map(ev => !document.body.dispatchEvent(ev)),
+    );
+    expect(prevented).toEqual([true, true]);
     expect(errors).toEqual([]);
   });
 
@@ -383,12 +414,15 @@ test.describe('game (index.html)', () => {
     expect(errors).toEqual([]);
   });
 
-  test('cats are around, and the kiosk sells cat treats and food from its menu', async ({ page }, testInfo) => {
+  test('cats are around, and the kiosk sells cat treats and food from its menu, for money', async ({
+    page,
+  }, testInfo) => {
     const errors = watchErrors(page);
     await page.goto('/index.html');
     await page.locator('#go').click();
     await expect.poll(async () => (await state(page)).cats).toBeGreaterThan(0); // Torget is built-up, so cats spawn at once
-    expect(await state(page)).toMatchObject({ treats: 0 });
+    expect(await state(page)).toMatchObject({ treats: 0, kr: 200 });
+    await expect(page.locator('#kr')).toHaveText('200 riksdaler');
 
     // With the camera as Start leaves it, the kiosk lucka is about 4.6 m to the player's left.
     await page.keyboard.down('KeyA');
@@ -401,7 +435,8 @@ test.describe('game (index.html)', () => {
     await page.keyboard.press('Digit2');
     await expect(page.locator('#kmenu')).toBeHidden();
     await expect(page.locator('#treats')).toHaveText('Cat treats: 3');
-    expect(await state(page)).toMatchObject({ treats: 3 });
+    expect(await state(page)).toMatchObject({ treats: 3, kr: 195 });
+    await expect(page.locator('#kr')).toHaveText('195 riksdaler');
 
     await page.keyboard.press('KeyE');
     await expect(page.locator('#kmenu')).toBeVisible();
@@ -414,8 +449,56 @@ test.describe('game (index.html)', () => {
     await page.keyboard.press('Digit3');
     await expect(page.locator('#kmenu')).toBeHidden();
     await expect(page.locator('#toast')).toContainText('mätt');
-    expect(await state(page)).toMatchObject({ hp: 100 });
+    expect(await state(page)).toMatchObject({ hp: 100, kr: 195 }); // and it costs nothing
     expect(errors).toEqual([]);
+  });
+
+  test('with ?dev, the console opens with §, its keys never move the player, kr and mynt add money, adopt cat gives you a cat (and L makes it rain)', async ({
+    page,
+  }) => {
+    await page.goto('/index.html');
+    await page.locator('#go').click();
+    await page.keyboard.press('Backquote'); // no dev mode: no console
+    expect(await state(page)).toMatchObject({ devcon: false });
+    await page.goto('/index.html?dev');
+    await page.locator('#go').click();
+    const { x, z } = await state(page);
+    await page.keyboard.press('Backquote');
+    expect(await state(page)).toMatchObject({ devcon: true });
+    await page.keyboard.down('KeyW'); // held in the console: the player stays put
+    await page.waitForTimeout(400);
+    await page.keyboard.up('KeyW');
+    expect(await state(page)).toMatchObject({ x, z });
+    await page.locator('#devcon input').fill(''); // the held W typed a w
+    await page.locator('#devcon').click({ position: { x: 4, y: 4 } }); // focus off the input, console still open: keys still don't reach the game
+    await page.keyboard.down('KeyW');
+    await page.waitForTimeout(400);
+    await page.keyboard.up('KeyW');
+    expect(await state(page)).toMatchObject({ x, z, devcon: true });
+    await page.keyboard.type('kr 500');
+    await page.keyboard.press('Enter');
+    await expect(page.locator('#kr')).toHaveText('700 riksdaler');
+    await expect(page.locator('#devcon li').last()).toHaveText('Wallet: 700 riksdaler.');
+    await page.keyboard.type('mynt'); // the old cheat word, now a command: 1 000 kr
+    await page.keyboard.press('Enter');
+    await expect(page.locator('#kr')).toHaveText('1 700 riksdaler');
+    const run = async line => {
+      await page.keyboard.type(line);
+      await page.keyboard.press('Enter');
+      return page.locator('#devcon li').last();
+    };
+    await expect(await run('adopt dog')).toHaveText('No pet called dog. Usage: adopt <cat>');
+    await expect(await run('adopt cat')).toHaveText('Adopted a cat.');
+    expect(await state(page)).toMatchObject({ ownCat: true });
+    await expect(page.locator('#pets')).toBeVisible();
+    await expect(await run('adopt cat')).toHaveText('You already have a cat, Kisse. Set it free first (P).');
+    await page.keyboard.press('Escape');
+    expect(await state(page)).toMatchObject({ devcon: false });
+    await page.keyboard.press('KeyL'); // låt det regna: 1 000 kr in the air
+    await expect(page.locator('#kr')).toHaveText('700 riksdaler');
+    expect((await state(page)).banknotes).toBeGreaterThan(0);
+    await page.keyboard.press('KeyL'); // not enough left: nothing is taken
+    expect(await state(page)).toMatchObject({ kr: 700 });
   });
 });
 
