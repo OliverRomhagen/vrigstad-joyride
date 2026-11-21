@@ -121,6 +121,16 @@ describe('StreetFurniture', () => {
     f.dispose();
   });
 
+  it('splits a model into cells, so meshes far apart are culled apart', () => {
+    const far = new StreetFurniture([place('a', 'lamp-arm', 10, 0), place('b', 'lamp-arm', 1010, 0)], {
+      groundAt: () => 0,
+    });
+    const lamps = far.meshes.filter(m => m.name === 'furniture:lamp-arm');
+    expect(lamps.map(m => m.count)).toEqual([1, 1]);
+    for (const m of lamps) expect(m.boundingSphere!.radius).toBeLessThan(10); // one lamp, not the 1 km between them
+    far.dispose();
+  });
+
   it('tints by source in the debug view, and only there', () => {
     expect(new StreetFurniture(placements, { groundAt: () => 0 }).meshes.every(m => m.instanceColor === null)).toBe(
       true,
