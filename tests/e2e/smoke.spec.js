@@ -92,7 +92,7 @@ test.describe('game (index.html)', () => {
     expect(f.byKind['waste-bin']).toBeGreaterThanOrEqual(2);
     expect(f.bySource.osm + f.bySource.override + f.bySource.procedural).toBe(f.total);
     expect(f.meshes).toBeGreaterThan(0);
-    expect(f.meshes).toBeLessThanOrEqual(6);
+    expect(f.meshes).toBeLessThanOrEqual(6 * 36); // at most six per 400 m cell, and the 2200 m world spans 6 × 6 cells
     expect(f.debug).toBe(true);
     await page.locator('#go').click();
     await frames(page, 5);
