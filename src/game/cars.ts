@@ -6,12 +6,15 @@ import { ROAD_WIDTH_M as ROAD_W } from '../world/data';
 import { clamp, wrap } from '../world/math';
 import { nodeKey, type RoadNetwork } from '../world/roads';
 import type { Water } from '../world/water';
+import { type Commands, UsageError } from './commands';
 import { impactSpeed, topSpeedShare, wrecked } from './health';
 import { approach, rearPivotShift, yawRate } from './sim/handling';
 import type { CarType, VehicleSpec } from './sim/vehicle-spec';
 
 // Drifting (player only): brake plus steering at speed breaks the rear loose. The car keeps sliding along its line of
 // travel (c.vh) while the nose (c.h) swings into the turn. Holding a slide charges a mini-turbo, fired when the brake is let go.
+const CAR_BY_YOU_M = 3.5, // the car command parks this far to your side
+  PARK_CLEAR_M = 2.6; // a parked car stands this clear of any wall
 const DRIFT_MIN_V = 7.5,
   DRIFT_KEEP_V = 4; // m/s to start a drift, and below which it fizzles out
 const GRIP = 12,
@@ -148,7 +151,7 @@ export interface FleetDeps {
   half: number; // half the map's side (m)
   rnd: () => number; // the game's seeded stream, so the rolls stay in the order they were
   pick: <T>(a: readonly T[]) => T;
-  addCar: (type: CarType, x: number, z: number, h: number, mode: CarMode) => Car; // makes a car, gives it its meshes and adds it with `add`
+  addCar: (type: CarType, x: number, z: number, h: number, mode: CarMode, model?: string) => Car; // makes a car (of that model, if given), gives it its meshes and adds it with `add`
   placeCar: (c: Car) => void; // puts the car's meshes where the car is
   crash: (c: Car, o: Car | null, impact: number) => void; // c hit o, or a wall, at `impact` m/s: the damage, and what you hear and feel
   rammed: (c: Car, o: Car) => void; // c hit police car o at speed
@@ -164,6 +167,33 @@ export class Fleet {
 
   constructor(g: FleetDeps) {
     this.g = g;
+  }
+
+  /**
+   * car <model>: parks a car of that model next to you, already yours, so getting in gives no star: for trying out Skroten and the
+   * models. `models` maps each model's id to its type; `facing` is the way the car points; `carName` names it in the reply.
+   */
+  registerCommands(
+    commands: Pick<Commands, 'register'>,
+    models: ReadonlyMap<string, CarType>,
+    facing: () => number,
+    carName: (c: Car) => string,
+  ) {
+    commands.register('car', {
+      usage: '<' + [...models.keys()].join(' | ') + '>',
+      help: 'park a car of that model next to you',
+      run: a => {
+        const id = a[0]?.toLowerCase(),
+          type = id && models.get(id);
+        if (!type) throw new UsageError(a[0] ? 'No car called ' + a[0] + '.' : '');
+        if (this.g.inCar) return 'Get out of the car first.';
+        const o = { x: this.g.player.x + CAR_BY_YOU_M, z: this.g.player.z };
+        this.g.buildings.collide(o, PARK_CLEAR_M);
+        const c = this.g.addCar(type, o.x, o.z, facing(), 'parked', id === type ? undefined : id);
+        c.owned = true;
+        return 'Parked a ' + carName(c) + ' next to you.';
+      },
+    });
   }
 
   /** Puts a new car in the village. */
@@ -210,7 +240,7 @@ export class Fleet {
       if (Math.abs(o.x) > HALF - 20 || Math.abs(o.z) > HALF - 20) continue;
       const ox = o.x,
         oz = o.z;
-      if (buildings.collide(o, 2.6) || water.inWater(ox, oz) || !canPark(ox, oz)) continue;
+      if (buildings.collide(o, PARK_CLEAR_M) || water.inWater(ox, oz) || !canPark(ox, oz)) continue;
       if (cars.some(c => Math.hypot(c.x - ox, c.z - oz) < 7)) continue;
       this.g.addCar(this.civType(), ox, oz, Math.atan2(dx, -dz) + (side < 0 ? Math.PI : 0), 'parked');
       count++;
