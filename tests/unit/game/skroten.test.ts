@@ -117,4 +117,32 @@ describe('Skroten', () => {
     t.s.talk();
     expect(t.calls[0]).toContain('Försvinn!');
   });
+
+  it('makes no offer off the ring, and says why when it refuses', () => {
+    const off = skroten();
+    off.leaveRing();
+    expect(off.s.open()).toBe(false);
+    expect(off.s.buys()).toBe(false);
+    expect(off.calls).toEqual([]);
+    const chased = skroten({ stars: 1 });
+    expect(chased.s.buys()).toBe(false);
+    expect(chased.s.open()).toBe(false);
+    expect(chased.calls[0]).toContain('Inte mä snuten');
+    const ok = skroten();
+    expect(ok.s.buys()).toBe(true);
+    expect(ok.s.open()).toBe(true);
+  });
+
+  it('does not sell a car that has left the ring or is moving when you pick Sälj', () => {
+    const gone = skroten();
+    gone.s.open();
+    gone.leaveRing();
+    gone.choose('sell');
+    expect(gone.wallet.kr).toBe(0);
+    const moving = skroten({ car: { v: 10 } });
+    moving.s.open();
+    moving.choose('sell');
+    expect(moving.wallet.kr).toBe(0);
+    expect(moving.game.inCar).toBe(true);
+  });
 });

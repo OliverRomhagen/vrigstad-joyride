@@ -108,6 +108,8 @@ export interface FloorArea {
   outline: readonly number[];
   floor: { a: number; bx: number; cz: number };
   ramp: { wall: Wall; from: number; to: number };
+  /** The outline's bounds and the ramp's: outside them there is no floor. */
+  bounds: { x0: number; x1: number; z0: number; z1: number };
 }
 export interface Workshop extends FloorArea {
   walls: Wall[];
@@ -265,8 +267,22 @@ function fitFloor(p: readonly number[], heightAt: (x: number, z: number) => numb
   return { a: mh - bx * mx - cz * mz + lift + FLOOR_CLEAR_M, bx, cz };
 }
 
+// an outline's bounds, grown by the ramp's length on every side
+function floorBounds(p: readonly number[]) {
+  const xs = p.filter((_, i) => i % 2 === 0),
+    zs = p.filter((_, i) => i % 2 === 1);
+  return {
+    x0: Math.min(...xs) - RAMP_M,
+    x1: Math.max(...xs) + RAMP_M,
+    z0: Math.min(...zs) - RAMP_M,
+    z1: Math.max(...zs) + RAMP_M,
+  };
+}
+
 /** The height of a building's floor at (x, z): inside it, and on its ramp down to the yard; null elsewhere, where the ground is the ground. */
 export function floorAt(area: FloorArea, x: number, z: number, heightAt: (x: number, z: number) => number) {
+  const b = area.bounds;
+  if (x < b.x0 || x > b.x1 || z < b.z0 || z > b.z1) return null; // most calls, from all over the map, end here
   const { a, bx, cz } = area.floor;
   if (pointInPolygon(area.outline as number[], x, z)) return a + bx * x + cz * z;
   const { wall: w, from, to } = area.ramp,
@@ -465,6 +481,7 @@ export function yardLayout(
       props,
       floor: fitFloor(outline, heightAt),
       ramp: { wall: doorWall, from: doorFrom, to: doorTo },
+      bounds: floorBounds(outline),
     };
   }
 
@@ -487,6 +504,7 @@ export function yardLayout(
       posts,
       floor: fitFloor(shedOutline, heightAt),
       ramp: { wall: shedFront, from: 0, to: shedFront.len }, // along the whole open front
+      bounds: floorBounds(shedOutline),
     };
   }
 

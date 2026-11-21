@@ -28,6 +28,15 @@ describe('collide', () => {
     expect(index.footprints).toHaveLength(1);
   });
 
+  it('collides with a solid too, which is no building and stays out of the footprints', () => {
+    const index = indexWithHouse(),
+      o = { x: 50.5, z: 5 };
+    index.addSolid(square(40, 0, 10));
+    expect(index.collide(o, 1)).toBe(true);
+    expect(o.x).toBeCloseTo(51);
+    expect(index.footprints).toHaveLength(1);
+  });
+
   it('pushes a circle that overlaps a wall out to touch it', () => {
     const o = { x: 10.5, z: 5 };
     expect(indexWithHouse().collide(o, 1)).toBe(true);

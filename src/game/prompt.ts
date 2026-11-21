@@ -16,7 +16,7 @@ export interface ActionPromptDeps {
   readonly menuOpen: boolean; // a menu covers the prompt
   coarse: boolean; // a touch screen: no "Get out" prompt, the E button says it
   nearPlace(): Place | null;
-  atSkroten(): boolean; // the car you drive stands on Skroten's ring
+  skrotenBuys(): boolean; // the car you drive stands on Skroten's ring, and Skroten would buy it
   nearOwner(): boolean; // you stand on foot next to Plåt-Pelle
   nearCat(): Cat | null;
   nearestCar(): Car | null;
@@ -41,7 +41,7 @@ export class ActionPrompt {
       wanted,
       coarse,
       nearPlace,
-      atSkroten,
+      skrotenBuys,
       nearOwner,
       nearCat,
       nearestCar,
@@ -75,7 +75,7 @@ export class ActionPrompt {
     } else if (game.started && nearOwner()) {
       pr.hidden = this.g.menuOpen;
       pr.innerHTML = '<kbd>E</kbd>Talk to Plåt-Pelle';
-    } else if (game.inCar && game.pcar && atSkroten()) {
+    } else if (game.inCar && game.pcar && skrotenBuys()) {
       pr.hidden = this.g.menuOpen || tooFastToGetOut(game.pcar);
       pr.innerHTML = '<kbd>E</kbd>Sell the ' + carName(game.pcar) + ' at Skroten';
     } else if (game.inCar && game.pcar && !coarse) {

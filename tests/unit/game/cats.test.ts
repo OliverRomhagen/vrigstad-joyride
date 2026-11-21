@@ -268,6 +268,17 @@ describe('your cat rides along', () => {
     expect(stray.ride).toBeNull();
   });
 
+  it('lands on the ground, not on the car, when the car is taken away mid-hop', () => {
+    const { c, cat, car, player } = getIn('volvo');
+    for (let i = 0; i < 90 && cat.hop?.onto !== car; i++) c.update(player, 1 / 30);
+    expect(cat.hop?.onto).toBe(car); // on its way up
+    c.hopOffCar(car); // Skroten takes the car
+    car.x = 500; // and it is gone
+    run(c, player, 1);
+    expect(cat.ride).toBeNull();
+    expect(car.cat).toBeNull();
+  });
+
   it('stays put when the car is out of reach', () => {
     const { c, cat, car, player } = getIn('volvo');
     car.x = 500;

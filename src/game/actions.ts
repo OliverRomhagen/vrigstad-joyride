@@ -41,8 +41,7 @@ export interface ActionsDeps {
   openOwnCat(k: Cat): void;
   petCat(k: Cat): void;
   openKiosk(): void;
-  atSkroten(): boolean; // the car you drive stands on Skroten's ring
-  openSkroten(): void; // Skroten's offer for it
+  openSkroten(): boolean; // Skroten's offer for the car you drive on its ring; false when it makes none, so E gets you out
   nearOwner(): boolean; // you stand on foot next to Plåt-Pelle
   talkToOwner(): void;
   collide(o: Point, r: number): unknown;
@@ -112,7 +111,6 @@ export class Actions {
       openOwnCat,
       petCat,
       openKiosk,
-      atSkroten,
       openSkroten,
       nearOwner,
       talkToOwner,
@@ -156,8 +154,7 @@ export class Actions {
         toast('Slow down before you get out.', 2);
         return;
       }
-      if (atSkroten()) openSkroten();
-      else this.getOut();
+      if (!openSkroten()) this.getOut();
       return;
     }
     const c = this.nearestCar();
