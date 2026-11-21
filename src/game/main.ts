@@ -321,9 +321,9 @@ function hurtPlayer(n: number) { if (n <= 0) return; const was = health.hp;
 const prompt = new ActionPrompt({ $, game, places, wanted, get menuOpen() { return !kmenu.hidden; }, coarse, nearPlace, atSkroten, nearOwner: () => skroten.nearOwner(), nearCat, nearestCar, catFirst, carName, esc });
 
 // ---------- main loop (src/game/loop.ts) ----------
-const loop = new GameLoop({ $, renderer, scene, camera, canvas, coarse, half: HALF, game, view, player, health, input, places, wanted, cars, startCam: START_CAM, barMat, barColours: [BAR_BLUE, BAR_RED], cameraRig,
-  get toasting() { return hud.toasting; }, inWater, collide, groundAt, drive, updateTraffic, knockedOut, hurtPlayer, shake, toast,
-  updateTrisslott: dt => trisslott.update(dt), updatePlaces: dt => { placeMeshes.update(dt); skrotenMeshes.update(dt, player); }, updateDriftFx, updateVehicles: (T, dt) => vehicleVisuals.update(T, dt), updateSmoke, updateBanknotes: dt => banknotes.update(dt), updateConfetti: dt => confetti.update(dt), updateNpcs, updateCats,
+const loop = new GameLoop({ $, renderer, scene, camera, canvas, coarse, half: HALF, game, view, player, health, input, places, wanted, cars, startCam: START_CAM, barMat, barColours: [BAR_BLUE, BAR_RED], cameraRig: { update: placeCamera },
+  get toasting() { return hud.toasting; }, inWater, collide, groundAt, drive, updateTraffic, knockedOut, hurtPlayer, shake, toast, hideTitleCard: () => hud.hideTitleCard(),
+  updateTrisslott: dt => trisslott.update(dt), updatePlaces: dt => { placeMeshes.update(dt); skrotenMeshes.update(dt, player); }, updateDriftFx, updateVehicles: (T, dt) => vehicleVisuals.update(T, dt), updateSmoke, updateBanknotes: dt => banknotes.update(dt), updateConfetti: dt => confetti.update(dt), updateNpcs: (T, dt) => { updateNpcs(T, dt); ragdolls.update(dt); ragdollMeshes.update(); }, updateCats,
   updateDrivers: (T, dt) => drivers.update(T, dt), updateBodies: (T, dt) => bodyMotion.update(T, dt), drawHearts, updateHud: dt => hud.update(dt), drawMini,
   updateSign, catRideLines: () => crashes.catRideLines(), closeMenuIfLeft: () => menuPlate.closeIfLeft(), updatePrompt: () => prompt.update(), drawHealth });
 $('go').addEventListener('click', loop.startGame);
