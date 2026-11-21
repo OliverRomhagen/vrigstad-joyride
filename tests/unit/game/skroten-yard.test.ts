@@ -151,9 +151,9 @@ describe('Skroten yard', () => {
           z = a.z + (b.z - a.z) * t;
         expect(clearanceXZ(y.outlines, x, z), `at ${x.toFixed(1)}, ${z.toFixed(1)}`).toBeGreaterThan(CAR_R_M);
       }
-    expect(
-      y.yardCars.filter(w => pointInPolygon(CARPORT, yardToWorld(w.u, w.v).x, yardToWorld(w.u, w.v).z)),
-    ).toHaveLength(4);
+    const under = y.yardCars.filter(w => pointInPolygon(CARPORT, yardToWorld(w.u, w.v).x, yardToWorld(w.u, w.v).z));
+    expect(under.filter(w => w.model !== 'traktor')).toHaveLength(4); // cars for sale
+    expect(under.filter(w => w.model === 'traktor' && !w.wrecked)).toHaveLength(1); // and the green tractor
   });
 
   it('gives the workshop an even floor clear of bumpy, rising ground, with a ramp from the door down to the yard', () => {

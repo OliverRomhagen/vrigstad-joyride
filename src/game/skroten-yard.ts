@@ -291,6 +291,18 @@ export function yardFloorAt(
   );
 }
 
+// where a car parks in bay k of the carport, nose in, in the yard's frame
+function inBay(cp: Carport, k: number) {
+  const f = cp.front,
+    s = (f.len * (k + 0.5)) / CARPORT_BAYS,
+    du = -(f.nx * ALONG.x + f.nz * ALONG.z),
+    dv = -(f.nx * INTO.x + f.nz * INTO.z);
+  return {
+    ...worldToYard(f.x0 + f.ux * s - f.nx * CARPORT_PARK_M, f.z0 + f.uz * s - f.nz * CARPORT_PARK_M),
+    turn: Math.atan2(-du, -dv), // its nose, -z, points into the carport
+  };
+}
+
 const WRECK_COLOURS = [
   '#7d3a24',
   '#6b6f5a',
@@ -319,9 +331,10 @@ export const SALE_SIGN = { u: 21, v: 25.2 } as const;
 const WRECK_GAP_M = 2.6; // between the middles of neighbours in a row
 const WRECK_HALF_LEN_M = 2.7; // half the longest car's length, for the row's outline
 const TRACTORS = [
-  // two old tractors, parked on their own: a broken red one leaning where its wheel came off, and a green one that still runs
-  { u: -27, v: 14, turn: 0.4, colour: '#8a2f2a', broken: true },
-  { u: -5, v: 22, turn: 0.2, colour: '#4f7a34', broken: false },
+  // two old tractors: a broken red one in the yard, leaning where its wheel came off, and a green one that still runs, in the carport's
+  // last bay (here only when there is no carport)
+  { u: -27, v: 14, turn: 0.4, colour: '#8a2f2a', broken: true, bay: null },
+  { u: -5, v: 22, turn: 0.2, colour: '#4f7a34', broken: false, bay: 5 },
 ];
 
 /**
@@ -525,7 +538,8 @@ export function yardLayout(
     outlines.push(rect((row.u0 + row.u1) / 2, row.v, row.u1 - row.u0 + 2.2, WRECK_HALF_LEN_M * 2));
   }
   let looseWheel: { u: number; v: number } | null = null;
-  for (const { broken, ...t } of TRACTORS) {
+  for (const { broken, bay, ...spot } of TRACTORS) {
+    const t = { ...spot, ...(carport && bay !== null ? inBay(carport, bay) : {}) };
     yardCars.push({
       ...t,
       tilt: broken ? 0.16 : 0,
@@ -542,15 +556,10 @@ export function yardLayout(
   }
   outlines.push(rect(SALE_SIGN.u, SALE_SIGN.v, 3.6, 0.4)); // its posts and the board between them
 
-  // more cars for sale, parked nose in under the carport, in four of its six bays
+  // more cars for sale, parked nose in under the carport, in four of its six bays; the third stays free to drive into
   if (carport) {
-    const f = carport.front,
-      du = -(f.nx * ALONG.x + f.nz * ALONG.z),
-      dv = -(f.nx * INTO.x + f.nz * INTO.z),
-      turn = Math.atan2(-du, -dv); // a car's nose, -z, points into the carport
     for (const k of [0, 1, 3, 4]) {
-      const s = (f.len * (k + 0.5)) / CARPORT_BAYS,
-        p = worldToYard(f.x0 + f.ux * s - f.nx * CARPORT_PARK_M, f.z0 + f.uz * s - f.nz * CARPORT_PARK_M),
+      const { turn, ...p } = inBay(carport, k),
         t = turn + (rnd() - 0.5) * 0.15;
       yardCars.push({
         ...p,
