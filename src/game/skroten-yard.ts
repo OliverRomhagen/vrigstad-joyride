@@ -343,7 +343,7 @@ const WRECK_ROWS = [
 /** Cars for sale: clean paint in the colours of the day. */
 const FRESH_COLOURS = ['#b9bab4', '#1f3b6a', '#8c1c1c', '#e8e4d8', '#2b2b2b', '#3c5a3a', '#6d7f8f'];
 /** The TILL SALU sign, in front of the row of cars for sale, facing the yard. */
-export const SALE_SIGN = { u: 21, v: 25.2 } as const;
+export const SALE_SIGN = { u: 21, v: 25.2, w: 5 } as const; // w: the TILL SALU board's width (m), its posts inside it
 const WRECK_GAP_M = 2.6; // between the middles of neighbours in a row
 const WRECK_HALF_LEN_M = 2.7; // half the longest car's length, for the row's outline
 const TRACTORS = [
@@ -572,7 +572,7 @@ export function yardLayout(
       outlines.push(rect(looseWheel.u, looseWheel.v, 1.6, 1.6));
     }
   }
-  outlines.push(rect(SALE_SIGN.u, SALE_SIGN.v, 3.6, 0.4)); // its posts and the board between them
+  outlines.push(rect(SALE_SIGN.u, SALE_SIGN.v, SALE_SIGN.w, 0.4)); // its posts and the board between them
 
   // more cars for sale, parked nose in under the carport, in four of its six bays; the third stays free to drive into
   if (carport) {

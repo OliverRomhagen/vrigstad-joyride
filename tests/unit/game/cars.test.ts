@@ -262,6 +262,27 @@ describe('parkCars', () => {
     expect(Math.hypot(c.x - you.x, c.z - you.z)).toBeGreaterThanOrEqual(260);
   });
 
+  it('parks no replacement in sight of you', () => {
+    const { cars } = fleet({ r: [STREET] }, (x, z) => Math.hypot(x, z) < 260); // only spots within sight are free
+    cars.parkCars();
+    const sold = cars.cars.pop()!,
+      before = cars.cars.length;
+    cars.replaceSold(sold, { x: 0, z: 0 });
+    expect(cars.cars.length).toBe(before);
+  });
+
+  it('parks no replacement for a car you took from traffic, which was already replaced', () => {
+    const { cars } = fleet({ r: [MAIN_ROAD, STREET] }), // traffic on the main road, parking on the street
+      you = { x: 0, z: 0 },
+      taken = cars.spawnTraffic(null)!,
+      before = cars.cars.length;
+    cars.replaceTaken(taken, you);
+    expect(cars.cars.length).toBe(before + 1);
+    cars.remove(taken);
+    cars.replaceSold(taken, you);
+    expect(cars.cars.length).toBe(before);
+  });
+
   it('parks none along a primary road', () => {
     const { cars } = fleet();
     cars.parkCars();

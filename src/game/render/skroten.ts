@@ -43,7 +43,7 @@ const RUST = '#8a4a2a', // the boards
   CREAM = '#e8e2d2';
 const GATE_SIGN_Y_M = 4.6;
 const GATE_POST_U_M = YARD.gateHalf + 0.6; // the gate's posts stand this far either side of its middle
-const SALE_BOARD = { w: 5, h: 1.7, y: 2 } as const; // the TILL SALU board's size and the height of its middle (m)
+const SALE_BOARD = { h: 1.7, y: 2 } as const; // the TILL SALU board's height and the height of its middle (m); its width is SALE_SIGN.w
 const OWNER_SEES_M = 30; // he turns to face you inside this distance
 const OWNER_TURN_K = 3; // how quickly he turns, per second
 const CAR_DETAIL_M = 150, // the cars wear the game's car models inside this distance of the yard's middle, on a computer
@@ -885,7 +885,8 @@ function bake(pieces: THREE.BufferGeometry[]) {
 // the TILL SALU sign standing on y = 0, its front to +z: a big board on two posts, and a strip of yellow tape across it saying SNART
 function saleSign() {
   const g = new THREE.Group(),
-    { w, h, y } = SALE_BOARD,
+    { h, y } = SALE_BOARD,
+    { w } = SALE_SIGN,
     sign = board(w, h, 'TILL SALU', null),
     posts = new THREE.Mesh(
       boxGeo([

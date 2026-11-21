@@ -52,7 +52,7 @@ export interface ActionsDeps {
   carName(c: Car): string;
   spokenName(c: Car): string | undefined; // the car's name as its driver says it, if its model has one
   driverOut(c: Car): void; // the driver of a car you steal gets out: a person mesh, so render/shouting-drivers.ts draws it
-  spawnTraffic(p: Point): void;
+  replaceTaken(taken: Car, p: Point): void; // a traffic car you take: a new one drives in out of sight of p
   drawStolen(): void;
   drawHealth(): void;
   titleCard(title: string, msg: string): void;
@@ -120,7 +120,7 @@ export class Actions {
       carName,
       spokenName,
       driverOut,
-      spawnTraffic,
+      replaceTaken,
       drawStolen,
       pickLine,
     } = this.g;
@@ -170,7 +170,7 @@ export class Actions {
         ]) + ' The driver calls the police.',
       );
       wanted.addStar();
-      spawnTraffic(player);
+      replaceTaken(c, player);
     } else if (!c.owned) {
       if (wanted.police.length || rnd() < 0.35)
         wanted.addStar(

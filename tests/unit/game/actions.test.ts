@@ -98,7 +98,7 @@ function actions(
     carName: c => c.T.name,
     spokenName: () => undefined,
     driverOut: () => void calls.push('driverOut'),
-    spawnTraffic: () => void calls.push('traffic'),
+    replaceTaken: () => void calls.push('traffic'),
     drawStolen: () => void calls.push('stolen ' + game.stolen),
     drawHealth: () => {},
     titleCard: (t, msg) => {

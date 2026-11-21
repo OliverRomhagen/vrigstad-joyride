@@ -171,6 +171,9 @@ export interface FleetDeps {
 export class Fleet {
   readonly cars: Car[] = [];
   private readonly g: FleetDeps;
+  // cars whose sale parks no new one: the car command's, which were never the village's, and traffic you took, which replaceTaken
+  // already replaced
+  private readonly noReplacement = new WeakSet<Car>();
 
   constructor(g: FleetDeps) {
     this.g = g;
@@ -198,13 +201,11 @@ export class Fleet {
         this.g.buildings.collide(o, PARK_CLEAR_M);
         const c = this.g.addCar(type, o.x, o.z, facing(), 'parked', id === type ? undefined : id);
         c.owned = true;
-        this.fromCommand.add(c);
+        this.noReplacement.add(c);
         return 'Parked a ' + carName(c) + ' next to you.';
       },
     });
   }
-
-  private readonly fromCommand = new WeakSet<Car>(); // cars the car command parked
 
   /** Puts a new car in the village. */
   add<C extends Car>(c: C): C {
@@ -227,10 +228,10 @@ export class Fleet {
   }
   /**
    * Replaces `sold` with a car parked on a street at least SPAWN_AWAY_M from `farFrom`, out of sight, so Skroten's sales don't empty
-   * the village. A car the car command made gets none: it was never one of the village's.
+   * the village. A car the car command made gets none, nor does traffic you took (see replaceTaken).
    */
   replaceSold(sold: Car, farFrom: Point) {
-    if (this.fromCommand.has(sold)) return;
+    if (this.noReplacement.has(sold)) return;
     for (let tries = 0; tries < PARK_AWAY_TRIES; tries++) if (this.parkOne(farFrom)) return;
   }
   // one try at a kerbside spot; with farFrom, only one at least SPAWN_AWAY_M from it
@@ -262,8 +263,8 @@ export class Fleet {
     const ox = o.x,
       oz = o.z;
     if (buildings.collide(o, PARK_CLEAR_M) || water.inWater(ox, oz) || !canPark(ox, oz)) return false;
-    if (cars.some(c => Math.hypot(c.x - ox, c.z - oz) < 7)) return false;
     if (farFrom && Math.hypot(ox - farFrom.x, oz - farFrom.z) < SPAWN_AWAY_M) return false;
+    if (cars.some(c => Math.hypot(c.x - ox, c.z - oz) < 7)) return false;
     this.g.addCar(this.civType(), ox, oz, Math.atan2(dx, -dz) + (side < 0 ? Math.PI : 0), 'parked');
     return true;
   }
@@ -294,6 +295,10 @@ export class Fleet {
     c.ri = o.ri;
     c.a = o.a;
     c.dir = o.dir;
+  }
+  /** You took `taken` from traffic: a new car drives in out of sight of `farFrom`, so selling `taken` later parks none. */
+  replaceTaken(taken: Car, farFrom: Point) {
+    if (this.spawnTraffic(farFrom)) this.noReplacement.add(taken); // with no room for traffic, selling it parks one instead
   }
   spawnTraffic(farFrom: Point | null) {
     const {
