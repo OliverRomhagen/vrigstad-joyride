@@ -15,6 +15,7 @@ import type { RoadNetwork } from '../../world/roads';
 import type { StreetscapeLayout } from '../../world/streetscape';
 import { col } from '../../world/three-legacy';
 import { mergeGeo } from './models';
+import { INK_FLAG } from './toon-style';
 
 // ---------- terrain ----------
 const SKIRT_DEPTH_M = 1.5; // the skirt round the edge, and the far ground plane, sit this far below height 0
@@ -246,13 +247,13 @@ export function addBuildings(
           box(emit, cx, cz, ry - 0.6, ry + 0.9, 0.6, (hAt(cx, cz) * 7) % 1 < 0.5 ? col('#8a3b2d') : col('#d8d2c4'));
       }
     };
-    scene.add(
-      new PaintedBuildingShells(D, heightfield, {
-        material: new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }),
-        colours,
-        extra: details,
-      }).mesh,
-    );
+    const shells = new PaintedBuildingShells(D, heightfield, {
+      material: new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }),
+      colours,
+      extra: details,
+    }).mesh;
+    shells.userData[INK_FLAG] = true; // the toon style inks the houses' corners and roof edges too
+    scene.add(shells);
     // window skin first, trim after: one mesh, two materials
     const sg = new THREE.BufferGeometry(),
       nw = wp.length / 3,

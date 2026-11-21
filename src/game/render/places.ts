@@ -2,6 +2,7 @@
 // Moved from src/game/main.ts (#177); main.ts passes in the scene, the height lookup and the shared box geometry and paint.
 import * as THREE from 'three';
 import { type Door, KIOSK, type Places } from '../places';
+import { INK_FLAG } from './toon-style';
 
 const SAFE_COLOUR = 0x4fd27a,
   KIOSK_COLOUR = 0xf2c230; // sRGB
@@ -74,6 +75,7 @@ function door(d: Door, heightAt: PlaceMeshDeps['heightAt'], boxGeo: PlaceMeshDep
   );
   m.position.set(d.mx, heightAt(d.mx, d.mz), d.mz);
   m.rotation.y = Math.atan2(d.nx, d.nz);
+  m.userData[INK_FLAG] = true;
   return m;
 }
 
@@ -98,5 +100,6 @@ function kiosk(
   );
   m.position.set(x, heightAt(x, z), z);
   m.castShadow = true;
+  m.userData[INK_FLAG] = true;
   return m;
 }

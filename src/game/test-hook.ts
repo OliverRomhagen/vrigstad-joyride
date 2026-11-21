@@ -15,6 +15,7 @@ export interface TestHookDeps {
   health: Health;
   cars: readonly Car[];
   labs: readonly string[]; // the lab experiments switched on
+  style: 'default' | 'toon'; // ?style=toon
   readonly stars: number;
   readonly cats: number;
   readonly ownCat: boolean;
@@ -69,6 +70,7 @@ export function installTestHook(g: TestHookDeps) {
         charge: game.pcar ? game.pcar.charge : 0,
         loose: game.pcar ? game.pcar.loose : 0,
         flickDir: game.pcar ? game.pcar.flickDir : 0,
+        style: g.style,
         flickHeld: game.pcar ? game.pcar.flickHeld : 0,
         stars: g.stars,
         cats: g.cats,

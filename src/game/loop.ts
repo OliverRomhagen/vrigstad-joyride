@@ -11,6 +11,7 @@ import { hop, type PlayerState, ride, walk } from './player';
 import type { Wanted } from './police';
 import type { CameraRig } from './render/camera-rig';
 import type { Person } from './render/models';
+import type { ToonStyle } from './render/toon-style';
 import type { GameState, ViewState } from './state';
 
 type Point = { x: number; z: number };
@@ -22,6 +23,7 @@ const START_LINE = 'Find a car and press E to take it. Occupied cars always get 
 export interface GameLoopDeps {
   $(id: string): HTMLElement;
   renderer: THREE.WebGLRenderer;
+  toon: Pick<ToonStyle, 'render'> | null; // ?style=toon draws through the toon style (#206)
   scene: THREE.Scene;
   camera: THREE.PerspectiveCamera;
   canvas: HTMLCanvasElement;
@@ -234,6 +236,7 @@ export class GameLoop {
       g.drawHealth();
     }
     g.drawMini(T);
-    g.renderer.render(g.scene, g.camera);
+    if (g.toon) g.toon.render(g.scene, g.camera);
+    else g.renderer.render(g.scene, g.camera);
   };
 }
