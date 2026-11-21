@@ -73,7 +73,7 @@ const LIFT_MS = 1.5,
   FEET_LIFT = 0.3; // up: LIFT_MS (m/s) plus a share
 const AWAY_SPREAD_M = 1.5; // standing this far to one side of the car's middle (m) throws them furthest that way
 const AWAY_KEEP = 0.25,
-  AWAY_JITTER = 0.3; // sideways: the share at AWAY_SPREAD_M, and the most the jitter adds or takes
+  AWAY_JITTER = 0.15; // sideways: the share at AWAY_SPREAD_M, and the most the jitter adds or takes
 // how one throw differs from the next, each from its own roll: the most each adds or takes
 const SPIN_MAX_RADS = 6; // turning about the up axis as they fly (rad/s), so they twist as well as flip
 const CARTWHEEL_MAX_RADS = 5; // turning about the way they are thrown (rad/s)
@@ -210,7 +210,7 @@ function bumperHit(person: { x: number; z: number }, car: HitCar): BumperHit | n
 /** Takes the throw's rolls, always in this order, so the same stream throws the same way. */
 function rollThrow({ fx, fz, speed, left }: BumperHit, spread: () => number): Throw {
   // thrown away from the side of the car they were on, a little more the further out they stood
-  const away = Math.max(-1, Math.min(1, left / AWAY_SPREAD_M)) * AWAY_KEEP + (spread() * AWAY_JITTER) / 2;
+  const away = Math.max(-1, Math.min(1, left / AWAY_SPREAD_M)) * AWAY_KEEP + spread() * AWAY_JITTER;
   return {
     fx,
     fz,
