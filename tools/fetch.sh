@@ -21,6 +21,11 @@ cat > query.txt <<'Q'
  way["barrier"="kerb"](57.3455,14.4556,57.3655,14.4956);
  node["natural"="tree"](57.3455,14.4556,57.3655,14.4956);
  way["natural"="tree_row"](57.3455,14.4556,57.3655,14.4956);
+ node["highway"="street_lamp"](57.3455,14.4556,57.3655,14.4956);
+ nwr["amenity"="bench"](57.3455,14.4556,57.3655,14.4956);
+ nwr["amenity"="waste_basket"](57.3455,14.4556,57.3655,14.4956);
+ node["highway"="bus_stop"](57.3455,14.4556,57.3655,14.4956);
+ nwr["leisure"="picnic_table"](57.3455,14.4556,57.3655,14.4956);
 );
 out geom;
 Q

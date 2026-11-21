@@ -10,9 +10,13 @@
 entry = ["src/map/main.ts", "tools/trailer/inpage.js"]
 
 # Exceptions: exported, but only used in their own file. Un-export them, or use them in a test, then drop the entry.
-# tools/streetscape-report.mjs loads this through Vite's runnerImport, which Fallow can't follow.
+# tools/streetscape-report.mjs loads these through Vite's runnerImport, which Fallow can't follow.
 [[ignoreExports]]
 file = "tools/streetscape-report.ts"
+exports = ["report"]
+
+[[ignoreExports]]
+file = "tools/furniture-report.ts"
 exports = ["report"]
 
 [[ignoreExports]]

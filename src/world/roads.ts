@@ -114,6 +114,24 @@ export class RoadNetwork {
     return near;
   }
 
+  /**
+   * Calls `visit` with every road segment filed in a lookup cell within `reachM` of (x, z): the segment's ends and its
+   * road. A segment filed in several cells can come more than once; fine for nearest and minimum-distance queries.
+   */
+  forEachSegmentNear(
+    x: number,
+    z: number,
+    reachM: number,
+    visit: (ax: number, az: number, bx: number, bz: number, ri: number) => void,
+  ) {
+    for (let gx = Math.floor((x - reachM) / ROAD_CELL_M); gx <= Math.floor((x + reachM) / ROAD_CELL_M); gx++)
+      for (let gz = Math.floor((z - reachM) / ROAD_CELL_M); gz <= Math.floor((z + reachM) / ROAD_CELL_M); gz++) {
+        const list = this.grid.get(gx + ',' + gz);
+        if (list)
+          for (let i = 0; i < list.length; i += 5) visit(list[i], list[i + 1], list[i + 2], list[i + 3], list[i + 4]);
+      }
+  }
+
   /** Terrain plus the highest road ribbon at (x, z), eased out over the metre past its edge so nothing snaps at the kerb. */
   groundAt(x: number, z: number) {
     let lift = 0;
