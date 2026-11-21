@@ -250,7 +250,7 @@ const TRISS_SEED = Number(new URLSearchParams(location.search).get('seed')) || c
 const trissRnd = makeRnd(TRISS_SEED);
 const trisslott = new Trisslott({ random: trissRnd, pick, now: () => performance.now() / 1000, toast,
   buy: () => { if (!spend(TRISS_KR)) { toast(broke(TRISS_KR), 3); return false; } return true; },
-  win: kr => { gain(kr); if (!calmMotion.matches) confetti.burst(confettiCount(kr)); if (kr >= BIG_WIN_KR) banknotes.drop(player); },
+  win: kr => { gain(kr); if (calmMotion.matches) return; confetti.burst(confettiCount(kr)); if (kr >= BIG_WIN_KR) banknotes.drop(player); },   // no win effects with reduced motion
   draw: (bought, won, wonKr) => { const el = $('triss'); el.hidden = false; el.innerHTML = 'Trisslotter: ' + bought + ' · Vinster: ' + won + '<br>Insatt: ' + fmtKr(bought * TRISS_KR) + ' · Vunnit: ' + fmtKr(wonKr); } });   // numbers only, so innerHTML is safe
 // ?at=x,z[,yaw[,pitch]] starts the player there, looking that way: for review screenshots, such as the streetscape's (#187)
 (function () { const at = (new URLSearchParams(location.search).get('at') || '').split(',').map(Number);
