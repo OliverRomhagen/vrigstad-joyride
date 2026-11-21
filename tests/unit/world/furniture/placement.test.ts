@@ -416,6 +416,19 @@ describe('placeFurniture: by the houses (#305)', () => {
     const lone = place({ world: { r: [VILLAGATAN()], b: houses(2, 15, -200, 40) }, profiles: [sides('outskirts')] });
     expect(kinds(lone.placements, 'mailbox').length).toBe(2); // too few for a stand: one each
   });
+
+  it('leaves no house in the outskirts without a mailbox: a full stand, then the rest', () => {
+    // eight houses along 140 m: one stand takes six, and the two left over are too few for another
+    const { placements } = place({
+      world: { r: [VILLAGATAN()], b: houses(8, 15, -200, 20) },
+      profiles: [sides('outskirts')],
+    });
+    const [stand, ...more] = kinds(placements, 'mailbox-stand');
+    expect(more).toEqual([]);
+    expect(stand.modelId).toBe('mailbox-stand-6');
+    expect(stand.x).toBeCloseTo(-200 + 5 + (5 * 20) / 2, 0); // in the middle of the six it serves, not at the first
+    expect(kinds(placements, 'mailbox').length).toBe(2);
+  });
 });
 
 describe('placeFurniture: review fixes', () => {

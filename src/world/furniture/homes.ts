@@ -29,7 +29,7 @@ const WHEELIE_JITTER_RAD = (10 * Math.PI) / 180;
 /** a street cabinet after every this many houses along a street, from MIN to MIN + SPREAD - 1, by hash */
 const CABINET_EVERY_MIN = 4;
 const CABINET_EVERY_SPREAD = 3;
-/** in the outskirts, houses this close along a road share one mailbox stand when there are at least STAND_MIN (m) */
+/** in the outskirts, up to STAND_MAX houses this close along a road share one mailbox stand, when there are at least STAND_MIN (m) */
 const STAND_REACH_M = 150;
 const STAND_MIN = 3;
 const STAND_MAX = 6;
@@ -150,16 +150,17 @@ export function placeHomeItems(placer: Placer) {
     list.sort((a, b) => a.s - b.s);
     for (let i = 0; i < list.length; ) {
       let j = i;
-      while (j + 1 < list.length && list[j + 1].s - list[i].s <= STAND_REACH_M) j++;
+      // a full stand ends the group, so the houses after it start the next one rather than going without
+      while (j + 1 < list.length && j + 1 - i < STAND_MAX && list[j + 1].s - list[i].s <= STAND_REACH_M) j++;
       const group = list.slice(i, j + 1);
       const f = group[0];
       if (group.length >= STAND_MIN) {
-        const n = Math.min(STAND_MAX, group.length) as 3 | 4 | 5 | 6;
+        const n = group.length as 3 | 4 | 5 | 6;
         const c = placer.roadside({
           kind: 'mailbox-stand',
           ri: f.ri,
           side: f.side,
-          alongM: f.s,
+          alongM: (f.s + group[group.length - 1].s) / 2, // in the middle of the houses it serves
           offsetM: houseLine(f.ri, f.side, 'mailbox-stand'),
           id: `gen:mailbox-stand:${f.key}`,
           origin: 'outskirts',
