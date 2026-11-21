@@ -59,9 +59,11 @@ import { addBuildings, addRoadRibbons, addStreetscapeMeshes, addTerrain, addTree
 import { type CarType, specFor } from './sim/vehicle-spec';
 import { newGameState, newViewState } from './state';
 import { Trisslott, trisslottSeed } from './trisslott';
+import { applyFont, parseFont } from '../fonts/fonts';
 
 (function () {
 'use strict';
+applyFont(document, parseFont(location.search)); // ?font= (#75)
 // the optional fields are absent from the JSON's inferred type when the snapshot has none, so read it as WorldData
 const D = data as unknown as WorldData;
 // every id asked for is in index.html
