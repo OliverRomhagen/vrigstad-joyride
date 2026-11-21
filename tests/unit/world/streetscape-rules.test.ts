@@ -16,6 +16,7 @@ import {
   classifyStreetscape,
   SIDEWALK_CENTRE_M,
   SIDEWALK_RESIDENTIAL_M,
+  sideSpecOf,
   VERGE_M,
 } from '../../../src/world/streetscape-rules';
 import { makeWorld, square } from './fixture';
@@ -185,5 +186,17 @@ describe('classifyStreetscape: determinism and overrides', () => {
     expect(t.profile).toBe('centre');
     const [u] = classify({ r: [street()] }, { 1: { sidewalk: { right: 'present' }, note: 'photo, June 2026' } });
     expect(u.right.source).toBe('derived');
+  });
+});
+
+describe('sideSpecOf', () => {
+  it('reads the left side for -1 and the right for +1', () => {
+    const [sides] = classifyStreetscape(
+      makeWorld({ r: [{ c: RoadClass.STREET, n: '', p: [-40, 0, 40, 0], sw: [SideState.PRESENT, SideState.ABSENT] }] }),
+      new RoadNetwork(makeWorld({ r: [{ c: RoadClass.STREET, n: '', p: [-40, 0, 40, 0] }] }), { heightAt: () => 0 }),
+      new BuildingIndex(makeWorld()),
+    );
+    expect(sideSpecOf(sides, -1)).toBe(sides.left);
+    expect(sideSpecOf(sides, 1)).toBe(sides.right);
   });
 });
