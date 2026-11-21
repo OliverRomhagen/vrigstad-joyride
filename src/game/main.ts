@@ -39,9 +39,10 @@ import { esc, MenuPlate } from './menu';
 import { KioskCatMenus } from './kiosk-cat-menus';
 import { Pets } from './pets';
 import { Commands, parseKr, UsageError } from './commands';
+import { CashRain } from './cash-rain';
 import { Confetti } from './confetti';
 import { DevConsole, isConsoleKey } from './devconsole';
-import { earn, fmtKr, newWallet, pay, RAIN_KR } from './economy';
+import { earn, fmtKr, newWallet, pay } from './economy';
 import { KIOSK, type Place, Places } from './places';
 import { CAT_SCRATCH_HP, LOW_HP, hurt, newHealth } from './health';
 import { HOME } from './player';
@@ -229,26 +230,18 @@ function leaveHouse() { if (!places.leave()) return; player.mesh.visible = true;
 // ---------- car damage: cracked glass, and smoke from the bonnet (src/game/render/car-damage.ts) ----------
 const carDamage = new CarDamageFx({ scene, groundAt, profiles: PROFILES, tractorCab: TRACTOR_CAB, vehicleVisuals, rnd: dmgRnd, cars }), updateSmoke = carDamage.updateSmoke.bind(carDamage);
 
-// ---------- låt det regna: an easter egg, L throws RAIN_KR in the air as banknotes that flutter down around you (src/game/render/banknotes.ts) ----------
+// ---------- låt det regna: L throws money in the air (src/game/cash-rain.ts) as banknotes that flutter down (src/game/render/banknotes.ts) ----------
 const cashRnd = makeRnd(1000);                               // own stream for the banknotes and the confetti, so they don't shift the world's rolls
 const banknotes = new Banknotes({ scene, doc: document, groundAt, rnd: cashRnd, calmMotion });
-const RAIN_SEEN_M = 20, RAIN_GAWK_S = 5;                     // walkers this close (m) stop and stare this long (s)
-const RAIN_LINES = ['”Låt dä regna!”', '”Pengar ä bara papper, dä.”', '”Hôll i hatten, nu regnar dä sedlar!”'];
-const GAWK_LINES = ['”Va i hela friden!”', '”Ä du inte klok, människa?!”', '”Hörru, ja tar en sån där!”'];
-function makeItRain() {
-  if (!game.started || game.bigT > 0 || places.inside || !kmenu.hidden) return;
-  if (!pay(wallet, RAIN_KR)) { toast('”Låta dä regna? Mä ' + fmtKr(wallet.kr) + '? Nä.”', 2.5); return; }
-  const you = game.inCar && game.pcar ? game.pcar : player; banknotes.drop(you);
-  const seen = crowd.stare(you, RAIN_SEEN_M, RAIN_GAWK_S);
-  toast(pickLine(RAIN_LINES), 2.5); if (seen) loop.sayLater(pickLine(GAWK_LINES));
-}
+const cashRain = new CashRain({ game, player, wallet, toast, pickLine, dropNotes: around => banknotes.drop(around), stare: (around, m, secs) => crowd.stare(around, m, secs),
+  sayLater: line => loop.sayLater(line), get lyingLow() { return !!places.inside; }, get menuOpen() { return !kmenu.hidden; }, get calmMotion() { return calmMotion.matches; } });
 
 // trisslott (src/game/trisslott.ts): the vinstplan is in economy.ts; a win fires confetti (src/game/confetti.ts), and a big one rains banknotes too
 const confetti = new Confetti($('confetti') as HTMLCanvasElement, cashRnd, calmMotion);
 // the tickets' own stream, so scratching doesn't shift the world's rolls; ?seed=n pins it
 const trissRnd = makeRnd(trisslottSeed(new URLSearchParams(location.search), () => crypto.getRandomValues(new Uint32Array(1))[0]));
 const trisslott = new Trisslott({ random: trissRnd, pick, now: () => performance.now() / 1000, toast, wallet,
-  celebrate: kr => confetti.celebrate(kr), rainNotes: () => { if (!calmMotion.matches) banknotes.drop(player); },
+  celebrate: kr => confetti.celebrate(kr), rainNotes: () => cashRain.showerWin(),
   draw: (bought, won, wonKr) => hud.drawTrisslott(bought, won, wonKr) });
 // ?at=x,z[,yaw[,pitch]] starts the player there, looking that way: for review screenshots, such as the streetscape's (#187)
 (function () { const at = (new URLSearchParams(location.search).get('at') || '').split(',').map(Number);
@@ -265,7 +258,7 @@ function consoleKey(e: KeyboardEvent) {
 canvas.addEventListener('pointerdown', () => devcon.close());   // before the input's own, so a click that closes the console can take the mouse back
 const input = new Input({ win: window, doc: document, canvas, $, coarse, menuKey: consoleKey,
   get started() { return game.started; }, get menuOpen() { return !kmenu.hidden; },
-  action: () => action(), respawn: () => respawn(), rain: () => makeItRain(),
+  action: () => action(), respawn: () => respawn(), rain: () => cashRain.makeItRain(),
   jump: () => { if (jumpOk()) game.jumpQ = true; },   // queue only where a jump can start (see jumpOk)
   look: (dx, dy) => { if (game.inCar) { view.lookOff = wrap(view.lookOff + dx * 0.006); view.lookIdle = 0; } else view.camYaw = wrap(view.camYaw + dx * 0.006);
     view.camPitch = clamp(view.camPitch + dy * 0.004, 0.06, 1.25); },
