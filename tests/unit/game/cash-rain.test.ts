@@ -3,7 +3,7 @@ import { CashRain, GAWK_LINES, RAIN_LINES } from '../../../src/game/cash-rain';
 import { RAIN_KR } from '../../../src/game/economy';
 import { newGameState } from '../../../src/game/state';
 
-function rain(o: { kr?: number; seen?: boolean; calm?: boolean; menuOpen?: boolean } = {}) {
+function rain(o: { kr?: number; seen?: boolean; calm?: boolean; menuOpen?: boolean; lyingLow?: boolean } = {}) {
   const game = { ...newGameState(), started: true },
     player = { x: 3, z: 4 },
     wallet = { kr: o.kr ?? RAIN_KR },
@@ -14,7 +14,7 @@ function rain(o: { kr?: number; seen?: boolean; calm?: boolean; menuOpen?: boole
     game,
     player,
     wallet,
-    lyingLow: false,
+    lyingLow: !!o.lyingLow,
     menuOpen: !!o.menuOpen,
     calmMotion: !!o.calm,
     dropNotes: around => drops.push({ x: around.x, z: around.z }),
@@ -52,14 +52,14 @@ describe('låt det regna', () => {
     expect(t.toasts[0]).toMatch(/^”Låta dä regna\? Mä 999 riksdaler/);
   });
 
-  it('does nothing before Start or with a menu open', () => {
-    const before = rain();
-    before.game.started = false;
-    before.r.makeItRain();
-    const menu = rain({ menuOpen: true });
-    menu.r.makeItRain();
-    expect([before.drops, menu.drops, before.toasts, menu.toasts]).toEqual([[], [], [], []]);
-    expect(menu.wallet.kr).toBe(RAIN_KR);
+  it('does nothing before Start, under the big screen, in a safehouse or with a menu open', () => {
+    const cases = [rain(), rain(), rain({ lyingLow: true }), rain({ menuOpen: true })];
+    cases[0].game.started = false;
+    cases[1].game.bigT = 2;
+    for (const t of cases) {
+      t.r.makeItRain();
+      expect([t.drops, t.toasts, t.wallet.kr]).toEqual([[], [], RAIN_KR]);
+    }
   });
 
   it('showers a big win for free, but not with reduced motion', () => {

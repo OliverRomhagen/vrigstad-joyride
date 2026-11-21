@@ -37,9 +37,10 @@ describe('trisslott', () => {
   });
 
   it('shows the result after 0.9 s of scratching, and ignores a second scratch meanwhile', () => {
-    const { t, toasts, drawn } = lotto();
+    const { t, wallet, toasts, drawn } = lotto();
     t.scratch();
     t.scratch();
+    expect(wallet.kr).toBe(1000 - TRISS_KR); // the second press is not charged
     t.update(0.8);
     expect(drawn).toEqual([]);
     t.update(0.2);
