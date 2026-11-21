@@ -4,9 +4,11 @@ import {
   HIT_MIN_MS,
   knockOver,
   L_FOOT,
+  L_HIP,
   L_SHOULDER,
   POINTS,
   pointGap,
+  R_HIP,
   R_SHOULDER,
   RAGDOLL_STICKS,
   type Ragdoll,
@@ -94,8 +96,15 @@ describe('stepRagdoll', () => {
   });
 
   it('keeps every stick near its length and every point above the ground, however wild the throw', () => {
-    for (const roll of [0, 0.9, 1]) {
-      const r = knockOver(person, car(20), flat, () => roll) as Ragdoll;
+    // facing the car, and turned 45° to it: a spin turns them either way, rather than squeezing their shoulders
+    for (const [roll, h] of [
+      [0, Math.PI],
+      [0.9, Math.PI],
+      [1, Math.PI],
+      [1, Math.PI / 4],
+      [0, Math.PI / 4],
+    ]) {
+      const r = knockOver({ ...person, h }, car(20), flat, () => roll) as Ragdoll;
       for (let t = 0; t < 4; t += STEP_S) {
         stepRagdoll(r, flat);
         expect(minY(r)).toBeGreaterThanOrEqual(0.1 - 1e-6);
@@ -104,7 +113,24 @@ describe('stepRagdoll', () => {
     }
   });
 
-  it('throws each one differently: the rolls turn, flip and lift them', () => {
+  it('spins them as one body, whichever way they faced: the throw squeezes neither the shoulders nor the hips', () => {
+    // the two ends of each pair are at the same height, so only a turn (and not the flip, which throws the feet faster
+    // than the head) can move one along the line to the other
+    for (const h of [Math.PI, Math.PI / 4, Math.PI / 2, 0.3]) {
+      const r = knockOver({ ...person, h }, car(14), flat, () => 1) as Ragdoll;
+      for (const [a, b] of [
+        [L_SHOULDER * 3, R_SHOULDER * 3],
+        [L_HIP * 3, R_HIP * 3],
+      ]) {
+        let apart = 0; // how fast the two move apart, times their gap: the points' speeds are pos - prev over one step
+        for (let k = 0; k < 3; k++)
+          apart += (r.pos[b + k] - r.pos[a + k]) * (r.pos[b + k] - r.prev[b + k] - (r.pos[a + k] - r.prev[a + k]));
+        expect(Math.abs(apart / STEP_S)).toBeLessThan(0.01);
+      }
+    }
+  });
+
+  it('throws each one differently: the rolls turn them and change how they fly', () => {
     // the shoulders' line seen from above, 0.3 s in: a spin turns it, where the average throw keeps it square to the car
     const shoulders = (roll: () => number) => {
       const r = knockOver(person, car(14), flat, roll) as Ragdoll;

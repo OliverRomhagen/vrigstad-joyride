@@ -180,14 +180,16 @@ export function knockOver(
     // the bumper takes the legs: low is 0 at the head, 1 at the feet
     const low = 1 - POSE[i][1] / POSE[HEAD][1],
       k = (HEAD_KEEP + FEET_KEEP) / 2 + (FEET_KEEP - HEAD_KEEP) * (low - 0.5) * flip;
-    // how far the point is to the right of the throw (m) and above their middle: a turn moves it at that times the turn's rate
-    const right = (pos[i * 3] - person.x) * sx + (pos[i * 3 + 2] - person.z) * sz,
+    // how far the point is ahead of their middle along the throw, to its left and above (m): a turn moves it at that times
+    // the turn's rate, across the line from the middle to the point
+    const front = (pos[i * 3] - person.x) * fx + (pos[i * 3 + 2] - person.z) * fz,
+      left = (pos[i * 3] - person.x) * sx + (pos[i * 3 + 2] - person.z) * sz,
       up = pos[i * 3 + 1] - midY;
-    const ahead = k * launch + spin * right,
-      aside = away * launch - cartwheel * up;
+    const ahead = k * launch + spin * left,
+      aside = away * launch - spin * front - cartwheel * up;
     const vx = fx * ahead + sx * aside,
       vz = fz * ahead + sz * aside;
-    const vy = (LIFT_MS + launch * (HEAD_LIFT + (FEET_LIFT - HEAD_LIFT) * low)) * lift + cartwheel * right;
+    const vy = (LIFT_MS + launch * (HEAD_LIFT + (FEET_LIFT - HEAD_LIFT) * low)) * lift + cartwheel * left;
     prev[i * 3] -= vx * STEP_S;
     prev[i * 3 + 1] -= vy * STEP_S;
     prev[i * 3 + 2] -= vz * STEP_S;
