@@ -1,5 +1,5 @@
 // Skroten's yard in the scene (#76): gravel, a fence of mismatched sheet metal topped with barbed wire, the gate with its sign, the hut,
-// the containers, the wrecks and the scrap heaps, the arrow signs by the road, and Plåt-Pelle, who turns to watch you come.
+// the containers, the cars and the scrap heaps, the arrow signs by the road, and Plåt-Pelle, who turns to watch you come.
 // The layout comes from skroten-yard.ts; the static parts are baked into one mesh, so the yard costs a handful of draw calls.
 import * as THREE from 'three';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
@@ -12,15 +12,16 @@ import {
   OWNER_UV,
   PROP_SIZE,
   RAMP_M,
+  SALE_SIGN,
   WORKSHOP_DOOR,
   type Workshop,
   type WorkshopProp,
-  type Wreck,
-  type WreckModel,
   workshopFloorAt,
   YARD,
   YARD_GATE,
   YARD_TURN,
+  type YardCar,
+  type YardCarModel,
   type YardLayout,
   yardToWorld,
 } from '../skroten-yard';
@@ -42,9 +43,11 @@ const RUST = '#8a4a2a', // the boards
 const GATE_SIGN_Y_M = 4.6;
 const OWNER_SEES_M = 30; // he turns to face you inside this distance
 const OWNER_TURN_K = 3; // how quickly he turns, per second
-const WRECK_DETAIL_M = 150, // the wrecks wear the game's car models inside this distance of the yard's middle, on a computer
-  WRECK_LOAD_M = 300; // and the models start loading when you come this close
-const WRECK_SINK_M = 0.1; // flat tyres
+const CAR_DETAIL_M = 150, // the cars wear the game's car models inside this distance of the yard's middle, on a computer
+  CAR_LOAD_M = 300; // and the models start loading when you come this close
+const WRECK_SINK_M = 0.12; // a wreck's flat tyres
+const STACK_SQUASH = 0.8; // a wreck with another on top is pressed this low
+const YARD_TEX_PX = 1024; // the dirty asphalt's width in pixels, over the yard's width
 const CONTAINER_H_M = 2.6;
 // the workshop as it stands: one storey of pale brick with a dark blue clad wing, a brown band under the eaves, and a cream gabled hall
 // with a rusty roof rising behind
@@ -71,7 +74,7 @@ export interface SkrotenMeshDeps {
   scene: THREE.Scene;
   heightAt(x: number, z: number): number;
   layout: YardLayout;
-  coarse: boolean; // a phone: the wrecks keep their simple shapes, the models cost too many triangles
+  coarse: boolean; // a phone: the cars keep their simple shapes, the models cost too many triangles
 }
 
 /** The yard and Plåt-Pelle; `update` turns him towards you. */
@@ -79,8 +82,8 @@ export class SkrotenMeshes {
   private readonly owner: Person;
   private ownerH = 0;
   private readonly middle = yardToWorld(0, YARD.depth / 2);
-  private farWrecks: THREE.Mesh | null = null; // the detailed wrecks' simple shapes, until the models load and while you are far
-  private nearWrecks: THREE.Group | null = null;
+  private farCars: THREE.Mesh | null = null; // the detailed cars' simple shapes, until the models load and while you are far
+  private nearCars: THREE.Group | null = null;
   private loadNear: (() => void) | null = null; // starts loading the models, once
 
   constructor(g: SkrotenMeshDeps) {
@@ -92,8 +95,18 @@ export class SkrotenMeshes {
         return heightAt(p.x, p.z);
       };
     // places a coloured geometry at (u, y, v) of the yard's frame, turned and tilted
-    const put = (geo: THREE.BufferGeometry, u: number, y: number, v: number, turn = 0, tilt = 0, into = pieces) => {
-      into.push(geo.clone().applyMatrix4(placing(u, y, v, turn, tilt)));
+    const put = (
+      geo: THREE.BufferGeometry,
+      u: number,
+      y: number,
+      v: number,
+      turn = 0,
+      tilt = 0,
+      into = pieces,
+      pitch = 0,
+      squash = 1,
+    ) => {
+      into.push(geo.clone().applyMatrix4(placing(u, y, v, turn, tilt, pitch, squash)));
     };
 
     // the fence, panel by panel, each on the ground under it
@@ -129,9 +142,11 @@ export class SkrotenMeshes {
       }
     }
 
-    // gravel over the yard, and the drive out to the road, following the ground
+    // dirty asphalt over the yard, out to the road, and back to the fence's furthest corner, following the ground
+    const uEast = Math.max(...layout.fence.flatMap(f => [f.u0, f.u1])),
+      vBack = Math.max(...layout.fence.flatMap(f => [f.v0, f.v1]));
     const gravel = new THREE.MeshLambertMaterial({
-      color: 0x4a4946, // worn asphalt
+      map: dirtyAsphalt(YARD_TEX_PX, Math.round((YARD_TEX_PX * (vBack + 5.5)) / (uEast - YARD.uMin))),
       polygonOffset: true,
       polygonOffsetFactor: -1,
       polygonOffsetUnits: -2,
@@ -170,19 +185,46 @@ export class SkrotenMeshes {
     put(boxGeo(container(cw, cd, '#2f5a7a')), cu, cy, cv + cd / 2, Math.PI);
     put(boxGeo(container(cw, cd, '#5a6b3a')), cu - 0.4, cy + CONTAINER_H_M, cv, Math.PI / 2 + 0.08);
 
-    // the wrecks: flat tyres and faded paint, and in the back row one car on another. Those standing alone wear the game's car models
-    // near the yard (loadWrecks), and their simple shapes until then and from afar; stacked cars and tractors keep the simple shapes.
-    const detailed = g.coarse ? [] : layout.wrecks.filter(w => w.stack === 0 && w.model !== 'traktor'),
+    // the cars: flat tyres and faded paint, and in the back row one car on another. Those standing alone wear the game's car models
+    // near the yard (loadCars), and their simple shapes until then and from afar; stacked cars and tractors keep the simple shapes.
+    const detailed = g.coarse ? [] : layout.yardCars.filter(w => w.stack === 0 && w.model !== 'traktor'),
       farPieces: THREE.BufferGeometry[] = [];
     let lowerTop = 0;
-    for (const w of layout.wrecks) {
+    for (const w of layout.yardCars) {
       const geo = carGeo(simpleType(w.model), w.colour),
-        y = groundY(w.u, w.v) - WRECK_SINK_M;
+        y = groundY(w.u, w.v) - (w.wrecked ? WRECK_SINK_M : 0),
+        squash = w.stack === 1 ? STACK_SQUASH : 1;
       if (w.stack === 1) {
         geo.computeBoundingBox();
-        lowerTop = geo.boundingBox!.max.y - 0.08; // the next car lies on this one's roof
+        lowerTop = geo.boundingBox!.max.y * STACK_SQUASH - 0.08; // the next car lies on this one's caved-in roof
       }
-      put(geo, w.u, y + (w.stack === 2 ? lowerTop : 0), w.v, w.turn, w.tilt, detailed.includes(w) ? farPieces : pieces);
+      put(
+        geo,
+        w.u,
+        y + (w.stack === 2 ? lowerTop : 0),
+        w.v,
+        w.turn,
+        w.tilt,
+        detailed.includes(w) ? farPieces : pieces,
+        w.pitch,
+        squash,
+      );
+    }
+
+    // the wheel off the broken tractor, lying flat beside it
+    if (layout.looseWheel) {
+      const { u, v } = layout.looseWheel;
+      put(
+        mergeGeo([
+          [new THREE.CylinderGeometry(0.8, 0.8, 0.45, 20), TYRE],
+          [new THREE.CylinderGeometry(0.42, 0.42, 0.47, 12), '#8a2f2a'],
+        ]),
+        u,
+        groundY(u, v) + 0.22,
+        v,
+        0,
+        0.06,
+      );
     }
 
     // the heaps: a mound of sheet, beams and engine blocks over a solid core of rust, higher in the middle
@@ -244,8 +286,7 @@ export class SkrotenMeshes {
     yard.rotation.y = YARD_TURN;
     const baked = new THREE.Mesh(bake(pieces), paintMat);
     baked.castShadow = baked.receiveShadow = true;
-    const uEast = Math.max(...layout.fence.flatMap(f => [f.u0, f.u1]));
-    yard.add(baked, ground(YARD.uMin, uEast, 0, YARD.depth), ground(-YARD.gateHalf, YARD.gateHalf, -5.5, 0));
+    yard.add(baked, ground(YARD.uMin, uEast, -5.5, vBack));
 
     // the boards: SKROTEN over the gate, BILAR KÖPES on the fence, and an arrow sign either way along the road
     const gate = board(12, 1.5, 'SKROTEN', null);
@@ -254,6 +295,21 @@ export class SkrotenMeshes {
     buys.position.set(-22, groundY(-22, 0) + 1.3, -0.08);
     gate.rotation.y = buys.rotation.y = Math.PI; // their fronts face the road
     yard.add(gate, buys);
+    // TILL SALU on two posts in front of the cars for sale, facing the yard
+    const sale = board(2.4, 0.9, 'TILL SALU', null),
+      saleY = groundY(SALE_SIGN.u, SALE_SIGN.v);
+    sale.position.set(SALE_SIGN.u, saleY + 1.6, SALE_SIGN.v);
+    sale.rotation.y = Math.PI;
+    yard.add(sale);
+    put(
+      boxGeo([
+        [0.08, 1.6, 0.08, -1, 0.8, 0, POST],
+        [0.08, 1.6, 0.08, 1, 0.8, 0, POST],
+      ]),
+      SALE_SIGN.u,
+      saleY,
+      SALE_SIGN.v,
+    );
     for (const s of layout.signs) {
       const b = board(2.4, 1, 'SKROTEN', s.facing);
       b.position.set(s.u, groundY(s.u, s.v) + 2.2, s.v);
@@ -261,10 +317,10 @@ export class SkrotenMeshes {
       yard.add(b);
     }
     if (farPieces.length) {
-      this.farWrecks = new THREE.Mesh(bake(farPieces), paintMat);
-      this.farWrecks.castShadow = this.farWrecks.receiveShadow = true;
-      yard.add(this.farWrecks);
-      this.loadNear = () => void this.loadWrecks(detailed, yard, groundY);
+      this.farCars = new THREE.Mesh(bake(farPieces), paintMat);
+      this.farCars.castShadow = this.farCars.receiveShadow = true;
+      yard.add(this.farCars);
+      this.loadNear = () => void this.loadCars(detailed, yard, groundY);
     }
     scene.add(yard);
     if (layout.workshop) scene.add(hallMeshes(heightAt, layout.workshop));
@@ -290,53 +346,60 @@ export class SkrotenMeshes {
     this.owner = owner;
   }
 
-  // the game's car models for the wrecks standing alone: one model loaded per kind, its paint and the rest each drawn as one instanced
+  // the game's car models for the cars standing alone: one model loaded per kind, its paint and the rest each drawn as one instanced
   // mesh, so the paint takes each wreck's colour. A model that fails to load leaves the simple shapes up.
-  private async loadWrecks(list: Wreck[], parent: THREE.Group, groundY: (u: number, v: number) => number) {
+  private async loadCars(list: YardCar[], parent: THREE.Group, groundY: (u: number, v: number) => number) {
     const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder),
       group = new THREE.Group(),
-      byModel = new Map<WreckModel, Wreck[]>(),
+      byModel = new Map<YardCarModel, YardCar[]>(),
       paint = new THREE.MeshLambertMaterial({ vertexColors: true }),
       colour = new THREE.Color();
     for (const w of list) byModel.set(w.model, [...(byModel.get(w.model) ?? []), w]);
     try {
       await Promise.all(
-        [...byModel].map(async ([id, wrecks]) => {
+        [...byModel].map(async ([id, yardCars]) => {
           const def = VEHICLES.find(v => v.id === id);
           if (!def) throw new Error('no model ' + id);
           const parts = flatten((await loader.loadAsync(def.url)).scene);
-          const body = new THREE.InstancedMesh(parts.paint, paint, wrecks.length),
-            trim = new THREE.InstancedMesh(parts.rest, paintMat, wrecks.length);
-          wrecks.forEach((w, i) => {
-            const m = placing(w.u, groundY(w.u, w.v) - WRECK_SINK_M, w.v, w.turn, w.tilt);
-            body.setMatrixAt(i, m);
-            trim.setMatrixAt(i, m);
-            body.setColorAt(i, colour.set(w.colour));
-          });
-          body.castShadow = trim.castShadow = body.receiveShadow = trim.receiveShadow = true;
-          group.add(body, trim);
+          // the wrecks' paint is patched with rust and dirtier low down; the cars for sale keep theirs clean
+          for (const [cars, paintGeo] of [
+            [yardCars.filter(w => !w.wrecked), parts.paint],
+            [yardCars.filter(w => w.wrecked), rusted(parts.paint)],
+          ] as const) {
+            if (!cars.length) continue;
+            const body = new THREE.InstancedMesh(paintGeo, paint, cars.length),
+              trim = new THREE.InstancedMesh(parts.rest, paintMat, cars.length);
+            cars.forEach((w, i) => {
+              const m = placing(w.u, groundY(w.u, w.v) - (w.wrecked ? WRECK_SINK_M : 0), w.v, w.turn, w.tilt, w.pitch);
+              body.setMatrixAt(i, m);
+              trim.setMatrixAt(i, m);
+              body.setColorAt(i, colour.set(w.colour));
+            });
+            body.castShadow = trim.castShadow = body.receiveShadow = trim.receiveShadow = true;
+            group.add(body, trim);
+          }
         }),
       );
     } catch (e) {
-      console.warn('Skroten: the wrecks keep their simple shapes:', e);
+      console.warn('Skroten: the cars keep their simple shapes:', e);
       return;
     }
     group.visible = false; // update shows it when you are near
     parent.add(group);
-    this.nearWrecks = group;
+    this.nearCars = group;
   }
 
   /** Turns Plåt-Pelle towards you while you are near. */
   update(dt: number, you: { x: number; z: number }) {
     const fromMiddle = Math.hypot(you.x - this.middle.x, you.z - this.middle.z);
-    if (this.loadNear && fromMiddle < WRECK_LOAD_M) {
+    if (this.loadNear && fromMiddle < CAR_LOAD_M) {
       this.loadNear();
       this.loadNear = null;
     }
-    if (this.nearWrecks && this.farWrecks) {
-      const near = fromMiddle < WRECK_DETAIL_M;
-      this.nearWrecks.visible = near;
-      this.farWrecks.visible = !near;
+    if (this.nearCars && this.farCars) {
+      const near = fromMiddle < CAR_DETAIL_M;
+      this.nearCars.visible = near;
+      this.farCars.visible = !near;
     }
     const n = this.owner,
       dx = you.x - n.position.x,
@@ -352,14 +415,88 @@ export class SkrotenMeshes {
 // the matrix that places a model at (x, y, z), turned about y, then tilted about its length
 const _q = new THREE.Quaternion(),
   _e = new THREE.Euler(0, 0, 0, 'YXZ'),
-  _one = new THREE.Vector3(1, 1, 1);
-function placing(x: number, y: number, z: number, turn = 0, tilt = 0) {
-  return new THREE.Matrix4().compose(new THREE.Vector3(x, y, z), _q.setFromEuler(_e.set(0, turn, tilt)), _one);
+  _scale = new THREE.Vector3();
+function placing(x: number, y: number, z: number, turn = 0, tilt = 0, pitch = 0, squash = 1) {
+  return new THREE.Matrix4().compose(
+    new THREE.Vector3(x, y, z),
+    _q.setFromEuler(_e.set(pitch, turn, tilt)),
+    _scale.set(1, squash, 1),
+  );
 }
 
 // the simple shape a wreck's model falls back to: its kind of car in models.ts
-function simpleType(m: WreckModel) {
+function simpleType(m: YardCarModel) {
   return m === 'traktor' ? 'traktor' : (VEHICLES.find(v => v.id === m)?.archetype ?? 'volvo');
+}
+
+// a model's paint (white, for the instance colour) with patches of rust and a dirty lower body: rust is the colour the paint is multiplied
+// by where a little noise over the model's surface rises above a threshold, so every wreck rusts in the same places but in its own paint
+function rusted(paint: THREE.BufferGeometry) {
+  const g = paint.clone(),
+    pos = g.attributes.position!,
+    col = g.attributes.color!;
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i),
+      y = pos.getY(i),
+      z = pos.getZ(i),
+      n = Math.sin(x * 4.1 + Math.sin(z * 3.3)) * Math.sin(z * 3.7 + y * 5.3) * Math.sin(y * 4.9 + x * 2.1 + z * 1.3),
+      low = y < 0.6 ? 0.72 : 1; // road dirt along the sills
+    if (n > 0.22) col.setXYZ(i, 0.95 * low, 0.5 * low, 0.3 * low);
+    else col.setXYZ(i, 0.85 * low, 0.83 * low, 0.8 * low); // faded
+  }
+  return g;
+}
+
+// the yard's asphalt, worn and dirty: specks, patches of dirt and gravel, oil stains and tyre tracks, w × h pixels over the whole yard
+function dirtyAsphalt(w: number, h: number) {
+  const rnd = makeRnd(77),
+    cv = document.createElement('canvas');
+  cv.width = w;
+  cv.height = h;
+  const c = cv.getContext('2d')!,
+    blot = (x: number, y: number, r: number, colour: string, alpha: number) => {
+      const g = c.createRadialGradient(x, y, 0, x, y, r);
+      g.addColorStop(0, colour);
+      g.addColorStop(1, 'rgba(0,0,0,0)');
+      c.globalAlpha = alpha;
+      c.fillStyle = g;
+      c.beginPath();
+      c.ellipse(x, y, r, r * (0.5 + rnd() * 0.5), rnd() * Math.PI, 0, Math.PI * 2);
+      c.fill();
+    };
+  c.fillStyle = '#4e4c48';
+  c.fillRect(0, 0, w, h);
+  for (let i = 0; i < 9000; i++) {
+    c.globalAlpha = 0.25 + rnd() * 0.3;
+    c.fillStyle = rnd() < 0.5 ? '#3c3a37' : '#66635c';
+    c.fillRect(rnd() * w, rnd() * h, 1 + rnd() * 2, 1 + rnd() * 2);
+  }
+  for (let i = 0; i < 70; i++) blot(rnd() * w, rnd() * h, 20 + rnd() * 70, '#6b5a43', 0.35 + rnd() * 0.3); // dirt
+  for (let i = 0; i < 25; i++) blot(rnd() * w, rnd() * h, 15 + rnd() * 40, '#7d7566', 0.3); // spilt gravel
+  for (let i = 0; i < 45; i++) blot(rnd() * w, rnd() * h, 4 + rnd() * 11, '#1e1d1b', 0.4 + rnd() * 0.25); // oil
+  c.lineCap = 'round';
+  for (let i = 0; i < 14; i++) {
+    const x0 = rnd() * w,
+      y0 = rnd() * h,
+      x1 = rnd() * w,
+      y1 = rnd() * h,
+      mx = rnd() * w,
+      my = rnd() * h;
+    c.globalAlpha = 0.18;
+    c.strokeStyle = '#2b2a27';
+    c.lineWidth = 5;
+    for (const off of [0, 14]) {
+      c.beginPath();
+      c.moveTo(x0 + off, y0);
+      c.quadraticCurveTo(mx + off, my, x1 + off, y1);
+      c.stroke();
+    }
+  }
+  c.globalAlpha = 1;
+  const t = new THREE.CanvasTexture(cv);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = 4;
+  return t;
 }
 
 // an sRGB colour darkened by k

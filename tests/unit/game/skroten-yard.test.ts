@@ -6,10 +6,10 @@ import {
   RING_UV,
   SKROT_HALL,
   WORKSHOP_DOOR,
-  WRECK_MODELS,
   workshopFloorAt,
   worldToYard,
   YARD,
+  YARD_CAR_MODELS,
   yardLayout,
   yardToWorld,
 } from '../../../src/game/skroten-yard';
@@ -43,23 +43,23 @@ const clearance = (outlines: number[][], u: number, v: number) => {
 describe('Skroten yard', () => {
   it('is laid out the same on every load', () => {
     expect(yardLayout(FOOTPRINTS)).toEqual(yardLayout(FOOTPRINTS));
-    expect(yardLayout(FOOTPRINTS).wrecks.length).toBeGreaterThan(20);
+    expect(yardLayout(FOOTPRINTS).yardCars.length).toBeGreaterThan(20);
   });
 
-  it("dresses its wrecks in the game's car models, and a tractor or two", () => {
+  it("dresses its yardCars in the game's car models, and a tractor or two", () => {
     const ids = VEHICLES.map(v => v.id as string);
-    for (const m of WRECK_MODELS) expect(ids).toContain(m);
-    const models = new Set(yardLayout(FOOTPRINTS).wrecks.map(w => w.model));
+    for (const m of YARD_CAR_MODELS) expect(ids).toContain(m);
+    const models = new Set(yardLayout(FOOTPRINTS).yardCars.map(w => w.model));
     expect(models.size).toBeGreaterThanOrEqual(5);
     expect(models.has('traktor')).toBe(true);
-    const tractors = yardLayout(FOOTPRINTS).wrecks.filter(w => w.model === 'traktor');
+    const tractors = yardLayout(FOOTPRINTS).yardCars.filter(w => w.model === 'traktor');
     expect(new Set(tractors.map(t => t.colour)).size).toBe(tractors.length); // no two the same colour
   });
 
   it('stacks a car only on one standing alone below it', () => {
-    const { wrecks } = yardLayout(FOOTPRINTS);
-    wrecks.forEach((w, i) => {
-      if (w.stack === 2) expect(wrecks[i - 1]!.stack).toBe(1);
+    const { yardCars } = yardLayout(FOOTPRINTS);
+    yardCars.forEach((w, i) => {
+      if (w.stack === 2) expect(yardCars[i - 1]!.stack).toBe(1);
     });
   });
 
@@ -151,7 +151,7 @@ describe('Skroten yard', () => {
         expect(clearanceXZ(y.outlines, x, z), `at ${x.toFixed(1)}, ${z.toFixed(1)}`).toBeGreaterThan(CAR_R_M);
       }
     expect(
-      y.wrecks.filter(w => pointInPolygon(CARPORT, yardToWorld(w.u, w.v).x, yardToWorld(w.u, w.v).z)),
+      y.yardCars.filter(w => pointInPolygon(CARPORT, yardToWorld(w.u, w.v).x, yardToWorld(w.u, w.v).z)),
     ).toHaveLength(4);
   });
 
@@ -179,5 +179,29 @@ describe('Skroten yard', () => {
     expect(floor(...at(RAMP_M + 0.5))).toBeNull();
     expect(floor(...at(1, ws.doorFrom - 1))).toBeNull();
     expect(floor(10, 10)).toBeNull();
+  });
+
+  it('keeps the wrecks on the west side and the cars for sale, standing straight, by the workshop and under the carport', () => {
+    const y = yardLayout(FOOTPRINTS),
+      cars = y.yardCars.filter(c => c.model !== 'traktor'),
+      fresh = cars.filter(c => !c.wrecked),
+      wrecks = cars.filter(c => c.wrecked);
+    expect(fresh.length).toBeGreaterThanOrEqual(8);
+    for (const c of fresh) {
+      expect(c.tilt).toBe(0);
+      expect(c.pitch).toBe(0);
+      expect(c.stack).toBe(0);
+      expect(c.u).toBeGreaterThan(0); // east of every wreck
+    }
+    for (const c of wrecks) expect(c.u).toBeLessThan(0);
+    expect(wrecks.some(c => c.tilt !== 0)).toBe(true);
+  });
+
+  it('has one broken tractor, leaning, with its wheel on the ground beside it', () => {
+    const y = yardLayout(FOOTPRINTS),
+      broken = y.yardCars.filter(c => c.model === 'traktor' && c.wrecked);
+    expect(broken).toHaveLength(1);
+    expect(broken[0]!.tilt).not.toBe(0);
+    expect(Math.hypot(y.looseWheel!.u - broken[0]!.u, y.looseWheel!.v - broken[0]!.v)).toBeLessThan(3.5);
   });
 });

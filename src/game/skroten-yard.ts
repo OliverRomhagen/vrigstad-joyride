@@ -1,6 +1,6 @@
 // Skroten's yard (#76), at the welding workshop on the south side of Stockarydsvägen, east of the village, as it stands there: a low
 // brick workshop to the east, a long open carport to the south, and the yard between them and the road. The fence, the gate, the hut, the
-// containers, the wrecks and the scrap heaps are laid out once from their own random stream. The workshop is hollow, with a garage door
+// containers, the cars and the scrap heaps are laid out once from their own random stream. The workshop is hollow, with a garage door
 // wide enough to drive a car in, and the carport's bays open onto the yard. Plain data: render/skroten.ts draws it, and main.ts adds the outlines
 // to the buildings so cars and people collide with them. No three.js or DOM here.
 import { pointInPolygon } from '../world/polygon';
@@ -47,17 +47,19 @@ export const HUT = { u: -13, v: 7, w: 7, d: 3 } as const;
 /** Two containers side by side, and one on top across them. */
 export const CONTAINERS = { u: 16, v: 5, w: 6.1, d: 2.45 } as const;
 
-/** The wrecks' models: the game's cars by id (render/vehicle-registry.ts), and the tractor, which has no model of its own. */
-export const WRECK_MODELS = ['volvo240', 'saab900', 'xc70', 'impala1970', 'micra-k11', 'duett-epa'] as const;
-export type WreckModel = (typeof WRECK_MODELS)[number] | 'traktor';
-export interface Wreck {
+/** The cars' models: the game's cars by id (render/vehicle-registry.ts), and the tractor, which has no model of its own. */
+export const YARD_CAR_MODELS = ['volvo240', 'saab900', 'xc70', 'impala1970', 'micra-k11', 'duett-epa'] as const;
+export type YardCarModel = (typeof YARD_CAR_MODELS)[number] | 'traktor';
+export interface YardCar {
   u: number;
   v: number;
   turn: number; // radians about y, in the yard's frame
-  tilt: number; // radians about its length: a car sagging on flat tyres
-  model: WreckModel;
-  colour: string; // sRGB, faded or rusting
-  stack: 0 | 1 | 2; // 0 alone, 1 with another car on it, 2 lying on the car below
+  tilt: number; // radians about its length: a wreck leaning on flat tyres
+  pitch: number; // radians about its width: nose or tail down
+  model: YardCarModel;
+  colour: string; // sRGB: faded or rusting on a wreck, fresh on a car for sale
+  wrecked: boolean; // a wreck sags on flat tyres; a car for sale stands straight
+  stack: 0 | 1 | 2; // 0 alone, 1 with another car on it (squashed a little), 2 lying on the car below
 }
 export interface Heap {
   u: number;
@@ -131,7 +133,9 @@ export interface Carport {
 }
 export interface YardLayout {
   fence: FenceRun[];
-  wrecks: Wreck[];
+  yardCars: YardCar[];
+  /** The wheel off the broken tractor, lying beside it. */
+  looseWheel: { u: number; v: number } | null;
   heaps: Heap[];
   tyres: Tyres[];
   /** Arrow signs by the road: where they stand, and whether the yard is to the driver's right as they pass it. */
@@ -287,18 +291,23 @@ const WRECK_COLOURS = [
   '#5d6b7a',
 ];
 const WRECK_ROWS = [
-  // rows of wrecks parked side by side, noses towards the road or away: from u0 to u1, at v; cars are stacked only in the back row
-  { u0: -33, u1: -17, v: 20, stacks: false },
-  { u0: -33, u1: -17, v: 29, stacks: false },
-  { u0: 16, u1: 26, v: 30, stacks: false }, // between the workshop's door and the carport, leaving the way to both clear
-  { u0: -33, u1: -8, v: 43, stacks: true }, // in the back corner, clear of the carport's bays
+  // rows of cars parked side by side, noses towards the road or away: from u0 to u1, at v. The wrecks are on the west side, stacked in
+  // the back row; the cars for sale stand between the workshop's door and the carport, leaving the way to both clear.
+  { u0: -33, u1: -17, v: 20, stacks: false, fresh: false },
+  { u0: -33, u1: -17, v: 29, stacks: false, fresh: false },
+  { u0: -33, u1: -8, v: 43, stacks: true, fresh: false }, // in the back corner, clear of the carport's bays
+  { u0: 16, u1: 26, v: 30, stacks: false, fresh: true },
 ];
+/** Cars for sale: clean paint in the colours of the day. */
+const FRESH_COLOURS = ['#b9bab4', '#1f3b6a', '#8c1c1c', '#e8e4d8', '#2b2b2b', '#3c5a3a', '#6d7f8f'];
+/** The TILL SALU sign, in front of the row of cars for sale, facing the yard. */
+export const SALE_SIGN = { u: 21, v: 25.2 } as const;
 const WRECK_GAP_M = 2.6; // between the middles of neighbours in a row
 const WRECK_HALF_LEN_M = 2.7; // half the longest car's length, for the row's outline
 const TRACTORS = [
-  // two old tractors, parked on their own: a red one and a green one
-  { u: -27, v: 14, turn: 0.4, colour: '#8a2f2a' },
-  { u: -5, v: 22, turn: 0.2, colour: '#4f7a34' },
+  // two old tractors, parked on their own: a broken red one leaning where its wheel came off, and a green one that still runs
+  { u: -27, v: 14, turn: 0.4, colour: '#8a2f2a', broken: true },
+  { u: -5, v: 22, turn: 0.2, colour: '#4f7a34', broken: false },
 ];
 
 /**
@@ -441,27 +450,42 @@ export function yardLayout(
   outlines.push(rect(CONTAINERS.u, CONTAINERS.v, CONTAINERS.w, CONTAINERS.d * 2));
   outlines.push(rect(OWNER_UV.u, OWNER_UV.v, 0.7, 0.7)); // Plåt-Pelle stands his ground
 
-  const wrecks: Wreck[] = [];
+  const yardCars: YardCar[] = [];
   for (const row of WRECK_ROWS) {
     for (let u = row.u0; u <= row.u1 + 0.01; u += WRECK_GAP_M) {
-      if (rnd() < 0.12) continue; // a gap where one has gone to the crusher
-      const below: Wreck = {
-        u: u + (rnd() - 0.5) * 0.4,
-        v: row.v + (rnd() - 0.5) * 0.8,
-        turn: (rnd() < 0.5 ? 0 : Math.PI) + (rnd() - 0.5) * 0.3,
-        tilt: (rnd() - 0.5) * 0.12,
-        model: pick(WRECK_MODELS),
-        colour: pick(WRECK_COLOURS),
-        stack: 0,
-      };
-      wrecks.push(below);
+      if (!row.fresh && rnd() < 0.12) continue; // a gap where one has gone to the crusher
+      const below: YardCar = row.fresh
+        ? {
+            u,
+            v: row.v,
+            turn: Math.PI,
+            tilt: 0,
+            pitch: 0,
+            model: pick(YARD_CAR_MODELS),
+            colour: pick(FRESH_COLOURS),
+            wrecked: false,
+            stack: 0,
+          } // noses to the yard, in a straight line
+        : {
+            u: u + (rnd() - 0.5) * 0.4,
+            v: row.v + (rnd() - 0.5) * 0.8,
+            turn: (rnd() < 0.5 ? 0 : Math.PI) + (rnd() - 0.5) * 0.3,
+            tilt: (rnd() - 0.5) * 0.24,
+            pitch: (rnd() - 0.5) * 0.12,
+            model: pick(YARD_CAR_MODELS),
+            colour: pick(WRECK_COLOURS),
+            wrecked: true,
+            stack: 0,
+          };
+      yardCars.push(below);
       if (row.stacks && rnd() < 0.45) {
         below.stack = 1;
-        wrecks.push({
+        yardCars.push({
           ...below,
           turn: below.turn + (rnd() - 0.5) * 0.4,
           tilt: (rnd() - 0.5) * 0.1,
-          model: pick(WRECK_MODELS),
+          pitch: (rnd() - 0.5) * 0.06,
+          model: pick(YARD_CAR_MODELS),
           colour: pick(WRECK_COLOURS),
           stack: 2,
         });
@@ -469,12 +493,25 @@ export function yardLayout(
     }
     outlines.push(rect((row.u0 + row.u1) / 2, row.v, row.u1 - row.u0 + 2.2, WRECK_HALF_LEN_M * 2));
   }
-  for (const t of TRACTORS) {
-    wrecks.push({ ...t, tilt: 0, model: 'traktor', stack: 0 });
+  let looseWheel: { u: number; v: number } | null = null;
+  for (const { broken, ...t } of TRACTORS) {
+    yardCars.push({
+      ...t,
+      tilt: broken ? 0.16 : 0,
+      pitch: broken ? -0.05 : 0,
+      model: 'traktor',
+      wrecked: broken,
+      stack: 0,
+    });
     outlines.push(rect(t.u, t.v, 2.3, 3.6, t.turn));
+    if (broken) {
+      looseWheel = { u: t.u + 2.4, v: t.v + 0.6 }; // lying on the ground by its side
+      outlines.push(rect(looseWheel.u, looseWheel.v, 1.6, 1.6));
+    }
   }
+  outlines.push(rect(SALE_SIGN.u, SALE_SIGN.v, 2.6, 0.3));
 
-  // old cars parked nose in under the carport, in four of its six bays
+  // more cars for sale, parked nose in under the carport, in four of its six bays
   if (carport) {
     const f = carport.front,
       du = -(f.nx * ALONG.x + f.nz * ALONG.z),
@@ -484,7 +521,16 @@ export function yardLayout(
       const s = (f.len * (k + 0.5)) / CARPORT_BAYS,
         p = worldToYard(f.x0 + f.ux * s - f.nx * CARPORT_PARK_M, f.z0 + f.uz * s - f.nz * CARPORT_PARK_M),
         t = turn + (rnd() - 0.5) * 0.15;
-      wrecks.push({ ...p, turn: t, tilt: 0, model: pick(WRECK_MODELS), colour: pick(WRECK_COLOURS), stack: 0 });
+      yardCars.push({
+        ...p,
+        turn: t,
+        tilt: 0,
+        pitch: 0,
+        model: pick(YARD_CAR_MODELS),
+        colour: pick(FRESH_COLOURS),
+        wrecked: false,
+        stack: 0,
+      });
       outlines.push(rect(p.u, p.v, 2.1, 5, t));
     }
   }
@@ -507,7 +553,8 @@ export function yardLayout(
 
   return {
     fence,
-    wrecks,
+    yardCars,
+    looseWheel,
     heaps,
     tyres,
     signs: SIGNS_XZ.map(s => ({ ...worldToYard(s.x, s.z), facing: s.facing })),
