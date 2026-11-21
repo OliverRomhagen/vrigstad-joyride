@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { MITRE_LIMIT, mitreAt, polylineLength, resample, ribbonEdges } from '../../../src/world/polyline';
+import {
+  arcLengths,
+  MITRE_LIMIT,
+  mitreAt,
+  pointAtArc,
+  polylineLength,
+  resample,
+  ribbonEdges,
+} from '../../../src/world/polyline';
 import type { Point } from '../../../src/world/roads';
 
 describe('resample', () => {
@@ -80,5 +88,21 @@ describe('mitreAt', () => {
       ).scale,
     ).toBeNaN();
     expect(1 / Math.cos(Math.PI / 3)).toBeLessThanOrEqual(MITRE_LIMIT); // a 120° turn is still mitred
+  });
+});
+
+describe('arcLengths and pointAtArc', () => {
+  const q: [number, number][] = [
+    [0, 0],
+    [3, 4],
+    [3, 10],
+  ];
+  it('measures each vertex from the start, and finds a point and its tangent along the line', () => {
+    const arcs = arcLengths(q);
+    expect(arcs).toEqual([0, 5, 11]);
+    expect(pointAtArc(q, arcs, 2.5)).toEqual({ x: 1.5, z: 2, tx: 0.6, tz: 0.8 });
+    expect(pointAtArc(q, arcs, 8)).toMatchObject({ x: 3, z: 7, tx: 0, tz: 1 });
+    expect(pointAtArc(q, arcs, -1)).toMatchObject({ x: 0, z: 0 }); // clamped to the ends
+    expect(pointAtArc(q, arcs, 99)).toMatchObject({ x: 3, z: 10 });
   });
 });

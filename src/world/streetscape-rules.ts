@@ -83,6 +83,9 @@ export interface StreetSides {
   streetTrees: boolean;
 }
 
+/** A road's side spec: left (-1) or right (+1) of the way's own direction. */
+export const sideSpecOf = (sides: StreetSides, side: -1 | 1) => (side < 0 ? sides.left : sides.right);
+
 export interface FootprintLike {
   x0: number;
   x1: number;

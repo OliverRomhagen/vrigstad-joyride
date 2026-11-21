@@ -18,6 +18,18 @@ export interface Bounds {
   z1: number;
 }
 
+/** The middle of a polygon's vertices (not its area's centroid), flat [x, z, ...]. */
+export function vertexCentre(p: readonly number[]) {
+  let x = 0;
+  let z = 0;
+  for (let i = 0; i < p.length; i += 2) {
+    x += p[i];
+    z += p[i + 1];
+  }
+  const n = p.length / 2;
+  return { x: x / n, z: z / n };
+}
+
 /** Grows `into` to cover the polygon, and returns it; with no `into`, the polygon's own bounding box. */
 export function polygonBounds(
   p: number[],

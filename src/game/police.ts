@@ -45,7 +45,7 @@ export interface WantedDeps {
   toast(msg: string): void;
   drawStars(): void; // the HUD reads `stars` and redraws them
   showEvading(on: boolean): void; // the stars show that you're getting away
-  caught(): void; // Gripen!: back to Torget; the stars are already cleared
+  caught(stars: number): void; // Gripen! with this many stars: back to Torget; the stars are already cleared
   readonly lyingLow: boolean; // inside a safehouse
 }
 
@@ -114,8 +114,9 @@ export class Wanted {
     } else if (md < BUST_DIST_M && speed < BUST_SPEED_MS) {
       this.bust += dt;
       if (this.bust > BUST_S) {
+        const n = this.stars;
         this.clear();
-        this.g.caught();
+        this.g.caught(n);
       }
     } else this.bust = Math.max(0, this.bust - dt);
     return true;

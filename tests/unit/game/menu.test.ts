@@ -37,7 +37,7 @@ function plate() {
     addEventListener() {},
   };
   const calls: string[] = [];
-  const game = { locked: false, hasPets: false };
+  const game = { locked: false, hasPets: false, consoleRelock: false };
   const deps: MenuPlateDeps = {
     kmenu: kmenu as unknown as HTMLElement,
     canvas: { focus: () => void calls.push('focus') },
@@ -62,6 +62,12 @@ function plate() {
     },
     openPets: () => void calls.push('pets'),
     toast: msg => void calls.push('toast ' + msg),
+    get consoleRelock() {
+      return game.consoleRelock;
+    },
+    closeConsole: () => {
+      game.consoleRelock = false;
+    },
   };
   const menu = new MenuPlate(deps);
   return { menu, kmenu, calls, game, field: () => field };
@@ -148,6 +154,15 @@ describe('MenuPlate', () => {
     free.menu.openMenu('cat', 'Katt', YES_NO, () => {});
     free.menu.closeMenu();
     expect(free.calls).toEqual([]);
+  });
+
+  it('takes the cursor back on close when it opened over the dev console', () => {
+    const t = plate();
+    t.game.consoleRelock = true; // the console freed the cursor
+    t.menu.openMenu('kiosk', 'Kiosken', YES_NO, () => {});
+    expect(t.game.consoleRelock).toBe(false); // the console is closed
+    t.menu.closeMenu();
+    expect(t.calls).toEqual(['lock']);
   });
 
   it('closes once what keeps it open no longer holds', () => {

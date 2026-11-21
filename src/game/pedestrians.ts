@@ -35,6 +35,7 @@ export interface Npc extends Point {
   h: number;
   phase: number;
   first: boolean;
+  gawk: number; // s left staring at the player
   look: Look;
   scale: number; // their size: 1 is the standard person
   mesh: PersonMesh;
@@ -166,6 +167,7 @@ export class Crowd {
         h: 0,
         phase: 0,
         first: true,
+        gawk: 0,
         scale: 1,
         ...this.dress(pick(SHIRTS), pick(PANTS), pick(HAIR)),
       };
@@ -186,6 +188,7 @@ export class Crowd {
     const { rnd, advance, cars, hit, player, inCar, groundAt, walkOffset } = this.g,
       { R } = this;
     const d0 = this.densAt(n.x, n.z);
+    if (n.gawk > 0) n.gawk -= dt;
     if (n.idle > 0) {
       n.idle -= dt;
       n.phase *= 0.8;
@@ -260,13 +263,13 @@ export class Crowd {
       }
     }
     this.collide(n, 0.35);
-    // walking: face the way along the path; standing around: glance at the player when they come close
+    // walking: face the way along the path; standing around: glance at the player when they come close, or stare while gawking
     const ph = Math.hypot(player.x - n.x, player.z - n.z),
       want =
         rx || rz
           ? Math.atan2(rx, -rz)
           : n.idle > 0
-            ? ph < 8
+            ? ph < 8 || n.gawk > 0
               ? Math.atan2(player.x - n.x, -(player.z - n.z))
               : n.h
             : Math.atan2(dx, -dz);
@@ -277,6 +280,18 @@ export class Crowd {
     n.mesh.legs[1].rotation.x = -sw;
     n.mesh.position.set(n.x, groundAt(n.x, n.z), n.z);
     n.mesh.rotation.y = -n.h;
+  }
+
+  /** Everyone within r metres of o stops and stares at the player for s seconds; anyone knocked over is busy getting up. True when anyone saw. */
+  stare(o: Point, r: number, s: number) {
+    let seen = false;
+    for (const n of this.npcs)
+      if (!n.down && Math.hypot(n.x - o.x, n.z - o.z) < r) {
+        n.gawk = s;
+        n.idle = Math.max(n.idle, s);
+        seen = true;
+      }
+    return seen;
   }
 
   /** Keeps a crowd around the player that matches how busy the area is, refilling everything after a teleport, and moves everyone; T is where the player (or their car) is. */
