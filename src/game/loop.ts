@@ -62,6 +62,7 @@ export interface GameLoopDeps {
   updateCats(T: Point, dt: number): void;
   updateDrivers(T: Point, dt: number): void;
   updateBodies(T: Point, dt: number): void; // after every car has moved this frame
+  updateDaylight(dt: number): void; // the time of day: before the camera, which places the sun along its direction
   drawHearts(dt: number): void;
   updateHud(dt: number): void;
   drawMini(T: Point & { h: number }): void;
@@ -223,6 +224,7 @@ export class GameLoop {
     g.updateDrivers(T, dt);
     g.updateBodies(T, dt);
 
+    g.updateDaylight(dt);
     g.cameraRig.update(T, now, dt);
 
     // HUD

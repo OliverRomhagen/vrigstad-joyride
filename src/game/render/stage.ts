@@ -12,7 +12,6 @@ const HORIZON = 0xd6e4e6,
 export const SUN_DIR = new THREE.Vector3(-0.55, 0.75, 0.37).normalize();
 // sky: a gradient dome with the sun's glow and drifting fair-weather clouds (src/game/render/sky.ts); it follows the camera
 // and fades into the fog at the horizon. ?clouds=clear|scattered|partly|mostly|off, cloudSeed, wind=from°,m/s (see clouds.ts)
-export const SUN_I = 0.95 * LEGACY_LIGHT; // the sun's intensity under a clear sky; a cloud in front of it takes some away
 
 /** Sets up the renderer: pixel ratio, shadows, colour space and tone mapping. */
 export function setUpRenderer(renderer: THREE.WebGLRenderer, coarse: boolean) {
@@ -24,14 +23,15 @@ export function setUpRenderer(renderer: THREE.WebGLRenderer, coarse: boolean) {
   renderer.toneMappingExposure = 1;
 }
 
-/** The scene with its fog, lights and sky dome, and the camera; `search` is the page's query string, for the clouds. */
+/** The scene with its fog, lights and sky dome, and the camera; `search` is the page's query string, for the clouds. The time of day (render/daylight.ts) drives the lights, the sky and the fog. */
 export function buildStage(coarse: boolean, search: string) {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(HORIZON);
   scene.fog = new THREE.FogExp2(HORIZON, FOG_PER_M);
   const camera = new THREE.PerspectiveCamera(58, 1, 0.8, 4200);
-  scene.add(new THREE.HemisphereLight(0xffffff, col(0x9aa58a), 0.62 * LEGACY_LIGHT));
-  const sun = new THREE.DirectionalLight(col(0xfff4dd), 0.95 * LEGACY_LIGHT); // intensity: SUN_I, times the clouds' sunFactor
+  const hemi = new THREE.HemisphereLight(0xffffff, col(0x9aa58a), 0.62 * LEGACY_LIGHT);
+  scene.add(hemi);
+  const sun = new THREE.DirectionalLight(col(0xfff4dd), 0.95 * LEGACY_LIGHT); // intensity: the time of day's (Daylight.sunIntensity), times the clouds' sunFactor
   const skyDome = new Sky({
     top: 0x5f97c9,
     horizon: HORIZON,
@@ -47,5 +47,5 @@ export function buildStage(coarse: boolean, search: string) {
   sun.shadow.bias = -0.0006;
   sun.shadow.normalBias = 0.05;
   scene.add(sun, sun.target);
-  return { scene, camera, sun, skyDome };
+  return { scene, camera, hemi, sun, skyDome };
 }
