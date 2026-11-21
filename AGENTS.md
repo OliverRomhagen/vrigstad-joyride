@@ -76,6 +76,34 @@ GitHub issues are the backlog: every bug, idea and piece of work is one issue.
 - Most features still add a line or two to `src/game/main.ts`, where the modules are connected, so expect small conflicts there. Keep changes in their own section of the file where you can.
 - Say how you tested in the PR, and be honest about what wasn't tested ("not played by hand on a phone").
 
+### Claude Code in this repo
+
+Shared agents (`.claude/agents/`) and skills (`.claude/skills/`) come with the repo, so every collaborator's Claude Code works the same way. Agents advise and propose; none of them edits files. Most are adapted from [Claude Code Game Studios](https://github.com/donchitos/claude-code-game-studios) (MIT, see `LICENSE`); #255 says what was taken from it and what was left out, and why.
+
+| Reach for | When |
+|---|---|
+| `game-designer` | Shaping a new feature from the player's side, before it's built |
+| `systems-designer` | The maths of a mechanic: damage, health, timers, speeds |
+| `economy-designer` | Prices, payouts, fines: what the player earns and spends |
+| `writer` | What people in the game say, in local Swedish |
+| `accessibility-specialist` | Input, HUD, motion and flashing |
+| `ux-designer`, `ui-programmer` | Designing a screen, menu, controls or onboarding; reviewing HUD and menu code |
+| `ai-programmer` | How police, traffic, pedestrians and animals decide and move |
+| `level-designer` | Choosing and laying out a place for play: a minigame, an interior, a chase route |
+| `sound-designer` | Specifying sounds and the mix before they're recorded or coded |
+| `network-programmer`, `security-engineer` | Multiplayer; and security or privacy: strings into HTML, saved data, CI permissions |
+| `threejs-specialist` | Rendering code; three.js changes after r176 are in [docs/threejs.md](docs/threejs.md) |
+| `technical-artist` | Art styles, shaders, effects, and budgets for models and textures |
+| `performance-analyst`, `/perf-profile` | Low fps, stutter, a performance regression |
+| `/pr-review` | Reviewing a PR: the approach first, then AGENTS.md and bugs, every finding verified |
+| `/balance-check` | Whether the numbers are balanced, e.g. before merging a tuning change |
+| `/quick-design` | A short spec for a small change or tuning tweak |
+| `/playtest-report` | Turning playtest notes into a structured report |
+| `/test-flakiness` | Flaky or slow tests in CI |
+| `/onboard` | A guide for a new collaborator's area |
+| `/asset-audit` | Every model, image and sound has a licence, is used, and fits its budget |
+| `ticket-triage`, `/new-ticket` | Checking and filing issues (Tickets, above) |
+
 ## Code style
 
 - **Match the surrounding code.** Same naming, comment density and idiom as the file you're in.
