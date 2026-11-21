@@ -37,7 +37,11 @@ export class VehicleVisuals {
   private readonly records = new WeakMap<Car, View>();
   private elapsed = REFRESH_SECONDS;
   private time = 0;
-  constructor(private readonly coarse: boolean) {}
+  // onBody hands out each loaded model's sprung body, the part that rolls and pitches without the wheels.
+  constructor(
+    private readonly coarse: boolean,
+    private readonly onBody?: (car: Car, body: THREE.Object3D) => void,
+  ) {}
   private loadModel(view: View) {
     if (view.status !== 'idle') return;
     view.status = 'loading';
@@ -66,6 +70,11 @@ export class VehicleVisuals {
           root.add(pivot);
           view.wheels.push({ pivot, spin, front: i < 2 });
         }
+        const body = root.getObjectByName(BODY_NODE)!,
+          sprung = new THREE.Group();
+        root.attach(body);
+        sprung.add(body);
+        root.add(sprung);
         root.traverse(node => {
           if (!(node instanceof THREE.Mesh)) return;
           node.castShadow = !this.coarse;
@@ -80,6 +89,7 @@ export class VehicleVisuals {
         view.root = root;
         view.car.mesh.add(root);
         view.status = 'loaded';
+        this.onBody?.(view.car, sprung);
         if (view.color) this.paint(view.car, view.color);
         this.updateVisibility(view);
       })

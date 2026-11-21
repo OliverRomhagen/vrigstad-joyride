@@ -113,6 +113,9 @@ export interface Footprint extends Bounds {
 
 /** side of a collision cell (m) */
 export const BUILDING_CELL_M = 40;
+/** footprints in this range (m²) count as homes and shops: the game gives them lawns and house details */
+export const HOUSE_MIN_M2 = 40,
+  HOUSE_MAX_M2 = 1500;
 
 /** Building footprints, a grid over them, and collision against them. */
 export class BuildingIndex {
