@@ -366,6 +366,7 @@ def add_furniture(e, t, pt):
         return False
     if not inside(pt): report['furniture outside the world'] += 1; return True
     f = {'i': e['id'], 'k': k, 'x': round(pt[0], 1), 'z': round(pt[1], 1)}
+    if e['type'] != 'node': f['e'] = e['type'][0]   # nodes and ways number separately
     d = direction(t.get('direction')) if k == FU_BENCH else None
     if d is not None: f['d'] = d
     furniture.append(f)
@@ -432,7 +433,7 @@ for e in elements:
     name = t.get('name')
     if e['type'] == 'node':
         pt = proj(e['lat'], e['lon'])
-        if add_furniture(e, t, pt): continue
+        add_furniture(e, t, pt)   # and on: a bus stop can carry kerb=raised too
         if not inside(pt): continue
         if t.get('natural') == 'tree': trees.append(pt)
         if t.get('amenity') == 'parking_space': report['parking space nodes'] += 1
@@ -575,7 +576,7 @@ if parking_spaces: out['ps'] = parking_spaces
 if crossings: out['x'] = crossings
 if kerbs: out['kb'] = kerbs
 if trees: out['t'] = flat(trees)
-if furniture: out['fu'] = sorted(furniture, key=lambda f: (f['k'], f['i']))
+if furniture: out['fu'] = sorted(furniture, key=lambda f: (f['k'], f.get('e', 'n'), f['i']))
 # Label order is draw priority on the map: these first, the rest as found.
 order = ['Vrigstad Kyrka', 'Torget', 'Vrigstad Värdshus', 'Slättsjön', 'Lundholmssjön', 'Vrigstadsån']
 out['labels'].sort(key=lambda l: order.index(l['t']) if l['t'] in order else 99)

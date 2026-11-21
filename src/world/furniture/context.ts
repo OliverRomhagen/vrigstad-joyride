@@ -1,7 +1,7 @@
 // Which context each road is in, for what furniture it gets, and where Torget is (#144). Pure: no three.js. The street
 // profile comes from the streetscape's classification (#187), so this doesn't classify streets a second time.
 import { RoadClass, RoadUse, type WorldData } from '../data';
-import { pointInPolygon, segmentDistance, signedPolygonArea } from '../polygon';
+import { pointInPolygon, segmentDistance, signedPolygonArea, vertexCentre } from '../polygon';
 import { arcLengths, pointAtArc } from '../polyline';
 import type { Point, RoadLine } from '../roads';
 import type { StreetSides } from '../streetscape-rules';
@@ -43,14 +43,8 @@ export function torgetArea(data: WorldData, roads: { readonly lines: readonly Ro
 }
 
 function withCentre(ring: number[], roads: number[], fromData: boolean): TorgetArea {
-  let cx = 0;
-  let cz = 0;
-  for (let i = 0; i < ring.length; i += 2) {
-    cx += ring[i];
-    cz += ring[i + 1];
-  }
-  const n = ring.length / 2;
-  return { ring, roads, fromData, cx: cx / n, cz: cz / n };
+  const { x, z } = vertexCentre(ring);
+  return { ring, roads, fromData, cx: x, cz: z };
 }
 
 const close = (a: Point, b: Point) => Math.hypot(a[0] - b[0], a[1] - b[1]) < JOIN_M;
@@ -96,7 +90,7 @@ function midpoint(p: readonly Point[]) {
 
 /**
  * Each road's context, first match:
- * - a lit footway, path or cycleway is `path`;
+ * - a lit footway, path or cycleway is `path`, but not a sidewalk or crossing mapped beside its street, which has its own lamps;
  * - a road whose middle is within TORGET_REACH_M of Torget is `torget`, or `centre` for a carriageway round the square;
  * - a street or bigger (service roads, tracks and unlit paths are `outer`) takes the streetscape's profile: `centre`,
  *   `main` for primary and secondary roads in residential areas, `residential` for streets there, `outer` in the outskirts.
@@ -109,10 +103,11 @@ export function roadContexts(
 ): FurnitureContext[] {
   return roads.lines.map((road, ri): FurnitureContext => {
     const r = data.r[ri];
-    if (road.c === RoadClass.PATH) return r.lt === 1 ? 'path' : 'outer';
+    const beside = r.s === RoadUse.SIDEWALK || r.s === RoadUse.CROSSING;
+    if (road.c === RoadClass.PATH) return r.lt === 1 && !beside ? 'path' : 'outer';
     if (road.p.length < 2) return 'outer';
     const { x: mx, z: mz } = midpoint(road.p);
-    const carriageway = road.c <= RoadClass.STREET && r.s !== RoadUse.SIDEWALK && r.s !== RoadUse.CROSSING;
+    const carriageway = road.c <= RoadClass.STREET && !beside;
     if (torget && distanceToArea(torget.ring, mx, mz) <= TORGET_REACH_M) return carriageway ? 'centre' : 'torget'; // the streets round the square are the centre's, and keep their lamps
     if (!carriageway) return 'outer';
     const profile = sides[ri]?.profile ?? 'outskirts';

@@ -82,8 +82,10 @@ export interface KerbPoint {
 
 /** a mapped street lamp, bench, waste basket or bus stop (#144); way-mapped ones are their middle */
 export interface FurniturePoint {
-  /** OSM id */
+  /** OSM id: nodes and ways number separately, so it is unique only with `e` */
   i: number;
+  /** the OSM element: 'w' for a way, left out for a node */
+  e?: 'w';
   k: FurnitureCode;
   x: number;
   z: number;

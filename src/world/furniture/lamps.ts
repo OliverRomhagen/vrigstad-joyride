@@ -1,5 +1,5 @@
 // Street lamps along the roads (#144): spacing and sides by context. Pure: no three.js.
-import { FurnitureCode } from '../data';
+import { FurnitureCode, RoadUse } from '../data';
 import { segmentDistance } from '../polygon';
 import { hash01 } from '../random';
 import { FURNITURE, type FurnitureContext, SHORT_LAMP_MODEL } from './definitions';
@@ -38,7 +38,8 @@ export function lampCandidates(placer: Placer): Candidate[] {
   placer.inp.roads.lines.forEach((_, ri) => {
     const road = data.r[ri];
     const context = contexts[ri];
-    if (road.lt === 2) return;
+    // lit=no; or a sidewalk or crossing mapped beside its street, whose own lamps light it
+    if (road.lt === 2 || road.s === RoadUse.SIDEWALK || road.s === RoadUse.CROSSING) return;
     const isLit = road.lt === 1;
     const spacingContext: FurnitureContext | undefined = context === 'path' ? 'path' : isLit ? 'main' : context;
     const spacing = spacingContext && LAMP_SPACING_M[spacingContext];

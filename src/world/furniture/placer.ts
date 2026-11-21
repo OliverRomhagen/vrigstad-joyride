@@ -14,7 +14,7 @@ import { FURNITURE, type FurnitureContext, type FurnitureKind, type FurnitureSou
 import type { FurnitureOverride } from './overrides';
 
 export interface FurniturePlacement {
-  /** stable: 'osm:<id>', 'ovr:<key>' or 'gen:<kind>:<where>:<n>' */
+  /** stable: 'osm:<osmKey>', 'ovr:<key>' or 'gen:<kind>:<where>:<n>' */
   id: string;
   kind: FurnitureKind;
   modelId: string;
@@ -112,6 +112,8 @@ const SEAT_PAST_SIDEWALK_M = 0.2;
 const NEIGHBOUR_REACH_M =
   2 * Math.max(...Object.values(FURNITURE).map(d => Math.hypot(d.widthM, d.depthM) / 2 + d.clearanceM / 2));
 
+/** A mapped object's OSM element and id, unique as the id alone isn't: 'n123' for a node, 'w123' for a way. */
+export const osmKey = (f: Pick<FurniturePoint, 'i' | 'e'>) => (f.e ?? 'n') + f.i;
 /** A unit vector's heading as rotationY: the rotation that turns +z towards (dx, dz). */
 export const heading = (dx: number, dz: number) => Math.atan2(dx, dz);
 /** A stable rotation jitter in ±maxRad for this id. */

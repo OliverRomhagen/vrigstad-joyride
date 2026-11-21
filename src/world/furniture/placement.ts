@@ -8,7 +8,15 @@ import type { TorgetArea } from './context';
 import { FURNITURE, type FurnitureKind, SHORT_LAMP_EMITTER, SHORT_LAMP_MODEL } from './definitions';
 import { lampCandidates } from './lamps';
 import type { FurnitureOverride } from './overrides';
-import { byOrder, type FurnitureInput, type FurniturePlacement, mappedFacing, Placer, type Rejection } from './placer';
+import {
+  byOrder,
+  type FurnitureInput,
+  type FurniturePlacement,
+  mappedFacing,
+  osmKey,
+  Placer,
+  type Rejection,
+} from './placer';
 import { placeBenches, TORGET_BENCHES } from './seats';
 
 export type { FurnitureInput, FurniturePlacement, Rejection } from './placer';
@@ -59,7 +67,7 @@ function placeMapped(placer: Placer) {
     const kind = MAPPED_KIND[f.k];
     if (!kind) continue;
     placer.placeAuthoritative({
-      id: `osm:${f.i}`,
+      id: `osm:${osmKey(f)}`,
       kind,
       modelId: FURNITURE[kind].modelId,
       x: f.x,
