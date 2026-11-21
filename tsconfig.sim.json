@@ -6,5 +6,14 @@
   "extends": "./tsconfig.json",
   "compilerOptions": { "lib": ["ES2022"], "types": [] },
   "include": ["src/world", "src/game"],
-  "exclude": ["src/game/render", "src/game/main.ts", "src/game/hud.ts", "src/game/input.ts"]
+  "exclude": [
+    "src/game/render",
+    "src/game/main.ts",
+    "src/game/hud.ts",
+    "src/game/input.ts",
+    "src/game/menu.ts",
+    "src/game/loop.ts",
+    "src/game/prompt.ts",
+    "src/game/test-hook.ts"
+  ]
 }
