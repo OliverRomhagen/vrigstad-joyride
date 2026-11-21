@@ -2,7 +2,8 @@
 // Moved from src/game/main.ts (#177); main.ts passes in what the pedestrians read from the rest of the game.
 import type * as THREE from 'three';
 import type { BuildingIndex } from '../world/buildings';
-import { type Label, ROAD_WIDTH_M as ROAD_W } from '../world/data';
+import type { Label } from '../world/data';
+import { wrap } from '../world/math';
 import { nodeKey, ROAD_CELL_M as RC, type RoadLine, type RoadNetwork } from '../world/roads';
 
 // Each 50 m cell gets a density (0..1): how built-up the cell and its neighbours are, plus a boost near named places.
@@ -17,7 +18,7 @@ const SHIRTS = ['#b5463a', '#3f6b8a', '#5c7a4a', '#7a5a8a', '#d8d4c8', '#2b3a55'
   HAIR = ['#5a4632', '#2a2320', '#c9a560', '#8a8580', '#7a3f22'];
 
 type Point = { x: number; z: number };
-/** A person's mesh, as personParts in main.ts builds it. */
+/** A person's mesh, as personParts in src/game/render/models.ts builds it. */
 export type PersonMesh = THREE.Object3D & { legs: THREE.Object3D[] };
 /** Where a pedestrian is on the walk graph: road ri, from vertex a towards a + dir, t metres along; the same shape as a car's. */
 export interface Npc extends Point {
@@ -42,8 +43,9 @@ export interface CrowdDeps {
   buildings: Pick<BuildingIndex, 'footprints' | 'collide'>;
   labels: readonly Label[];
   groundAt(x: number, z: number): number;
+  /** how far from road ri's centre line people walk on `side` (-1 left, +1 right of the road's own direction) (m) */
+  walkOffset(ri: number, side: -1 | 1): number;
   coarse: boolean; // touch screen: fewer pedestrians
-  wrap(a: number): number;
   rnd(): number; // the game's seeded stream, so the rolls stay in the order they were
   pick<T>(a: readonly T[]): T;
   personParts(shirt: string, pants: string, hair: string): PersonMesh;
@@ -160,7 +162,7 @@ export class Crowd {
   }
 
   private updateNpc(n: Npc, dt: number) {
-    const { rnd, advance, cars, player, inCar, groundAt, wrap } = this.g,
+    const { rnd, advance, cars, player, inCar, groundAt, walkOffset } = this.g,
       { R } = this;
     const d0 = this.densAt(n.x, n.z);
     if (n.idle > 0) {
@@ -187,7 +189,7 @@ export class Crowd {
       B = r.p[n.a + n.dir],
       dx = (B[0] - A[0]) / L,
       dz = (B[1] - A[1]) / L,
-      off = r.c <= 3 ? (ROAD_W[r.c] / 2 + 0.8) * n.side : 0;
+      off = r.c <= 3 ? walkOffset(n.ri, (n.side * n.dir) as -1 | 1) * n.side : 0; // side of travel times direction: the road's own side
     const k = n.first ? 1 : Math.min(1, dt * 4);
     n.x += (A[0] + dx * n.t - dz * off - n.x) * k;
     n.z += (A[1] + dz * n.t + dx * off - n.z) * k;
