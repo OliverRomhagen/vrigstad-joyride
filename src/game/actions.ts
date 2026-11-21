@@ -41,6 +41,9 @@ export interface ActionsDeps {
   openOwnCat(k: Cat): void;
   petCat(k: Cat): void;
   openKiosk(): void;
+  openSkroten(): boolean; // Skroten's offer for the car you drive on its ring; false when it makes none, so E gets you out
+  nearOwner(): boolean; // you stand on foot next to Plåt-Pelle
+  talkToOwner(): void;
   collide(o: Point, r: number): unknown;
   placeCar(c: Car): void;
   rnd(): number;
@@ -80,6 +83,16 @@ export class Actions {
     game.inCar = false;
     showPlayer(true);
   };
+  // out of the car you drive and onto your feet beside it, looking where you looked
+  getOut = () => {
+    const { game, view, player, collide } = this.g;
+    stepOut(player, game.pcar!);
+    collide(player, 0.5);
+    this.leaveCar();
+    game.jumpQ = false;
+    view.camYaw = wrap(view.camYaw + view.lookOff);
+    view.lookOff = 0;
+  };
   action = () => {
     const {
       game,
@@ -98,7 +111,9 @@ export class Actions {
       openOwnCat,
       petCat,
       openKiosk,
-      collide,
+      openSkroten,
+      nearOwner,
+      talkToOwner,
       rnd,
       pick,
       toast,
@@ -130,17 +145,16 @@ export class Actions {
       else openKiosk();
       return;
     }
+    if (nearOwner()) {
+      talkToOwner();
+      return;
+    }
     if (game.inCar) {
       if (tooFastToGetOut(game.pcar!)) {
         toast('Slow down before you get out.', 2);
         return;
       }
-      stepOut(player, game.pcar!);
-      collide(player, 0.5);
-      this.leaveCar();
-      game.jumpQ = false;
-      view.camYaw = wrap(view.camYaw + view.lookOff);
-      view.lookOff = 0;
+      if (!openSkroten()) this.getOut();
       return;
     }
     const c = this.nearestCar();

@@ -1,6 +1,7 @@
 // Money (#76): the player's wallet, prices and payouts, as plain data and pure rules (no three.js, no DOM).
 // Selling cars, repairs and paying off a star build on pay / earn. Nothing here draws: the HUD shows whatever the wallet holds.
 import { type Commands, parseKr } from './commands';
+import { DMG_MAX } from './health';
 
 export const START_KR = 200; // what you have in your pocket at the start
 export const TRISS_KR = 30,
@@ -11,6 +12,18 @@ export const RAIN_KR = 1000; // låt det regna: banknotes thrown in the air, for
 const MYNT_KR = 1000; // what the mynt cheat adds
 const FINE_SHARE = 0.25; // Gripen! costs this share of your money, or FINE_PER_STAR_KR per star, whichever is more
 export const FINE_PER_STAR_KR = 100;
+
+// Skroten buys stolen cars: by the model a car wears, else by its type; damage takes the price down to SCRAP_KR. It never buys a police car.
+export const SCRAP_KR = 100; // a wrecked car is still worth this much as scrap
+const CAR_KR_BY_TYPE: Readonly<Record<string, number>> = { volvo: 800, saab: 1000, epa: 500, traktor: 1200 };
+const CAR_KR_BY_MODEL: Readonly<Record<string, number>> = {
+  volvo240: 800,
+  saab900: 1000,
+  xc70: 1400, // the newest car in the village
+  impala1970: 1600, // a raggarbil: a collector pays for it
+  'micra-k11': 400,
+  'duett-epa': 600,
+};
 
 // The trisslott vinstplan: of every TRISS_TICKETS tickets, how many win each prize, as [kr, tickets]; the rest lose.
 // One ticket in ten wins, most of them a ticket back, and about a fifth of the money comes back.
@@ -56,6 +69,14 @@ export function trissPrize(r: number): number {
     x -= n;
   }
   return 0;
+}
+
+/** What Skroten pays for a car of this type and model at this much damage, in round tens; null when it won't buy it. */
+export function carPrice(type: string, model: string | undefined, dmg: number): number | null {
+  const base = (model && CAR_KR_BY_MODEL[model]) || CAR_KR_BY_TYPE[type];
+  if (!base) return null;
+  const whole = 1 - Math.min(Math.max(dmg, 0), DMG_MAX) / DMG_MAX;
+  return Math.round((SCRAP_KR + (base - SCRAP_KR) * whole) / 10) * 10;
 }
 
 /** The fine for Gripen! with this many stars; never more than the wallet holds. */

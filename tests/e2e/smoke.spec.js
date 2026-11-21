@@ -488,6 +488,30 @@ test.describe('game (index.html)', () => {
     await page.keyboard.press('KeyL'); // not enough left: nothing is taken
     expect(await state(page)).toMatchObject({ kr: 700 });
   });
+
+  test('Skroten buys the car you drive onto its ring', async ({ page }, testInfo) => {
+    const errors = watchErrors(page);
+    await page.goto('/index.html?dev');
+    await page.locator('#go').click();
+    await page.keyboard.press('Backquote');
+    await page.keyboard.type('go skroten'); // onto Skroten's ring (SKROTEN in src/game/places.ts)
+    await page.keyboard.press('Enter');
+    await expect(page.locator('#devcon li').last()).toHaveText('You are at Skroten.');
+    await page.keyboard.type('car volvo240'); // yours, so no star when you get in; parked 3.5 m away, still on the ring
+    await page.keyboard.press('Enter');
+    await expect(page.locator('#devcon li').last()).toHaveText('Parked a Volvo 240 next to you.');
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('KeyE');
+    expect(await state(page)).toMatchObject({ inCar: true, kr: 200 });
+    await expect(page.locator('#prompt')).toHaveText('ESell the Volvo 240 at Skroten');
+    await page.keyboard.press('KeyE');
+    await expect(page.locator('#kmenu')).toContainText('800 riksdaler');
+    await page.screenshot({ path: testInfo.outputPath('game-skroten-menu.png') });
+    await page.keyboard.press('Digit1');
+    await expect(page.locator('#kr')).toHaveText('1 000 riksdaler');
+    expect(await state(page)).toMatchObject({ inCar: false, car: null });
+    expect(errors).toEqual([]);
+  });
 });
 
 // The real pointer lock is unreliable headless, so these fake it: requestPointerLock / exitPointerLock set a fake

@@ -6,12 +6,15 @@ import { ROAD_WIDTH_M as ROAD_W } from '../world/data';
 import { clamp, wrap } from '../world/math';
 import { nodeKey, type RoadNetwork } from '../world/roads';
 import type { Water } from '../world/water';
+import { type Commands, UsageError } from './commands';
 import { impactSpeed, topSpeedShare, wrecked } from './health';
 import { approach, rearPivotShift, yawRate } from './sim/handling';
 import type { CarType, VehicleSpec } from './sim/vehicle-spec';
 
 // Drifting (player only): brake plus steering at speed breaks the rear loose. The car keeps sliding along its line of
 // travel (c.vh) while the nose (c.h) swings into the turn. Holding a slide charges a mini-turbo, fired when the brake is let go.
+const CAR_BY_YOU_M = 3.5, // the car command parks this far to your side
+  PARK_CLEAR_M = 2.6; // a parked car stands this clear of any wall
 const DRIFT_MIN_V = 7.5,
   DRIFT_KEEP_V = 4; // m/s to start a drift, and below which it fizzles out
 const GRIP = 12,
@@ -45,7 +48,9 @@ const LOOK_PLAYER_M = 9,
   LOOK_PLAYER_SIDE_M = 1.8; // the same for you on foot
 const STUCK_S = 6,
   GHOST_S = 3; // blocked this long, a traffic car drives through what blocks it for GHOST_S
-const SPAWN_AWAY_M = 260; // new traffic appears at least this far from you
+const SPAWN_AWAY_M = 260; // new traffic, and a car parked to replace a sold one, appears at least this far from you
+const PARKED_CARS = 58; // parked when the village is built
+const PARK_AWAY_TRIES = 300; // tries at a far kerbside spot before giving up
 
 type Point = { x: number; z: number };
 /** Who drives a car: nobody yet (`parked`), nobody since you got out (`idle`), traffic (`ai`), the police, or you. */
@@ -148,7 +153,7 @@ export interface FleetDeps {
   half: number; // half the map's side (m)
   rnd: () => number; // the game's seeded stream, so the rolls stay in the order they were
   pick: <T>(a: readonly T[]) => T;
-  addCar: (type: CarType, x: number, z: number, h: number, mode: CarMode) => Car; // makes a car, gives it its meshes and adds it with `add`
+  addCar: (type: CarType, x: number, z: number, h: number, mode: CarMode, model?: string) => Car; // makes a car (of that model, if given), gives it its meshes and adds it with `add`
   placeCar: (c: Car) => void; // puts the car's meshes where the car is
   crash: (c: Car, o: Car | null, impact: number) => void; // c hit o, or a wall, at `impact` m/s: the damage, and what you hear and feel
   rammed: (c: Car, o: Car) => void; // c hit police car o at speed
@@ -166,6 +171,36 @@ export class Fleet {
     this.g = g;
   }
 
+  /**
+   * car <model>: parks a car of that model next to you, already yours, so getting in gives no star: for trying out Skroten and the
+   * models. `models` maps each model's id to its type; `facing` is the way the car points; `carName` names it in the reply.
+   */
+  registerCommands(
+    commands: Pick<Commands, 'register'>,
+    models: ReadonlyMap<string, CarType>,
+    facing: () => number,
+    carName: (c: Car) => string,
+  ) {
+    commands.register('car', {
+      usage: '<' + [...models.keys()].join(' | ') + '>',
+      help: 'park a car of that model next to you',
+      run: a => {
+        const id = a[0]?.toLowerCase(),
+          type = id && models.get(id);
+        if (!type) throw new UsageError(a[0] ? 'No car called ' + a[0] + '.' : '');
+        if (this.g.inCar) return 'Get out of the car first.';
+        const o = { x: this.g.player.x + CAR_BY_YOU_M, z: this.g.player.z };
+        this.g.buildings.collide(o, PARK_CLEAR_M);
+        const c = this.g.addCar(type, o.x, o.z, facing(), 'parked', id === type ? undefined : id);
+        c.owned = true;
+        this.fromCommand.add(c);
+        return 'Parked a ' + carName(c) + ' next to you.';
+      },
+    });
+  }
+
+  private readonly fromCommand = new WeakSet<Car>(); // cars the car command parked
+
   /** Puts a new car in the village. */
   add<C extends Car>(c: C): C {
     this.cars.push(c);
@@ -182,6 +217,19 @@ export class Fleet {
   }
   // parked cars along streets and driveways
   parkCars() {
+    let count = 0;
+    for (let tries = 0; tries < 900 && count < PARKED_CARS; tries++) if (this.parkOne(null)) count++;
+  }
+  /**
+   * Replaces `sold` with a car parked on a street at least SPAWN_AWAY_M from `farFrom`, out of sight, so Skroten's sales don't empty
+   * the village. A car the car command made gets none: it was never one of the village's.
+   */
+  replaceSold(sold: Car, farFrom: Point) {
+    if (this.fromCommand.has(sold)) return;
+    for (let tries = 0; tries < PARK_AWAY_TRIES; tries++) if (this.parkOne(farFrom)) return;
+  }
+  // one try at a kerbside spot; with farFrom, only one at least SPAWN_AWAY_M from it
+  private parkOne(farFrom: Point | null): boolean {
     const {
         rnd,
         pick,
@@ -192,29 +240,27 @@ export class Fleet {
         canPark,
       } = this.g,
       cars = this.cars;
-    let count = 0;
-    for (let tries = 0; tries < 900 && count < 58; tries++) {
-      const r = pick(R);
-      if (r.c !== 2 && r.c !== 3) continue;
-      const i = 1 + Math.floor(rnd() * (r.p.length - 1)),
-        a = r.p[i - 1],
-        b = r.p[i],
-        L = Math.hypot(b[0] - a[0], b[1] - a[1]);
-      if (L < 6) continue;
-      const t = rnd(),
-        dx = (b[0] - a[0]) / L,
-        dz = (b[1] - a[1]) / L,
-        side = rnd() < 0.5 ? 1 : -1,
-        off = (ROAD_W[r.c] / 2 + 1.35) * side;
-      const o = { x: a[0] + (b[0] - a[0]) * t - dz * off, z: a[1] + (b[1] - a[1]) * t + dx * off };
-      if (Math.abs(o.x) > HALF - 20 || Math.abs(o.z) > HALF - 20) continue;
-      const ox = o.x,
-        oz = o.z;
-      if (buildings.collide(o, 2.6) || water.inWater(ox, oz) || !canPark(ox, oz)) continue;
-      if (cars.some(c => Math.hypot(c.x - ox, c.z - oz) < 7)) continue;
-      this.g.addCar(this.civType(), ox, oz, Math.atan2(dx, -dz) + (side < 0 ? Math.PI : 0), 'parked');
-      count++;
-    }
+    const r = pick(R);
+    if (r.c !== 2 && r.c !== 3) return false;
+    const i = 1 + Math.floor(rnd() * (r.p.length - 1)),
+      a = r.p[i - 1],
+      b = r.p[i],
+      L = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    if (L < 6) return false;
+    const t = rnd(),
+      dx = (b[0] - a[0]) / L,
+      dz = (b[1] - a[1]) / L,
+      side = rnd() < 0.5 ? 1 : -1,
+      off = (ROAD_W[r.c] / 2 + 1.35) * side;
+    const o = { x: a[0] + (b[0] - a[0]) * t - dz * off, z: a[1] + (b[1] - a[1]) * t + dx * off };
+    if (Math.abs(o.x) > HALF - 20 || Math.abs(o.z) > HALF - 20) return false;
+    const ox = o.x,
+      oz = o.z;
+    if (buildings.collide(o, PARK_CLEAR_M) || water.inWater(ox, oz) || !canPark(ox, oz)) return false;
+    if (cars.some(c => Math.hypot(c.x - ox, c.z - oz) < 7)) return false;
+    if (farFrom && Math.hypot(ox - farFrom.x, oz - farFrom.z) < SPAWN_AWAY_M) return false;
+    this.g.addCar(this.civType(), ox, oz, Math.atan2(dx, -dz) + (side < 0 ? Math.PI : 0), 'parked');
+    return true;
   }
   // traffic that follows the street network
   advance(c: OnRoad, graph?: Map<string, number[]>) {

@@ -39,6 +39,8 @@ function actions(
     places?: Place[];
     cat?: Cat | null;
     menuOpen?: boolean;
+    skroten?: boolean;
+    owner?: boolean;
     kr?: number;
   } = {},
 ) {
@@ -81,6 +83,13 @@ function actions(
     openOwnCat: () => void calls.push('ownCat'),
     petCat: () => void calls.push('pet'),
     openKiosk: () => void calls.push('kiosk'),
+    openSkroten: () => {
+      if (!o.skroten) return false;
+      calls.push('skroten');
+      return true;
+    },
+    nearOwner: () => !!o.owner,
+    talkToOwner: () => void calls.push('owner'),
     collide: () => {},
     placeCar: () => {},
     rnd: () => o.roll ?? 0.9,
@@ -150,6 +159,30 @@ describe('Actions.action', () => {
     t.a.action(); // out again
     t.a.action(); // and back in: already yours
     expect(t.game.stolen).toBe(1);
+  });
+
+  it("on Skroten's ring, E in the car asks Skroten instead of getting you out", () => {
+    const c = parked(),
+      t = actions({ cars: [c], skroten: true });
+    t.a.action();
+    t.a.action();
+    expect(t.game.inCar).toBe(true);
+    expect(t.calls.at(-1)).toBe('skroten');
+  });
+
+  it('E on foot next to Plåt-Pelle talks to him, before any car nearby', () => {
+    const t = actions({ cars: [parked()], owner: true });
+    t.a.action();
+    expect(t.game.inCar).toBe(false);
+    expect(t.calls).toEqual(['owner']);
+  });
+
+  it('gets you out when Skroten makes no offer: off its ring, or refused', () => {
+    const c = parked(),
+      t = actions({ cars: [c], skroten: false });
+    t.a.action();
+    t.a.action();
+    expect(t.game.inCar).toBe(false);
   });
 
   it('calls the police when a neighbour sees you take a car', () => {
