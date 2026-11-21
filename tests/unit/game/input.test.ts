@@ -60,6 +60,9 @@ function input(opts: { coarse?: boolean; started?: boolean; menuKey?: (e: Keyboa
     respawn: () => {
       calls.push('respawn');
     },
+    rain: () => {
+      calls.push('rain');
+    },
     jump: () => {
       calls.push('jump');
     },
@@ -104,7 +107,9 @@ describe('Input', () => {
     fire(win, 'keydown', { code: 'KeyE', repeat: true });
     fire(win, 'keydown', { code: 'Enter' });
     fire(win, 'keydown', { code: 'KeyR' });
-    expect(calls).toEqual(['jump', 'action', 'action', 'respawn']);
+    fire(win, 'keydown', { code: 'KeyL' });
+    fire(win, 'keydown', { code: 'KeyL', repeat: true });
+    expect(calls).toEqual(['jump', 'action', 'action', 'respawn', 'rain']);
     expect(e.defaultPrevented).toBe(true); // Space doesn't scroll the page
   });
 

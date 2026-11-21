@@ -58,6 +58,7 @@ export interface InputDeps {
   menuKey(e: KeyboardEvent): boolean; // the menus see each key first; true when they used it
   action(): void; // E, F, Enter or the touch action button
   respawn(): void; // R
+  rain(): void; // L: låt det regna
   jump(): void; // a fresh Space / touch Brake press; main.ts decides whether a jump can start
   look(dx: number, dy: number): void; // turns the camera by this many pixels: a drag's own, or a locked mouse's scaled by LOCK_K
   zoom(factor: number): void; // multiplies the camera distance: above 1 is further out
@@ -91,14 +92,13 @@ export class Input {
         if (k === 'brake' && !e.repeat) this.g.jump();
       } else if ((e.code === 'KeyE' || e.code === 'KeyF' || e.code === 'Enter') && !e.repeat) this.g.action();
       else if (e.code === 'KeyR') this.g.respawn();
+      else if (e.code === 'KeyL' && !e.repeat) this.g.rain();
     });
     win.addEventListener('keyup', ev => {
       const k = KEYMAP[(ev as KeyboardEvent).code];
       if (k) keys[k] = false;
     });
-    win.addEventListener('blur', () => {
-      for (const k in keys) keys[k as Key] = false;
-    });
+    win.addEventListener('blur', () => this.releaseKeys());
     doc.addEventListener('pointerlockchange', () => {
       if (!this.locked() && this.g.started && !this.g.menuOpen) this.g.lockLost();
     });
@@ -257,6 +257,11 @@ export class Input {
 
   locked() {
     return this.g.doc.pointerLockElement === this.g.canvas;
+  }
+
+  /** Lets go of every held key, as when the window loses focus or the dev console takes the keys. */
+  releaseKeys() {
+    for (const k in this.keys) this.keys[k as Key] = false;
   }
 
   lockMouse() {

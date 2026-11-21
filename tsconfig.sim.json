@@ -15,6 +15,8 @@
     "src/game/menu.ts",
     "src/game/loop.ts",
     "src/game/prompt.ts",
-    "src/game/test-hook.ts"
+    "src/game/test-hook.ts",
+    "src/game/devconsole.ts",
+    "src/game/confetti.ts"
   ]
 }

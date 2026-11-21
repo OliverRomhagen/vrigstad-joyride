@@ -56,6 +56,8 @@ export interface GameLoopDeps {
   updateDriftFx(c: Car | null): void;
   updateVehicles(T: Point, dt: number): void;
   updateSmoke(dt: number, T: Point): void;
+  updateBanknotes(dt: number): void; // from låt det regna and a big trisslott win
+  updateConfetti(dt: number): void; // from a trisslott win
   updateNpcs(T: Point, dt: number): void;
   updateCats(T: Point, dt: number): void;
   updateDrivers(T: Point, dt: number): void;
@@ -205,6 +207,8 @@ export class GameLoop {
     const T = game.inCar && game.pcar ? game.pcar : player;
     g.updateVehicles(T, dt);
     g.updateSmoke(dt, T);
+    g.updateBanknotes(dt);
+    g.updateConfetti(dt);
     for (const c of cars) if (c.mode === 'ai') g.updateTraffic(c as TrafficCar, dt); // spawnTraffic gives every 'ai' car its place on the road
     g.updateNpcs(T, dt);
     g.updateCats(T, dt);

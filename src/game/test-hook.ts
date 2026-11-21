@@ -27,6 +27,10 @@ export interface TestHookDeps {
   street: { layout: StreetscapeLayout; meshes: readonly unknown[]; tris: number; ms: number };
   debugStreetscape: boolean;
   nearestCar(): Car | null;
+  readonly kr: number; // in your wallet
+  readonly banknotes: number; // in the air or on the ground
+  readonly confetti: number; // confetti pieces still falling
+  readonly devcon: boolean; // the dev console is open
 }
 
 /** Puts the hook on `window.__joyride`. */
@@ -76,6 +80,10 @@ export function installTestHook(g: TestHookDeps) {
         stars: g.stars,
         cats: g.cats,
         treats: game.treats,
+        kr: g.kr,
+        banknotes: g.banknotes,
+        confetti: g.confetti,
+        devcon: g.devcon,
         hp: health.hp,
         carDmg: game.pcar ? game.pcar.dmg : null,
         ownCat: g.ownCat,

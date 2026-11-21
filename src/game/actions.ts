@@ -3,6 +3,7 @@
 import { wrap } from '../world/math';
 import type { Car } from './cars';
 import type { Cat } from './cats';
+import { fine, fmtKr, pay, type Wallet } from './economy';
 import { type Health, HP_MAX, wakeSpot } from './health';
 import type { Place, Places } from './places';
 import { carInReach, HOME, type PlayerState, standAt, stepOut, tooFastToGetOut } from './player';
@@ -11,6 +12,13 @@ import type { GameState, ViewState } from './state';
 
 type Point = { x: number; z: number };
 const WAKE_LINES = ['”Va hände? Ja minns ingenting.”', '”Aj, mitt huve…”'];
+/** What you say on a new star. */
+export const WANTED_LINES = [
+  '”Oj, nu ä länsman efter mä!”',
+  '”Ajaj, nu kommer snuten.”',
+  '”Fan, nu ä snuten på mä.”',
+  '”Nu blir dä bråk mä länsman, dä.”',
+];
 
 /** What E reads from the rest of the game. */
 export interface ActionsDeps {
@@ -21,6 +29,7 @@ export interface ActionsDeps {
   places: Pick<Places, 'inside' | 'list'>;
   wanted: Pick<Wanted, 'addStar' | 'police' | 'stars' | 'clear'>;
   health: Health;
+  wallet: Wallet;
   menuOpen(): boolean; // the menu plate is up: E closes it
   closeMenu(): void;
   showPlayer(shown: boolean): void; // the player's mesh: hidden while you drive
@@ -98,6 +107,7 @@ export class Actions {
       driverOut,
       spawnTraffic,
       drawStolen,
+      pickLine,
     } = this.g;
     if (!game.started || game.titleCardT > 0) return;
     if (places.inside) {
@@ -142,13 +152,16 @@ export class Actions {
           '”Hörru! Det där är min bil!”',
           '”Men va fan gör du?!”',
           '”Polisen! Han tar ' + (spokenName(c) || 'min ' + c.T.name) + '!”',
+          '”Ring snuten! Han snor min bil!”',
         ]) + ' The driver calls the police.',
       );
       wanted.addStar();
       spawnTraffic(player);
     } else if (!c.owned) {
       if (wanted.police.length || rnd() < 0.35)
-        wanted.addStar('A neighbour saw you take the ' + carName(c) + ' and called the police.');
+        wanted.addStar(
+          pickLine(WANTED_LINES) + ' A neighbour saw you take the ' + carName(c) + ' and called the police.',
+        );
       else
         toast(
           c.type === 'epa'
@@ -179,19 +192,26 @@ export class Actions {
     game.jumpQ = false;
     collide(player, 0.6);
   };
-  busted = () => {
-    const { health, drawHealth, titleCard } = this.g;
+  // the fine goes by the stars you had, which are already cleared
+  busted = (stars = 0) => {
+    const { health, wallet, drawHealth, titleCard } = this.g;
+    const fineKr = fine(wallet.kr, stars);
+    pay(wallet, fineKr);
     this.respawn();
     health.hp = HP_MAX;
     drawHealth();
-    titleCard('Gripen!', 'Busted. The police drop you off at Torget.');
+    titleCard(
+      'Gripen!',
+      'Busted. The police ' + (fineKr ? 'fine you ' + fmtKr(fineKr) + ' and ' : '') + 'drop you off at Torget.',
+    );
   };
   // health at zero: with the police after you it's Gripen!, otherwise you come to at the nearest safehouse, or Torget
   knockedOut = () => {
     const { player, places, wanted, health, collide, drawHealth, titleCard, sayLater, pickLine } = this.g;
     if (wanted.stars) {
+      const stars = wanted.stars;
       wanted.clear();
-      this.busted();
+      this.busted(stars);
       return;
     } // Gripen! expects the stars cleared
     const spot = wakeSpot(player.x, player.z, HOME, places.list);
