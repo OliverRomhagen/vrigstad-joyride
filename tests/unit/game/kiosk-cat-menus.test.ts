@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Cat } from '../../../src/game/cats';
-import { KORV_KR, TREATS_KR } from '../../../src/game/economy';
+import { brokeLine, KORV_KR, TREATS_KR } from '../../../src/game/economy';
 import { HP_MAX, KORV_HP } from '../../../src/game/health';
 import { KioskCatMenus, type KioskCatMenusDeps } from '../../../src/game/kiosk-cat-menus';
 import type { MenuItem } from '../../../src/game/pets';
@@ -33,12 +33,7 @@ function menus(o: { hp?: number; treats?: number; kr?: number } = {}) {
     esc: t => t,
     toast: m => void calls.push('toast ' + m),
     scratch: () => void calls.push('scratch'),
-    pay: kr => {
-      if (wallet.kr < kr) return false;
-      wallet.kr -= kr;
-      return true;
-    },
-    broke: kr => 'broke ' + kr,
+    wallet,
     nearPlace: () => null,
     showHeart: () => void calls.push('heart'),
     drawPets: () => {},
@@ -60,7 +55,7 @@ describe('the kiosk', () => {
     expect(t.game.treats).toBe(3);
     t.choose('treats');
     expect(t.game.treats).toBe(3);
-    expect(t.calls.at(-1)).toBe('toast broke ' + TREATS_KR);
+    expect(t.calls.at(-1)).toBe('toast ' + brokeLine(TREATS_KR));
   });
 
   it('sells treats a bag at a time, up to what fits in your pockets', () => {

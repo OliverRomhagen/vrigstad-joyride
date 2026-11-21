@@ -2,6 +2,7 @@
 // Moved from src/game/main.ts (#177); main.ts passes in what the HUD reads from the rest of the game.
 import type { Label } from '../world/data';
 import type { RoadNetwork } from '../world/roads';
+import { fmtKr } from './economy';
 import { LOW_HP } from './health';
 import { MAX_STARS } from './police';
 
@@ -23,6 +24,7 @@ export interface HudDeps {
   readonly stars: number;
   readonly pcar: unknown; // the player's car, which the minimap leaves out
   readonly blink: boolean; // the police lights' phase, so the minimap blinks with them
+  readonly kr: number; // in your wallet: the plate follows it, so nothing that spends has to redraw it
 }
 
 /** The HUD drawn over the canvas: shows toasts, the wanted stars, the health and damage bars, the minimap and the street sign. */
@@ -31,6 +33,7 @@ export class Hud {
   private readonly mctx: CanvasRenderingContext2D;
   private readonly MW: number; // minimap side (px)
   private toastT = 0; // s until the toast hides
+  private shownKr = Number.NaN; // what the money plate shows; NaN until the first draw
 
   constructor(g: HudDeps) {
     this.g = g;
@@ -78,14 +81,22 @@ export class Hud {
     el.classList.toggle('bad', bad);
   }
 
-  /** Fades the toast out at the end of its time. */
+  /** Keeps the money plate in step with the wallet, and fades the toast out at the end of its time. */
   update(dt: number) {
     const { $ } = this.g;
+    this.drawKr();
     if (this.toastT > 0) {
       this.toastT -= dt;
       if (this.toastT <= 0.3) $('toast').style.opacity = '0';
       if (this.toastT <= 0) $('toast').hidden = true;
     }
+  }
+
+  /** The money plate (fmtKr: 10 000 riksdaler), redrawn only when the amount changes. */
+  drawKr() {
+    if (this.g.kr === this.shownKr) return;
+    this.shownKr = this.g.kr;
+    this.g.$('kr').textContent = fmtKr(this.g.kr);
   }
 
   /** The big screen (Gripen!, Däckad!); it replaces any line from the same moment. The caller times it. */

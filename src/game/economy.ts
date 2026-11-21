@@ -1,5 +1,5 @@
 // Money (#76): the player's wallet, prices and payouts, as plain data and pure rules (no three.js, no DOM).
-// Selling cars, repairs and paying off a star build on pay / earn.
+// Selling cars, repairs and paying off a star build on pay / earn. Nothing here draws: the HUD shows whatever the wallet holds.
 
 export const START_KR = 200; // what you have in your pocket at the start
 export const TRISS_KR = 30,
@@ -42,6 +42,9 @@ export function pay(w: Wallet, n: number): boolean {
 export function earn(w: Wallet, n: number) {
   w.kr += Math.max(0, n);
 }
+
+/** What the kiosk says when you can't pay kr. */
+export const brokeLine = (kr: number) => '”Dä blir ' + fmtKr(kr) + '. Va, har du inga pengar? Nä, då blir dä inget.”';
 
 /** What a ticket pays, from a roll r in [0, 1): 0 for a losing ticket. */
 export function trissPrize(r: number): number {

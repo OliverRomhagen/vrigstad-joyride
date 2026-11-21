@@ -3,7 +3,7 @@
 import { wrap } from '../world/math';
 import type { Car } from './cars';
 import type { Cat } from './cats';
-import { fine, fmtKr } from './economy';
+import { fine, fmtKr, pay, type Wallet } from './economy';
 import { type Health, HP_MAX, wakeSpot } from './health';
 import type { Place, Places } from './places';
 import { carInReach, HOME, type PlayerState, standAt, stepOut, tooFastToGetOut } from './player';
@@ -29,8 +29,7 @@ export interface ActionsDeps {
   places: Pick<Places, 'inside' | 'list'>;
   wanted: Pick<Wanted, 'addStar' | 'police' | 'stars' | 'clear'>;
   health: Health;
-  readonly kr: number; // in your wallet
-  spend(kr: number): boolean; // takes kr from your wallet and redraws it
+  wallet: Wallet;
   menuOpen(): boolean; // the menu plate is up: E closes it
   closeMenu(): void;
   showPlayer(shown: boolean): void; // the player's mesh: hidden while you drive
@@ -195,9 +194,9 @@ export class Actions {
   };
   // the fine goes by the stars you had, which are already cleared
   busted = (stars = 0) => {
-    const { health, spend, drawHealth, bigScreen } = this.g;
-    const fineKr = fine(this.g.kr, stars);
-    spend(fineKr);
+    const { health, wallet, drawHealth, bigScreen } = this.g;
+    const fineKr = fine(wallet.kr, stars);
+    pay(wallet, fineKr);
     this.respawn();
     health.hp = HP_MAX;
     drawHealth();

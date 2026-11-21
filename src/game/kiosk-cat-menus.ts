@@ -1,7 +1,7 @@
 // The kiosk's and the cats' menus, on the menu plate (src/game/menu.ts): what the kiosk sells, petting and adopting a stray, your own cat's menu.
 // Moved from src/game/main.ts (#177); main.ts passes in the plate, the cats, your health and what the HUD draws. No three.js or DOM here.
 import { type Cat, type CatColony, canTend } from './cats';
-import { fmtKr, KORV_KR, RULLE_KR, TREATS_KR, TRISS_KR } from './economy';
+import { brokeLine, fmtKr, KORV_KR, pay, RULLE_KR, TREATS_KR, TRISS_KR, type Wallet } from './economy';
 import { type Health, HP_MAX, heal, KORV_HP, RULLE_HP } from './health';
 import type { MenuItem } from './pets';
 import type { Place } from './places';
@@ -27,8 +27,7 @@ export interface KioskCatMenusDeps {
   esc(t: string): string; // escapes a name for the menu's HTML
   toast(msg: string, secs?: number): void;
   scratch(): void; // a trisslott
-  pay(kr: number): boolean; // takes kr from your wallet and redraws it; false, and nothing taken, when you have less
-  broke(kr: number): string; // what the kiosk says when you can't pay kr
+  wallet: Wallet;
   nearPlace(): Place | null;
   showHeart(k: Cat): void;
   drawPets(): void;
@@ -73,13 +72,13 @@ export class KioskCatMenus {
   };
   // food from the kiosk; \n puts each speaker on their own line in the toast: you order first, then the kiosk answers
   private eat(n: number, kr: number, order: string, reply: string) {
-    const { health, toast, pay, broke, drawHealth } = this.g;
+    const { health, wallet, toast, drawHealth } = this.g;
     if (health.hp >= HP_MAX) {
       toast(order + '\n”Du ser ju mätt ut, du. Kom tebaks när du ä hungrig.”', 3);
       return;
     }
-    if (!pay(kr)) {
-      toast(order + '\n' + broke(kr), 3.5);
+    if (!pay(wallet, kr)) {
+      toast(order + '\n' + brokeLine(kr), 3.5);
       return;
     }
     heal(health, n);
@@ -87,13 +86,13 @@ export class KioskCatMenus {
     toast(order + '\n' + reply + ' +' + n + ' health.', 3.5);
   }
   private buyTreats() {
-    const { game, toast, pay, broke, drawTreats } = this.g;
+    const { game, wallet, toast, drawTreats } = this.g;
     if (game.treats >= TREAT_MAX) {
       toast('”Nämen, du har ju fickera fulla redan!”', 2.5);
       return;
     }
-    if (!pay(TREATS_KR)) {
-      toast(broke(TREATS_KR), 3);
+    if (!pay(wallet, TREATS_KR)) {
+      toast(brokeLine(TREATS_KR), 3);
       return;
     }
     game.treats = Math.min(TREAT_MAX, game.treats + TREAT_BAG);
