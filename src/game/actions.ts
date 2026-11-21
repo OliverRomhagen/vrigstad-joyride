@@ -41,6 +41,8 @@ export interface ActionsDeps {
   openOwnCat(k: Cat): void;
   petCat(k: Cat): void;
   openKiosk(): void;
+  atSkroten(): boolean; // the car you drive stands on Skroten's ring
+  openSkroten(): void; // Skroten's offer for it
   collide(o: Point, r: number): unknown;
   placeCar(c: Car): void;
   rnd(): number;
@@ -80,6 +82,16 @@ export class Actions {
     game.inCar = false;
     showPlayer(true);
   };
+  // out of the car you drive and onto your feet beside it, looking where you looked
+  getOut = () => {
+    const { game, view, player, collide } = this.g;
+    stepOut(player, game.pcar!);
+    collide(player, 0.5);
+    this.leaveCar();
+    game.jumpQ = false;
+    view.camYaw = wrap(view.camYaw + view.lookOff);
+    view.lookOff = 0;
+  };
   action = () => {
     const {
       game,
@@ -98,7 +110,8 @@ export class Actions {
       openOwnCat,
       petCat,
       openKiosk,
-      collide,
+      atSkroten,
+      openSkroten,
       rnd,
       pick,
       toast,
@@ -135,12 +148,8 @@ export class Actions {
         toast('Slow down before you get out.', 2);
         return;
       }
-      stepOut(player, game.pcar!);
-      collide(player, 0.5);
-      this.leaveCar();
-      game.jumpQ = false;
-      view.camYaw = wrap(view.camYaw + view.lookOff);
-      view.lookOff = 0;
+      if (atSkroten()) openSkroten();
+      else this.getOut();
       return;
     }
     const c = this.nearestCar();

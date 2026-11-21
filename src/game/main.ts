@@ -6,7 +6,7 @@ import { cameraMoved } from './presentation/iso800-grain';
 import { AdoptHearts } from './render/adopt-heart';
 import { Banknotes } from './render/banknotes';
 import { DriftFx } from './render/drift-fx';
-import { type VehicleId, vehicleDefinition } from './render/vehicle-registry';
+import { VEHICLES, type VehicleId, vehicleDefinition } from './render/vehicle-registry';
 import { VehicleVisuals } from './render/vehicle-visuals';
 import { BodyMotion } from './render/body-motion';
 import { CarDamageFx } from './render/car-damage';
@@ -43,11 +43,12 @@ import { installTestHook } from './test-hook';
 import { esc, MenuPlate } from './menu';
 import { KioskCatMenus } from './kiosk-cat-menus';
 import { Pets } from './pets';
-import { Commands } from './commands';
+import { Commands, UsageError } from './commands';
 import { CashRain } from './cash-rain';
 import { Confetti } from './confetti';
 import { DevConsole } from './devconsole';
-import { newWallet, registerWalletCommands } from './economy';
+import { earn, newWallet, registerWalletCommands } from './economy';
+import { Skroten } from './skroten';
 import { KIOSK, type Place, Places } from './places';
 import { CAT_SCRATCH_HP, LOW_HP, hurt, newHealth } from './health';
 import { HOME } from './player';
@@ -270,6 +271,11 @@ const furniture = (function () {
 // the kiosk's and the cats' menus (src/game/kiosk-cat-menus.ts); trisslott is declared further down
 const kioskCatMenus = new KioskCatMenus({ game, player, colony, health, openMenu, esc, toast, scratch: () => trisslott.scratch(), wallet, nearPlace, showHeart, drawPets, drawTreats, drawHealth });
 const { openKiosk, petCat, openOwnCat } = kioskCatMenus;
+// Skroten, which buys the car you drive in (src/game/skroten.ts); actions is declared further down
+const atSkroten = () => !!(game.inCar && game.pcar && places.skrotenAt(game.pcar.x, game.pcar.z));
+const skroten = new Skroten({ game, get stars() { return wanted.stars; }, openMenu, toast, atSkroten,
+  modelId: c => vehicleVisuals.definition(meshed(c))?.id, earn: kr => earn(wallet, kr),
+  sellCar: c => { colony.hopOffCar(meshed(c)); actions.getOut(); removeCar(c); } });
 function nearPlace() { return game.inCar ? null : places.nearest(player.x, player.z); }
 function enterHouse(p: Place) { if (places.enter(p, player)) player.mesh.visible = false; }
 function leaveHouse() { if (!places.leave()) return; player.mesh.visible = true; $('hide').hidden = true; }
@@ -323,12 +329,18 @@ drawStars();
 function drawHealth() { hud.drawHealth(health.hp, game.inCar && game.pcar ? game.pcar.dmg : null); }
 // the title card (Gripen!, Däckad!) stays up this long
 function titleCard(title: string, msg: string) { hud.showTitleCard(title, msg); game.titleCardT = 3; }
+// car <model>: parks that car right by you, already yours (no star when you get in), for trying out Skroten and the models
+const CAR_MODELS = new Map<string, [CarType, VehicleId | undefined]>([...VEHICLES.filter(v => v.archetype !== 'polis').map(v => [v.id, [v.archetype, v.id]] as [string, [CarType, VehicleId]]), ['traktor', ['traktor', undefined]]]);
+commands.register('car', { usage: '<' + [...CAR_MODELS.keys()].join(' | ') + '>', help: 'park a car of that model next to you',
+  run: a => { const m = a[0] && CAR_MODELS.get(a[0].toLowerCase()); if (!m) throw new UsageError(a[0] ? 'No car called ' + a[0] + '.' : '');
+    if (game.inCar) return 'Get out of the car first.';
+    const o = { x: player.x + 3.5, z: player.z }; collide(o, 2.6); const c = addCar(m[0], o.x, o.z, view.camYaw, 'parked', m[1]); c.owned = true; return 'Parked a ' + carName(c) + ' next to you.'; } });
 
 // ---------- stealing and getting caught (the wanted level and the police: src/game/police.ts) ----------
 // the driver of a car you steal gets out, and stands there shouting for a while (src/game/render/shouting-drivers.ts)
 const drivers = new ShoutingDrivers({ scene, groundAt, personParts, pick }), driverOut = drivers.driverOut;
 // what E does, and putting you back on your feet after Gripen! or a knock-out (src/game/actions.ts)
-const actions = new Actions({ game, view, player, cars, places, wanted, health, wallet, menuOpen: () => !kmenu.hidden, closeMenu, showPlayer: v => { player.mesh.visible = v; }, nearPlace, enterHouse, leaveHouse, nearCat, catFirst, openOwnCat, petCat, openKiosk, collide, placeCar, rnd, pick, toast, carName,
+const actions = new Actions({ game, view, player, cars, places, wanted, health, wallet, menuOpen: () => !kmenu.hidden, closeMenu, showPlayer: v => { player.mesh.visible = v; }, nearPlace, atSkroten, openSkroten: skroten.open, enterHouse, leaveHouse, nearCat, catFirst, openOwnCat, petCat, openKiosk, collide, placeCar, rnd, pick, toast, carName,
   spokenName: c => vehicleVisuals.definition(meshed(c))?.spokenName, driverOut, spawnTraffic, drawStolen: () => { $('count').textContent = 'Cars stolen: ' + game.stolen; }, drawHealth, titleCard, sayLater: line => loop.sayLater(line), pickLine });
 const { nearestCar, action, respawn, busted, knockedOut } = actions;
 function hurtPlayer(n: number) { if (n <= 0) return; const was = health.hp;
@@ -336,7 +348,7 @@ function hurtPlayer(n: number) { if (n <= 0) return; const was = health.hp;
   if (was >= LOW_HP && health.hp < LOW_HP && health.hp > 0) loop.sayLater('”Ja behöver nog en korv me brö.”'); }   // a hint at the kiosk
 
 // ---------- the E prompt and the speed plate (src/game/prompt.ts) ----------
-const prompt = new ActionPrompt({ $, game, places, wanted, get menuOpen() { return !kmenu.hidden; }, coarse, nearPlace, nearCat, nearestCar, catFirst, carName, esc });
+const prompt = new ActionPrompt({ $, game, places, wanted, get menuOpen() { return !kmenu.hidden; }, coarse, nearPlace, atSkroten, nearCat, nearestCar, catFirst, carName, esc });
 
 // ---------- main loop (src/game/loop.ts) ----------
 const loop = new GameLoop({ $, renderer, scene, camera, canvas, coarse, half: HALF, game, view, player, health, input, places, wanted, cars, startCam: START_CAM, barMat, barColours: [BAR_BLUE, BAR_RED], cameraRig: { update: placeCamera },

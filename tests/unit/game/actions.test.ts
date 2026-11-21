@@ -39,6 +39,7 @@ function actions(
     places?: Place[];
     cat?: Cat | null;
     menuOpen?: boolean;
+    skroten?: boolean;
     kr?: number;
   } = {},
 ) {
@@ -81,6 +82,8 @@ function actions(
     openOwnCat: () => void calls.push('ownCat'),
     petCat: () => void calls.push('pet'),
     openKiosk: () => void calls.push('kiosk'),
+    atSkroten: () => !!o.skroten,
+    openSkroten: () => void calls.push('skroten'),
     collide: () => {},
     placeCar: () => {},
     rnd: () => o.roll ?? 0.9,
@@ -150,6 +153,15 @@ describe('Actions.action', () => {
     t.a.action(); // out again
     t.a.action(); // and back in: already yours
     expect(t.game.stolen).toBe(1);
+  });
+
+  it("on Skroten's ring, E in the car asks Skroten instead of getting you out", () => {
+    const c = parked(),
+      t = actions({ cars: [c], skroten: true });
+    t.a.action();
+    t.a.action();
+    expect(t.game.inCar).toBe(true);
+    expect(t.calls.at(-1)).toBe('skroten');
   });
 
   it('calls the police when a neighbour sees you take a car', () => {

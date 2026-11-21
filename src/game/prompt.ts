@@ -16,6 +16,7 @@ export interface ActionPromptDeps {
   readonly menuOpen: boolean; // a menu covers the prompt
   coarse: boolean; // a touch screen: no "Get out" prompt, the E button says it
   nearPlace(): Place | null;
+  atSkroten(): boolean; // the car you drive stands on Skroten's ring
   nearCat(): Cat | null;
   nearestCar(): Car | null;
   catFirst(kt: Cat | null, pl: Place | null): boolean;
@@ -32,7 +33,8 @@ export class ActionPrompt {
   }
 
   update() {
-    const { $, game, places, wanted, coarse, nearPlace, nearCat, nearestCar, catFirst, carName, esc } = this.g;
+    const { $, game, places, wanted, coarse, nearPlace, atSkroten, nearCat, nearestCar, catFirst, carName, esc } =
+      this.g;
     const pr = $('prompt'),
       pl = game.started && !places.inside ? nearPlace() : null,
       kt = game.started ? nearCat() : null,
@@ -56,6 +58,9 @@ export class ActionPrompt {
     } else if (pl) {
       pr.hidden = this.g.menuOpen;
       pr.innerHTML = '<kbd>E</kbd>' + (pl.kind === 'safe' ? 'Go inside the safehouse' : 'Handla i kiosken');
+    } else if (game.inCar && game.pcar && atSkroten()) {
+      pr.hidden = this.g.menuOpen || tooFastToGetOut(game.pcar);
+      pr.innerHTML = '<kbd>E</kbd>Sell the ' + carName(game.pcar) + ' at Skroten';
     } else if (game.inCar && game.pcar && !coarse) {
       pr.hidden = tooFastToGetOut(game.pcar);
       pr.innerHTML = '<kbd>E</kbd>Get out';
