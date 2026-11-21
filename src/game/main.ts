@@ -120,8 +120,9 @@ const water = new Water(D, roads), inWater = water.inWater.bind(water);
 // ---------- buildings (painted in Swedish house colours) + collision grid ----------
 const buildings = new BuildingIndex(D), { footprints: bPolys } = buildings;
 const addFootprint = buildings.addFootprint.bind(buildings), collide = buildings.collide.bind(buildings);
-const yard = yardLayout(); for (const p of yard.outlines) addFootprint(p);   // Skroten's fence, hut, wrecks and heaps (src/game/skroten-yard.ts), before any car parks
-addBuildings(scene, D, heightfield, { rnd, pick, maxAnisotropy, workshopAt: SKROT_HALL });   // rolls rnd() for the house colours, before any tree spot
+const yard = yardLayout(bPolys); if (yard.hallIndex >= 0) buildings.stopColliding(yard.hallIndex);   // Skroten (src/game/skroten-yard.ts): the hall becomes walls you can drive between
+for (const p of yard.outlines) addFootprint(p);   // its fence, workshop walls, hut, wrecks and heaps, before any car parks
+addBuildings(scene, D, heightfield, { rnd, pick, maxAnisotropy, skipAt: SKROT_HALL });   // rolls rnd() for the house colours, before any tree spot
 
 // ---------- trees: spruces and birches, each with its own shade, size and lean ----------
 const TREE_M2_PER_TRY = 110, TREE_ROAD_CLEARANCE_M = 2.5;   // one try at a tree per this much of a wood's bounding box; no trunk closer to a road's edge
@@ -238,7 +239,7 @@ const wanted = new Wanted({ roads, rnd, pick, removeCar, drive, toast,
 // the getter is read when a place uses it, so it follows the stars
 const places = new Places({ footprints: bPolys, roads: R, police: wanted.police, lieLow: secs => wanted.lieLow(secs), toast, get stars() { return wanted.stars; } });
 const placeMeshes = new PlaceMeshes({ scene, places, heightAt: hAt, col, boxGeo, paintMat, glass: GLASS });
-const skrotenMeshes = new SkrotenMeshes({ scene, heightAt: hAt, layout: yard, footprints: bPolys });
+const skrotenMeshes = new SkrotenMeshes({ scene, heightAt: hAt, layout: yard, coarse });
 addFootprint([KIOSK.x - KIOSK.w / 2, KIOSK.z - KIOSK.d / 2, KIOSK.x + KIOSK.w / 2, KIOSK.z - KIOSK.d / 2, KIOSK.x + KIOSK.w / 2, KIOSK.z + KIOSK.d / 2, KIOSK.x - KIOSK.w / 2, KIOSK.z + KIOSK.d / 2]);   // the kiosk collides like a building
 // the kiosk's and the cats' menus (src/game/kiosk-cat-menus.ts); trisslott is declared further down
 const kioskCatMenus = new KioskCatMenus({ game, player, colony, health, openMenu, esc, toast, scratch: () => trisslott.scratch(), wallet, nearPlace, showHeart, drawPets, drawTreats, drawHealth });

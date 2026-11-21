@@ -2,13 +2,20 @@
 // the containers, the wrecks and the scrap heaps, the arrow signs by the road, and Skrot-Nisse, who turns to watch you come.
 // The layout comes from skroten-yard.ts; the static parts are baked into one mesh, so the yard costs a handful of draw calls.
 import * as THREE from 'three';
+import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { pointInPolygon } from '../../world/polygon';
 import { makeRnd } from '../../world/random';
 import {
   CONTAINERS,
   HUT,
   NISSE_UV,
-  SKROT_HALL,
+  PROP_SIZE,
+  WORKSHOP_DOOR,
+  type Workshop,
+  type WorkshopProp,
+  type Wreck,
+  type WreckModel,
   YARD,
   YARD_GATE,
   YARD_TURN,
@@ -16,6 +23,10 @@ import {
   yardToWorld,
 } from '../skroten-yard';
 import { boxGeo, carGeo, mergeGeo, type Person, paintMat, personParts } from './models';
+import { BODY_NODE, VEHICLES } from './vehicle-registry';
+
+/** One box: size, position and colour, as boxGeo takes it. */
+type BoxPart = [sx: number, sy: number, sz: number, x: number, y: number, z: number, colour: string];
 
 const PANEL_M = 3; // a sheet of the fence, and the gap between its posts
 const FENCE_COLOURS = ['#8b8f91', '#9a6a4a', '#6f7c86', '#a3a7a3', '#7e4a30', '#86847a'];
@@ -29,19 +40,34 @@ const RUST = '#8a4a2a',
 const GATE_SIGN_Y_M = 4.6;
 const NISSE_SEES_M = 30; // he turns to face you inside this distance
 const NISSE_TURN_K = 3; // how quickly he turns, per second
+const WRECK_DETAIL_M = 150, // the wrecks wear the game's car models inside this distance of the yard's middle, on a computer
+  WRECK_LOAD_M = 300; // and the models start loading when you come this close
+const WRECK_SINK_M = 0.1; // flat tyres
+const CONTAINER_H_M = 2.6;
+const HALL_H_M = 7, // the workshop's walls, from the lowest ground under them
+  HALL_WALL_M = 0.25,
+  RIB_M = 0.7, // between the ribs of the sheet metal
+  SHEET = '#7f6a58',
+  SHEET_RIB = '#6e5b4b',
+  HALL_ROOF = '#5c6064',
+  CONCRETE = '#8e8b84';
 
 /** What the yard's meshes read from the rest of the game. */
 export interface SkrotenMeshDeps {
   scene: THREE.Scene;
   heightAt(x: number, z: number): number;
   layout: YardLayout;
-  footprints: readonly { p: readonly number[] }[]; // the buildings' outlines, to find the hall that becomes the workshop
+  coarse: boolean; // a phone: the wrecks keep their simple shapes, the models cost too many triangles
 }
 
 /** The yard and Skrot-Nisse; `update` turns him towards you. */
 export class SkrotenMeshes {
   private readonly nisse: Person;
   private nisseH = 0;
+  private readonly middle = yardToWorld(0, YARD.depth / 2);
+  private farWrecks: THREE.Mesh | null = null; // the detailed wrecks' simple shapes, until the models load and while you are far
+  private nearWrecks: THREE.Group | null = null;
+  private loadNear: (() => void) | null = null; // starts loading the models, once
 
   constructor(g: SkrotenMeshDeps) {
     const { scene, heightAt, layout } = g,
@@ -52,13 +78,8 @@ export class SkrotenMeshes {
         return heightAt(p.x, p.z);
       };
     // places a coloured geometry at (u, y, v) of the yard's frame, turned and tilted
-    const put = (geo: THREE.BufferGeometry, u: number, y: number, v: number, turn = 0, tilt = 0, squash = 1) => {
-      const m = new THREE.Matrix4().compose(
-        new THREE.Vector3(u, y, v),
-        new THREE.Quaternion().setFromEuler(new THREE.Euler(0, turn, tilt, 'YXZ')),
-        new THREE.Vector3(1, squash, 1),
-      );
-      pieces.push(geo.clone().applyMatrix4(m));
+    const put = (geo: THREE.BufferGeometry, u: number, y: number, v: number, turn = 0, tilt = 0, into = pieces) => {
+      into.push(geo.clone().applyMatrix4(placing(u, y, v, turn, tilt)));
     };
 
     // the fence, panel by panel, each on the ground under it
@@ -129,33 +150,35 @@ export class SkrotenMeshes {
     );
 
     // two containers, and a third across them
-    const box = (w: number, h: number, d: number, c: string, end: string) =>
-      boxGeo([
-        [w, h, d, 0, h / 2, 0, c],
-        [0.05, h - 0.2, d - 0.2, w / 2 + 0.02, h / 2, 0, end],
-      ]);
     const { u: cu, v: cv, w: cw, d: cd } = CONTAINERS,
       cy = groundY(cu, cv);
-    put(box(cw, 2.6, cd, '#9b3b2a', '#7a2c20'), cu, cy, cv - cd / 2);
-    put(box(cw, 2.6, cd, '#2f5a7a', '#24485f'), cu, cy, cv + cd / 2);
-    put(box(cw, 2.6, cd, '#5a6b3a', '#47552e'), cu - 0.4, cy + 2.6, cv, Math.PI / 2 + 0.08);
+    put(boxGeo(container(cw, cd, '#9b3b2a')), cu, cy, cv - cd / 2);
+    put(boxGeo(container(cw, cd, '#2f5a7a')), cu, cy, cv + cd / 2, Math.PI);
+    put(boxGeo(container(cw, cd, '#5a6b3a')), cu - 0.4, cy + CONTAINER_H_M, cv, Math.PI / 2 + 0.08);
 
-    // the wrecks: flat tyres, faded paint, now and then a crushed one on top
-    for (const w of layout.wrecks)
-      put(
-        carGeo(w.type, w.colour),
-        w.u,
-        groundY(w.u, w.v) - 0.12 + (w.onTop ? 1.32 : 0),
-        w.v,
-        w.turn,
-        w.tilt,
-        w.onTop ? 0.55 : 1,
-      );
+    // the wrecks: flat tyres and faded paint, and in the back row one car on another. Those standing alone wear the game's car models
+    // near the yard (loadWrecks), and their simple shapes until then and from afar; stacked cars and tractors keep the simple shapes.
+    const detailed = g.coarse ? [] : layout.wrecks.filter(w => w.stack === 0 && w.model !== 'traktor'),
+      farPieces: THREE.BufferGeometry[] = [];
+    let lowerTop = 0;
+    for (const w of layout.wrecks) {
+      const geo = carGeo(simpleType(w.model), w.colour),
+        y = groundY(w.u, w.v) - WRECK_SINK_M;
+      if (w.stack === 1) {
+        geo.computeBoundingBox();
+        lowerTop = geo.boundingBox!.max.y - 0.08; // the next car lies on this one's roof
+      }
+      put(geo, w.u, y + (w.stack === 2 ? lowerTop : 0), w.v, w.turn, w.tilt, detailed.includes(w) ? farPieces : pieces);
+    }
 
-    // the heaps: a mound of sheet, beams and engine blocks, higher in the middle
+    // the heaps: a mound of sheet, beams and engine blocks over a solid core of rust, higher in the middle
     for (const h of layout.heaps) {
-      const y0 = groundY(h.u, h.v);
-      for (let i = 0; i < h.r * 14; i++) {
+      const y0 = groundY(h.u, h.v),
+        core = new THREE.ConeGeometry(h.r * 0.95, h.r * 0.62, 9, 2),
+        cp = core.attributes.position;
+      for (let i = 0; i < cp.count; i++) if (cp.getY(i) < h.r * 0.3) cp.setX(i, cp.getX(i) * (0.9 + rnd() * 0.2)); // a lumpy edge
+      put(mergeGeo([[core, '#4b3a2c']]), h.u, y0 + h.r * 0.31 - 0.08, h.v, rnd() * Math.PI);
+      for (let i = 0; i < h.r * 18; i++) {
         const a = rnd() * Math.PI * 2,
           d = Math.sqrt(rnd()) * h.r,
           w = 0.3 + rnd() * 1.5,
@@ -193,12 +216,17 @@ export class SkrotenMeshes {
       put(boxGeo([[0.3, GATE_SIGN_Y_M + 0.7, 0.3, 0, (GATE_SIGN_Y_M + 0.7) / 2, 0, POST]]), u, groundY(u, 0), 0);
     for (const s of layout.signs) put(boxGeo([[0.1, 2.6, 0.1, 0, 1.3, 0, '#9a9a92']]), s.u, groundY(s.u, s.v), s.v);
 
+    // inside the workshop: the bench, shelves, the tyre rack and the lift's posts
+    for (const pr of layout.workshop?.props ?? [])
+      put(boxGeo(propParts(pr)), pr.u, groundY(pr.u, pr.v) + 0.08, pr.v, pr.turn);
+
     const yard = new THREE.Group();
     yard.position.set(YARD_GATE.x, 0, YARD_GATE.z);
     yard.rotation.y = YARD_TURN;
     const baked = new THREE.Mesh(bake(pieces), paintMat);
     baked.castShadow = baked.receiveShadow = true;
-    yard.add(baked, ground(YARD.uMin, YARD.uMax, 0, YARD.depth), ground(-YARD.gateHalf, YARD.gateHalf, -5.5, 0));
+    const uEast = Math.max(...layout.fence.flatMap(f => [f.u0, f.u1]));
+    yard.add(baked, ground(YARD.uMin, uEast, 0, YARD.depth), ground(-YARD.gateHalf, YARD.gateHalf, -5.5, 0));
 
     // the boards: SKROTEN over the gate, BILAR KÖPES on the fence, and an arrow sign either way along the road
     const gate = board(12, 1.5, 'SKROTEN', null);
@@ -213,7 +241,14 @@ export class SkrotenMeshes {
       b.rotation.y = -s.facing * (Math.PI / 2); // faces the drivers coming towards the yard
       yard.add(b);
     }
+    if (farPieces.length) {
+      this.farWrecks = new THREE.Mesh(bake(farPieces), paintMat);
+      this.farWrecks.castShadow = this.farWrecks.receiveShadow = true;
+      yard.add(this.farWrecks);
+      this.loadNear = () => void this.loadWrecks(detailed, yard, groundY);
+    }
     scene.add(yard);
+    if (layout.workshop) scene.add(hallMeshes(heightAt, layout.workshop));
 
     // Skrot-Nisse: blue overalls, a red cap with a peak, and a grey beard
     const nisse = personParts('#2f4f7f', '#2f4f7f', '#b8322a');
@@ -233,12 +268,56 @@ export class SkrotenMeshes {
     nisse.rotation.y = -this.nisseH;
     scene.add(nisse);
     this.nisse = nisse;
-    const hall = g.footprints.find(b => pointInPolygon(b.p as number[], SKROT_HALL.x, SKROT_HALL.z));
-    if (hall) scene.add(workshop(heightAt, hall.p));
+  }
+
+  // the game's car models for the wrecks standing alone: one model loaded per kind, its paint and the rest each drawn as one instanced
+  // mesh, so the paint takes each wreck's colour. A model that fails to load leaves the simple shapes up.
+  private async loadWrecks(list: Wreck[], parent: THREE.Group, groundY: (u: number, v: number) => number) {
+    const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder),
+      group = new THREE.Group(),
+      byModel = new Map<WreckModel, Wreck[]>(),
+      paint = new THREE.MeshLambertMaterial({ vertexColors: true }),
+      colour = new THREE.Color();
+    for (const w of list) byModel.set(w.model, [...(byModel.get(w.model) ?? []), w]);
+    try {
+      await Promise.all(
+        [...byModel].map(async ([id, wrecks]) => {
+          const def = VEHICLES.find(v => v.id === id);
+          if (!def) throw new Error('no model ' + id);
+          const parts = flatten((await loader.loadAsync(def.url)).scene);
+          const body = new THREE.InstancedMesh(parts.paint, paint, wrecks.length),
+            trim = new THREE.InstancedMesh(parts.rest, paintMat, wrecks.length);
+          wrecks.forEach((w, i) => {
+            const m = placing(w.u, groundY(w.u, w.v) - WRECK_SINK_M, w.v, w.turn, w.tilt);
+            body.setMatrixAt(i, m);
+            trim.setMatrixAt(i, m);
+            body.setColorAt(i, colour.set(w.colour));
+          });
+          body.castShadow = trim.castShadow = body.receiveShadow = trim.receiveShadow = true;
+          group.add(body, trim);
+        }),
+      );
+    } catch (e) {
+      console.warn('Skroten: the wrecks keep their simple shapes:', e);
+      return;
+    }
+    group.visible = false; // update shows it when you are near
+    parent.add(group);
+    this.nearWrecks = group;
   }
 
   /** Turns Skrot-Nisse towards you while you are near. */
   update(dt: number, you: { x: number; z: number }) {
+    const fromMiddle = Math.hypot(you.x - this.middle.x, you.z - this.middle.z);
+    if (this.loadNear && fromMiddle < WRECK_LOAD_M) {
+      this.loadNear();
+      this.loadNear = null;
+    }
+    if (this.nearWrecks && this.farWrecks) {
+      const near = fromMiddle < WRECK_DETAIL_M;
+      this.nearWrecks.visible = near;
+      this.farWrecks.visible = !near;
+    }
     const n = this.nisse,
       dx = you.x - n.position.x,
       dz = you.z - n.position.z;
@@ -250,73 +329,252 @@ export class SkrotenMeshes {
   }
 }
 
-const HALL_WALL_M = 8, // the hall's height in the data
-  RIB_M = 0.7; // between the ribs of the sheet metal
-
-/** A wall of an outline: its first corner, its direction and length, and its outward normal. */
-type Wall = { x0: number; z0: number; ux: number; uz: number; len: number; nx: number; nz: number };
-// the outline's longest wall whose outward normal points along (dx, dz)
-function wallFacing(p: readonly number[], dx: number, dz: number) {
-  let best: Wall | null = null;
-  for (let i = 0, j = p.length - 2; i < p.length; j = i, i += 2) {
-    const ex = p[i]! - p[j]!,
-      ez = p[i + 1]! - p[j + 1]!,
-      len = Math.hypot(ex, ez),
-      mx = (p[i]! + p[j]!) / 2,
-      mz = (p[i + 1]! + p[j + 1]!) / 2;
-    let nx = ez / len,
-      nz = -ex / len;
-    if (pointInPolygon(p as number[], mx + nx * 0.3, mz + nz * 0.3)) {
-      nx = -nx;
-      nz = -nz;
-    }
-    if (nx * dx + nz * dz > 0.9 && (!best || len > best.len))
-      best = { x0: p[j]!, z0: p[j + 1]!, ux: ex / len, uz: ez / len, len, nx, nz };
-  }
-  return best;
+// the matrix that places a model at (x, y, z), turned about y, then tilted about its length
+const _q = new THREE.Quaternion(),
+  _e = new THREE.Euler(0, 0, 0, 'YXZ'),
+  _one = new THREE.Vector3(1, 1, 1);
+function placing(x: number, y: number, z: number, turn = 0, tilt = 0) {
+  return new THREE.Matrix4().compose(new THREE.Vector3(x, y, z), _q.setFromEuler(_e.set(0, turn, tilt)), _one);
 }
 
-// The workshop: ribs of sheet metal on the walls to the road (north) and to the yard (west), a garage door to the yard and a SKROTEN
-// sign high on the road side, in world coordinates.
-function workshop(heightAt: SkrotenMeshDeps['heightAt'], hall: readonly number[]) {
-  const pieces: THREE.BufferGeometry[] = [],
-    g = new THREE.Group(),
-    roadWall = wallFacing(hall, 0, -1),
-    yardWall = wallFacing(hall, -1, 0);
-  // a point `s` metres along the wall and `out` metres out from it, and the turn that lays a box's x along the wall
-  const along = (w: Wall, s: number, out: number) => ({
-    x: w.x0 + w.ux * s + w.nx * out,
-    z: w.z0 + w.uz * s + w.nz * out,
-    turn: -Math.atan2(w.uz, w.ux),
-  });
-  const place = (geo: THREE.BufferGeometry, x: number, y: number, z: number, turn: number) => {
-    pieces.push(geo.clone().applyMatrix4(new THREE.Matrix4().makeRotationY(turn).setPosition(x, y, z)));
-  };
-  const rib = boxGeo([[0.08, HALL_WALL_M - 0.6, 0.06, 0, (HALL_WALL_M - 0.6) / 2, 0, '#6e5b4b']]);
-  for (const w of [roadWall, yardWall]) {
-    if (!w) continue;
-    for (let s = RIB_M / 2; s < w.len; s += RIB_M) {
-      const p = along(w, s, 0.05);
-      place(rib, p.x, heightAt(p.x, p.z) + 0.3, p.z, p.turn);
+// the simple shape a wreck's model falls back to: its kind of car in models.ts
+function simpleType(m: WreckModel) {
+  return m === 'traktor' ? 'traktor' : (VEHICLES.find(v => v.id === m)?.archetype ?? 'volvo');
+}
+
+// an sRGB colour darkened by k
+function shade(hex: string, k: number) {
+  return '#' + new THREE.Color(hex).multiplyScalar(k).getHexString();
+}
+
+// a shipping container, length w along x and width d along z, standing on y = 0: corrugated sides, corner posts and rails, and at +x
+// its double doors with their four locking bars
+function container(w: number, d: number, colour: string): BoxPart[] {
+  const h = CONTAINER_H_M,
+    rib = shade(colour, 0.78),
+    frame = shade(colour, 0.55),
+    steel = '#8c8f90',
+    parts: BoxPart[] = [[w - 0.1, h - 0.1, d - 0.1, 0, h / 2, 0, colour]];
+  for (let x = -w / 2 + 0.3; x < w / 2 - 0.2; x += 0.28)
+    for (const s of [-1, 1]) parts.push([0.13, h - 0.35, 0.05, x, h / 2, s * (d / 2 - 0.03), rib]);
+  for (let y = 0.4; y < h - 0.3; y += 0.3) parts.push([w - 0.35, 0.12, 0.05, 0, y, 0, rib]); // the roof's and the blind end's ribs
+  for (let y = 0.4; y < h - 0.3; y += 0.35) parts.push([0.05, 0.12, d - 0.3, -w / 2 - 0.01, y, 0, rib]);
+  for (const sx of [-1, 1])
+    for (const sz of [-1, 1]) parts.push([0.16, h, 0.16, sx * (w / 2 - 0.08), h / 2, sz * (d / 2 - 0.08), frame]);
+  for (const y of [0.08, h - 0.08]) {
+    for (const sz of [-1, 1]) parts.push([w, 0.16, 0.14, 0, y, sz * (d / 2 - 0.07), frame]);
+    for (const sx of [-1, 1]) parts.push([0.14, 0.16, d, sx * (w / 2 - 0.07), y, 0, frame]);
+  }
+  parts.push(
+    [0.04, h - 0.3, d - 0.3, w / 2 - 0.01, h / 2, 0, rib],
+    [0.05, h - 0.3, 0.03, w / 2 + 0.01, h / 2, 0, frame],
+  );
+  for (const k of [-0.75, -0.35, 0.35, 0.75]) {
+    parts.push([0.05, h - 0.2, 0.05, w / 2 + 0.04, h / 2, (k * d) / 2, steel]);
+    parts.push([0.14, 0.05, 0.05, w / 2 + 0.08, 1.2, (k * d) / 2, steel]);
+  }
+  return parts;
+}
+
+// a workshop prop, standing on y = 0, its length along x
+function propParts(p: WorkshopProp): BoxPart[] {
+  const { w, d, h } = PROP_SIZE[p.kind];
+  if (p.kind === 'bench')
+    return [
+      [w, 0.06, d, 0, h, 0, '#7a5a3a'],
+      [w - 0.1, 0.04, d - 0.1, 0, 0.25, 0, '#5b4a3a'],
+      ...[-1, 1].flatMap(sx =>
+        [-1, 1].map(sz => [0.07, h, 0.07, sx * (w / 2 - 0.1), h / 2, sz * (d / 2 - 0.08), '#3f4244'] as BoxPart),
+      ),
+      [0.25, 0.18, 0.15, w / 2 - 0.4, h + 0.12, 0, '#2f4f7f'], // a vice
+      [w, 0.9, 0.04, 0, h + 0.75, -d / 2 + 0.02, '#a8a090'], // the tool board on the wall
+    ];
+  if (p.kind === 'shelf') {
+    const parts: BoxPart[] = [];
+    for (const sx of [-1, 1]) parts.push([0.06, h, d, sx * (w / 2 - 0.03), h / 2, 0, '#3a6ea5']);
+    for (let y = 0.15; y < h; y += 0.5) {
+      parts.push([w, 0.04, d, 0, y, 0, '#9a9a92']);
+      parts.push([0.5, 0.3, 0.4, -0.6 + ((y * 7) % 1.2), y + 0.17, 0, y % 1 < 0.5 ? '#8a6a3a' : '#7d3a24']); // boxes and cans
     }
+    return parts;
   }
-  if (yardWall) {
-    const door = along(yardWall, yardWall.len / 2, 0.1),
-      slats: [number, number, number, number, number, number, string][] = [[5, 4.5, 0.08, 0, 2.25, 0, '#4a4d50']];
-    for (let y = 0.45; y < 4.5; y += 0.45) slats.push([5, 0.05, 0.1, 0, y, 0, '#3a3c3e']);
-    place(boxGeo(slats), door.x, heightAt(door.x, door.z), door.z, door.turn);
+  if (p.kind === 'rack') {
+    const parts: BoxPart[] = [];
+    for (const sx of [-1, 0, 1]) parts.push([0.06, h, d, (sx * (w - 0.06)) / 2, h / 2, 0, '#c8372d']);
+    for (const y of [0.2, 1.1]) {
+      parts.push([w, 0.05, d, 0, y, 0, '#5a5d5f']);
+      for (let x = -w / 2 + 0.35; x < w / 2 - 0.2; x += 0.28) parts.push([0.22, 0.62, 0.62, x, y + 0.34, 0, '#1c1c1c']);
+    }
+    return parts;
   }
+  // a lift post, yellow, with its arm reaching in under the car
+  return [
+    [w, h, d, 0, h / 2, 0, '#d9b628'],
+    [w + 0.2, 0.06, d + 0.2, 0, 0.03, 0, '#3f4244'],
+    [0.12, 0.1, 1.2, 0, 0.45, 0, '#3f4244'],
+  ];
+}
+
+// the workshop in world coordinates: walls of sheet metal with ribs outside, the garage door's opening and its rolled-up door, a flat roof
+// and a concrete floor
+function hallMeshes(heightAt: SkrotenMeshDeps['heightAt'], ws: Workshop) {
+  const pieces: THREE.BufferGeometry[] = [],
+    p = ws.outline;
+  let lo = Infinity;
+  for (let i = 0; i < p.length; i += 2) lo = Math.min(lo, heightAt(p[i]!, p[i + 1]!));
+  const base = lo - 0.5,
+    top = lo + HALL_H_M;
+  const wallBox = (
+    w: Workshop['doorWall'],
+    s0: number,
+    s1: number,
+    y0: number,
+    y1: number,
+    out: number,
+    thick: number,
+    c: string,
+  ) => {
+    const s = (s0 + s1) / 2;
+    pieces.push(
+      boxGeo([[s1 - s0, y1 - y0, thick, 0, (y0 + y1) / 2, 0, c]]).applyMatrix4(
+        placing(w.x0 + w.ux * s + w.nx * out, 0, w.z0 + w.uz * s + w.nz * out, -Math.atan2(w.uz, w.ux)),
+      ),
+    );
+  };
+  const { doorWall: dw, doorFrom, doorTo } = ws,
+    doorFoot = heightAt(dw.x0 + dw.ux * ((doorFrom + doorTo) / 2), dw.z0 + dw.uz * ((doorFrom + doorTo) / 2)),
+    doorTop = doorFoot + WORKSHOP_DOOR.h;
+  for (const w of ws.walls) {
+    const spans: [number, number][] =
+      w === dw
+        ? [
+            [-HALL_WALL_M / 2, doorFrom],
+            [doorTo, w.len + HALL_WALL_M / 2],
+          ]
+        : [[-HALL_WALL_M / 2, w.len + HALL_WALL_M / 2]];
+    for (const [s0, s1] of spans) wallBox(w, s0, s1, base, top, 0, HALL_WALL_M, SHEET);
+    for (let s = RIB_M / 2; s < w.len; s += RIB_M)
+      if (w !== dw || s < doorFrom - 0.1 || s > doorTo + 0.1)
+        wallBox(w, s - 0.04, s + 0.04, base, top - 0.2, HALL_WALL_M / 2 + 0.03, 0.06, SHEET_RIB);
+  }
+  wallBox(dw, doorFrom, doorTo, doorTop, top, 0, HALL_WALL_M, SHEET); // over the door
+  wallBox(dw, doorFrom - 0.15, doorFrom, doorFoot - 0.3, doorTop, 0.05, HALL_WALL_M + 0.12, '#3a3c3e'); // its frame
+  wallBox(dw, doorTo, doorTo + 0.15, doorFoot - 0.3, doorTop, 0.05, HALL_WALL_M + 0.12, '#3a3c3e');
+  wallBox(dw, doorFrom - 0.15, doorTo + 0.15, doorTop, doorTop + 0.15, 0.05, HALL_WALL_M + 0.12, '#3a3c3e');
+  wallBox(dw, doorFrom, doorTo, doorTop - 0.55, doorTop, -0.35, 0.45, '#4a4d50'); // the rolled-up door inside, under the lintel
+
+  // the roof, seen from above and from inside, and the floor following the ground
+  const roof = new THREE.Color(HALL_ROOF).convertSRGBToLinear(),
+    floor = new THREE.Color(CONCRETE).convertSRGBToLinear(),
+    pos: number[] = [],
+    nor: number[] = [],
+    cols: number[] = [];
+  const tri = (a: number[], b: number[], c: number[], ny: number, k: THREE.Color) => {
+    pos.push(...a, ...b, ...c);
+    for (let i = 0; i < 3; i++) {
+      nor.push(0, ny, 0);
+      cols.push(k.r, k.g, k.b);
+    }
+  };
+  const flat = [];
+  for (let i = 0; i < p.length; i += 2) flat.push(new THREE.Vector2(p[i]!, p[i + 1]!));
+  for (const [a, b, c] of THREE.ShapeUtils.triangulateShape(flat, [])) {
+    const A = [flat[a!]!.x, top, flat[a!]!.y],
+      B = [flat[b!]!.x, top, flat[b!]!.y],
+      C = [flat[c!]!.x, top, flat[c!]!.y];
+    tri(A, B, C, 1, roof);
+    tri(A, C, B, -1, roof);
+  }
+  const xs = flat.map(f => f.x),
+    zs = flat.map(f => f.y),
+    [x0, x1, z0, z1] = [Math.min(...xs), Math.max(...xs), Math.min(...zs), Math.max(...zs)];
+  const cell = 1.5,
+    at = (x: number, z: number) => [x, heightAt(x, z) + 0.08, z],
+    inside = (x: number, z: number) => pointInPolygon(p as number[], x, z);
+  for (let x = x0; x < x1; x += cell)
+    for (let z = z0; z < z1; z += cell) {
+      if (!inside(x + cell / 2, z + cell / 2)) continue;
+      const a = at(x, z),
+        b = at(x + cell, z),
+        c = at(x + cell, z + cell),
+        d = at(x, z + cell);
+      tri(a, d, c, 1, floor); // counter-clockwise seen from above, with x east and z south
+      tri(a, c, b, 1, floor);
+    }
+  const surfaces = new THREE.BufferGeometry();
+  surfaces.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  surfaces.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+  surfaces.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3));
+  pieces.push(surfaces);
   const m = new THREE.Mesh(bake(pieces), paintMat);
   m.castShadow = m.receiveShadow = true;
+  // a SKROTEN sign high on the wall to the road
+  const g = new THREE.Group(),
+    road = ws.walls.reduce(
+      (best, w) => (w.nz < -0.9 && w.len > (best?.len ?? 0) ? w : best),
+      null as Workshop['doorWall'] | null,
+    );
   g.add(m);
-  if (roadWall) {
+  if (road) {
     const sign = board(9, 1.6, 'SKROTEN', null),
-      at = along(roadWall, roadWall.len / 2, 0.12);
-    sign.position.set(at.x, heightAt(at.x, at.z) + HALL_WALL_M - 2, at.z);
-    sign.rotation.y = Math.atan2(roadWall.nx, roadWall.nz); // its front, +z, faces out from the wall
+      s = road.len / 2;
+    sign.position.set(road.x0 + road.ux * s + road.nx * 0.3, top - 1.6, road.z0 + road.uz * s + road.nz * 0.3);
+    sign.rotation.y = Math.atan2(road.nx, road.nz); // its front, +z, faces out from the wall
     g.add(sign);
   }
   return g;
+}
+
+// the model's meshes in one geometry each for its paint (white, for the instance colour) and the rest (its materials' colours)
+function flatten(root: THREE.Object3D) {
+  root.updateMatrixWorld(true);
+  const body = root.getObjectByName(BODY_NODE),
+    paint: THREE.BufferGeometry[] = [],
+    rest: THREE.BufferGeometry[] = [],
+    v = new THREE.Vector3(),
+    nm = new THREE.Matrix3(),
+    white = new THREE.Color(1, 1, 1);
+  const under = (n: THREE.Object3D, a: THREE.Object3D) => {
+    for (let o: THREE.Object3D | null = n; o; o = o.parent) if (o === a) return true;
+    return false;
+  };
+  root.traverse(n => {
+    if (!(n instanceof THREE.Mesh)) return;
+    const isPaint = !!body && under(n, body) && (n === body || n.name.startsWith(BODY_NODE + '_')), // as VehicleVisuals.paint picks it
+      src = n.geometry as THREE.BufferGeometry,
+      idx = src.index,
+      P = src.attributes.position!,
+      N = src.attributes.normal,
+      count = idx ? idx.count : P.count,
+      pos = new Float32Array(count * 3),
+      nor = new Float32Array(count * 3),
+      col = new Float32Array(count * 3),
+      mats = (Array.isArray(n.material) ? n.material : [n.material]) as THREE.MeshStandardMaterial[],
+      groups = src.groups.length ? src.groups : [{ start: 0, count, materialIndex: 0 }];
+    nm.getNormalMatrix(n.matrixWorld);
+    for (let i = 0; i < count; i++) {
+      const k = idx ? idx.getX(i) : i; // read through the accessors: the models' attributes are quantized
+      v.fromBufferAttribute(P, k)
+        .applyMatrix4(n.matrixWorld)
+        .toArray(pos, i * 3);
+      if (N)
+        v.fromBufferAttribute(N, k)
+          .applyMatrix3(nm)
+          .normalize()
+          .toArray(nor, i * 3);
+    }
+    for (const gr of groups) {
+      const c = isPaint ? white : (mats[gr.materialIndex ?? 0]?.color ?? white);
+      for (let i = gr.start; i < Math.min(count, gr.start + gr.count); i++) c.toArray(col, i * 3);
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    g.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+    g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    if (!N) g.computeVertexNormals();
+    (isPaint ? paint : rest).push(g);
+  });
+  return { paint: bake(paint), rest: bake(rest) };
 }
 
 // one geometry from coloured, non-indexed pieces with the same attributes

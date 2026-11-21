@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
+import { VEHICLES } from '../../../src/game/render/vehicle-registry';
 import {
   NISSE_UV,
   RING_UV,
   SKROT_HALL,
+  WORKSHOP_DOOR,
+  WRECK_MODELS,
   worldToYard,
   YARD,
   yardLayout,
@@ -10,9 +13,16 @@ import {
 } from '../../../src/game/skroten-yard';
 import { pointInPolygon, segmentDistance } from '../../../src/world/polygon';
 
-// how far (u, v) of the yard's frame is from the nearest outline you collide with; 0 inside one
-function clearance(outlines: number[][], u: number, v: number) {
-  const { x, z } = yardToWorld(u, v);
+// the hall that becomes the workshop, as data/vrigstad.json has it, among two other buildings
+const HALL = [
+  922.7, 73.4, 932.3, 73.5, 932.2, 79.0, 967.3, 79.5, 967.2, 90.2, 961.5, 90.1, 961.5, 94.4, 956.1, 94.4, 956.0, 98.7,
+  931.7, 98.4, 931.7, 92.2, 922.5, 92.1,
+];
+const FOOTPRINTS = [{ p: [0, 0, 10, 0, 10, 10, 0, 10] }, { p: HALL }, { p: [891, 134, 890, 113, 935, 112, 935, 134] }];
+const CAR_R_M = 1.5; // a car's collision radius (cars.ts)
+
+// how far the world point (x, z) is from the nearest outline you collide with; 0 inside one
+function clearanceXZ(outlines: number[][], x: number, z: number) {
   let best = 1e9;
   for (const p of outlines) {
     if (pointInPolygon(p, x, z)) return 0;
@@ -21,11 +31,30 @@ function clearance(outlines: number[][], u: number, v: number) {
   }
   return best;
 }
+const clearance = (outlines: number[][], u: number, v: number) => {
+  const { x, z } = yardToWorld(u, v);
+  return clearanceXZ(outlines, x, z);
+};
 
 describe('Skroten yard', () => {
   it('is laid out the same on every load', () => {
-    expect(yardLayout()).toEqual(yardLayout());
-    expect(yardLayout().wrecks.length).toBeGreaterThan(20);
+    expect(yardLayout(FOOTPRINTS)).toEqual(yardLayout(FOOTPRINTS));
+    expect(yardLayout(FOOTPRINTS).wrecks.length).toBeGreaterThan(20);
+  });
+
+  it("dresses its wrecks in the game's car models, and a tractor or two", () => {
+    const ids = VEHICLES.map(v => v.id as string);
+    for (const m of WRECK_MODELS) expect(ids).toContain(m);
+    const models = new Set(yardLayout(FOOTPRINTS).wrecks.map(w => w.model));
+    expect(models.size).toBeGreaterThanOrEqual(5);
+    expect(models.has('traktor')).toBe(true);
+  });
+
+  it('stacks a car only on one standing alone below it', () => {
+    const { wrecks } = yardLayout(FOOTPRINTS);
+    wrecks.forEach((w, i) => {
+      if (w.stack === 2) expect(wrecks[i - 1]!.stack).toBe(1);
+    });
   });
 
   it('turns the frame without stretching it: u runs along the road, v into the yard, both in metres', () => {
@@ -40,20 +69,57 @@ describe('Skroten yard', () => {
     expect(back.v).toBeCloseTo(30, 2);
   });
 
-  it('stops the fence short of the hall that becomes the workshop', () => {
-    expect(worldToYard(SKROT_HALL.x, SKROT_HALL.z).u).toBeGreaterThan(YARD.uMax);
-    expect(worldToYard(922, 80).u).toBeGreaterThan(YARD.uMax); // the hall's west wall
-  });
-
   it('leaves the drive from the road through the gate to the ring clear for a car', () => {
-    const { outlines } = yardLayout();
-    for (let v = -5; v <= RING_UV.v + 4; v += 0.5) expect(clearance(outlines, RING_UV.u, v)).toBeGreaterThan(1.6); // a car's collision radius is 1.5 m
-    expect(YARD.gateHalf).toBeGreaterThan(4);
+    const { outlines } = yardLayout(FOOTPRINTS);
+    for (let v = -5; v <= RING_UV.v + 4; v += 0.5)
+      expect(clearance(outlines, RING_UV.u, v)).toBeGreaterThan(CAR_R_M + 0.1);
   });
 
   it('puts Skrot-Nisse beside the ring, not on it', () => {
     const d = Math.hypot(NISSE_UV.u - RING_UV.u, NISSE_UV.v - RING_UV.v);
     expect(d).toBeGreaterThan(5.5); // the ring for a car is 3.75 m across its middle
     expect(d).toBeLessThan(9);
+  });
+
+  it('opens the yard onto the workshop, whose hall stops colliding as a block and gets walls with a door instead', () => {
+    const y = yardLayout(FOOTPRINTS);
+    expect(y.hallIndex).toBe(1);
+    expect(worldToYard(SKROT_HALL.x, SKROT_HALL.z).u).toBeGreaterThan(YARD.uMax);
+    const ws = y.workshop!;
+    expect(ws.doorTo - ws.doorFrom).toBe(WORKSHOP_DOOR.w);
+    expect(ws.doorWall.nx).toBeLessThan(-0.9); // the west wall, facing the yard
+    // no fence between the yard and the door: a car fits through it
+    const mid = (ws.doorFrom + ws.doorTo) / 2,
+      dx = ws.doorWall.x0 + ws.doorWall.ux * mid,
+      dz = ws.doorWall.z0 + ws.doorWall.uz * mid;
+    expect(clearanceXZ(y.outlines, dx, dz)).toBeGreaterThan(CAR_R_M);
+    expect(pointInPolygon(HALL, dx + 1, dz)).toBe(true);
+  });
+
+  it('keeps a clear way from the ring to the door and on in to the bay between the lift posts', () => {
+    const y = yardLayout(FOOTPRINTS),
+      ws = y.workshop!,
+      mid = (ws.doorFrom + ws.doorTo) / 2,
+      door = { x: ws.doorWall.x0 + ws.doorWall.ux * mid, z: ws.doorWall.z0 + ws.doorWall.uz * mid },
+      ring = yardToWorld(RING_UV.u, RING_UV.v),
+      // in a line from the ring to 4 m in front of the door, then straight in to the bay
+      front = { x: door.x + ws.doorWall.nx * 4, z: door.z + ws.doorWall.nz * 4 };
+    for (const [a, b] of [
+      [ring, front],
+      [front, ws.bay],
+    ] as const)
+      for (let t = 0.1; t <= 1; t += 0.05) {
+        const x = a.x + (b.x - a.x) * t,
+          z = a.z + (b.z - a.z) * t;
+        expect(clearanceXZ(y.outlines, x, z), `at ${x.toFixed(1)}, ${z.toFixed(1)}`).toBeGreaterThan(CAR_R_M);
+      }
+    expect(ws.props.filter(p => p.kind === 'post')).toHaveLength(2);
+  });
+
+  it('closes the fence at uMax without the hall', () => {
+    const y = yardLayout([]);
+    expect(y.workshop).toBeNull();
+    expect(y.hallIndex).toBe(-1);
+    expect(Math.max(...y.fence.flatMap(f => [f.u0, f.u1]))).toBe(YARD.uMax);
   });
 });
