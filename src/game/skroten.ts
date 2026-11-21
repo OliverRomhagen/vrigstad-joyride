@@ -1,17 +1,17 @@
-// Skroten buys the car you drive in (#76): drive onto its ring, press E, and Skrot-Nisse makes an offer by the car's model and damage.
+// Skroten buys the car you drive in (#76): drive onto its ring, press E, and Plåt-Pelle makes an offer by the car's model and damage.
 // Not with the police after you, and never a police car. On foot you can talk to him. main.ts passes in the menu plate, the wallet and
 // what happens to the car. No three.js or DOM here.
 import type { Car } from './cars';
 import { carPrice, earn, fmtKr, type Wallet } from './economy';
 import type { MenuItem } from './pets';
-import { NISSE_UV, yardToWorld } from './skroten-yard';
+import { OWNER_UV, yardToWorld } from './skroten-yard';
 import type { GameState } from './state';
 
-const NISSE = 'Skrot-Nisse: ';
-const NISSE_AT = yardToWorld(NISSE_UV.u, NISSE_UV.v);
+const OWNER_SAYS = 'Plåt-Pelle: ';
+const OWNER_AT = yardToWorld(OWNER_UV.u, OWNER_UV.v);
 const TALK_M = 3; // how close you stand to talk to him
 /** What he says when you talk to him on foot, one after the other. */
-export const NISSE_LINES = [
+export const OWNER_LINES = [
   '”Tjena! Har du nån bil du vill bli av mä? Kör in den på ringen.”',
   '”Ja köper allt som rullar. Å dä mesta som inte gör dä.”',
   '”Polisbilar rör ja inte. Ja ä inte dum.”',
@@ -49,21 +49,21 @@ export class Skroten {
 
   // what Skroten pays for c, or the reason it won't buy it
   private offer(c: Car): number | string {
-    if (this.g.stars) return NISSE + '”Inte mä snuten i hälarna! Kom tebaks när du ä av mä dom.”';
-    return carPrice(c.type, this.g.modelId(c), c.dmg) ?? NISSE + '”En polisbil? Ä du inte klok? Den rör ja inte.”';
+    if (this.g.stars) return OWNER_SAYS + '”Inte mä snuten i hälarna! Kom tebaks när du ä av mä dom.”';
+    return carPrice(c.type, this.g.modelId(c), c.dmg) ?? OWNER_SAYS + '”En polisbil? Ä du inte klok? Den rör ja inte.”';
   }
 
-  /** You stand on foot next to Skrot-Nisse. */
-  nearNisse() {
+  /** You stand on foot next to Plåt-Pelle. */
+  nearOwner() {
     const { game, player } = this.g;
-    return !game.inCar && Math.hypot(player.x - NISSE_AT.x, player.z - NISSE_AT.z) < TALK_M;
+    return !game.inCar && Math.hypot(player.x - OWNER_AT.x, player.z - OWNER_AT.z) < TALK_M;
   }
 
   /** E next to him: his next line, or a word about the police. */
   talk = () => {
     const { stars, toast } = this.g;
-    if (stars) toast(NISSE + '”Försvinn! Du har ju snuten efter dej!”', 3);
-    else toast(NISSE + NISSE_LINES[this.said++ % NISSE_LINES.length], 4);
+    if (stars) toast(OWNER_SAYS + '”Försvinn! Du har ju snuten efter dej!”', 3);
+    else toast(OWNER_SAYS + OWNER_LINES[this.said++ % OWNER_LINES.length], 4);
   };
 
   /** E on the ring: Skroten's offer for the car you drive, on the menu plate. */
@@ -78,7 +78,7 @@ export class Skroten {
     }
     openMenu(
       'skrot',
-      NISSE + '”Den där? Ja ger dej ' + fmtKr(kr) + ' för den.”',
+      OWNER_SAYS + '”Den där? Ja ger dej ' + fmtKr(kr) + ' för den.”',
       [
         ['sell', 'Sälj <small>' + fmtKr(kr) + '</small>'],
         ['no', 'Nä, ja behåller den'],
@@ -100,6 +100,6 @@ export class Skroten {
     }
     sellCar(c);
     earn(wallet, kr);
-    toast(NISSE + '”Affärer ä affärer. Ja frågar inte var den kommer ifrån.” +' + fmtKr(kr) + '.', 4);
+    toast(OWNER_SAYS + '”Affärer ä affärer. Ja frågar inte var den kommer ifrån.” +' + fmtKr(kr) + '.', 4);
   }
 }

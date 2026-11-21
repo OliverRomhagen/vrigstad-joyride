@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { VEHICLES } from '../../../src/game/render/vehicle-registry';
 import {
-  NISSE_UV,
+  OWNER_UV,
   RAMP_M,
   RING_UV,
   SKROT_HALL,
@@ -81,8 +81,8 @@ describe('Skroten yard', () => {
       expect(clearance(outlines, RING_UV.u, v)).toBeGreaterThan(CAR_R_M + 0.1);
   });
 
-  it('puts Skrot-Nisse beside the ring, not on it', () => {
-    const d = Math.hypot(NISSE_UV.u - RING_UV.u, NISSE_UV.v - RING_UV.v);
+  it('puts Plåt-Pelle beside the ring, not on it', () => {
+    const d = Math.hypot(OWNER_UV.u - RING_UV.u, OWNER_UV.v - RING_UV.v);
     expect(d).toBeGreaterThan(5.5); // the ring for a car is 3.75 m across its middle
     expect(d).toBeLessThan(9);
   });

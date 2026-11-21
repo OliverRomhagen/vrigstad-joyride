@@ -1,5 +1,5 @@
 // Skroten's yard in the scene (#76): gravel, a fence of mismatched sheet metal topped with barbed wire, the gate with its sign, the hut,
-// the containers, the wrecks and the scrap heaps, the arrow signs by the road, and Skrot-Nisse, who turns to watch you come.
+// the containers, the wrecks and the scrap heaps, the arrow signs by the road, and Plåt-Pelle, who turns to watch you come.
 // The layout comes from skroten-yard.ts; the static parts are baked into one mesh, so the yard costs a handful of draw calls.
 import * as THREE from 'three';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
@@ -9,7 +9,7 @@ import {
   type Carport,
   CONTAINERS,
   HUT,
-  NISSE_UV,
+  OWNER_UV,
   PROP_SIZE,
   RAMP_M,
   WORKSHOP_DOOR,
@@ -40,8 +40,8 @@ const RUST = '#8a4a2a', // the boards
   TYRE = '#1c1c1c',
   CREAM = '#e8e2d2';
 const GATE_SIGN_Y_M = 4.6;
-const NISSE_SEES_M = 30; // he turns to face you inside this distance
-const NISSE_TURN_K = 3; // how quickly he turns, per second
+const OWNER_SEES_M = 30; // he turns to face you inside this distance
+const OWNER_TURN_K = 3; // how quickly he turns, per second
 const WRECK_DETAIL_M = 150, // the wrecks wear the game's car models inside this distance of the yard's middle, on a computer
   WRECK_LOAD_M = 300; // and the models start loading when you come this close
 const WRECK_SINK_M = 0.1; // flat tyres
@@ -74,10 +74,10 @@ export interface SkrotenMeshDeps {
   coarse: boolean; // a phone: the wrecks keep their simple shapes, the models cost too many triangles
 }
 
-/** The yard and Skrot-Nisse; `update` turns him towards you. */
+/** The yard and Plåt-Pelle; `update` turns him towards you. */
 export class SkrotenMeshes {
-  private readonly nisse: Person;
-  private nisseH = 0;
+  private readonly owner: Person;
+  private ownerH = 0;
   private readonly middle = yardToWorld(0, YARD.depth / 2);
   private farWrecks: THREE.Mesh | null = null; // the detailed wrecks' simple shapes, until the models load and while you are far
   private nearWrecks: THREE.Group | null = null;
@@ -270,9 +270,9 @@ export class SkrotenMeshes {
     if (layout.workshop) scene.add(hallMeshes(heightAt, layout.workshop));
     if (layout.carport) scene.add(carportMeshes(heightAt, layout.carport));
 
-    // Skrot-Nisse: blue overalls, a red cap with a peak, and a grey beard
-    const nisse = personParts('#2f4f7f', '#2f4f7f', '#b8322a');
-    nisse.add(
+    // Plåt-Pelle: blue overalls, a red cap with a peak, and a grey beard
+    const owner = personParts('#2f4f7f', '#2f4f7f', '#b8322a');
+    owner.add(
       new THREE.Mesh(
         boxGeo([
           [0.29, 0.04, 0.16, 0, 1.74, -0.21, '#b8322a'],
@@ -281,13 +281,13 @@ export class SkrotenMeshes {
         paintMat,
       ),
     );
-    const at = yardToWorld(NISSE_UV.u, NISSE_UV.v);
-    nisse.position.set(at.x, heightAt(at.x, at.z), at.z);
-    const road = yardToWorld(NISSE_UV.u, NISSE_UV.v - 1);
-    this.nisseH = Math.atan2(road.x - at.x, at.z - road.z); // looks towards the road until you come
-    nisse.rotation.y = -this.nisseH;
-    scene.add(nisse);
-    this.nisse = nisse;
+    const at = yardToWorld(OWNER_UV.u, OWNER_UV.v);
+    owner.position.set(at.x, heightAt(at.x, at.z), at.z);
+    const road = yardToWorld(OWNER_UV.u, OWNER_UV.v - 1);
+    this.ownerH = Math.atan2(road.x - at.x, at.z - road.z); // looks towards the road until you come
+    owner.rotation.y = -this.ownerH;
+    scene.add(owner);
+    this.owner = owner;
   }
 
   // the game's car models for the wrecks standing alone: one model loaded per kind, its paint and the rest each drawn as one instanced
@@ -326,7 +326,7 @@ export class SkrotenMeshes {
     this.nearWrecks = group;
   }
 
-  /** Turns Skrot-Nisse towards you while you are near. */
+  /** Turns Plåt-Pelle towards you while you are near. */
   update(dt: number, you: { x: number; z: number }) {
     const fromMiddle = Math.hypot(you.x - this.middle.x, you.z - this.middle.z);
     if (this.loadNear && fromMiddle < WRECK_LOAD_M) {
@@ -338,14 +338,14 @@ export class SkrotenMeshes {
       this.nearWrecks.visible = near;
       this.farWrecks.visible = !near;
     }
-    const n = this.nisse,
+    const n = this.owner,
       dx = you.x - n.position.x,
       dz = you.z - n.position.z;
-    if (Math.hypot(dx, dz) > NISSE_SEES_M) return;
-    let d = Math.atan2(dx, -dz) - this.nisseH;
+    if (Math.hypot(dx, dz) > OWNER_SEES_M) return;
+    let d = Math.atan2(dx, -dz) - this.ownerH;
     d = Math.atan2(Math.sin(d), Math.cos(d));
-    this.nisseH += d * Math.min(1, dt * NISSE_TURN_K);
-    n.rotation.y = -this.nisseH;
+    this.ownerH += d * Math.min(1, dt * OWNER_TURN_K);
+    n.rotation.y = -this.ownerH;
   }
 }
 

@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { Car } from '../../../src/game/cars';
 import type { MenuItem } from '../../../src/game/pets';
-import { NISSE_LINES, Skroten, type SkrotenDeps } from '../../../src/game/skroten';
-import { NISSE_UV, yardToWorld } from '../../../src/game/skroten-yard';
+import { OWNER_LINES, Skroten, type SkrotenDeps } from '../../../src/game/skroten';
+import { OWNER_UV, yardToWorld } from '../../../src/game/skroten-yard';
 import { newGameState } from '../../../src/game/state';
 
 // You drive `car` onto Skroten's ring with `stars`; `open` holds the last menu, `choose` picks from it.
@@ -54,7 +54,7 @@ describe('Skroten', () => {
   it('offers a price for the car by its model and damage, and pays it when you sell', () => {
     const t = skroten({ model: 'volvo240', car: { dmg: 50 } });
     t.s.open();
-    expect(t.menu()!.title).toBe('Skrot-Nisse: ”Den där? Ja ger dej 450 riksdaler för den.”');
+    expect(t.menu()!.title).toBe('Plåt-Pelle: ”Den där? Ja ger dej 450 riksdaler för den.”');
     t.choose('sell');
     expect(t.wallet.kr).toBe(450);
     expect(t.calls[0]).toBe('sold volvo');
@@ -98,18 +98,18 @@ describe('Skroten', () => {
     expect(stay()).toBe(false);
   });
 
-  it('lets you talk to Skrot-Nisse on foot beside him, one line after the other', () => {
+  it('lets you talk to Plåt-Pelle on foot beside him, one line after the other', () => {
     const t = skroten(),
-      at = yardToWorld(NISSE_UV.u, NISSE_UV.v);
+      at = yardToWorld(OWNER_UV.u, OWNER_UV.v);
     Object.assign(t.g.player, { x: at.x + 2.9, z: at.z });
-    expect(t.s.nearNisse()).toBe(false); // still in the car
+    expect(t.s.nearOwner()).toBe(false); // still in the car
     t.game.inCar = false;
-    expect(t.s.nearNisse()).toBe(true);
+    expect(t.s.nearOwner()).toBe(true);
     Object.assign(t.g.player, { x: at.x + 3.1 });
-    expect(t.s.nearNisse()).toBe(false);
+    expect(t.s.nearOwner()).toBe(false);
     t.s.talk();
     t.s.talk();
-    expect(t.calls).toEqual(['toast Skrot-Nisse: ' + NISSE_LINES[0], 'toast Skrot-Nisse: ' + NISSE_LINES[1]]);
+    expect(t.calls).toEqual(['toast Plåt-Pelle: ' + OWNER_LINES[0], 'toast Plåt-Pelle: ' + OWNER_LINES[1]]);
   });
 
   it('has nothing but a warning for you with the police after you', () => {
