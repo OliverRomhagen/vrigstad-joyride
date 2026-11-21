@@ -91,6 +91,8 @@ gh release create v0.1.0 --generate-notes
 
 `--generate-notes` builds the changelog from merged PR titles, so keep those titles descriptive.
 
+The notes come in sections by the PR titles' type (`.github/release.yml`): breaking changes, features, fixes, performance, data and reverts for players first, then code structure, tests and CI, tooling and docs. The sections read labels that the PR triage workflow sets from each title, so a PR merged without them lands under "Other".
+
 Publishing a release also announces it in the Discord server: a repository webhook (Settings → Webhooks) posts `release` events to the channel's Discord webhook URL with `/github` appended. The URL is a secret, so it lives only in the webhook settings.
 
 ## Known simplifications

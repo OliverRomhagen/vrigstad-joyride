@@ -1,7 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import {
-  HEAD, HIT_MIN_MS, knockOver, L_FOOT, POINTS, pointGap, RAGDOLL_STICKS, type Ragdoll, ragdollCentre, type RagdollWorld, STEP_S,
-  standingPose, stepRagdoll,
+  HEAD,
+  HIT_MIN_MS,
+  knockOver,
+  L_FOOT,
+  POINTS,
+  pointGap,
+  RAGDOLL_STICKS,
+  type Ragdoll,
+  type RagdollWorld,
+  ragdollCentre,
+  STEP_S,
+  standingPose,
+  stepRagdoll,
 } from '../../../src/lab/ragdoll/ragdoll';
 
 // Flat ground at y = 0 and no houses, unless a test adds a wall.
@@ -72,7 +83,8 @@ describe('stepRagdoll', () => {
   });
 
   it('a faster car throws them further', () => {
-    const slow = knockOver(person, car(6), flat, 0.5) as Ragdoll, fast = knockOver(person, car(16), flat, 0.5) as Ragdoll;
+    const slow = knockOver(person, car(6), flat, 0.5) as Ragdoll,
+      fast = knockOver(person, car(16), flat, 0.5) as Ragdoll;
     run(slow, 3);
     run(fast, 3);
     expect(ragdollCentre(fast).z).toBeLessThan(ragdollCentre(slow).z - 3);
@@ -91,13 +103,21 @@ describe('stepRagdoll', () => {
     const r = knockOver(person, car(10), flat, 0.2) as Ragdoll;
     run(r, 12);
     expect(r.state).toBe('done');
-    const { x, z } = ragdollCentre(r), stand = standingPose(x, z, r.h, 0);
+    const { x, z } = ragdollCentre(r),
+      stand = standingPose(x, z, r.h, 0);
     for (let i = 0; i < POINTS * 3; i++) expect(r.p[i]).toBeCloseTo(stand[i], 5);
   });
 
   it('stops at a house wall', () => {
     // a wall along z = -4: nothing gets past it
-    const wall: RagdollWorld = { groundAt: () => 0, collide: o => { if (o.z > -4 + 0.1) return false; o.z = -4 + 0.1; return true; } };
+    const wall: RagdollWorld = {
+      groundAt: () => 0,
+      collide: o => {
+        if (o.z > -4 + 0.1) return false;
+        o.z = -4 + 0.1;
+        return true;
+      },
+    };
     const r = knockOver(person, car(18), wall, 0.5) as Ragdoll;
     for (let t = 0; t < 3; t += STEP_S) {
       stepRagdoll(r, wall);
@@ -110,7 +130,8 @@ describe('stepRagdoll', () => {
     run(r, 3);
     const before = ragdollCentre(r);
     // drive through from the south at 5 m/s: the car's circle sweeps over the body
-    for (let z = before.z + 3, t = 0; t < 1.2; t += STEP_S, z -= 5 * STEP_S) stepRagdoll(r, flat, [{ x: before.x, z, r: 1.6 }]);
+    for (let z = before.z + 3, t = 0; t < 1.2; t += STEP_S, z -= 5 * STEP_S)
+      stepRagdoll(r, flat, [{ x: before.x, z, r: 1.6 }]);
     expect(ragdollCentre(r).z).toBeLessThan(before.z - 1.5);
   });
 
@@ -122,7 +143,8 @@ describe('stepRagdoll', () => {
     let fastest = 0;
     for (let s = 0; s < 30; s++) {
       stepRagdoll(r, flat, [{ x: c.x, z: c.z + 0.3, r: 1.6 }]);
-      for (let i = 0; i < POINTS * 3; i += 3) fastest = Math.max(fastest, Math.hypot(r.p[i] - r.q[i], r.p[i + 2] - r.q[i + 2]) / STEP_S);
+      for (let i = 0; i < POINTS * 3; i += 3)
+        fastest = Math.max(fastest, Math.hypot(r.p[i] - r.q[i], r.p[i + 2] - r.q[i + 2]) / STEP_S);
     }
     expect(fastest).toBeLessThan(15);
   });
@@ -139,7 +161,8 @@ describe('stepRagdoll', () => {
   });
 
   it('is deterministic: the same hit plays out the same', () => {
-    const a = knockOver(person, car(14), flat, 0.3) as Ragdoll, b = knockOver(person, car(14), flat, 0.3) as Ragdoll;
+    const a = knockOver(person, car(14), flat, 0.3) as Ragdoll,
+      b = knockOver(person, car(14), flat, 0.3) as Ragdoll;
     run(a, 2);
     run(b, 2);
     expect(a.p).toEqual(b.p);
