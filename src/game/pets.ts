@@ -1,6 +1,7 @@
 // Your pets: P (or the Pets button) calls them, sends them home or sets them free.
 // Moved from src/game/main.ts (#177); main.ts passes in the menu and what the pets read from the rest of the game.
-import type { CatColony } from './cats';
+import type { Cat, CatColony } from './cats';
+import { type Commands, UsageError } from './commands';
 
 type Point = { x: number; z: number };
 /** A pet you own, as its menu sees it. */
@@ -17,12 +18,14 @@ export type MenuItem = [key: string, label: string];
 
 /** What the pets read from the rest of the game. The getter is read when used, so main.ts can declare it later. */
 export interface PetsDeps {
-  colony: Pick<CatColony, 'owned' | 'home' | 'rename' | 'call' | 'sendHome' | 'setFree'>;
-  button: HTMLElement; // the Pets button: shown while you own a pet
+  colony: Pick<CatColony, 'owned' | 'home' | 'rename' | 'call' | 'sendHome' | 'setFree' | 'spawnNear' | 'adopt'>;
+  button: { hidden: boolean | 'until-found' }; // the Pets button (`hidden` as the DOM types it): shown while you own a pet. main.ts hands it in until it moves into the HUD (rule 4)
   openMenu(kind: string, title: string, items: MenuItem[], pick: (k: string) => void): void;
   openRename(p: Pet): void; // the menu with a text field for the new name
   esc(t: string): string; // escapes a name for the menu's HTML
   readonly caller: Point; // where a called pet comes to: you, or the car you drive
+  readonly inCar: boolean; // the adopt command waits until you're out: a cat made by the car would land inside it
+  showHeart(cat: Cat): void; // over a newly adopted cat
 }
 
 /** The pets you own, and their menu. */
@@ -104,5 +107,30 @@ export class Pets {
 
   draw() {
     this.g.button.hidden = !this.g.colony.owned;
+  }
+
+  /** The dev console's `adopt <pet>`: a new random pet of that kind, right by you. Another kind of pet adds its entry here. */
+  registerCommands(commands: Pick<Commands, 'register'>) {
+    const adopt = new Map([['cat', () => this.adoptCat()]]);
+    commands.register('adopt', {
+      usage: '<' + [...adopt.keys()].join(' | ') + '>',
+      help: 'adopt a new random pet of that kind',
+      run: a => {
+        const f = a[0] && adopt.get(a[0].toLowerCase());
+        if (!f) throw new UsageError(a[0] ? 'No pet called ' + a[0] + '.' : '');
+        return f();
+      },
+    });
+  }
+
+  private adoptCat() {
+    const { colony, inCar, caller, showHeart } = this.g;
+    if (colony.owned) return 'You already have a cat, ' + colony.owned.name + '. Set it free first (P).';
+    if (inCar) return 'Get out of the car first.';
+    const cat = colony.spawnNear(caller); // out of the car, the caller is you
+    colony.adopt(cat);
+    showHeart(cat);
+    this.draw();
+    return 'Adopted a cat.';
   }
 }

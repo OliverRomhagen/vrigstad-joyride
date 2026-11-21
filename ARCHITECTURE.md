@@ -13,10 +13,32 @@ Vite (tools/build.mjs) ── imports it ──► index.html  (from src/index.h
                                       └─► map.html    (from src/map.html + src/map/main.ts)
 ```
 
-- Each page is one HTML file (CSS and DOM) and one big script, moved as-is into `main.ts` with `// @ts-nocheck`. Each builds to a single self-contained file (#44).
+- Each page is one HTML file (CSS and DOM) and one script. The game's, `src/game/main.ts`, creates the modules in `src/game/` and connects them (#177); the map's, `src/map/main.ts`, is still one big script, moved as-is with `// @ts-nocheck`. Each page builds to a single self-contained file (#44).
 - three.js is imported from npm (`three`, `three/addons/...`) and bundled into each page (#47). Both pages keep the colour and light maths of r128, which the look was tuned with: `ColorManagement` is off and light intensities are scaled by π (`LEGACY_LIGHT`), both in `src/world/three-legacy.ts`, which both pages import. Moving to managed colour and retuning is #150.
-- The game keeps all state in module-level variables (`cars`, `player`, `stars`, `inCar`, ...) and runs one `requestAnimationFrame` loop that mixes input, simulation, rendering and HUD updates.
-- `src/world/` (#48) holds the world's data and queries, with no three.js outside `mesh/` and `three-legacy.ts`: the data's types and class codes, the height lookup, the seeded random stream, building shapes and tree spots, which both pages use, and the roads, water and building footprints with their spatial queries (`nearestRoad`, `groundAt`, `inWater`, `collide`), which only the game uses so far. `src/world/mesh/` builds the terrain, the building shells and the game's road ribbons from them. Each page keeps its own look: its ground texture, colours, house details and tree models.
+- ISO 800 grain (`src/game/presentation/`) is an opt-in monochrome DOM layer over the whole game, HUD and menus included. `?grain=on` (or `iso800`) enables it; otherwise nothing is allocated. One seeded 256 px texture jumps between precomputed offsets: 12 times a second while the camera moves, 4 while it is still (`main.ts` passes a moving flag from `cameraMoved()` after the camera rig places the camera, with a small tolerance because the chase camera eases in). The effect has no three.js dependency or loop of its own. Reduced motion keeps it static, and `dispose()` removes it, the integration point for settings (#78).
+- The game's shared state is plain data in `src/game/state.ts` (#294): `GameState` (`started`, `inCar`, `pcar`, ...) for the game itself and `ViewState` for the camera, one object each, made in `main.ts`, which hands the modules the fields they need through their `*Deps`. What a module owns stays in that module (`cars` in the fleet, `stars` in the police); the loop's own counters are in `src/game/loop.ts`. The game runs one `requestAnimationFrame` loop there that steps input, simulation, rendering and HUD updates in turn; separating the simulation from the rendering is #49.
+- `src/world/` (#48) holds the world's data and queries, with no three.js outside `mesh/` and `three-legacy.ts`: the data's types and class codes, the height lookup, the seeded random stream, building shapes and tree spots, which both pages use, and the roads, water and building footprints with their spatial queries (`nearestRoad`, `groundAt`, `inWater`, `collide`), which only the game uses so far. `src/world/mesh/` builds the terrain, the building shells, the game's road ribbons and the streetscape (below) from them. Each page keeps its own look: its ground texture, colours, house details and tree models.
+
+### Streetscape (#187)
+
+Sidewalks, curbs, verges, junction corners, lowered curbs, crossings, parking and street trees, from OSM where OSM says and from documented rules where it doesn't.
+
+```
+data/vrigstad.json ──► streetscape-rules.ts ──► StreetSides per road (sidewalk, curb, verge, parking per side + evidence)
+   (+ streetscape-overrides.ts)                      │
+                                   streetscape.ts ◄──┘  layout: strips, corners, openings, triangles, lots, tree spots
+                                     │        │
+              mesh/sidewalk-mesh.ts ─┤        ├─ StreetscapeIndex.surfaceAt: the walkable height (the game's groundAt)
+              mesh/parking-mesh.ts  ─┘        └─ the map paints the same layout's outlines
+```
+
+- `polyline.ts` is the sampling both `RoadRibbons` and the streetscape use, so a curb starts on its ribbon's edge vertex, bit for bit.
+- `streetscape-rules.ts`, `streetscape.ts` and `polyline.ts` are pure (no three.js); the mesh builders batch one surface and one markings mesh per 250 m chunk.
+- Every feature carries its **evidence**: `mapped` (an OSM tag or object says it exists and where), `derived` (OSM says it exists; defaults fill the geometry), `inferred` (a rule guessed it: a street in the centre or a residential area). The evidence is computed at runtime, never stored in the JSON, so retuning the rules needs no data rebuild. `?debug=streetscape` tints by it, and `npm run data:report` sums it.
+- A missing OSM tag means unknown, never "no". Explicit tags beat inference; overrides (by OSM way id, empty by default) beat both, but fixing OSM is the better fix.
+- Choices hash the OSM way id (`fnv1a` in `random.ts`), never data order or the game's `rnd()`.
+
+- The sky is one dome (`src/game/render/sky.ts`): the blue gradient, the sun's glow and procedural fair-weather clouds in a single shader, so the clouds add no draw call. Each pixel meets a gently curved cloud layer about 1.8 km up and reads a deterministic, periodic noise field there (`src/world/clouds.ts`), so the clouds stay put in the world, drift with the wind by time rather than frames, and pass with parallax. The same field in TypeScript says once a frame whether the sun is behind a cloud, and the sun's intensity eases down while it is. The clouds take their colours from the dome's sun, horizon and zenith colours and their light from the shared sun direction, so whatever drives the daylight drives them too.
 
 This was the right shape for a prototype. It stops scaling once several people add features at the same time, which is happening now.
 
@@ -108,10 +130,15 @@ Metres; origin 57.3555° N, 14.4756° E; x east, z south, y up; the world spans 
 | `size`, `n` | World side in metres (2200) and elevation grid size (89 × 89, 25 m spacing) |
 | `elev` | Row-major heights in **decimetres** |
 | `b` | Buildings: `p` flat `[x, z, x, z, ...]` footprint, `h` height (guessed), `k` kind |
-| `r` | Roads: `c` class, `n` street name, `p` polyline |
+| `r` | Roads: `c` class, `n` street name, `p` polyline; optional `i` OSM way id, `j` piece number when clipping split the way, `s` service/footway use, `sf` surface, `w` width, and per side [left, right] of the way's own direction: `sw` sidewalk state, `sww` width, `ssf` surface, `pk` street parking, `po` its orientation |
 | `w` | Water polygons |
 | `ww` | Waterways: `k` kind, `p` polyline |
 | `l` | Land use: `k` class, `p` polygon |
 | `labels` | Named places: `t` text, `x`, `z`, `k` kind |
+| `pa` | Parking areas on the ground: `i` OSM id, `p` outline, `h` holes, `sf` surface, `k` kind, `cap` capacity (optional key) |
+| `ps` | Parking spaces mapped as polygons: `i`, `p` (optional key) |
+| `x` | Crossing nodes: `i`, `x`, `z`, `k` kind, `kb` kerb, `r`/`v` the road and vertex it sits on (optional key) |
+| `kb` | Kerb nodes that are not crossings: `i`, `x`, `z`, `kb` (optional key) |
+| `t` | Mapped trees, flat `[x, z, ...]`, tree rows sampled every 8 m (optional key) |
 
-Class codes are assigned in `tools/process.py`; `src/world/data.ts` types the file and names them (`RoadClass`, `LandUse`, `BuildingKind`, `WaterwayKind`). Change both together.
+Class codes are assigned in `tools/process.py`; `src/world/data.ts` types the file and names them (`RoadClass`, `LandUse`, `BuildingKind`, `WaterwayKind`, and the streetscape's `RoadUse`, `SideState`, `Surface`, `StreetParking`, `ParkingOrientation`, `ParkingKind`, `CrossingKind`, `Kerb`). Change both together. Raw OSM tags never reach the JSON: everything is reduced to these codes, and 0 always means "not mapped".

@@ -73,7 +73,7 @@ export function standAt(p: PlayerState, x: number, z: number) {
 }
 
 /** One frame on foot. `mx` / `my` is the move intent (right / forward, -1..1) relative to the camera's `yaw`; `still` while you
- *  can't move (inside a safehouse, under a big screen). `half` is half the map's width (m). */
+ *  can't move (inside a safehouse, under a title card). `half` is half the map's width (m). */
 export function walk(
   p: PlayerState,
   dt: number,

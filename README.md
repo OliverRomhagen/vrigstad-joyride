@@ -30,11 +30,13 @@ Play it at https://oliverromhagen.github.io/vrigstad-joyride/, or run `npm insta
 | Back to Torget | R | |
 | Go inside a safehouse / scratch a trisslott | E | Use button |
 
-Taking an occupied car always earns a wanted star; a parked one sometimes does. Each star (up to three) sends a police car. Stay about 170 m clear of them for 18 seconds and they give up. Get boxed in at low speed and you are *gripen* and sent back to Torget.
+Taking an occupied car always earns a wanted star; a parked one sometimes does. So does knocking someone over: hit a pedestrian at more than 15 km/h and they fly, tumble, and get back up a few seconds later. Each star (up to three) sends a police car. Stay about 170 m clear of them for 18 seconds and they give up. Get boxed in at low speed and you are *gripen* and sent back to Torget.
 
 Three houses are safehouses, shown as green houses on the minimap and marked with a green door. Go inside on foot and stay for a minute and the police give up; it only works if no police car is within 60 m when you go in, and leaving early keeps your stars.
 
-The kiosk on Torget sells trisslotter. One in a thousand wins, and the more losing tickets you scratch in a row, the worse your language gets.
+Money is in riksdaler, everyday Swedish for kronor when you want to sound a little funny. You start with 200, shown under the stars. The kiosk on Torget sells trisslotter (30 riksdaler), cat treats and food. One ticket in ten wins, from 30 riksdaler up to a rare 10 000, and the more losing tickets you scratch in a row, the worse your language gets. Getting *gripen* costs a fine: a quarter of your money, or 100 riksdaler per star if that is more. And if 1 000 riksdaler is burning a hole in your pocket, press L.
+
+For testing, `npm run dev` or `?dev` on any build's URL turns on dev mode: `§` (or `` ` ``) opens a console, where `help` lists the commands, `kr 500` adds 500 riksdaler, `mynt` adds 1 000 riksdaler and `adopt cat` gives you a new cat.
 
 ## How it is built
 
@@ -90,6 +92,8 @@ gh release create v0.1.0 --generate-notes
 ```
 
 `--generate-notes` builds the changelog from merged PR titles, so keep those titles descriptive.
+
+The notes come in sections by the PR titles' type (`.github/release.yml`): breaking changes, features, fixes, performance, data and reverts for players first, then code structure, tests and CI, tooling and docs. The sections read labels that the PR triage workflow sets from each title, so a PR merged without them lands under "Other".
 
 Publishing a release also announces it in the Discord server: a repository webhook (Settings → Webhooks) posts `release` events to the channel's Discord webhook URL with `/github` appended. The URL is a secret, so it lives only in the webhook settings.
 

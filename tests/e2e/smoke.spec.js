@@ -27,8 +27,8 @@ const keysNow = (page, events) =>
     for (const [type, code] of events) document.body.dispatchEvent(new KeyboardEvent(type, { code, bubbles: true }));
   }, events);
 
-// From Start, walks to the parked Volvo next to Torget and gets in.
-async function getInVolvo(page) {
+// From Start, walks to the parked car next to Torget (the Volvo 240, or the model `?vehicle=` picks) and gets in.
+async function getInParkedCar(page, name = 'Volvo 240') {
   // With the camera as Start leaves it, the parked Volvo is about 7 m to the player's right.
   // Release D as soon as any car is in reach, so a slow runner can't walk past it between polls.
   await page.keyboard.down('KeyD');
@@ -38,16 +38,16 @@ async function getInVolvo(page) {
   // and press E in one browser task: E acts in its keydown handler, so no frame can bring a passing car closer in between.
   await expect
     .poll(() =>
-      page.evaluate(() => {
+      page.evaluate(want => {
         if (window.__joyride.state().near !== 'parked') return null;
         const prompt = document.getElementById('prompt').textContent;
-        if (prompt === 'ESteal the Volvo 240')
+        if (prompt === want)
           for (const type of ['keydown', 'keyup'])
             document.body.dispatchEvent(new KeyboardEvent(type, { code: 'KeyE', bubbles: true }));
         return prompt;
-      }),
+      }, 'ESteal the ' + name),
     )
-    .toBe('ESteal the Volvo 240');
+    .toBe('ESteal the ' + name);
   await expect.poll(async () => (await state(page)).inCar).toBe(true);
 }
 
@@ -59,6 +59,65 @@ test.describe('game (index.html)', () => {
     await page.addInitScript(() => {
       HTMLCanvasElement.prototype.requestPointerLock = undefined;
     });
+  });
+
+  test('builds the streetscape and reports it on the hook, also in the debug view', async ({ page }, testInfo) => {
+    const errors = watchErrors(page);
+    await page.goto('/index.html?debug=streetscape');
+    await expectWebGL(page);
+    const { streetscape: s } = await state(page);
+    // every count is there; what is mapped depends on the OSM snapshot, but the centre always gets inferred pavement
+    for (const k of ['mapped', 'derived', 'inferred']) expect(s.sidewalkM[k]).toBeGreaterThanOrEqual(0);
+    expect(s.sidewalkM.inferred).toBeGreaterThan(0);
+    for (const k of ['parkingAreas', 'crossings', 'meshes', 'triangles']) expect(s[k]).toBeGreaterThanOrEqual(0);
+    expect(s.streetTrees).toEqual({ mapped: expect.any(Number), inferred: expect.any(Number) });
+    expect(s.meshes).toBeGreaterThan(0);
+    expect(s.debug).toBe(true);
+    await page.locator('#go').click();
+    await frames(page, 5);
+    await page.screenshot({ path: testInfo.outputPath('game-streetscape-debug.png') });
+    expect(errors).toEqual([]);
+  });
+
+  // The sky with each kind of query, one page load per test: each load renders in software WebGL, so three in one test
+  // ran into the timeout on CI. The sky is a full-screen shader, so the page is kept small. Cloudy skies must drift,
+  // and let through at least minSun of the sunlight.
+  for (const { query, clouds, minSun } of [
+    { query: '', clouds: { cover: 'partly', seed: 1, quality: 'high' }, minSun: 0.4 },
+    {
+      query: 'clouds=mostly&cloudSeed=3&wind=90,12&cloudQuality=low',
+      clouds: { cover: 'mostly', seed: 3, quality: 'low', windFromDeg: 90, windSpeedMps: 12 },
+      minSun: 0,
+    },
+    { query: 'clouds=off', clouds: { cover: 'off', sunFactor: 1 } },
+  ])
+    test(`draws the clouds without shader errors${query ? ' with ?' + query : ''}${minSun === undefined ? '' : ', and they drift'}`, async ({
+      page,
+    }) => {
+      const errors = watchErrors(page);
+      await page.setViewportSize({ width: 640, height: 360 });
+      await page.goto('/index.html' + (query && '?' + query));
+      await expectWebGL(page);
+      const first = (await state(page)).clouds;
+      expect(first).toMatchObject(clouds);
+      if (minSun !== undefined) {
+        await frames(page, 3);
+        const later = (await state(page)).clouds;
+        expect(later.timeS).toBeGreaterThan(first.timeS);
+        expect(later.sunFactor).toBeGreaterThan(minSun);
+        expect(later.sunFactor).toBeLessThanOrEqual(1);
+      }
+      expect(errors).toEqual([]);
+    });
+
+  test('ragdolls are on for everyone, without a lab flag', async ({ page }) => {
+    const errors = watchErrors(page);
+    await page.goto('/index.html');
+    await page.locator('#go').click();
+    expect(await state(page)).toMatchObject({ lab: [], ragdolls: 0 }); // nobody knocked over yet
+    await page.goto('/index.html?lab=ragdoll'); // no longer an experiment: the flag is ignored
+    expect((await state(page)).lab).toEqual([]);
+    expect(errors).toEqual([]);
   });
 
   test('loads with no console errors, a WebGL canvas and the default fleet, and Start shows the HUD', async ({
@@ -98,6 +157,27 @@ test.describe('game (index.html)', () => {
     expect(errors).toEqual([]);
   });
 
+  test('the wheel zooms the camera, and the browser zoom is blocked', async ({ page }) => {
+    const errors = watchErrors(page);
+    await page.goto('/index.html');
+    await page.locator('#go').click();
+    await expect(page.locator('#intro')).toBeHidden();
+    expect(await state(page)).toMatchObject({ zoom: 1 });
+
+    await page.mouse.move(320, 200);
+    await page.mouse.wheel(0, 300); // away from you: further out
+    await expect.poll(async () => (await state(page)).zoom).toBeGreaterThan(1);
+    // ctrl + wheel is also how a trackpad pinch arrives; the page must not zoom, whatever the target
+    const prevented = await page.evaluate(() =>
+      [
+        new WheelEvent('wheel', { deltaY: -50, ctrlKey: true, bubbles: true, cancelable: true }),
+        new KeyboardEvent('keydown', { code: 'Equal', ctrlKey: true, bubbles: true, cancelable: true }),
+      ].map(ev => !document.body.dispatchEvent(ev)),
+    );
+    expect(prevented).toEqual([true, true]);
+    expect(errors).toEqual([]);
+  });
+
   test('W moves the player, E next to the parked Volvo gets you in, it drives on its wheels, and a crash damages it', async ({
     page,
   }, testInfo) => {
@@ -119,11 +199,16 @@ test.describe('game (index.html)', () => {
     await page.keyboard.up('KeyW');
     await page.keyboard.press('KeyR'); // back to the spawn point at Torget
 
-    await getInVolvo(page);
+    await getInParkedCar(page);
     await expect(page.locator('#speed')).toBeVisible();
     await expect(page.locator('#carname')).toHaveText('Volvo 240');
     await expect(page.locator('#dmg')).toHaveAttribute('aria-valuenow', '0'); // the car's damage bar, empty
-    expect(await state(page)).toMatchObject({ inCar: true, car: 'volvo', stars: 0, carDmg: 0 });
+    const s = await state(page);
+    expect(s).toMatchObject({ inCar: true, car: 'volvo', carDmg: 0 });
+    // a neighbour sees a parked car taken on rnd() < 0.35, so whether this one does depends on how many rolls the world
+    // took before it: any change to world generation can flip it (AGENTS.md rule 5). A carjack would be a star for
+    // sure, but getInVolvo already made sure the car was a parked one.
+    expect(s.stars).toBeLessThanOrEqual(1);
     // Every model shares the loader, materials and controller, and the unit tests decode each GLB, so one is driven here.
     await expect
       .poll(async () => (await state(page)).activeVehicle)
@@ -168,32 +253,48 @@ test.describe('game (index.html)', () => {
     const errors = watchErrors(page);
     await page.goto('/index.html');
     await page.locator('#go').click();
-    await getInVolvo(page);
+    await getInParkedCar(page);
 
+    // The body rides along: it squats under throttle and leans out of the slide. Peaks are kept between polls.
+    let pitch = 0,
+      roll = 0;
     await page.keyboard.down('KeyW');
-    await expect.poll(async () => (await state(page)).speed, { intervals: [50], timeout: 60_000 }).toBeGreaterThan(9);
+    await expect
+      .poll(
+        async () => {
+          const q = await state(page);
+          pitch = Math.max(pitch, q.body.pitch);
+          return q.speed;
+        },
+        { intervals: [100], timeout: 60_000 },
+      )
+      .toBeGreaterThan(9);
+    expect(pitch).toBeGreaterThan(0.003); // nose up
     await page.keyboard.down('KeyD');
     await page.keyboard.down('Space');
     await expect.poll(async () => (await state(page)).drift, { intervals: [50] }).toBe(1);
-    // past the first spark colour (1 s of sliding, in game time: headless frames are slow); the slide circles on Torget, clear of walls
+    // past the first spark colour (1 s of sliding, in game time: headless frames are slow), then let go at once: the slide
+    // circles on Torget, and held longer it reaches the parked tractor, whose contact bleeds the speed and ends the drift unboosted
     await expect
       .poll(
         async () => {
           const q = await state(page);
           expect(q.drift).toBe(1);
+          roll = Math.max(roll, q.body.roll);
           return q.charge;
         },
         { intervals: [100], timeout: 60_000 },
       )
       .toBeGreaterThan(1.05);
-    await page.screenshot({ path: testInfo.outputPath('game-drift.png') });
     await page.keyboard.up('Space');
     await page.keyboard.up('KeyD');
     await page.keyboard.up('KeyW');
+    expect(roll).toBeGreaterThan(0.01); // roof out to the left of a right-hand slide
     await expect.poll(async () => (await state(page)).drift, { intervals: [20] }).toBe(0);
     const q = await state(page);
     expect(q.boost).toBeGreaterThan(0);
     expect(q.loose).toBeGreaterThan(0); // the rear stays loose for a moment after letting go instead of snapping straight
+    await page.screenshot({ path: testInfo.outputPath('game-drift.png') }); // after the checks: a screenshot takes seconds in CI, and the car drives on
     expect(errors).toEqual([]);
   });
 
@@ -203,13 +304,13 @@ test.describe('game (index.html)', () => {
     const errors = watchErrors(page);
     await page.goto('/index.html');
     await page.locator('#go').click();
-    await getInVolvo(page);
+    await getInParkedCar(page);
 
     await page.keyboard.down('KeyW');
     await expect.poll(async () => (await state(page)).speed, { intervals: [50], timeout: 60_000 }).toBeGreaterThan(9);
     expect((await state(page)).loose).toBe(0);
     await page.keyboard.down('KeyA');
-    await expect.poll(async () => (await state(page)).flickDir, { intervals: [20] }).toBe(-1); // a frame has seen the left turn (CI frames are slow)
+    await expect.poll(async () => (await state(page)).flickHeld, { intervals: [20] }).toBeGreaterThanOrEqual(0.3); // held long enough to load the car up (FLICK_LOAD_S)
     await page.keyboard.up('KeyA');
     await page.keyboard.down('KeyD');
     await expect.poll(async () => (await state(page)).loose, { intervals: [20] }).toBeGreaterThan(0);
@@ -273,7 +374,7 @@ test.describe('game (index.html)', () => {
     const errors = watchErrors(page);
     await page.goto('/index.html');
     await page.locator('#go').click();
-    await getInVolvo(page);
+    await getInParkedCar(page);
 
     // Space held for a few car frames, then E.
     await keysNow(page, [['keydown', 'Space']]);
@@ -301,12 +402,15 @@ test.describe('game (index.html)', () => {
     expect(errors).toEqual([]);
   });
 
-  test('cats are around, and the kiosk sells cat treats and food from its menu', async ({ page }, testInfo) => {
+  test('cats are around, and the kiosk sells cat treats and food from its menu, for money', async ({
+    page,
+  }, testInfo) => {
     const errors = watchErrors(page);
     await page.goto('/index.html');
     await page.locator('#go').click();
     await expect.poll(async () => (await state(page)).cats).toBeGreaterThan(0); // Torget is built-up, so cats spawn at once
-    expect(await state(page)).toMatchObject({ treats: 0 });
+    expect(await state(page)).toMatchObject({ treats: 0, kr: 200 });
+    await expect(page.locator('#kr')).toHaveText('200 riksdaler');
 
     // With the camera as Start leaves it, the kiosk lucka is about 4.6 m to the player's left.
     await page.keyboard.down('KeyA');
@@ -319,7 +423,8 @@ test.describe('game (index.html)', () => {
     await page.keyboard.press('Digit2');
     await expect(page.locator('#kmenu')).toBeHidden();
     await expect(page.locator('#treats')).toHaveText('Cat treats: 3');
-    expect(await state(page)).toMatchObject({ treats: 3 });
+    expect(await state(page)).toMatchObject({ treats: 3, kr: 195 });
+    await expect(page.locator('#kr')).toHaveText('195 riksdaler');
 
     await page.keyboard.press('KeyE');
     await expect(page.locator('#kmenu')).toBeVisible();
@@ -332,8 +437,56 @@ test.describe('game (index.html)', () => {
     await page.keyboard.press('Digit3');
     await expect(page.locator('#kmenu')).toBeHidden();
     await expect(page.locator('#toast')).toContainText('mätt');
-    expect(await state(page)).toMatchObject({ hp: 100 });
+    expect(await state(page)).toMatchObject({ hp: 100, kr: 195 }); // and it costs nothing
     expect(errors).toEqual([]);
+  });
+
+  test('with ?dev, the console opens with §, its keys never move the player, kr and mynt add money, adopt cat gives you a cat (and L makes it rain)', async ({
+    page,
+  }) => {
+    await page.goto('/index.html');
+    await page.locator('#go').click();
+    await page.keyboard.press('Backquote'); // no dev mode: no console
+    expect(await state(page)).toMatchObject({ devcon: false });
+    await page.goto('/index.html?dev');
+    await page.locator('#go').click();
+    const { x, z } = await state(page);
+    await page.keyboard.press('Backquote');
+    expect(await state(page)).toMatchObject({ devcon: true });
+    await page.keyboard.down('KeyW'); // held in the console: the player stays put
+    await page.waitForTimeout(400);
+    await page.keyboard.up('KeyW');
+    expect(await state(page)).toMatchObject({ x, z });
+    await page.locator('#devcon input').fill(''); // the held W typed a w
+    await page.locator('#devcon').click({ position: { x: 4, y: 4 } }); // focus off the input, console still open: keys still don't reach the game
+    await page.keyboard.down('KeyW');
+    await page.waitForTimeout(400);
+    await page.keyboard.up('KeyW');
+    expect(await state(page)).toMatchObject({ x, z, devcon: true });
+    await page.keyboard.type('kr 500');
+    await page.keyboard.press('Enter');
+    await expect(page.locator('#kr')).toHaveText('700 riksdaler');
+    await expect(page.locator('#devcon li').last()).toHaveText('Wallet: 700 riksdaler.');
+    await page.keyboard.type('mynt'); // the old cheat word, now a command: 1 000 kr
+    await page.keyboard.press('Enter');
+    await expect(page.locator('#kr')).toHaveText('1 700 riksdaler');
+    const run = async line => {
+      await page.keyboard.type(line);
+      await page.keyboard.press('Enter');
+      return page.locator('#devcon li').last();
+    };
+    await expect(await run('adopt dog')).toHaveText('No pet called dog. Usage: adopt <cat>');
+    await expect(await run('adopt cat')).toHaveText('Adopted a cat.');
+    expect(await state(page)).toMatchObject({ ownCat: true });
+    await expect(page.locator('#pets')).toBeVisible();
+    await expect(await run('adopt cat')).toHaveText('You already have a cat, Kisse. Set it free first (P).');
+    await page.keyboard.press('Escape');
+    expect(await state(page)).toMatchObject({ devcon: false });
+    await page.keyboard.press('KeyL'); // låt det regna: 1 000 kr in the air
+    await expect(page.locator('#kr')).toHaveText('700 riksdaler');
+    expect((await state(page)).banknotes).toBeGreaterThan(0);
+    await page.keyboard.press('KeyL'); // not enough left: nothing is taken
+    expect(await state(page)).toMatchObject({ kr: 700 });
   });
 });
 

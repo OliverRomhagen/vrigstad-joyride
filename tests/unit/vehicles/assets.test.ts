@@ -26,6 +26,7 @@ test.each(VEHICLES)('$id decodes with named body, wheel hubs and metre dimension
   expect(front.z).toBeLessThan(rear.z);
   expect(front.x).toBeLessThan(0);
   expect(Math.abs(rear.z - front.z - spec.wheelbase)).toBeLessThan(0.002);
+  expect(Math.abs(rear.z - spec.rearAxle)).toBeLessThan(0.002); // the car turns about this point while gripping
   const size = new Box3().setFromObject(scene).getSize(new Vector3());
   expect(size.x).toBeGreaterThan(1);
   expect(size.x).toBeLessThan(3);
