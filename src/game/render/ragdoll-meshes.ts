@@ -93,7 +93,7 @@ export class RagdollMeshes {
   }
 
   private sync(d: Drawn) {
-    const p = d.body.r.pos;
+    const p = d.body.shown;
     // torso: right is from the left side to the right, up from the hips to the shoulders
     at(p, R_SHOULDER, _a).add(at(p, R_HIP, _b));
     at(p, L_SHOULDER, _x).add(at(p, L_HIP, _y));

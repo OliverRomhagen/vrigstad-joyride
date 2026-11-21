@@ -81,6 +81,21 @@ describe('Ragdolls', () => {
     expect(n.z).toBeLessThan(-1); // thrown the way the car was going
   });
 
+  it('draws them between the last two physics steps, so they move on every frame of a 120 Hz screen', () => {
+    const { ragdolls, hit } = setUp();
+    hit(person());
+    const [b] = ragdolls.bodies;
+    ragdolls.update(1 / 60); // one step, nothing left over: drawn where the step started
+    expect(b.shown).toEqual(b.was);
+    const before = b.shown[0 * 3 + 2];
+    ragdolls.update(1 / 120); // no step yet: drawn half way to it
+    const half = b.shown[0 * 3 + 2];
+    expect(half).toBeCloseTo((b.was[2] + b.r.pos[2]) / 2, 9);
+    expect(half).toBeLessThan(before); // flying north, towards -z
+    ragdolls.update(1 / 120); // the next step
+    expect(b.shown[2]).toBeLessThan(half);
+  });
+
   it('forgets someone who despawns while down', () => {
     const { ragdolls, npcs, hit } = setUp();
     hit(person());

@@ -36,6 +36,11 @@ export interface RagdollDeps {
 export interface KnockedDown {
   npc: Npc;
   r: Ragdoll;
+  /** the points before the last physics step (as r.pos) */
+  was: number[];
+  /** where to draw the points this frame: between `was` and r.pos by how far the frame is into the next step, so a body
+   * moves on every frame, not only on the frames a step falls on (every other one on a 120 Hz screen) */
+  shown: number[];
 }
 
 /** The pedestrians knocked over by your car. */
@@ -65,7 +70,7 @@ export class Ragdolls {
     if (car !== pcar || !pcar || this.bodies.length >= this.max) return false;
     const r = knockOver(n, pcar, this.g.world, this.rnd(), n.scale);
     if (!r) return false;
-    this.bodies.push({ npc: n, r });
+    this.bodies.push({ npc: n, r, was: r.pos.slice(), shown: r.pos.slice() });
     if (this.starCool <= 0) {
       this.starCool = STAR_COOL_S;
       this.g.knockedDown();
@@ -91,13 +96,27 @@ export class Ragdolls {
         this.bodies.splice(i, 1); // despawned while down
         continue;
       }
-      for (let s = 0; s < steps; s++) stepRagdoll(b.r, world, pushers);
+      for (let s = 0; s < steps; s++) {
+        copyInto(b.was, b.r.pos);
+        stepRagdoll(b.r, world, pushers);
+      }
       if (b.r.state === 'done') {
         standUp(b);
         this.bodies.splice(i, 1);
+        continue;
       }
+      blend(b, this.acc / STEP_S);
     }
   }
+}
+
+function copyInto(to: number[], from: readonly number[]) {
+  for (let i = 0; i < from.length; i++) to[i] = from[i];
+}
+
+// not r.prev: the ground and the walls change that to set the speed, so it isn't always where the point was
+function blend({ r, was, shown }: KnockedDown, alpha: number) {
+  for (let i = 0; i < shown.length; i++) shown[i] = was[i] + (r.pos[i] - was[i]) * alpha;
 }
 
 // back to the crowd where they got up, running back to their path rather than snapping to it
