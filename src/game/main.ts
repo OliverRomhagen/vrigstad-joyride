@@ -1,6 +1,8 @@
 // The game page: creates the modules and connects them (#177). What each does is in its own file; the sections below
 // say where.
 import * as THREE from 'three';
+import { filmGrain } from './presentation/grain-entry';
+import { cameraMoved } from './presentation/iso800-grain';
 import { AdoptHearts } from './render/adopt-heart';
 import { DriftFx } from './render/drift-fx';
 import { type VehicleId, vehicleDefinition } from './render/vehicle-registry';
@@ -159,6 +161,10 @@ const dmgRnd = makeRnd(808);                   // own stream for the shake and t
 const cameraRig = new CameraRig({ camera, sun, skyDome, game, view, get dragging() { return input.dragging; }, get inside() { return !!places.inside; },
   groundAt, heightAt: hAt, rnd: dmgRnd, calmMotion: matchMedia('(prefers-reduced-motion: reduce)') });
 const shake = cameraRig.shake;
+// the ISO 800 grain (src/game/presentation/) runs faster while the camera moves; it compares with the camera last frame
+const grainPos = new THREE.Vector3(), grainQuat = new THREE.Quaternion();
+function placeCamera(T: { x: number; z: number }, now: number, dt: number) { cameraRig.update(T, now, dt);
+  if (filmGrain.enabled) { filmGrain.setMoving(cameraMoved(grainPos, grainQuat, camera.position, camera.quaternion)); grainPos.copy(camera.position); grainQuat.copy(camera.quaternion); } }
 
 // ---------- drift effects: sparks at the rear wheels, a flame while boosting, skid marks (src/game/render/drift-fx.ts) ----------
 const driftFx = new DriftFx({ scene, groundAt, profiles: PROFILES, turboAt: TURBO_AT }), updateDriftFx = driftFx.update.bind(driftFx);
@@ -265,7 +271,7 @@ function hurtPlayer(n: number) { if (n <= 0) return; const was = health.hp;
 const prompt = new ActionPrompt({ $, game, places, wanted, get menuOpen() { return !kmenu.hidden; }, coarse, nearPlace, nearCat, nearestCar, catFirst, carName, esc });
 
 // ---------- main loop (src/game/loop.ts) ----------
-const loop = new GameLoop({ $, renderer, scene, camera, canvas, coarse, half: HALF, game, view, player, health, input, places, wanted, cars, startCam: START_CAM, barMat, barColours: [BAR_BLUE, BAR_RED], cameraRig,
+const loop = new GameLoop({ $, renderer, scene, camera, canvas, coarse, half: HALF, game, view, player, health, input, places, wanted, cars, startCam: START_CAM, barMat, barColours: [BAR_BLUE, BAR_RED], cameraRig: { update: placeCamera },
   get toasting() { return hud.toasting; }, inWater, collide, groundAt, drive, updateTraffic, knockedOut, hurtPlayer, shake, toast, hideTitleCard: () => hud.hideTitleCard(),
   updateTrisslott: dt => trisslott.update(dt), updatePlaces: dt => placeMeshes.update(dt), updateDriftFx, updateVehicles: (T, dt) => vehicleVisuals.update(T, dt), updateSmoke, updateNpcs, updateCats,
   updateDrivers: (T, dt) => drivers.update(T, dt), updateBodies: (T, dt) => bodyMotion.update(T, dt), drawHearts, updateHud: dt => hud.update(dt), drawMini,

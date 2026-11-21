@@ -43,7 +43,8 @@ patterns = ["src/game/main.ts", "src/game/hud.ts", "src/game/input.ts", "src/gam
 
 [[boundaries.zones]]
 name = "render"
-patterns = ["src/game/render/**"]
+# presentation/: overlays drawn over the whole page (the ISO 800 grain), which own their DOM layer.
+patterns = ["src/game/render/**", "src/game/presentation/**"]
 
 # Game rules as plain data: everything else in src/game/, src/game/sim/ once #49 moves the rules there, so a new module is checked
 # from its first commit. A new page module goes in the page list above instead.
