@@ -52,6 +52,8 @@ describe('Skroten yard', () => {
     const models = new Set(yardLayout(FOOTPRINTS).wrecks.map(w => w.model));
     expect(models.size).toBeGreaterThanOrEqual(5);
     expect(models.has('traktor')).toBe(true);
+    const tractors = yardLayout(FOOTPRINTS).wrecks.filter(w => w.model === 'traktor');
+    expect(new Set(tractors.map(t => t.colour)).size).toBe(tractors.length); // no two the same colour
   });
 
   it('stacks a car only on one standing alone below it', () => {
