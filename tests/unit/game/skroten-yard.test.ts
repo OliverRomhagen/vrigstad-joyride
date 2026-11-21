@@ -2,10 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { VEHICLES } from '../../../src/game/render/vehicle-registry';
 import {
   NISSE_UV,
+  RAMP_M,
   RING_UV,
   SKROT_HALL,
   WORKSHOP_DOOR,
   WRECK_MODELS,
+  workshopFloorAt,
   worldToYard,
   YARD,
   yardLayout,
@@ -149,5 +151,31 @@ describe('Skroten yard', () => {
     expect(
       y.wrecks.filter(w => pointInPolygon(CARPORT, yardToWorld(w.u, w.v).x, yardToWorld(w.u, w.v).z)),
     ).toHaveLength(4);
+  });
+
+  it('gives the workshop an even floor clear of bumpy, rising ground, with a ramp from the door down to the yard', () => {
+    const ground = (x: number, z: number) => 0.09 * (x - 900) + 0.3 * Math.sin(x / 7) * Math.cos(z / 5), // rises east, bumpy
+      ws = yardLayout(FOOTPRINTS, ground).workshop!,
+      floor = (x: number, z: number) => workshopFloorAt(ws, x, z, ground);
+    for (let x = 923; x < 967; x += 1.3)
+      for (let z = 74; z < 98; z += 1.3) {
+        const f = floor(x, z);
+        if (f === null) continue; // outside the outline's notches
+        expect(f).toBeGreaterThanOrEqual(ground(x, z));
+        expect(f - ground(x, z)).toBeLessThan(1); // just clear of it, not a plinth
+      }
+    // even: halfway between two points, the floor is halfway between their heights
+    const a = floor(930, 85)!,
+      b = floor(950, 90)!;
+    expect(floor(940, 87.5)).toBeCloseTo((a + b) / 2, 6);
+    // the ramp: from the sill to the yard's ground over RAMP_M, nothing past it or beside the door
+    const w = ws.doorWall,
+      mid = (ws.doorFrom + ws.doorTo) / 2,
+      at = (out: number, s = mid) => [w.x0 + w.ux * s + w.nx * out, w.z0 + w.uz * s + w.nz * out] as const,
+      [ex, ez] = at(RAMP_M - 0.001);
+    expect(floor(ex, ez)).toBeCloseTo(ground(ex, ez), 2);
+    expect(floor(...at(RAMP_M + 0.5))).toBeNull();
+    expect(floor(...at(1, ws.doorFrom - 1))).toBeNull();
+    expect(floor(10, 10)).toBeNull();
   });
 });

@@ -49,7 +49,7 @@ import { Confetti } from './confetti';
 import { DevConsole } from './devconsole';
 import { newWallet, registerWalletCommands } from './economy';
 import { Skroten } from './skroten';
-import { SKROT_CARPORT, SKROT_HALL, yardLayout } from './skroten-yard';
+import { SKROT_CARPORT, SKROT_HALL, workshopFloorAt, yardLayout } from './skroten-yard';
 import { SkrotenMeshes } from './render/skroten';
 import { KIOSK, type Place, Places } from './places';
 import { CAT_SCRATCH_HP, LOW_HP, hurt, newHealth } from './health';
@@ -129,7 +129,8 @@ addTerrain(scene, heightfield, texture);
 const roads = new RoadNetwork(D, heightfield), { lines: R } = roads;
 let streetIndex: StreetscapeIndex | null = null;   // the streetscape's walkable height, built further down once the buildings and trees are known
 // what people, cats and cars stand on: the road, or the curb, pavement or parking area above it
-const groundAt = (x: number, z: number) => { const g = roads.groundAt(x, z), s = streetIndex && streetIndex.surfaceAt(x, z); return s !== null && s > g ? s : g; };
+let floorAt: (x: number, z: number) => number | null = () => null;   // Skroten's workshop floor, set once its yard is laid out further down
+const groundAt = (x: number, z: number) => { const f = floorAt(x, z); if (f !== null) return f; const g = roads.groundAt(x, z), s = streetIndex && streetIndex.surfaceAt(x, z); return s !== null && s > g ? s : g; };
 const roadRibbons = addRoadRibbons(scene, roads, heightfield, maxAnisotropy);
 
 // ---------- water ----------
@@ -138,8 +139,9 @@ const water = new Water(D, roads), inWater = water.inWater.bind(water);
 // ---------- buildings (painted in Swedish house colours) + collision grid ----------
 const buildings = new BuildingIndex(D), { footprints: bPolys } = buildings;
 const addFootprint = buildings.addFootprint.bind(buildings), collide = buildings.collide.bind(buildings);
-const yard = yardLayout(bPolys); for (const i of yard.passable) buildings.stopColliding(i);   // Skroten (src/game/skroten-yard.ts): its workshop and carport become walls you can drive between
+const yard = yardLayout(bPolys, hAt); for (const i of yard.passable) buildings.stopColliding(i);   // Skroten (src/game/skroten-yard.ts): its workshop and carport become walls you can drive between
 for (const p of yard.outlines) addFootprint(p);   // its fence, workshop walls, hut, wrecks and heaps, before any car parks
+if (yard.workshop) { const ws = yard.workshop; floorAt = (x, z) => workshopFloorAt(ws, x, z, hAt); }   // everyone stands on the workshop's even floor
 addBuildings(scene, D, heightfield, { rnd, pick, maxAnisotropy, skip: [SKROT_HALL, SKROT_CARPORT] });   // rolls rnd() for the house colours, before any tree spot
 
 // ---------- trees: spruces and birches, each with its own shade, size and lean ----------
