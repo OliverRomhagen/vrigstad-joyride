@@ -59,24 +59,25 @@ describe('shell winding', () => {
       material: new THREE.MeshBasicMaterial(),
       colours,
     }).mesh;
-    const pos = mesh.geometry.getAttribute('position');
+    const positions = mesh.geometry.getAttribute('position');
     const centre = new THREE.Vector3(5, 0, 5);
-    const a = new THREE.Vector3(),
-      b = new THREE.Vector3(),
-      c = new THREE.Vector3(),
-      normal = new THREE.Vector3();
-    const wrong: number[] = [];
-    for (let i = 0; i < pos.count; i += 3) {
-      a.fromBufferAttribute(pos, i);
-      b.fromBufferAttribute(pos, i + 1);
-      c.fromBufferAttribute(pos, i + 2);
-      THREE.Triangle.getNormal(a, b, c, normal);
-      const middle = a.add(b).add(c).divideScalar(3);
+    const corner1 = new THREE.Vector3();
+    const corner2 = new THREE.Vector3();
+    const corner3 = new THREE.Vector3();
+    const normal = new THREE.Vector3();
+    const middle = new THREE.Vector3();
+    const inwardTriangles: number[] = [];
+    for (let i = 0; i < positions.count; i += 3) {
+      corner1.fromBufferAttribute(positions, i);
+      corner2.fromBufferAttribute(positions, i + 1);
+      corner3.fromBufferAttribute(positions, i + 2);
+      THREE.Triangle.getNormal(corner1, corner2, corner3, normal);
+      middle.copy(corner1).add(corner2).add(corner3).divideScalar(3);
       // walls point away from the footprint's centre; roofs and spires point up
-      const out = Math.abs(normal.y) < 0.5 ? normal.dot(middle.sub(centre).setY(0)) : normal.y;
-      if (!(out > 0)) wrong.push(i / 3);
+      const outwardness = Math.abs(normal.y) < 0.5 ? normal.dot(middle.sub(centre).setY(0)) : normal.y;
+      if (!(outwardness > 0)) inwardTriangles.push(i / 3);
     }
-    expect(wrong).toEqual([]);
+    expect(inwardTriangles).toEqual([]);
     mesh.geometry.dispose();
   });
 });

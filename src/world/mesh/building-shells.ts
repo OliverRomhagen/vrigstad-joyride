@@ -10,47 +10,56 @@ import type { Heightfield } from '../heightfield';
 type Surface = 'wallFoot' | 'wallTop' | 'roof';
 
 /**
+ * The footprint's points counter-clockwise on a north-up map (x east, z south), the order that puts each wall's outside
+ * on the right as you walk it, so a wall drawn from one point to the next, then up, faces out.
+ */
+const counterClockwise = <T>(points: T[], winding: number) => (winding > 0 ? [...points].reverse() : points);
+
+/**
  * Emits the shell's triangles, three vertices each: walls, then the roof, then the spire. Front faces point out of the
  * building, whichever way round the footprint is listed: an inverted-hull outline needs that (#206).
  */
 function eachShellVertex(shape: BuildingShape, emit: (x: number, y: number, z: number, surface: Surface) => void) {
   const { ring, yAt, sides, outline, base, top, winding } = shape;
-  const m = ring.length;
+  const walls = counterClockwise(ring, winding);
+  const m = walls.length;
   for (let i = 0; i < m; i++) {
-    // walk each wall so that its outside is on the right
-    const a = ring[winding > 0 ? (i + 1) % m : i];
-    const d = ring[winding > 0 ? i : (i + 1) % m];
-    const ta = yAt(a);
-    const td = yAt(d);
-    emit(a.x, base, a.z, 'wallFoot');
-    emit(d.x, base, d.z, 'wallFoot');
-    emit(d.x, td, d.z, 'wallTop');
-    emit(a.x, base, a.z, 'wallFoot');
-    emit(d.x, td, d.z, 'wallTop');
-    emit(a.x, ta, a.z, 'wallTop');
+    const start = walls[i];
+    const end = walls[(i + 1) % m];
+    const startTop = yAt(start);
+    const endTop = yAt(end);
+    emit(start.x, base, start.z, 'wallFoot');
+    emit(end.x, base, end.z, 'wallFoot');
+    emit(end.x, endTop, end.z, 'wallTop');
+    emit(start.x, base, start.z, 'wallFoot');
+    emit(end.x, endTop, end.z, 'wallTop');
+    emit(start.x, startTop, start.z, 'wallTop');
   }
   for (const side of sides) {
     // triangulateShape wants { x, y } points, and drops a closing point that repeats the first
     const flat = side.map(v => new THREE.Vector2(v.x, v.z));
     // triangulateShape's faces come out facing down either way round, so take each one backwards
     for (const [i, j, k] of THREE.ShapeUtils.triangulateShape(flat, [])) {
-      for (const v of [side[k], side[j], side[i]]) emit(v.x, yAt(v), v.z, 'roof');
+      emit(side[k].x, yAt(side[k]), side[k].z, 'roof');
+      emit(side[j].x, yAt(side[j]), side[j].z, 'roof');
+      emit(side[i].x, yAt(side[i]), side[i].z, 'roof');
     }
   }
   const spire = shape.building.s;
   if (spire) {
-    const n = outline.length;
+    const rim = counterClockwise(outline, winding);
+    const n = rim.length;
     let cx = 0;
     let cz = 0;
-    for (const v of outline) {
+    for (const v of rim) {
       cx += v.x / n;
       cz += v.z / n;
     }
     for (let i = 0; i < n; i++) {
-      const a = outline[winding > 0 ? (i + 1) % n : i];
-      const d = outline[winding > 0 ? i : (i + 1) % n];
-      emit(a.x, top, a.z, 'roof');
-      emit(d.x, top, d.z, 'roof');
+      const start = rim[i];
+      const end = rim[(i + 1) % n];
+      emit(start.x, top, start.z, 'roof');
+      emit(end.x, top, end.z, 'roof');
       emit(cx, top + spire, cz, 'roof');
     }
   }
