@@ -1,14 +1,13 @@
 // The places in the scene: a ring on the ground and a spinning gem over each one, a yellow door on each safehouse, the kiosk building on Torget,
-// and Skroten's sign, with a ring wide enough for a car.
+// and Skroten's ring, wide enough for a car (its yard is render/skroten.ts).
 // Moved from src/game/main.ts (#177); main.ts passes in the scene, the height lookup and the shared box geometry and paint.
 import * as THREE from 'three';
-import { type Door, KIOSK, type Places, SKROTEN } from '../places';
+import { type Door, KIOSK, type Places } from '../places';
 
 const SAFE_COLOUR = 0x4fd27a,
   KIOSK_COLOUR = 0xf2c230,
   SKROT_COLOUR = 0xd2692f; // sRGB
 const SKROT_RING_SCALE = 3; // Skroten's ring is this much wider than the others, round a car
-const SKROT_SIGN = { dx: -6, dz: 5.5 } as const; // the sign stands this far (m) from the ring's middle, by the way in from the road
 const GEM_SPIN = 1.6; // rad/s
 const WHITE = '#e8e2d2',
   RED = '#c8372d',
@@ -40,13 +39,8 @@ export class PlaceMeshes {
     let doorI = 0;
     for (const p of g.places.list) {
       // each building goes in just before its ring and gem
-      scene.add(
-        p.kind === 'safe'
-          ? door(g.places.doors[doorI++], heightAt, boxGeo, paintMat)
-          : p.kind === 'kiosk'
-            ? kiosk(heightAt, boxGeo, paintMat, g.glass)
-            : skrotSign(heightAt, boxGeo, paintMat),
-      );
+      if (p.kind === 'safe') scene.add(door(g.places.doors[doorI++], heightAt, boxGeo, paintMat));
+      else if (p.kind === 'kiosk') scene.add(kiosk(heightAt, boxGeo, paintMat, g.glass));
       const mat = new THREE.MeshBasicMaterial({
         color: g.col(p.kind === 'safe' ? SAFE_COLOUR : p.kind === 'kiosk' ? KIOSK_COLOUR : SKROT_COLOUR),
         transparent: true,
@@ -106,41 +100,4 @@ function kiosk(
   m.position.set(x, heightAt(x, z), z);
   m.castShadow = true;
   return m;
-}
-
-// two posts and a rusty board that says SKROTEN, facing the road to the north
-function skrotSign(heightAt: PlaceMeshDeps['heightAt'], boxGeo: PlaceMeshDeps['boxGeo'], paintMat: THREE.Material) {
-  const x = SKROTEN.x + SKROT_SIGN.dx,
-    z = SKROTEN.z + SKROT_SIGN.dz,
-    g = new THREE.Group();
-  const posts = new THREE.Mesh(
-    boxGeo([
-      [0.14, 2.6, 0.14, -1.5, 1.3, 0, '#5b4a3a'],
-      [0.14, 2.6, 0.14, 1.5, 1.3, 0, '#5b4a3a'],
-    ]),
-    paintMat,
-  );
-  const cv = document.createElement('canvas');
-  cv.width = 256;
-  cv.height = 64;
-  const c = cv.getContext('2d')!;
-  c.fillStyle = '#8a4a2a';
-  c.fillRect(0, 0, 256, 64);
-  c.strokeStyle = '#e8e2d2';
-  c.lineWidth = 4;
-  c.strokeRect(5, 5, 246, 54);
-  c.fillStyle = '#e8e2d2';
-  c.font = 'bold 38px sans-serif';
-  c.textAlign = 'center';
-  c.textBaseline = 'middle';
-  c.fillText('SKROTEN', 128, 34);
-  const tex = new THREE.CanvasTexture(cv);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  const board = new THREE.Mesh(new THREE.BoxGeometry(3.4, 0.85, 0.08), new THREE.MeshLambertMaterial({ map: tex }));
-  board.position.set(0, 2.2, 0);
-  posts.castShadow = board.castShadow = true;
-  g.add(posts, board);
-  g.position.set(x, heightAt(x, z), z);
-  g.rotation.y = Math.PI; // the board's front faces -z, north, towards Stockarydsvägen
-  return g;
 }
