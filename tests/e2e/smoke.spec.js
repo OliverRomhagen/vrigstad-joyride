@@ -138,6 +138,27 @@ test.describe('game (index.html)', () => {
     expect(errors).toEqual([]);
   });
 
+  test('the wheel zooms the camera, and the browser zoom is blocked', async ({ page }) => {
+    const errors = watchErrors(page);
+    await page.goto('/index.html');
+    await page.locator('#go').click();
+    await expect(page.locator('#intro')).toBeHidden();
+    expect(await state(page)).toMatchObject({ zoom: 1 });
+
+    await page.mouse.move(320, 200);
+    await page.mouse.wheel(0, 300); // away from you: further out
+    await expect.poll(async () => (await state(page)).zoom).toBeGreaterThan(1);
+    // ctrl + wheel is also how a trackpad pinch arrives; the page must not zoom, whatever the target
+    const prevented = await page.evaluate(() =>
+      [
+        new WheelEvent('wheel', { deltaY: -50, ctrlKey: true, bubbles: true, cancelable: true }),
+        new KeyboardEvent('keydown', { code: 'Equal', ctrlKey: true, bubbles: true, cancelable: true }),
+      ].map(ev => !document.body.dispatchEvent(ev)),
+    );
+    expect(prevented).toEqual([true, true]);
+    expect(errors).toEqual([]);
+  });
+
   test('W moves the player, E next to the parked Volvo gets you in, it drives on its wheels, and a crash damages it', async ({
     page,
   }, testInfo) => {

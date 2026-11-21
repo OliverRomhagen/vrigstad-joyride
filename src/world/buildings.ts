@@ -66,7 +66,7 @@ export interface BuildingShape extends RoofParts {
   top: number;
   /** footprint area (m²) */
   area: number;
-  /** +1 or -1 with the outline's winding, to find the outside of each wall */
+  /** +1 when the outline runs clockwise on a north-up map (x east, z south), -1 when counter-clockwise */
   winding: number;
 }
 
@@ -113,6 +113,9 @@ export interface Footprint extends Bounds {
 
 /** side of a collision cell (m) */
 export const BUILDING_CELL_M = 40;
+/** footprints in this range (m²) count as homes and shops: the game gives them lawns and house details */
+export const HOUSE_MIN_M2 = 40,
+  HOUSE_MAX_M2 = 1500;
 
 /** Building footprints, a grid over them, and collision against them. */
 export class BuildingIndex {

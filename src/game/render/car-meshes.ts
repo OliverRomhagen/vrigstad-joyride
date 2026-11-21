@@ -26,7 +26,7 @@ export interface CarMeshesDeps {
   carGeo: (type: CarType, color: string) => THREE.BufferGeometry; // the procedural body, cached by type and colour
   carMat: THREE.Material;
   blob: (parent: THREE.Object3D, w: number, l: number) => THREE.Mesh; // the soft shadow under it
-  barGeo: THREE.BufferGeometry; // the police light bar; main.ts blinks barMat
+  barGeo: THREE.BufferGeometry; // the police light bar; loop.ts blinks barMat
   barMat: THREE.Material;
   vehicleVisuals: VehicleVisuals;
   bodyMotion: BodyMotion;

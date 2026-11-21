@@ -12,6 +12,9 @@
     "src/game/main.ts",
     "src/game/hud.ts",
     "src/game/input.ts",
-    "src/game/menu.ts"
+    "src/game/menu.ts",
+    "src/game/loop.ts",
+    "src/game/prompt.ts",
+    "src/game/test-hook.ts"
   ]
 }

@@ -25,6 +25,6 @@ describe('newGameState', () => {
 
 describe('newViewState', () => {
   it('looks the way it is told, straight ahead, with the look-back timer already run out', () => {
-    expect(newViewState(0.6, 0.34)).toEqual({ camYaw: 0.6, camPitch: 0.34, lookOff: 0, lookIdle: 9 });
+    expect(newViewState(0.6, 0.34)).toEqual({ camYaw: 0.6, camPitch: 0.34, lookOff: 0, lookIdle: 9, zoom: 1 });
   });
 });

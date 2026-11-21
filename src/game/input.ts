@@ -21,6 +21,15 @@ const KEYMAP: Record<string, Key> = {
 const LOCK_K = 0.4; // a locked mouse turns this much less per pixel than a drag: it travels much further
 const LOCK_MAX_PX = 120; // per event; some browsers report a huge movementX right after locking, which would spin the camera
 const JOY_RADIUS_PX = 44; // the joystick knob's travel; full deflection there
+// camera zoom (#208): the wheel, a trackpad pinch (ctrl + wheel) and a two-finger pinch zoom the camera, not the page
+const WHEEL_ZOOM_K = 0.0015,
+  PINCH_WHEEL_ZOOM_K = 0.01; // zoom per pixel of wheel delta: a trackpad pinch sends small deltas
+const PINCH_MAX_PX = 40; // a ctrl + wheel event above this is a mouse wheel turned with ctrl held (a notch is ~100 px), not a pinch
+const WHEEL_LINE_PX = 16; // a wheel that reports lines instead of pixels (deltaMode 1)
+// ctrl/⌘ with these zooms the page. The typed character covers every layout (on a Nordic or German one, `-` is on `Slash`),
+// the physical keys cover the numpad and shifted `+`. Ctrl/⌘ + 0 stays free: it resets a page zoom the browser remembers.
+const PAGE_ZOOM_CHARS = /^[-+=]$/,
+  PAGE_ZOOM_KEYS = /^(Equal|Minus|NumpadAdd|NumpadSubtract)$/;
 
 export type Key = 'up' | 'down' | 'left' | 'right' | 'brake' | 'run';
 /** The touch joystick: x right, y up, each -1..1; `on` while a finger holds it. */
@@ -51,6 +60,7 @@ export interface InputDeps {
   respawn(): void; // R
   jump(): void; // a fresh Space / touch Brake press; main.ts decides whether a jump can start
   look(dx: number, dy: number): void; // turns the camera by this many pixels: a drag's own, or a locked mouse's scaled by LOCK_K
+  zoom(factor: number): void; // multiplies the camera distance: above 1 is further out
   lockLost(): void; // the pointer lock ended while playing with no menu open
 }
 
@@ -62,6 +72,8 @@ export class Input {
   private lx = 0;
   private ly = 0;
   private joyId: number | null = null;
+  private readonly pinch = new Map<number, { x: number; y: number }>(); // touches on the game, by pointer id
+  private pinchD = 0; // the two touches' last distance apart (px); 0 until two are down
   private readonly g: InputDeps;
 
   constructor(g: InputDeps) {
@@ -121,6 +133,66 @@ export class Input {
     };
     canvas.addEventListener('pointerup', endDrag);
     canvas.addEventListener('pointercancel', endDrag);
+    // The browser's own zoom scales and crops the whole page, so it is blocked: ctrl/⌘ + wheel, ctrl/⌘ + − = 0 and Safari's
+    // gesture events. The viewport meta and touch-action in index.html stop pinch and double-tap on phones.
+    win.addEventListener(
+      'wheel',
+      ev => {
+        if ((ev as WheelEvent).ctrlKey) ev.preventDefault();
+      },
+      { passive: false },
+    );
+    // only on the game: elsewhere, e.g. the intro, the wheel scrolls
+    canvas.addEventListener(
+      'wheel',
+      e => {
+        e.preventDefault();
+        const px = e.deltaY * (e.deltaMode ? WHEEL_LINE_PX : 1);
+        const isPinch = e.ctrlKey && !e.deltaMode && Math.abs(px) < PINCH_MAX_PX;
+        this.g.zoom(Math.exp(px * (isPinch ? PINCH_WHEEL_ZOOM_K : WHEEL_ZOOM_K)));
+      },
+      { passive: false },
+    );
+    win.addEventListener('keydown', ev => {
+      const e = ev as KeyboardEvent;
+      if ((e.ctrlKey || e.metaKey) && (PAGE_ZOOM_CHARS.test(e.key) || PAGE_ZOOM_KEYS.test(e.code))) e.preventDefault();
+    });
+    for (const t of ['gesturestart', 'gesturechange', 'gestureend']) doc.addEventListener(t, e => e.preventDefault());
+    // Two fingers on the game pinch instead of turning the camera; the joystick and buttons are other elements, so they
+    // don't count. Registered after the drag's pointerdown, so a second (or third) finger ends the drag it started; when only
+    // one finger is left, it turns the camera again.
+    const { pinch } = this;
+    const spread = () => {
+      const [a, b] = pinch.values();
+      return Math.hypot(a.x - b.x, a.y - b.y);
+    };
+    canvas.addEventListener('pointerdown', e => {
+      if (e.pointerType !== 'touch') return;
+      pinch.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (pinch.size >= 2) this.dragId = null;
+      if (pinch.size === 2) this.pinchD = spread();
+    });
+    canvas.addEventListener('pointermove', e => {
+      const p = pinch.get(e.pointerId);
+      if (!p) return;
+      p.x = e.clientX;
+      p.y = e.clientY;
+      if (pinch.size !== 2) return;
+      const d = spread();
+      if (this.pinchD > 0 && d > 0) this.g.zoom(this.pinchD / d);
+      this.pinchD = d;
+    });
+    const endPinch = (e: PointerEvent) => {
+      if (!pinch.delete(e.pointerId)) return;
+      this.pinchD = 0;
+      if (pinch.size !== 1) return;
+      const [[id, p]] = pinch;
+      this.dragId = id;
+      this.lx = p.x;
+      this.ly = p.y;
+    };
+    canvas.addEventListener('pointerup', endPinch);
+    canvas.addEventListener('pointercancel', endPinch);
     const joyEl = $('joy'),
       knob = $('knob');
     const joyMove = (e: PointerEvent) => {

@@ -10,7 +10,7 @@ const WHITE = '#e8e2d2',
   RED = '#c8372d',
   YELLOW = '#f2c230';
 
-/** One box of a model: size, position and colour, as main.ts's `boxGeo` takes it. */
+/** One box of a model: size, position and colour, as `boxGeo` in models.ts takes it. */
 type BoxPart = [sx: number, sy: number, sz: number, x: number, y: number, z: number, colour: string];
 
 /** What the places' meshes read from the rest of the game. */
