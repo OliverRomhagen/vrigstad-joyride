@@ -2,7 +2,7 @@
 // Moved from src/game/main.ts (#177); main.ts passes in what the HUD reads from the rest of the game.
 import type { Label } from '../world/data';
 import type { RoadNetwork } from '../world/roads';
-import { fmtKr } from './economy';
+import { fmtKr, TRISS_KR } from './economy';
 import { LOW_HP } from './health';
 import { MAX_STARS } from './police';
 
@@ -97,6 +97,17 @@ export class Hud {
     if (this.g.kr === this.shownKr) return;
     this.shownKr = this.g.kr;
     this.g.$('kr').textContent = fmtKr(this.g.kr);
+  }
+
+  /** The trisslott plate: tickets bought and won, and the money in and out. */
+  drawTrisslott(bought: number, won: number, wonKr: number) {
+    const el = this.g.$('triss');
+    el.hidden = false;
+    el.replaceChildren(
+      'Trisslotter: ' + bought + ' · Vinster: ' + won,
+      document.createElement('br'),
+      'Insatt: ' + fmtKr(bought * TRISS_KR) + ' · Vunnit: ' + fmtKr(wonKr),
+    );
   }
 
   /** The big screen (Gripen!, Däckad!); it replaces any line from the same moment. The caller times it. */

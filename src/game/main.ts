@@ -39,9 +39,9 @@ import { esc, MenuPlate } from './menu';
 import { KioskCatMenus } from './kiosk-cat-menus';
 import { Pets } from './pets';
 import { Commands, parseKr, UsageError } from './commands';
-import { Confetti, confettiCount } from './confetti';
+import { Confetti } from './confetti';
 import { DevConsole, isConsoleKey } from './devconsole';
-import { brokeLine, earn, fmtKr, newWallet, pay, RAIN_KR, TRISS_KR } from './economy';
+import { earn, fmtKr, newWallet, pay, RAIN_KR } from './economy';
 import { KIOSK, type Place, Places } from './places';
 import { CAT_SCRATCH_HP, LOW_HP, hurt, newHealth } from './health';
 import { HOME } from './player';
@@ -53,7 +53,7 @@ import { buildStage, setUpRenderer } from './render/stage';
 import { addBuildings, addRoadRibbons, addStreetscapeMeshes, addTerrain, addTrees } from './render/world-meshes';
 import { type CarType, specFor } from './sim/vehicle-spec';
 import { newGameState, newViewState } from './state';
-import { BIG_WIN_KR, Trisslott } from './trisslott';
+import { Trisslott, trisslottSeed } from './trisslott';
 
 (function () {
 'use strict';
@@ -243,16 +243,13 @@ function makeItRain() {
   toast(pickLine(RAIN_LINES), 2.5); if (seen) loop.sayLater(pickLine(GAWK_LINES));
 }
 
-// trisslott (src/game/trisslott.ts): the vinstplan is in economy.ts; a win fires confetti, more for a bigger one, and a big one rains banknotes too
-const confetti = new Confetti($('confetti') as HTMLCanvasElement, cashRnd);
-// own stream for the scratch, from a new seed each page load so the tickets differ between sessions; ?seed=n pins it, for tests and replays
-const seedParam = new URLSearchParams(location.search).get('seed');
-const TRISS_SEED = seedParam !== null ? Number(seedParam) : crypto.getRandomValues(new Uint32Array(1))[0];
-const trissRnd = makeRnd(TRISS_SEED);
-const trisslott = new Trisslott({ random: trissRnd, pick, now: () => performance.now() / 1000, toast,
-  buy: () => { if (!pay(wallet, TRISS_KR)) { toast(brokeLine(TRISS_KR), 3); return false; } return true; },
-  win: kr => { earn(wallet, kr); if (calmMotion.matches) return; confetti.burst(confettiCount(kr)); if (kr >= BIG_WIN_KR) banknotes.drop(player); },   // no win effects with reduced motion
-  draw: (bought, won, wonKr) => { const el = $('triss'); el.hidden = false; el.innerHTML = 'Trisslotter: ' + bought + ' · Vinster: ' + won + '<br>Insatt: ' + fmtKr(bought * TRISS_KR) + ' · Vunnit: ' + fmtKr(wonKr); } });   // numbers only, so innerHTML is safe
+// trisslott (src/game/trisslott.ts): the vinstplan is in economy.ts; a win fires confetti (src/game/confetti.ts), and a big one rains banknotes too
+const confetti = new Confetti($('confetti') as HTMLCanvasElement, cashRnd, calmMotion);
+// the tickets' own stream, so scratching doesn't shift the world's rolls; ?seed=n pins it
+const trissRnd = makeRnd(trisslottSeed(new URLSearchParams(location.search), () => crypto.getRandomValues(new Uint32Array(1))[0]));
+const trisslott = new Trisslott({ random: trissRnd, pick, now: () => performance.now() / 1000, toast, wallet,
+  celebrate: kr => confetti.celebrate(kr), rainNotes: () => { if (!calmMotion.matches) banknotes.drop(player); },
+  draw: (bought, won, wonKr) => hud.drawTrisslott(bought, won, wonKr) });
 // ?at=x,z[,yaw[,pitch]] starts the player there, looking that way: for review screenshots, such as the streetscape's (#187)
 (function () { const at = (new URLSearchParams(location.search).get('at') || '').split(',').map(Number);
   if (at.length < 2 || !at.every(Number.isFinite)) return; player.x = at[0]; player.z = at[1]; if (at.length > 2) view.camYaw = START_CAM[0] = at[2]; if (at.length > 3) START_CAM[1] = clamp(at[3], 0.06, 1.25); })();

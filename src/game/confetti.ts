@@ -30,12 +30,18 @@ export class Confetti {
   constructor(
     private readonly canvas: HTMLCanvasElement,
     private readonly rnd: () => number,
+    private readonly calmMotion: Pick<MediaQueryList, 'matches'>, // none at all with reduced motion
   ) {
     this.ctx = canvas.getContext('2d') as CanvasRenderingContext2D;
   }
 
   get live() {
     return this.pieces.length;
+  }
+
+  /** Confetti for a win of kr, more for a bigger one; nothing with reduced motion. */
+  celebrate(kr: number) {
+    if (!this.calmMotion.matches) this.burst(confettiCount(kr));
   }
 
   /** Fires n pieces, half from each bottom corner, up and in towards the middle. */

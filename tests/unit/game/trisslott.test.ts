@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { pay, TRISS_KR, TRISS_PLAN, TRISS_TICKETS } from '../../../src/game/economy';
-import { BIG_WIN_KR, TEMPER_LINES, Trisslott, temper } from '../../../src/game/trisslott';
+import { brokeLine, TRISS_KR, TRISS_PLAN, TRISS_TICKETS } from '../../../src/game/economy';
+import { BIG_WIN_KR, TEMPER_LINES, Trisslott, temper, trisslottSeed } from '../../../src/game/trisslott';
 import { makeRnd } from '../../../src/world/random';
 
 // Every ticket loses unless `roll` is set (0 wins the smallest prize, see trissPrize); the clock is moved by hand.
@@ -10,14 +10,16 @@ function lotto(roll = 0.5, kr = 1000) {
     wallet = { kr };
   const toasts: string[] = [],
     drawn: [number, number, number][] = [],
-    wins: number[] = [];
+    wins: number[] = [],
+    rains = { n: 0 };
   const t = new Trisslott({
     random: () => roll,
     pick: a => a[Math.floor(rnd() * a.length)],
     now: () => clock.t,
     toast: m => toasts.push(m),
-    buy: () => pay(wallet, TRISS_KR),
-    win: n => wins.push(n),
+    wallet,
+    celebrate: n => wins.push(n),
+    rainNotes: () => rains.n++,
     draw: (b, w, k) => drawn.push([b, w, k]),
   });
   // buys a ticket and scratches it to the end
@@ -26,7 +28,7 @@ function lotto(roll = 0.5, kr = 1000) {
     t.update(1);
     return toasts.at(-1)?.slice(1, -1) ?? '';
   };
-  return { t, clock, wallet, toasts, drawn, wins, play };
+  return { t, clock, wallet, toasts, drawn, wins, rains, play };
 }
 
 describe('trisslott', () => {
@@ -61,26 +63,46 @@ describe('trisslott', () => {
   });
 
   it('pays out a win and counts it', () => {
-    const { toasts, drawn, wins, play } = lotto(0);
+    const { wallet, toasts, drawn, wins, rains, play } = lotto(0);
     play();
     expect(wins).toEqual([30]);
+    expect(wallet.kr).toBe(1000 - TRISS_KR + 30);
+    expect(rains.n).toBe(0);
     expect(drawn).toEqual([[1, 1, 30]]);
     expect(toasts.at(-1)).toMatch(/^”Vinst! 30 riksdaler/);
   });
 
   it('gives a big win the big toast', () => {
     const before = TRISS_PLAN.slice(0, -1).reduce((n, [, c]) => n + c, 0); // tickets ahead of the top prize in the vinstplan
-    const { toasts, wins, play } = lotto(before / TRISS_TICKETS);
+    const { toasts, wins, rains, play } = lotto(before / TRISS_TICKETS);
     play();
     expect(wins).toEqual([BIG_WIN_KR]);
+    expect(rains.n).toBe(1);
     expect(toasts.at(-1)).toMatch(/^”VINST!.*You won 10\u00a0000 riksdaler/);
   });
 
-  it('scratches nothing without the money for a ticket', () => {
+  it('scratches nothing without the money for a ticket, and says so', () => {
     const { t, wallet, toasts } = lotto(0.5, TRISS_KR - 1);
     t.scratch();
     expect(t.scratching).toBe(0);
-    expect(toasts).toEqual([]);
+    expect(toasts).toEqual([brokeLine(TRISS_KR)]);
     expect(wallet.kr).toBe(TRISS_KR - 1);
+  });
+});
+
+describe('trisslott seed', () => {
+  const fresh = () => 99;
+  const seed = (search: string) => trisslottSeed(new URLSearchParams(search), fresh);
+
+  it('takes ?seed=n, 0 included', () => {
+    expect(seed('?seed=7')).toBe(7);
+    expect(seed('?seed=0')).toBe(0);
+  });
+
+  it('draws a fresh one without a whole-number seed', () => {
+    expect(seed('')).toBe(99);
+    expect(seed('?seed=')).toBe(99);
+    expect(seed('?seed=abc')).toBe(99);
+    expect(seed('?seed=1.5')).toBe(99);
   });
 });
