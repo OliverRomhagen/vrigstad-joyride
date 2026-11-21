@@ -4,7 +4,6 @@
 import * as THREE from 'three';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { pointInPolygon } from '../../world/polygon';
 import { makeRnd } from '../../world/random';
 import {
   type Carport,
@@ -12,11 +11,13 @@ import {
   HUT,
   NISSE_UV,
   PROP_SIZE,
+  RAMP_M,
   WORKSHOP_DOOR,
   type Workshop,
   type WorkshopProp,
   type Wreck,
   type WreckModel,
+  workshopFloorAt,
   YARD,
   YARD_GATE,
   YARD_TURN,
@@ -47,7 +48,8 @@ const WRECK_SINK_M = 0.1; // flat tyres
 const CONTAINER_H_M = 2.6;
 // the workshop as it stands: one storey of pale brick with a dark blue clad wing, a brown band under the eaves, and a cream gabled hall
 // with a rusty roof rising behind
-const HALL_H_M = 4.5, // the walls, from the lowest ground under them
+const HALL_H_M = 6, // the walls, from the floor at the door
+  HALL_MIN_H_M = 3.8, // and at least this over the floor where it is highest
   HALL_WALL_M = 0.25,
   GABLE_RISE_M = 2.6, // the gabled hall's ridge over the walls' top
   CLAD_RIB_M = 0.5,
@@ -228,9 +230,14 @@ export class SkrotenMeshes {
       put(boxGeo([[0.3, GATE_SIGN_Y_M + 0.7, 0.3, 0, (GATE_SIGN_Y_M + 0.7) / 2, 0, POST]]), u, groundY(u, 0), 0);
     for (const s of layout.signs) put(boxGeo([[0.1, 2.6, 0.1, 0, 1.3, 0, '#9a9a92']]), s.u, groundY(s.u, s.v), s.v);
 
-    // inside the workshop: the bench, shelves, the tyre rack and the lift's posts
-    for (const pr of layout.workshop?.props ?? [])
-      put(boxGeo(propParts(pr)), pr.u, groundY(pr.u, pr.v) + 0.08, pr.v, pr.turn);
+    // inside the workshop, on its floor: the bench, shelves, the tyre rack and the lift's posts
+    const floorY = (u: number, v: number) => {
+      const q = yardToWorld(u, v);
+      return layout.workshop
+        ? (workshopFloorAt(layout.workshop, q.x, q.z, heightAt) ?? heightAt(q.x, q.z))
+        : heightAt(q.x, q.z);
+    };
+    for (const pr of layout.workshop?.props ?? []) put(boxGeo(propParts(pr)), pr.u, floorY(pr.u, pr.v), pr.v, pr.turn);
 
     const yard = new THREE.Group();
     yard.position.set(YARD_GATE.x, 0, YARD_GATE.z);
@@ -481,17 +488,20 @@ const lowestUnder = (p: readonly number[], heightAt: SkrotenMeshDeps['heightAt']
 function hallMeshes(heightAt: SkrotenMeshDeps['heightAt'], ws: Workshop) {
   const pieces: THREE.BufferGeometry[] = [],
     p = ws.outline,
+    floorAt = (x: number, z: number) => ws.floor.a + ws.floor.bx * x + ws.floor.cz * z,
     lo = lowestUnder(p, heightAt),
     base = lo - 0.5,
-    top = lo + HALL_H_M,
     xs = p.filter((_, i) => i % 2 === 0),
     zs = p.filter((_, i) => i % 2 === 1),
     [x0, x1, z0, z1] = [Math.min(...xs), Math.max(...xs), Math.min(...zs), Math.max(...zs)],
     wingX = x0 + (x1 - x0) * 0.25; // walls west of this are the clad wing
   const { doorWall: dw, doorFrom, doorTo } = ws,
     doorMid = (doorFrom + doorTo) / 2,
-    doorFoot = heightAt(dw.x0 + dw.ux * doorMid, dw.z0 + dw.uz * doorMid),
+    doorFoot = floorAt(dw.x0 + dw.ux * doorMid, dw.z0 + dw.uz * doorMid),
     doorTop = doorFoot + WORKSHOP_DOOR.h;
+  let highest = -Infinity;
+  for (let i = 0; i < p.length; i += 2) highest = Math.max(highest, floorAt(p[i]!, p[i + 1]!));
+  const top = Math.max(doorFoot + HALL_H_M, highest + HALL_MIN_H_M); // the walls' level top
   for (const w of ws.walls) {
     const clad = Math.max(w.x0, w.x0 + w.ux * w.len) < wingX,
       colour = clad ? CLAD : BRICK,
@@ -513,7 +523,7 @@ function hallMeshes(heightAt: SkrotenMeshDeps['heightAt'], ws: Workshop) {
       const n = Math.floor(w.len / WINDOW_EVERY_M);
       for (let i = 0; i < n; i++) {
         const s = (w.len * (i + 0.5)) / n,
-          y = heightAt(w.x0 + w.ux * s, w.z0 + w.uz * s);
+          y = Math.max(floorAt(w.x0 + w.ux * s, w.z0 + w.uz * s), heightAt(w.x0 + w.ux * s, w.z0 + w.uz * s));
         if (w === dw && s > doorFrom - 1.2 && s < doorTo + 1.2) continue;
         if (w.nz < -0.7 && i % 4 === 2) {
           pieces.push(wallBox(w, s - 0.55, s + 0.55, y, y + 2.15, HALL_WALL_M / 2, 0.06, '#f1efe8'));
@@ -533,20 +543,30 @@ function hallMeshes(heightAt: SkrotenMeshDeps['heightAt'], ws: Workshop) {
   );
   pieces.push(wallBox(dw, doorFrom, doorTo, doorTop - 0.5, doorTop, -0.35, 0.45, '#4a4d50')); // rolled up inside, under the lintel
 
-  // the flat roof, seen from above and from inside, and the floor following the ground
+  // the flat roof, seen from above and from inside, the even floor (main.ts stands everyone on it), and the ramp down from the door
   const sf = new Surfaces(),
     flat: THREE.Vector2[] = [];
   for (let i = 0; i < p.length; i += 2) flat.push(new THREE.Vector2(p[i]!, p[i + 1]!));
   for (const [a, b, c] of THREE.ShapeUtils.triangulateShape(flat, [])) {
-    const P = (k: number) => [flat[k]!.x, top, flat[k]!.y];
+    const P = (k: number) => [flat[k]!.x, top, flat[k]!.y],
+      F = (k: number) => [flat[k]!.x, floorAt(flat[k]!.x, flat[k]!.y), flat[k]!.y];
     sf.tri(P(a!), P(b!), P(c!), FLAT_ROOF, true);
+    sf.tri(F(a!), F(b!), F(c!), CONCRETE, true);
   }
-  const cell = 1.5,
-    at = (x: number, z: number) => [x, heightAt(x, z) + 0.08, z];
-  for (let x = x0; x < x1; x += cell)
-    for (let z = z0; z < z1; z += cell)
-      if (pointInPolygon(p as number[], x + cell / 2, z + cell / 2))
-        sf.quad(at(x, z), at(x, z + cell), at(x + cell, z + cell), at(x + cell, z), CONCRETE);
+  const ramp = (s: number, out: number) => {
+    const x = dw.x0 + dw.ux * s + dw.nx * out,
+      z = dw.z0 + dw.uz * s + dw.nz * out;
+    return [x, (workshopFloorAt(ws, x, z, heightAt) ?? heightAt(x, z)) + 0.02, z];
+  };
+  for (let out = 0; out < RAMP_M - 0.01; out += RAMP_M / 4)
+    sf.quad(
+      ramp(doorFrom, out),
+      ramp(doorTo, out),
+      ramp(doorTo, out + RAMP_M / 4),
+      ramp(doorFrom, out + RAMP_M / 4),
+      CONCRETE,
+      true,
+    );
   // the gabled hall on the roof: cream gable ends, rusty roof planes, its ridge along x
   const gx0 = x0 + (x1 - x0) * 0.3,
     gx1 = x1 - (x1 - x0) * 0.2,

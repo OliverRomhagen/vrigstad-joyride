@@ -105,6 +105,8 @@ export interface Workshop {
   doorFrom: number;
   doorTo: number;
   bay: { x: number; z: number; inX: number; inZ: number };
+  /** The floor: one even surface, h = a + bx·x + cz·z, fitted to the ground under the hall and lifted just clear of it. */
+  floor: { a: number; bx: number; cz: number };
   props: WorkshopProp[];
 }
 /** The props' size along their turn and across it (m), and height. */
@@ -114,6 +116,10 @@ export const PROP_SIZE = {
   rack: { w: 3.5, d: 0.7, h: 1.8 },
   post: { w: 0.35, d: 0.35, h: 3.2 },
 } as const;
+/** A ramp from the workshop's door down to the yard, this long (m). */
+export const RAMP_M = 2.5;
+const FLOOR_STEP_M = 1, // the floor is fitted to the ground sampled this far apart
+  FLOOR_CLEAR_M = 0.05; // and stands this far above its highest point
 const BAY_IN_M = 15, // the bay's middle, this far in from the door
   LIFT_HALF_M = 2.1; // the lift's posts, this far either side of the bay's middle: a car's 1.5 m collision radius passes between
 /** The carport: its outline and walls, the open front, and the posts along it (world metres). */
@@ -214,6 +220,59 @@ function wallFacing(walls: readonly Wall[], dx: number, dz: number) {
   return best;
 }
 
+// the least-squares plane through the ground under an outline, lifted so it stands clear of every sample: the workshop's floor. The
+// ground there is the coarse elevation grid, rising about 4 m across the hall; a level floor would need that much digging out.
+function fitFloor(p: readonly number[], heightAt: (x: number, z: number) => number) {
+  const pts: [number, number, number][] = [],
+    xs = p.filter((_, i) => i % 2 === 0),
+    zs = p.filter((_, i) => i % 2 === 1);
+  for (let x = Math.min(...xs); x <= Math.max(...xs); x += FLOOR_STEP_M)
+    for (let z = Math.min(...zs); z <= Math.max(...zs); z += FLOOR_STEP_M)
+      if (pointInPolygon(p as number[], x, z)) pts.push([x, z, heightAt(x, z)]);
+  for (let i = 0; i < p.length; i += 2) pts.push([p[i]!, p[i + 1]!, heightAt(p[i]!, p[i + 1]!)]);
+  const n = pts.length,
+    m = pts.reduce((s, [x, z, h]) => [s[0]! + x / n, s[1]! + z / n, s[2]! + h / n], [0, 0, 0]),
+    [mx, mz, mh] = m as [number, number, number];
+  let xx = 0,
+    zz = 0,
+    xz = 0,
+    xh = 0,
+    zh = 0;
+  for (const [x, z, h] of pts) {
+    const dx = x - mx,
+      dz = z - mz,
+      dh = h - mh;
+    xx += dx * dx;
+    zz += dz * dz;
+    xz += dx * dz;
+    xh += dx * dh;
+    zh += dz * dh;
+  }
+  const det = xx * zz - xz * xz || 1,
+    bx = (xh * zz - zh * xz) / det,
+    cz = (zh * xx - xh * xz) / det;
+  let lift = -Infinity;
+  for (const [x, z, h] of pts) lift = Math.max(lift, h - (mh + bx * (x - mx) + cz * (z - mz)));
+  return { a: mh - bx * mx - cz * mz + lift + FLOOR_CLEAR_M, bx, cz };
+}
+
+/**
+ * The height of the workshop's floor at (x, z): inside the hall, and on the ramp down from its door to the yard; null elsewhere, where the
+ * ground is the ground. Everyone stands on it, so main.ts reads it in groundAt.
+ */
+export function workshopFloorAt(ws: Workshop, x: number, z: number, heightAt: (x: number, z: number) => number) {
+  const { a, bx, cz } = ws.floor;
+  if (pointInPolygon(ws.outline as number[], x, z)) return a + bx * x + cz * z;
+  const w = ws.doorWall,
+    s = (x - w.x0) * w.ux + (z - w.z0) * w.uz, // along the door's wall
+    out = (x - w.x0) * w.nx + (z - w.z0) * w.nz; // out from it, into the yard
+  if (out < 0 || out > RAMP_M || s < ws.doorFrom || s > ws.doorTo) return null;
+  const sill = a + bx * (x - w.nx * out) + cz * (z - w.nz * out),
+    ground = heightAt(x, z),
+    t = out / RAMP_M;
+  return sill > ground ? sill + (ground - sill) * t : null;
+}
+
 const WRECK_COLOURS = [
   '#7d3a24',
   '#6b6f5a',
@@ -246,7 +305,11 @@ const TRACTORS = [
  * The whole yard, around the hall among `footprints` that SKROT_HALL picks (without it, the fence closes at uMax). The layout comes from
  * its own seed, so it is the same on every load and moves no other roll.
  */
-export function yardLayout(footprints: readonly { p: readonly number[] }[] = [], seed = 4120): YardLayout {
+export function yardLayout(
+  footprints: readonly { p: readonly number[] }[] = [],
+  heightAt: (x: number, z: number) => number = () => 0,
+  seed = 4120,
+): YardLayout {
   const rnd = makeRnd(seed),
     pick = <T>(a: readonly T[]) => a[Math.floor(rnd() * a.length)]!;
   const hallIndex = footprints.findIndex(b => pointInPolygon(b.p as number[], SKROT_HALL.x, SKROT_HALL.z)),
@@ -356,7 +419,7 @@ export function yardLayout(footprints: readonly { p: readonly number[] }[] = [],
       post(1),
     ].filter((p): p is WorkshopProp => !!p);
     for (const p of props) outlines.push(rect(p.u, p.v, PROP_SIZE[p.kind].w, PROP_SIZE[p.kind].d, p.turn));
-    workshop = { outline, walls, doorWall, doorFrom, doorTo, bay, props };
+    workshop = { outline, walls, doorWall, doorFrom, doorTo, bay, props, floor: fitFloor(outline, heightAt) };
   }
 
   // the carport: walls on three sides, posts along the open front between its bays
