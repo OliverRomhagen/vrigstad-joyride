@@ -79,9 +79,8 @@ test.describe('game (index.html)', () => {
     expect(errors).toEqual([]);
   });
 
-  test('draws the clouds in every quality and preset without shader errors, and they drift with time', async ({
-    page,
-  }) => {
+  // One page load per test: each load renders in software WebGL, so three in one test ran into the test timeout on CI.
+  test('draws the clouds without shader errors, and they drift with time', async ({ page }) => {
     const errors = watchErrors(page);
     await page.goto('/index.html');
     await expectWebGL(page);
@@ -92,14 +91,21 @@ test.describe('game (index.html)', () => {
     expect(later.timeS).toBeGreaterThan(first.timeS);
     expect(later.sunFactor).toBeGreaterThan(0.4);
     expect(later.sunFactor).toBeLessThanOrEqual(1);
-    for (const query of ['clouds=mostly&cloudSeed=3&wind=90,12&cloudQuality=low', 'clouds=off']) {
+    expect(errors).toEqual([]);
+  });
+
+  for (const [query, clouds] of [
+    ['clouds=mostly&cloudSeed=3&wind=90,12&cloudQuality=low', { cover: 'mostly', seed: 3, quality: 'low' }],
+    ['clouds=off', { cover: 'off', sunFactor: 1 }],
+  ])
+    test(`draws the clouds without shader errors with ?${query}`, async ({ page }) => {
+      const errors = watchErrors(page);
       await page.goto('/index.html?' + query);
       await expectWebGL(page);
       await frames(page, 2);
-    }
-    expect((await state(page)).clouds).toMatchObject({ cover: 'off', sunFactor: 1 });
-    expect(errors).toEqual([]);
-  });
+      expect((await state(page)).clouds).toMatchObject(clouds);
+      expect(errors).toEqual([]);
+    });
 
   test('ragdolls are on for everyone, without a lab flag', async ({ page }) => {
     const errors = watchErrors(page);
