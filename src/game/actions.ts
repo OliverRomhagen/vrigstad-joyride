@@ -43,6 +43,8 @@ export interface ActionsDeps {
   openKiosk(): void;
   atSkroten(): boolean; // the car you drive stands on Skroten's ring
   openSkroten(): void; // Skroten's offer for it
+  nearNisse(): boolean; // you stand on foot next to Skrot-Nisse
+  talkNisse(): void;
   collide(o: Point, r: number): unknown;
   placeCar(c: Car): void;
   rnd(): number;
@@ -112,6 +114,8 @@ export class Actions {
       openKiosk,
       atSkroten,
       openSkroten,
+      nearNisse,
+      talkNisse,
       rnd,
       pick,
       toast,
@@ -141,6 +145,10 @@ export class Actions {
     if (pl) {
       if (pl.kind === 'safe') enterHouse(pl);
       else openKiosk();
+      return;
+    }
+    if (nearNisse()) {
+      talkNisse();
       return;
     }
     if (game.inCar) {

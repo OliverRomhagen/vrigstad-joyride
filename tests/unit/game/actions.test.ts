@@ -40,6 +40,7 @@ function actions(
     cat?: Cat | null;
     menuOpen?: boolean;
     skroten?: boolean;
+    nisse?: boolean;
     kr?: number;
   } = {},
 ) {
@@ -84,6 +85,8 @@ function actions(
     openKiosk: () => void calls.push('kiosk'),
     atSkroten: () => !!o.skroten,
     openSkroten: () => void calls.push('skroten'),
+    nearNisse: () => !!o.nisse,
+    talkNisse: () => void calls.push('nisse'),
     collide: () => {},
     placeCar: () => {},
     rnd: () => o.roll ?? 0.9,
@@ -162,6 +165,13 @@ describe('Actions.action', () => {
     t.a.action();
     expect(t.game.inCar).toBe(true);
     expect(t.calls.at(-1)).toBe('skroten');
+  });
+
+  it('E on foot next to Skrot-Nisse talks to him, before any car nearby', () => {
+    const t = actions({ cars: [parked()], nisse: true });
+    t.a.action();
+    expect(t.game.inCar).toBe(false);
+    expect(t.calls).toEqual(['nisse']);
   });
 
   it('calls the police when a neighbour sees you take a car', () => {

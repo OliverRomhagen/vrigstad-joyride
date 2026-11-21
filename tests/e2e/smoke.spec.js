@@ -482,7 +482,7 @@ test.describe('game (index.html)', () => {
 
   test('Skroten buys the car you drive onto its ring', async ({ page }, testInfo) => {
     const errors = watchErrors(page);
-    await page.goto('/index.html?dev&at=657,-68'); // on Skroten's ring (SKROTEN in src/game/places.ts)
+    await page.goto('/index.html?dev&at=634.2,-1.5'); // on Skroten's ring (SKROTEN in src/game/places.ts)
     await page.locator('#go').click();
     await page.keyboard.press('Backquote');
     await page.keyboard.type('car volvo240'); // yours, so no star when you get in; parked 3.5 m away, still on the ring

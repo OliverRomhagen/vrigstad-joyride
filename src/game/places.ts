@@ -4,6 +4,7 @@ import { RoadClass } from '../world/data';
 import { pointInPolygon, segmentDistance } from '../world/polygon';
 import type { RoadLine } from '../world/roads';
 import { wrecked } from './health';
+import { RING_UV, yardToWorld } from './skroten-yard';
 
 const SAFE_S = 60,
   SAFE_SEEN_M = 60; // s inside to lose the stars; police closer than this (m) see you go in
@@ -21,8 +22,8 @@ const SAFEHOUSES: readonly (readonly [name: string, x: number, z: number])[] = [
 ];
 /** The kiosk on Torget: its middle, its size across x and z (m), and its counter, which faces south towards the spawn point. */
 export const KIOSK = { x: -13, z: 25.5, w: 3, d: 2.2, counterZ: 2.3 } as const;
-/** Skroten: its ring, in the yard behind the industrial buildings off Stockarydsvägen; you drive in between the buildings from the road to the north. */
-export const SKROTEN = { x: 657, z: -68 } as const;
+/** Skroten: its ring, just inside the yard's gate on the south side of Stockarydsvägen (skroten-yard.ts). */
+export const SKROTEN = yardToWorld(RING_UV.u, RING_UV.v);
 
 export interface Place {
   kind: 'safe' | 'kiosk' | 'skrot';
