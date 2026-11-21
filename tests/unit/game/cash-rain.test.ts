@@ -52,10 +52,10 @@ describe('låt det regna', () => {
     expect(t.toasts[0]).toMatch(/^”Låta dä regna\? Mä 999 riksdaler/);
   });
 
-  it('does nothing before Start, under the big screen, in a safehouse or with a menu open', () => {
+  it('does nothing before Start, under the title card, in a safehouse or with a menu open', () => {
     const cases = [rain(), rain(), rain({ lyingLow: true }), rain({ menuOpen: true })];
     cases[0].game.started = false;
-    cases[1].game.bigT = 2;
+    cases[1].game.titleCardT = 2;
     for (const t of cases) {
       t.r.makeItRain();
       expect([t.drops, t.toasts, t.wallet.kr]).toEqual([[], [], RAIN_KR]);

@@ -92,8 +92,8 @@ function actions(
     spawnTraffic: () => void calls.push('traffic'),
     drawStolen: () => void calls.push('stolen ' + game.stolen),
     drawHealth: () => {},
-    bigScreen: (t, msg) => {
-      calls.push('big ' + t);
+    titleCard: (t, msg) => {
+      calls.push('title card ' + t);
       screens.push(msg);
     },
     sayLater: l => void calls.push('later ' + l),
@@ -103,12 +103,12 @@ function actions(
 }
 
 describe('Actions.action', () => {
-  it('does nothing before Start or under the big screen', () => {
+  it('does nothing before Start or under the title card', () => {
     const t = actions({ cars: [parked()] });
     t.game.started = false;
     t.a.action();
     t.game.started = true;
-    t.game.bigT = 1;
+    t.game.titleCardT = 1;
     t.a.action();
     expect(t.game.inCar).toBe(false);
   });
@@ -200,7 +200,7 @@ describe('Actions after a chase or a crash', () => {
     expect(t.mesh.visible).toBe(true);
     expect([t.player.x, t.player.z]).toEqual([HOME.x, HOME.z]);
     expect(t.health.hp).toBe(HP_MAX);
-    expect(t.calls.at(-1)).toBe('big Gripen!');
+    expect(t.calls.at(-1)).toBe('title card Gripen!');
   });
 
   it('busted fines you by the stars you had, never more than you have', () => {
@@ -218,11 +218,11 @@ describe('Actions after a chase or a crash', () => {
     const chased = actions({ stars: 2 });
     chased.a.knockedOut();
     expect(chased.wanted.stars).toBe(0);
-    expect(chased.calls).toEqual(['clear', 'big Gripen!']);
+    expect(chased.calls).toEqual(['clear', 'title card Gripen!']);
 
     const t = actions();
     t.a.knockedOut();
-    expect(t.calls).toEqual(['big Däckad!', 'later ”Va hände? Ja minns ingenting.”']);
+    expect(t.calls).toEqual(['title card Däckad!', 'later ”Va hände? Ja minns ingenting.”']);
     expect(t.health.hp).toBe(HP_MAX);
     expect(t.screens.at(-1)).toBe('Knocked out. You come to at Torget.');
   });

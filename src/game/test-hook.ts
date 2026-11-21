@@ -64,6 +64,7 @@ export function installTestHook(g: TestHookDeps) {
         z: player.z,
         y: player.y,
         yaw: view.camYaw,
+        zoom: view.zoom,
         inCar: game.inCar,
         car: game.pcar ? game.pcar.type : null,
         near: n ? n.mode : null,

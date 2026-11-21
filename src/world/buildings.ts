@@ -66,7 +66,7 @@ export interface BuildingShape extends RoofParts {
   top: number;
   /** footprint area (m²) */
   area: number;
-  /** +1 or -1 with the outline's winding, to find the outside of each wall */
+  /** +1 when the outline runs clockwise on a north-up map (x east, z south), -1 when counter-clockwise */
   winding: number;
 }
 

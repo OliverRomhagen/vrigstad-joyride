@@ -11,7 +11,7 @@ export const GAWK_LINES = ['”Va i hela friden!”', '”Ä du inte klok, männ
 
 /** What the rain reads from the rest of the game. The getters are read when used, so they follow the game. */
 export interface CashRainDeps {
-  game: Pick<GameState, 'started' | 'bigT' | 'inCar' | 'pcar'>;
+  game: Pick<GameState, 'started' | 'titleCardT' | 'inCar' | 'pcar'>;
   player: PointXZ;
   wallet: Wallet;
   readonly lyingLow: boolean; // inside a safehouse
@@ -36,7 +36,7 @@ export class CashRain {
   makeItRain() {
     const g = this.g,
       { game } = g;
-    if (!game.started || game.bigT > 0 || g.lyingLow || g.menuOpen) return;
+    if (!game.started || game.titleCardT > 0 || g.lyingLow || g.menuOpen) return;
     if (!pay(g.wallet, RAIN_KR)) {
       g.toast('”Låta dä regna? Mä ' + fmtKr(g.wallet.kr) + '? Nä.”', 2.5);
       return;
