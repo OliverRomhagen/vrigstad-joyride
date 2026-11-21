@@ -43,7 +43,7 @@ export interface ActionsDeps {
   spawnTraffic(p: Point): void;
   drawStolen(): void;
   drawHealth(): void;
-  bigScreen(title: string, msg: string): void;
+  titleCard(title: string, msg: string): void;
   sayLater(line: string): void;
   pickLine(lines: readonly string[]): string;
 }
@@ -99,7 +99,7 @@ export class Actions {
       spawnTraffic,
       drawStolen,
     } = this.g;
-    if (!game.started || game.bigT > 0) return;
+    if (!game.started || game.titleCardT > 0) return;
     if (places.inside) {
       leaveHouse();
       return;
@@ -180,15 +180,15 @@ export class Actions {
     collide(player, 0.6);
   };
   busted = () => {
-    const { health, drawHealth, bigScreen } = this.g;
+    const { health, drawHealth, titleCard } = this.g;
     this.respawn();
     health.hp = HP_MAX;
     drawHealth();
-    bigScreen('Gripen!', 'Busted. The police drop you off at Torget.');
+    titleCard('Gripen!', 'Busted. The police drop you off at Torget.');
   };
   // health at zero: with the police after you it's Gripen!, otherwise you come to at the nearest safehouse, or Torget
   knockedOut = () => {
-    const { player, places, wanted, health, collide, drawHealth, bigScreen, sayLater, pickLine } = this.g;
+    const { player, places, wanted, health, collide, drawHealth, titleCard, sayLater, pickLine } = this.g;
     if (wanted.stars) {
       wanted.clear();
       this.busted();
@@ -200,7 +200,7 @@ export class Actions {
     collide(player, 0.6);
     health.hp = HP_MAX;
     drawHealth();
-    bigScreen(
+    titleCard(
       'Däckad!',
       'Knocked out. You come to ' +
         ('name' in spot && spot.name ? 'at the safehouse on ' + spot.name : 'at Torget') +

@@ -10,7 +10,7 @@ export interface GameState {
   jumpQ: boolean; // set by a fresh Space / Jump press on foot, used up by the next frame: a held key (braking, then getting out) never jumps, a tap between frames isn't lost
   stolen: number; // cars stolen, each counted the first time you take it
   ramCool: number; // s until ramming a police car can give another star
-  bigT: number; // s the big screen (Gripen!, Däckad!) stays up
+  titleCardT: number; // s the title card (Gripen!, Däckad!) stays up
   treats: number; // cat treats in your pockets
 }
 
@@ -22,7 +22,7 @@ export const newGameState = (): GameState => ({
   jumpQ: false,
   stolen: 0,
   ramCool: 0,
-  bigT: 0,
+  titleCardT: 0,
   treats: 0,
 });
 
