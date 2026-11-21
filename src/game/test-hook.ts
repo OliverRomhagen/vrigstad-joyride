@@ -35,6 +35,7 @@ export interface TestHookDeps {
   readonly banknotes: number; // in the air or on the ground
   readonly confetti: number; // confetti pieces still falling
   readonly devcon: boolean; // the dev console is open
+  readonly day: { readonly hour: number; readonly night: number; readonly sunLight: number }; // the clock (src/game/day-cycle.ts) and the sun's share of its light
 }
 
 /** Puts the hook on `window.__joyride`. */
@@ -115,6 +116,9 @@ export function installTestHook(g: TestHookDeps) {
         wheelbase: (game.pcar || displayCar)?.T.handling.wheelbaseM ?? 0,
         traffic: cars.filter(c => c.mode === 'ai').map(c => ({ type: c.type, vehicle: vehicleVisuals.state(c) })),
         clouds: skyDome.state(),
+        hour: g.day.hour,
+        night: g.day.night,
+        sunLight: g.day.sunLight,
         streetscape: streetscapeState(),
         furniture: furnitureState(),
       };

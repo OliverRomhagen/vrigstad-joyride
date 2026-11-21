@@ -462,6 +462,23 @@ test.describe('game (index.html)', () => {
     expect(errors).toEqual([]);
   });
 
+  test('the day ends at 19:00 and blends into the night skip', async ({ page }) => {
+    const errors = watchErrors(page);
+    await page.goto('/index.html?time=18.99');
+    await expectWebGL(page);
+    await frames(page, 5);
+    expect(await state(page)).toMatchObject({ hour: 18.99, night: 0 }); // the clock waits on the title screen
+    await page.locator('#go').click();
+    // 0.01 h of day is well under a second of game time, and the skip lasts NIGHT_S = 10 s: a fast runner can be through
+    // it by the next poll, so either the skip has started or the clock has wrapped to the next morning
+    const begun = s => s.night > 0 || s.hour < 6;
+    await expect.poll(async () => begun(await state(page))).toBe(true);
+    const s = await state(page);
+    if (s.night > 0) expect(s.hour).toBe(19);
+    else expect(s.hour).toBeGreaterThanOrEqual(5);
+    expect(errors).toEqual([]);
+  });
+
   test('with ?dev, the console opens with §, its keys never move the player, kr and mynt add money, adopt cat gives you a cat (and L makes it rain)', async ({
     page,
   }) => {
