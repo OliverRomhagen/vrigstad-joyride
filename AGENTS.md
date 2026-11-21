@@ -76,6 +76,16 @@ GitHub issues are the backlog: every bug, idea and piece of work is one issue.
 - Most features still add a line or two to `src/game/main.ts`, where the modules are connected, so expect small conflicts there. Keep changes in their own section of the file where you can.
 - Say how you tested in the PR, and be honest about what wasn't tested ("not played by hand on a phone").
 
+### Lab experiments
+
+An experiment is work that ships switched off for everyone, until a player opts in with `?lab=<id>`. Why it works this way is in ARCHITECTURE.md (Decisions). Check [#323](https://github.com/OliverRomhagen/vrigstad-joyride/issues/323) before you start one: it proposes writing experiments where their code belongs instead of in `src/lab/`, and the decision would replace this recipe.
+
+- **Start one:** copy `src/lab/hello/` to `src/lab/<id>/`. Add `{ id, name, cost }` to `LAB_EXPERIMENTS` in `src/lab/flags.ts`; `cost` says in one line what switching it on costs a player (a download, frame time, nothing). Start it in the lab section of `src/game/main.ts`, as `hello` is started: `if (lab.on('<id>')) import('../lab/<id>')…`.
+- **Keep it ready to graduate:** `src/lab/` is page code to Fallow, Biome and tsc, so the architecture rules aren't checked there. Keep the rules (plain data, no three.js, no DOM) and the drawing in separate files from the start, so graduating is a move, not a rewrite: splitting the ragdolls was most of their graduation ([#253](https://github.com/OliverRomhagen/vrigstad-joyride/pull/253)).
+- **Test it:** unit tests go in `tests/unit/lab/`. With the flag off, the game must run exactly as before, so the smoke tests need no change. Try it locally and in the PR's preview with `?lab=<id>`: a `feat` PR gets a preview link by itself; any other PR needs the `preview` label.
+- **Its issue and PR:** label the issue `lab`. The PR gets the label too when it references the issue (`Closes #n` or `Part of #n`) or its branch name starts with the issue number. Put the preview link with `?lab=<id>` in the PR, and say in the issue what would decide the experiment.
+- **Leaving the lab:** an experiment that works graduates in its own PR. Its code moves to where it belongs, without its flag check and its `LAB_EXPERIMENTS` entry, and its tests move with it. If a smoke test used its flag, keep one step that checks the old flag is now ignored, as the ragdolls' does. One that doesn't work is dropped: delete its folder, its entry, its start line and its tests.
+
 ## Code style
 
 - **Match the surrounding code.** Same naming, comment density and idiom as the file you're in.
