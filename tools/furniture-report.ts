@@ -1,10 +1,12 @@
 // The half of the street furniture coverage report (#144 §4.4) that depends on the runtime rules: what the game
 // generates from data/vrigstad.json. Run with `npm run data:report`, after `npm run data`.
 import data from '../data/vrigstad.json';
+import { KIOSK, Places } from '../src/game/places';
 import { BuildingIndex } from '../src/world/buildings';
 import type { WorldData } from '../src/world/data';
+import { FURNITURE, type FurnitureKind } from '../src/world/furniture/definitions';
 import { FURNITURE_OVERRIDES } from '../src/world/furniture/overrides';
-import { placeFurniture } from '../src/world/furniture/placement';
+import { furnitureExclusions, placeFurniture } from '../src/world/furniture/placement';
 import { Heightfield } from '../src/world/heightfield';
 import { makeRnd } from '../src/world/random';
 import { RoadNetwork } from '../src/world/roads';
@@ -37,11 +39,22 @@ export function report() {
     buildings,
     water,
     sides,
-    avoidTrees: forest,
+    avoidTrees: forest.filter((_, i) => i % 3 < 2), // flat [x, z, ...], as the game passes it
     treeRoadClearanceM: 2.5,
   });
   const trees = forest.slice();
   for (const t of layout.trees) trees.push(t.x, t.z, 0.75);
+  // the game's places, and the kiosk as a footprint, as the game has them by the time it places furniture
+  const places = new Places({
+    footprints: buildings.footprints,
+    roads: roads.lines,
+    police: [],
+    stars: 0,
+    lieLow() {},
+    toast() {},
+  });
+  const { x, z, w, d } = KIOSK;
+  buildings.addFootprint([x - w / 2, z - d / 2, x + w / 2, z - d / 2, x + w / 2, z + d / 2, x - w / 2, z + d / 2]);
   const t0 = performance.now();
   const f = placeFurniture({
     data: D,
@@ -51,12 +64,12 @@ export function report() {
     water,
     trees,
     street: layout,
-    exclusions: [{ x: -13, z: 25.5, r: 3 }], // the kiosk, as the game passes it
+    exclusions: furnitureExclusions(places.list),
     overrides: FURNITURE_OVERRIDES,
   });
   const ms = performance.now() - t0;
   const by = (k: string, s: string) => f.placements.filter(p => p.kind === k && p.source === s).length;
-  const kinds = ['street-lamp', 'bench', 'waste-bin'] as const;
+  const kinds = Object.keys(FURNITURE) as FurnitureKind[];
   console.log(
     [
       '\n## Street furniture coverage (runtime rules)',
@@ -67,7 +80,7 @@ export function report() {
           .sort()
           .map(([w, n]) => `${w} (${kinds.map(k => n[k]).join('/')})`)
           .join(', ') +
-        '  [lamps/benches/bins]',
+        `  [${kinds.join('/')}]`,
       'rejected: ' +
         Object.entries(f.rejected)
           .map(([k, n]) => `${k} ${n}`)
