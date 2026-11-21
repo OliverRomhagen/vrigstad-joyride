@@ -2,6 +2,8 @@
 // stand (#144). Pure data: no three.js. How a kind is modelled is src/world/mesh/street-furniture.ts's business.
 
 export type FurnitureKind = 'street-lamp' | 'bench' | 'waste-bin';
+/** every model src/world/mesh/street-furniture.ts can build, so a misspelt id is a compile error */
+export type FurnitureModelId = 'lamp-arm' | 'lamp-arm-short' | 'bench-wood' | 'bin-green';
 /** where a road or place is, for what furniture it gets; see context.ts */
 export type FurnitureContext = 'torget' | 'centre' | 'main' | 'residential' | 'outer' | 'path';
 /** osm: drawn where OpenStreetMap maps it; override: local knowledge in overrides.ts; procedural: a rule placed it */
@@ -19,7 +21,7 @@ export interface LampEmitter {
 export interface FurnitureDefinition {
   kind: FurnitureKind;
   /** default model; context-specific variants are chosen in placement.ts */
-  modelId: string;
+  modelId: FurnitureModelId;
   /** footprint (m): x across, z front to back, in model space */
   widthM: number;
   depthM: number;
@@ -83,7 +85,7 @@ export const FURNITURE: Readonly<Record<FurnitureKind, FurnitureDefinition>> = {
 };
 
 /** the shorter lamp on residential streets and paths, with its light lower and nearer the pole */
-export const SHORT_LAMP_MODEL = 'lamp-arm-short';
+export const SHORT_LAMP_MODEL: FurnitureModelId = 'lamp-arm-short';
 export const SHORT_LAMP_EMITTER: LampEmitter = {
   offset: [0, 4.88, 1],
   direction: [0, -1, 0],

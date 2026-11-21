@@ -4,7 +4,16 @@ import { FurnitureCode, LandUse, ROAD_WIDTH_M, RoadClass } from '../data';
 import { vertexCentre } from '../polygon';
 import { fnv1a, hash01 } from '../random';
 import { FURNITURE } from './definitions';
-import { byOrder, type Candidate, heading, insideOutlineSpots, jitterRad, osmKey, type Placer } from './placer';
+import {
+  byOrder,
+  type Candidate,
+  type CandidateOrigin,
+  heading,
+  insideOutlineSpots,
+  jitterRad,
+  osmKey,
+  type Placer,
+} from './placer';
 
 /** Torget's benches: how many, set back from the outline, apart, and away from a building wall (m) */
 export const TORGET_BENCHES = { min: 4, max: 6 };
@@ -29,6 +38,12 @@ const PARK_FACE_REACH_M = 40;
 const CHURCH_RINGS_M = [16, 22];
 const CHURCH_SPOTS_PER_RING = 12;
 const CHURCH_BENCHES = 2;
+/** how many benches each place takes at most; a park's cap is per park */
+const BENCH_CAP: Partial<Record<CandidateOrigin, number>> = {
+  torget: TORGET_BENCHES.max,
+  park: PARK_BENCHES,
+  church: CHURCH_BENCHES,
+};
 /** rotation jitter (rad) */
 const BENCH_JITTER_RAD = (5 * Math.PI) / 180;
 
@@ -38,7 +53,7 @@ function benchCandidate(
   x: number,
   z: number,
   rotationY: number,
-  origin: string,
+  origin: CandidateOrigin,
   rank: number,
   ri = -1,
 ): Candidate {
@@ -63,7 +78,7 @@ function torgetBenchCandidates(placer: Placer): Candidate[] {
   if (!torget) return [];
   const out: Candidate[] = [];
   for (const spot of insideOutlineSpots(torget.ring, TORGET_STEP_M, TORGET_STEP_M / 2, TORGET_SETBACK_M)) {
-    if (placer.inp.buildings.collide({ x: spot.ex, z: spot.ez }, TORGET_WALL_M)) continue; // a building's front: no bench before its door
+    if (placer.input.buildings.collide({ x: spot.ex, z: spot.ez }, TORGET_WALL_M)) continue; // a building's front: no bench before its door
     const id = `gen:bench:torget:${spot.count}`;
     const fx = torget.cx - spot.x;
     const fz = torget.cz - spot.z;
@@ -95,7 +110,7 @@ function busStopCandidates(placer: Placer) {
     const key = osmKey(f);
     const nearest = placer.nearestRoadPoint(f.x, f.z, RoadClass.STREET, BUS_ROAD_REACH_M);
     if (!nearest) continue;
-    const road = placer.inp.roads.lines[nearest.ri];
+    const road = placer.input.roads.lines[nearest.ri];
     const side = hash01(key, 'bus side') < 0.5 ? -1 : 1;
     const [ux, uz] =
       nearest.d > 0.01
@@ -142,15 +157,23 @@ function parkBenchCandidates(placer: Placer): Candidate[] {
     const ring = area.p;
     const { x: cx, z: cz } = vertexCentre(ring);
     if (Math.hypot(cx - torgetLabel.x, cz - torgetLabel.z) > PARK_REACH_M) continue;
-    const park = `park:${parkKey(ring)}`;
+    const park = parkKey(ring);
     for (const spot of insideOutlineSpots(ring, PARK_STEP_M, PARK_STEP_M / 2, PARK_SETBACK_M)) {
-      const id = `gen:bench:${park}:${spot.count}`;
+      const id = `gen:bench:park:${park}:${spot.count}`;
       const toCentre = Math.hypot(cx - spot.x, cz - spot.z) || 1;
       const toMiddle = heading((cx - spot.x) / toCentre, (cz - spot.z) / toCentre);
       const facing = placer.faceNearestRoad(spot.x, spot.z, RoadClass.PATH, PARK_FACE_REACH_M, toMiddle);
-      out.push(
-        benchCandidate(id, spot.x, spot.z, facing + jitterRad(id, BENCH_JITTER_RAD), park, 1 + hash01(id, 'order')),
-      );
+      out.push({
+        ...benchCandidate(
+          id,
+          spot.x,
+          spot.z,
+          facing + jitterRad(id, BENCH_JITTER_RAD),
+          'park',
+          1 + hash01(id, 'order'),
+        ),
+        group: park,
+      });
     }
   }
   return out;
@@ -192,25 +215,18 @@ export function placeBenches(placer: Placer) {
     ...parkBenchCandidates(placer),
     ...churchBenchCandidates(placer),
   ].sort(byOrder);
-  const cap = (origin: string) =>
-    origin === 'torget'
-      ? TORGET_BENCHES.max
-      : origin === 'church'
-        ? CHURCH_BENCHES
-        : origin.startsWith('park')
-          ? PARK_BENCHES
-          : Infinity;
-  const count = new Map<string, number>();
+  const placedByGroup = new Map<string, number>();
   const torgetBenches: Candidate[] = [];
   const busBins: Candidate[] = [];
   for (const c of candidates) {
-    if ((count.get(c.origin) ?? 0) >= cap(c.origin)) continue;
+    const group = c.group ?? c.origin;
+    if ((placedByGroup.get(group) ?? 0) >= (BENCH_CAP[c.origin] ?? Infinity)) continue;
     if (c.origin === 'torget' && torgetBenches.some(b => Math.hypot(b.x - c.x, b.z - c.z) < TORGET_BENCH_GAP_M)) {
       placer.rejected.furniture++;
       continue;
     }
     if (!placer.tryPlace(c)) continue;
-    count.set(c.origin, (count.get(c.origin) ?? 0) + 1);
+    placedByGroup.set(group, (placedByGroup.get(group) ?? 0) + 1);
     if (c.origin === 'torget') torgetBenches.push(c);
     const bin = bus.binByBench.get(c.id);
     if (bin) busBins.push(bin);

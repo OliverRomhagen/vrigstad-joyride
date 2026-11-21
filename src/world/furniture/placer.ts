@@ -10,14 +10,20 @@ import { nodeKey, type Point, type RoadLine } from '../roads';
 import { sidewalkCentreM } from '../streetscape';
 import { type SideSpec, type StreetSides, sideSpecOf } from '../streetscape-rules';
 import { roadContexts, type TorgetArea, torgetArea } from './context';
-import { FURNITURE, type FurnitureContext, type FurnitureKind, type FurnitureSource } from './definitions';
+import {
+  FURNITURE,
+  type FurnitureContext,
+  type FurnitureKind,
+  type FurnitureModelId,
+  type FurnitureSource,
+} from './definitions';
 import type { FurnitureOverride } from './overrides';
 
 export interface FurniturePlacement {
   /** stable: 'osm:<osmKey>', 'ovr:<key>' or 'gen:<kind>:<where>:<n>' */
   id: string;
   kind: FurnitureKind;
-  modelId: string;
+  modelId: FurnitureModelId;
   x: number;
   z: number;
   /** radians about +y; 0 turns the model's +z (a bench's front, a lamp's arm) towards world +z, south */
@@ -58,14 +64,31 @@ export interface FurnitureInput {
   overrides?: readonly FurnitureOverride[];
 }
 
+/** Where a generated object came from: a road's context, or one of the places benches go. */
+export type CandidateOrigin = FurnitureContext | 'bus stop' | 'park' | 'church';
+
 /** A generated object before it's accepted. */
 export interface Candidate extends FurniturePlacement {
   /** lower goes first among candidates of a kind, then id */
   rank: number;
-  /** what counts it in `generated`: a road context, 'torget', 'bus stop', 'church' or a park */
-  origin: string;
+  /** what counts it in `generated` */
+  origin: CandidateOrigin;
+  /** what a cap on how many stand counts by, when finer than the origin: one park of many */
+  group?: string;
   /** a roadside candidate's road, so the lamp check can tell another carriageway from its own; -1 for none */
   ri: number;
+}
+
+/** Where a roadside candidate goes: `alongM` along road ri from its start, `offsetM` out from its centre line. */
+interface RoadsideSpot {
+  kind: FurnitureKind;
+  ri: number;
+  side: -1 | 1;
+  alongM: number;
+  offsetM: number;
+  id: string;
+  origin: CandidateOrigin;
+  maxJitterRad: number;
 }
 
 /** What a generated candidate can be turned down for, in the order the checks run: the cheap ones first. */
@@ -84,6 +107,7 @@ const REJECTIONS = [
 ] as const;
 export type Rejection = (typeof REJECTIONS)[number];
 
+const KINDS = Object.keys(FURNITURE) as FurnitureKind[];
 /** furniture stays this far inside the world's edge (m) */
 const EDGE_KEEP_M = 20;
 /** grid cells for the trees and the furniture already placed (m) */
@@ -220,13 +244,13 @@ export class Placer {
   readonly torget: TorgetArea | null;
   readonly contexts: FurnitureContext[];
   /** a stable key per road, for ids and hashes */
-  readonly keys: string[];
+  readonly roadKeys: string[];
   /** arc length (m) at each vertex, per road */
-  readonly arcs: number[][];
-  readonly out: FurniturePlacement[] = [];
+  readonly arcLengthsByRoad: number[][];
+  readonly placements: FurniturePlacement[] = [];
   readonly rejected = Object.fromEntries(REJECTIONS.map(k => [k, 0])) as Record<Rejection, number>;
-  readonly generated: Record<string, Record<FurnitureKind, number>> = {};
-  private readonly half: number;
+  readonly generated: Partial<Record<CandidateOrigin, Record<FurnitureKind, number>>> = {};
+  private readonly halfSizeM: number;
   private readonly torgetRoads: Set<number>;
   /** per road: the pieces that carry straight on from its ends, the same street where OSM split the way */
   private readonly sameStreet: Set<number>[];
@@ -239,15 +263,15 @@ export class Placer {
   private readonly lampSideMemo = new Map<number, (-1 | 1)[]>();
   private readonly _normal = { x: 0, y: 1, z: 0 };
 
-  constructor(readonly inp: FurnitureInput) {
-    const { data, roads, street } = inp;
+  constructor(readonly input: FurnitureInput) {
+    const { data, roads, street } = input;
     this.data = data;
-    this.half = data.size / 2;
+    this.halfSizeM = data.size / 2;
     this.torget = torgetArea(data, roads);
     this.torgetRoads = new Set(this.torget?.roads ?? []);
     this.contexts = roadContexts(data, roads, street.sides, this.torget);
-    this.keys = roads.lines.map((_, ri) => roadKey(data, ri));
-    this.arcs = roads.lines.map(l => arcLengths(l.p));
+    this.roadKeys = roads.lines.map((_, ri) => roadKey(data, ri));
+    this.arcLengthsByRoad = roads.lines.map(l => arcLengths(l.p));
     this.sameStreet = sameStreetPieces(roads.lines);
     // junctions: road vertices that two or more pieces of carriageway share
     const shared = new Map<string, number>();
@@ -258,7 +282,7 @@ export class Placer {
       const [x, z] = k.split(',').map(Number);
       this.junctions.add({ x: x / 2, z: z / 2 });
     }
-    for (let i = 0; i < inp.trees.length; i += 3) this.trees.add({ x: inp.trees[i], z: inp.trees[i + 1] });
+    for (let i = 0; i < input.trees.length; i += 3) this.trees.add({ x: input.trees[i], z: input.trees[i + 1] });
     this.lots = street.lots.flatMap(l => {
       const p = data.pa?.[l.ai]?.p;
       return p ? [{ p, ...polygonBounds(p) }] : [];
@@ -269,8 +293,8 @@ export class Placer {
   /** distance from (x, z) to the nearest carriageway's edge (class TRACK or bigger), skipping the roads in `except` */
   carriagewayGap(x: number, z: number, except?: ReadonlySet<number>) {
     let best = Infinity;
-    this.inp.roads.forEachSegmentNear(x, z, CARRIAGEWAY_REACH_M, (ax, az, bx, bz, ri) => {
-      const c = this.inp.roads.lines[ri].c;
+    this.input.roads.forEachSegmentNear(x, z, CARRIAGEWAY_REACH_M, (ax, az, bx, bz, ri) => {
+      const c = this.input.roads.lines[ri].c;
       if (c > RoadClass.TRACK || except?.has(ri) || this.torgetRoads.has(ri)) return;
       best = Math.min(best, segmentDistance(x, z, ax, az, bx, bz) - ROAD_WIDTH_M[c] / 2);
     });
@@ -280,8 +304,8 @@ export class Placer {
   /** the nearest point within `reachM` on a road of class ≤ maxClass, its distance and the road's direction there */
   nearestRoadPoint(x: number, z: number, maxClass: RoadClass, reachM: number) {
     let nearest: { ri: number; d: number; px: number; pz: number; tx: number; tz: number } | null = null;
-    this.inp.roads.forEachSegmentNear(x, z, reachM, (ax, az, bx, bz, ri) => {
-      if (this.inp.roads.lines[ri].c > maxClass) return;
+    this.input.roads.forEachSegmentNear(x, z, reachM, (ax, az, bx, bz, ri) => {
+      if (this.input.roads.lines[ri].c > maxClass) return;
       const t = segmentParam(x, z, ax, az, bx, bz);
       const px = ax + (bx - ax) * t;
       const pz = az + (bz - az) * t;
@@ -300,14 +324,14 @@ export class Placer {
   }
 
   sideSpec(ri: number, side: -1 | 1): SideSpec {
-    return sideSpecOf(this.inp.street.sides[ri], side);
+    return sideSpecOf(this.input.street.sides[ri], side);
   }
   hasSidewalk(ri: number, side: -1 | 1) {
-    return !!this.inp.street.sides[ri] && this.sideSpec(ri, side).sidewalk === 'present';
+    return !!this.input.street.sides[ri] && this.sideSpec(ri, side).sidewalk === 'present';
   }
   /** how far out from road ri's centre line a lamp stands on `side` (m) */
   lampOffset(ri: number, side: -1 | 1) {
-    const c = this.inp.roads.lines[ri].c;
+    const c = this.input.roads.lines[ri].c;
     if (!this.hasSidewalk(ri, side)) return ROAD_WIDTH_M[c] / 2 + LAMP_EDGE_M;
     const spec = this.sideSpec(ri, side);
     const centre = sidewalkCentreM(spec, c)!;
@@ -316,42 +340,33 @@ export class Placer {
   }
   /** how far out from road ri's centre line a bench or bin stands on `side`, to its middle (m) */
   seatOffset(ri: number, side: -1 | 1, kind: FurnitureKind) {
-    const c = this.inp.roads.lines[ri].c;
+    const c = this.input.roads.lines[ri].c;
     const halfDepth = FURNITURE[kind].depthM / 2;
     if (!this.hasSidewalk(ri, side)) return ROAD_WIDTH_M[c] / 2 + SEAT_EDGE_M + halfDepth;
     const spec = this.sideSpec(ri, side);
     return sidewalkCentreM(spec, c)! + spec.widthM / 2 + SEAT_PAST_SIDEWALK_M + halfDepth;
   }
   private inReservedOpening(ri: number, side: -1 | 1, s: number) {
-    return this.inp.street.openings.some(
+    return this.input.street.openings.some(
       o => o.ri === ri && o.side === side && Math.abs(o.s - s) < o.half + OPENING_MARGIN_M,
     );
   }
 
-  /** A candidate beside road ri, `offset` m out on `side`, `s` m along it, its front to the road; null in an opening. */
-  roadside(
-    kind: FurnitureKind,
-    ri: number,
-    side: -1 | 1,
-    s: number,
-    offset: number,
-    id: string,
-    origin: string,
-    maxJitterRad: number,
-  ): Candidate | null {
-    if (this.inReservedOpening(ri, side, s)) {
+  /** A candidate beside road ri, `offsetM` out on `side`, `alongM` along it, its front to the road; null in an opening. */
+  roadside({ kind, ri, side, alongM, offsetM, id, origin, maxJitterRad }: RoadsideSpot): Candidate | null {
+    if (this.inReservedOpening(ri, side, alongM)) {
       this.rejected.reserved++;
       return null;
     }
-    const at = pointAtArc(this.inp.roads.lines[ri].p, this.arcs[ri], s);
+    const at = pointAtArc(this.input.roads.lines[ri].p, this.arcLengthsByRoad[ri], alongM);
     const nx = -at.tz * side; // the right of the way's direction is (-tz, tx): x east, z south
     const nz = at.tx * side;
     return {
       id,
       kind,
       modelId: FURNITURE[kind].modelId,
-      x: at.x + nx * offset,
-      z: at.z + nz * offset,
+      x: at.x + nx * offsetM,
+      z: at.z + nz * offsetM,
       rotationY: heading(-nx, -nz) + jitterRad(id, maxJitterRad),
       scale: 1,
       source: 'procedural',
@@ -368,7 +383,7 @@ export class Placer {
   lampSides(ri: number): (-1 | 1)[] {
     const known = this.lampSideMemo.get(ri);
     if (known) return known;
-    const c = this.inp.roads.lines[ri].c;
+    const c = this.input.roads.lines[ri].c;
     let sides: (-1 | 1)[];
     if (this.contexts[ri] === 'centre' && c <= RoadClass.SECONDARY) sides = [1, -1];
     else {
@@ -378,7 +393,7 @@ export class Placer {
       if (leftHasSidewalk !== rightHasSidewalk) sides = [leftHasSidewalk ? -1 : 1];
       else if (buildingsBySide.left !== buildingsBySide.right)
         sides = [buildingsBySide.left > buildingsBySide.right ? -1 : 1];
-      else sides = [hash01(this.keys[ri], 'lamp side') < 0.5 ? -1 : 1];
+      else sides = [hash01(this.roadKeys[ri], 'lamp side') < 0.5 ? -1 : 1];
     }
     this.lampSideMemo.set(ri, sides);
     return sides;
@@ -386,8 +401,8 @@ export class Placer {
 
   /** How many buildings stand within FRONTAGE_REACH_M of road ri on each side, scanning the cells along each segment. */
   private frontage(ri: number) {
-    const road = this.inp.roads.lines[ri];
-    const { footprints, grid } = this.inp.buildings;
+    const road = this.input.roads.lines[ri];
+    const { footprints, grid } = this.input.buildings;
     const near = new Set<number>();
     for (let i = 1; i < road.p.length; i++) {
       const [ax, az] = road.p[i - 1];
@@ -430,11 +445,11 @@ export class Placer {
 
   // ---------- accepting ----------
   /** The first check a generated candidate fails, or null when it may stand. */
-  private check(c: Candidate): Rejection | null {
+  private rejectionFor(c: Candidate): Rejection | null {
     const d = FURNITURE[c.kind];
     const { x, z } = c;
-    if (Math.abs(x) > this.half - EDGE_KEEP_M || Math.abs(z) > this.half - EDGE_KEEP_M) return 'edge';
-    this.inp.heightfield.normalAt(x, z, this._normal);
+    if (Math.abs(x) > this.halfSizeM - EDGE_KEEP_M || Math.abs(z) > this.halfSizeM - EDGE_KEEP_M) return 'edge';
+    this.input.heightfield.normalAt(x, z, this._normal);
     if (this._normal.y < Math.cos((d.maxSlopeDeg * Math.PI) / 180)) return 'slope';
     const box = corners(c.kind, x, z, c.rotationY);
     if (this.carriagewayGap(x, z) < 0 || box.some(([bx, bz]) => this.carriagewayGap(bx, bz) < d.carriagewayClearanceM))
@@ -449,7 +464,7 @@ export class Placer {
       if (Math.hypot(t.x - x, t.z - z) < d.treeClearanceM) return 'tree';
     const grown = corners(c.kind, x, z, c.rotationY, d.clearanceM / 2);
     for (const o of this.placed.near(x, z, NEIGHBOUR_REACH_M)) if (rectsOverlap(grown, o.box)) return 'furniture';
-    const { buildings, water } = this.inp;
+    const { buildings, water } = this.input;
     if ([...box, [x, z] as const].some(([bx, bz]) => buildings.collide({ x: bx, z: bz }, d.clearanceM)))
       return 'building';
     // the water test scans every lake: the middle is enough for something smaller than a metre
@@ -460,7 +475,7 @@ export class Placer {
     if (isWet) return 'water';
     if (this.lots.some(l => x >= l.x0 && x <= l.x1 && z >= l.z0 && z <= l.z1 && pointInPolygon(l.p, x, z)))
       return 'reserved';
-    for (const e of this.inp.exclusions ?? []) if (Math.hypot(e.x - x, e.z - z) < e.r) return 'exclusion';
+    for (const e of this.input.exclusions ?? []) if (Math.hypot(e.x - x, e.z - z) < e.r) return 'exclusion';
     return null;
   }
 
@@ -477,7 +492,7 @@ export class Placer {
 
   /** A mapped or override object: drawn where it is, never checked, and generated ones of its kind keep clear. */
   placeAuthoritative(p: FurniturePlacement) {
-    this.out.push(p);
+    this.placements.push(p);
     this.occupy(p);
     let grid = this.authoritative.get(p.kind);
     if (!grid) {
@@ -493,18 +508,17 @@ export class Placer {
       this.rejected.duplicate++;
       return false;
     }
-    const why = this.check(c);
-    if (why) {
-      this.rejected[why]++;
+    const rejection = this.rejectionFor(c);
+    if (rejection) {
+      this.rejected[rejection]++;
       return false;
     }
     this.occupy(c);
-    this.out.push(c);
-    this.generated[c.origin] ??= Object.fromEntries(Object.keys(FURNITURE).map(k => [k, 0])) as Record<
-      FurnitureKind,
-      number
-    >;
-    this.generated[c.origin][c.kind]++;
+    this.placements.push(c);
+    const counts =
+      this.generated[c.origin] ?? (Object.fromEntries(KINDS.map(k => [k, 0])) as Record<FurnitureKind, number>);
+    counts[c.kind]++;
+    this.generated[c.origin] = counts;
     return true;
   }
 }

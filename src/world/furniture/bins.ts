@@ -7,10 +7,12 @@ import { byOrder, type Candidate, jitterRad, type Placer } from './placer';
 /** Torget's bins: how many, and each this far from its bench's end (m) */
 export const TORGET_BINS = { min: 2, max: 3 };
 const BIN_BESIDE_BENCH_M = 0.8;
-/** roadside bins: one about every this far (m), spread by up to this share of it, kept with this chance */
-const BIN_EVERY_M: Partial<Record<FurnitureContext, number>> = { centre: 150, main: 300 };
+/** roadside bins: one about every `everyM`, kept with chance `keep`, by context; each spread by up to this share of everyM */
+const BIN_RULES: Partial<Record<FurnitureContext, { everyM: number; keep: number }>> = {
+  centre: { everyM: 150, keep: 0.7 },
+  main: { everyM: 300, keep: 0.5 },
+};
 const BIN_SPREAD_SHARE = 0.3;
-const BIN_DENSITY: Partial<Record<FurnitureContext, number>> = { centre: 0.7, main: 0.5 };
 /** no bin closer than this to either end of a road piece (m) */
 const ROAD_END_MARGIN_M = 2;
 /** rotation jitter (rad) */
@@ -45,19 +47,30 @@ function placeTorgetBins(placer: Placer, torgetBenches: readonly Candidate[]) {
 /** Roadside bins in the centre and on main roads, on the lamp side, now and then. */
 function roadsideBinCandidates(placer: Placer): Candidate[] {
   const out: Candidate[] = [];
-  placer.inp.roads.lines.forEach((_, ri) => {
+  placer.input.roads.lines.forEach((_, ri) => {
     const context = placer.contexts[ri];
-    const every = BIN_EVERY_M[context];
-    if (!every) return;
+    const rule = BIN_RULES[context];
+    if (!rule) return;
+    const { everyM: every, keep } = rule;
     const side = placer.lampSides(ri)[0];
-    const length = placer.arcs[ri][placer.arcs[ri].length - 1];
-    const offset = placer.seatOffset(ri, side, 'waste-bin');
+    const arcs = placer.arcLengthsByRoad[ri];
+    const length = arcs[arcs.length - 1];
+    const offsetM = placer.seatOffset(ri, side, 'waste-bin');
     for (let n = 0; ; n++) {
-      const id = `gen:waste-bin:${placer.keys[ri]}:${n}`;
-      const s = every / 2 + n * every + (hash01(id, 'at') - 0.5) * every * BIN_SPREAD_SHARE;
-      if (s > length - ROAD_END_MARGIN_M) break;
-      if (hash01(id) >= BIN_DENSITY[context]!) continue;
-      const c = placer.roadside('waste-bin', ri, side, s, offset, id, context, BIN_JITTER_RAD);
+      const id = `gen:waste-bin:${placer.roadKeys[ri]}:${n}`;
+      const alongM = every / 2 + n * every + (hash01(id, 'at') - 0.5) * every * BIN_SPREAD_SHARE;
+      if (alongM > length - ROAD_END_MARGIN_M) break;
+      if (hash01(id) >= keep) continue;
+      const c = placer.roadside({
+        kind: 'waste-bin',
+        ri,
+        side,
+        alongM,
+        offsetM,
+        id,
+        origin: context,
+        maxJitterRad: BIN_JITTER_RAD,
+      });
       if (c) out.push(c);
     }
   });

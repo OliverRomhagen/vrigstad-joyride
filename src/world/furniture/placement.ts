@@ -10,6 +10,7 @@ import { lampCandidates } from './lamps';
 import type { FurnitureOverride } from './overrides';
 import {
   byOrder,
+  type CandidateOrigin,
   type FurnitureInput,
   type FurniturePlacement,
   mappedFacing,
@@ -26,8 +27,8 @@ export interface FurnitureLayout {
   torget: TorgetArea | null;
   /** generated candidates turned down, per check */
   rejected: Record<Rejection, number>;
-  /** generated objects placed, per kind and where they came from (a road context, 'bus stop', 'church' or a park) */
-  generated: Record<string, Record<FurnitureKind, number>>;
+  /** generated objects placed, per kind and where they came from */
+  generated: Partial<Record<CandidateOrigin, Record<FurnitureKind, number>>>;
 }
 
 const MAPPED_KIND: Partial<Record<FurnitureCode, FurnitureKind>> = {
@@ -46,15 +47,15 @@ export const furnitureExclusions = (places: readonly { x: number; z: number }[])
   places.map(p => ({ x: p.x, z: p.z, r: PLACE_KEEP_M }));
 
 /** Places street furniture: mapped objects first, then overrides, then the rules. The same input gives the same array. */
-export function placeFurniture(inp: FurnitureInput): FurnitureLayout {
-  const placer = new Placer(inp);
+export function placeFurniture(input: FurnitureInput): FurnitureLayout {
+  const placer = new Placer(input);
   placeMapped(placer);
-  for (const o of inp.overrides ?? []) if (o.op === 'add') placer.placeAuthoritative(overrideAddition(o));
+  for (const o of input.overrides ?? []) if (o.op === 'add') placer.placeAuthoritative(overrideAddition(o));
   for (const c of lampCandidates(placer).sort(byOrder)) placer.tryPlace(c);
   const { torgetBenches, busBins } = placeBenches(placer);
   placeBins(placer, torgetBenches, busBins);
   return {
-    placements: applyOverrideEdits(placer.out, inp.overrides ?? []),
+    placements: applyOverrideEdits(placer.placements, input.overrides ?? []),
     torget: placer.torget,
     rejected: placer.rejected,
     generated: placer.generated,

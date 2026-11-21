@@ -29,9 +29,9 @@ export interface TorgetArea {
 
 /** Joins the pieces of Torget end to end into one closed ring; a circle round the label when they don't close. */
 export function torgetArea(data: WorldData, roads: { readonly lines: readonly RoadLine[] }): TorgetArea | null {
-  const ris = roads.lines.flatMap((_, ri) => (data.r[ri].n === TORGET_ROAD ? [ri] : []));
-  const ring = joinRing(ris.map(ri => roads.lines[ri].p.slice()));
-  if (ring) return withCentre(ring.flat(), ris, true);
+  const torgetRoads = roads.lines.flatMap((_, ri) => (data.r[ri].n === TORGET_ROAD ? [ri] : []));
+  const ring = joinRing(torgetRoads.map(ri => roads.lines[ri].p.slice()));
+  if (ring) return withCentre(ring.flat(), torgetRoads, true);
   const label = data.labels.find(l => l.t === 'Torget');
   if (!label) return null;
   const circle: number[] = [];
@@ -39,7 +39,7 @@ export function torgetArea(data: WorldData, roads: { readonly lines: readonly Ro
     const a = (k / 16) * Math.PI * 2;
     circle.push(label.x + Math.cos(a) * TORGET_FALLBACK_M, label.z + Math.sin(a) * TORGET_FALLBACK_M);
   }
-  return withCentre(circle, ris, false);
+  return withCentre(circle, torgetRoads, false);
 }
 
 function withCentre(ring: number[], roads: number[], fromData: boolean): TorgetArea {
@@ -47,22 +47,22 @@ function withCentre(ring: number[], roads: number[], fromData: boolean): TorgetA
   return { ring, roads, fromData, cx: x, cz: z };
 }
 
-const close = (a: Point, b: Point) => Math.hypot(a[0] - b[0], a[1] - b[1]) < JOIN_M;
+const samePoint = (a: Point, b: Point) => Math.hypot(a[0] - b[0], a[1] - b[1]) < JOIN_M;
 
 /** The pieces joined end to end (any direction) into one ring without its closing vertex, or null if they don't close. */
 function joinRing(pieces: Point[][]): Point[] | null {
   if (!pieces.length) return null;
-  const left = pieces.slice(1);
+  const remaining = pieces.slice(1);
   const ring = pieces[0].slice();
-  while (left.length) {
+  while (remaining.length) {
     const end = ring[ring.length - 1];
-    const k = left.findIndex(p => close(p[0], end) || close(p[p.length - 1], end));
+    const k = remaining.findIndex(p => samePoint(p[0], end) || samePoint(p[p.length - 1], end));
     if (k < 0) return null;
-    const [p] = left.splice(k, 1);
-    const next = close(p[0], end) ? p : p.slice().reverse();
+    const [p] = remaining.splice(k, 1);
+    const next = samePoint(p[0], end) ? p : p.slice().reverse();
     ring.push(...next.slice(1));
   }
-  if (!close(ring[0], ring[ring.length - 1]) || ring.length < 4) return null;
+  if (!samePoint(ring[0], ring[ring.length - 1]) || ring.length < 4) return null;
   ring.pop();
   // the same ring whatever order or direction the pieces came in: one winding, starting at the lowest x (then z)
   if (signedPolygonArea(ring.flat()) < 0) ring.reverse();

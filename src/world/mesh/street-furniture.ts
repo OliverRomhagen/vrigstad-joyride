@@ -1,6 +1,6 @@
 import '../three-legacy';
 import * as THREE from 'three';
-import type { FurnitureSource } from '../furniture/definitions';
+import type { FurnitureModelId, FurnitureSource } from '../furniture/definitions';
 import type { FurniturePlacement } from '../furniture/placement';
 import { SOURCE_TINTS } from './sidewalk-mesh';
 
@@ -56,18 +56,34 @@ const box = (w: number, h: number, d: number, x: number, y: number, z: number, r
 const cylinder = (rTop: number, rBottom: number, h: number, segments: number, y: number, open = false) =>
   new THREE.CylinderGeometry(rTop, rBottom, h, segments, 1, open).translate(0, y + h / 2, 0);
 
-/** A tapered pole with a single arm reaching over the road and a flat shoebox luminaire. `h` is the pole's height (m). */
-function lamp(h: number, arm: number, head: number): FurnitureModel {
-  const tilt = -0.18; // the arm rises a little towards its end
-  const armY = h - 0.25;
+/** A tapered pole with a single arm reaching over the road and a flat shoebox luminaire, `headScale` times the standard. */
+function lamp(heightM: number, armM: number, headScale: number): FurnitureModel {
+  const armTiltRad = -0.18; // the arm rises a little towards its end
+  const armY = heightM - 0.25;
   return {
     body: merge([
       [cylinder(0.16, 0.18, 0.45, 8, 0), POLE_DARK], // foot
-      [cylinder(0.055, 0.1, h - 0.45, 8, 0.45, true), POLE],
-      [box(0.07, 0.07, arm, 0, armY + (Math.sin(-tilt) * arm) / 2, (arm / 2) * Math.cos(tilt), tilt), POLE],
-      [box(0.26 * head, 0.1 * head, 0.55 * head, 0, armY + Math.sin(-tilt) * arm + 0.02, arm), POLE_DARK], // luminaire
+      [cylinder(0.055, 0.1, heightM - 0.45, 8, 0.45, true), POLE],
+      [
+        box(
+          0.07,
+          0.07,
+          armM,
+          0,
+          armY + (Math.sin(-armTiltRad) * armM) / 2,
+          (armM / 2) * Math.cos(armTiltRad),
+          armTiltRad,
+        ),
+        POLE,
+      ],
+      [
+        box(0.26 * headScale, 0.1 * headScale, 0.55 * headScale, 0, armY + Math.sin(-armTiltRad) * armM + 0.02, armM),
+        POLE_DARK,
+      ], // luminaire
     ]),
-    glass: merge([[box(0.2 * head, 0.03, 0.45 * head, 0, armY + Math.sin(-tilt) * arm - 0.045, arm), 0xf4ecd0]]),
+    glass: merge([
+      [box(0.2 * headScale, 0.03, 0.45 * headScale, 0, armY + Math.sin(-armTiltRad) * armM - 0.045, armM), 0xf4ecd0],
+    ]),
   };
 }
 
@@ -102,7 +118,7 @@ function bin(): FurnitureModel {
 }
 
 /** Every model by id; the registry is the seam where a GLB-backed model could later stand in (#59). */
-export const FURNITURE_MODELS: Readonly<Record<string, () => FurnitureModel>> = {
+export const FURNITURE_MODELS: Readonly<Record<FurnitureModelId, () => FurnitureModel>> = {
   'lamp-arm': () => lamp(6.5, 1.25, 1),
   'lamp-arm-short': () => lamp(5, 1, 0.8),
   'bench-wood': bench,
@@ -136,7 +152,7 @@ export class StreetFurniture {
       luminaire: new THREE.MeshLambertMaterial({ vertexColors: true }),
     };
     // three bounds an InstancedMesh by all its instances: one for the whole world would never be culled
-    const byCell = new Map<string, { id: string; list: FurniturePlacement[] }>();
+    const byCell = new Map<string, { id: FurnitureModelId; list: FurniturePlacement[] }>();
     for (const p of placements) {
       const key = `${p.modelId}|${Math.floor(p.x / CELL_M)},${Math.floor(p.z / CELL_M)}`;
       let cell = byCell.get(key);
@@ -154,9 +170,7 @@ export class StreetFurniture {
     const tint = new THREE.Color();
     let triangles = 0;
     for (const { id, list } of byCell.values()) {
-      const build = FURNITURE_MODELS[id];
-      if (!build) throw new Error(`unknown furniture model: ${id}`);
-      const model = build();
+      const model = FURNITURE_MODELS[id]();
       const parts: [THREE.BufferGeometry, THREE.MeshLambertMaterial, boolean][] = [
         [model.body, this.materials.body, true],
       ];
