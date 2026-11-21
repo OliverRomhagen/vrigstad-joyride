@@ -136,7 +136,7 @@ const elements = [
   node(23, 16, 20, { amenity: 'bench', direction: 'towards the lake' }), // doesn't parse: left out
   way(24, ring(30, 30, 2, 0.6), { amenity: 'bench' }), // a way-mapped bench: its middle
   node(25, 18, 20, { amenity: 'waste_basket' }),
-  node(26, 22, 20, { highway: 'bus_stop', name: 'Vrigstad Torget' }),
+  node(26, 22, 20, { highway: 'bus_stop', name: 'Vrigstad Torget', kerb: 'raised' }),
   node(27, 5000, 20, { amenity: 'bench' }), // outside the world: dropped
   node(28, 24, 20, { leisure: 'picnic_table' }), // counted only
   node(31, 26, 20, { man_made: 'street_cabinet' }),
@@ -179,7 +179,7 @@ describe('tools/process.py street furniture data', () => {
       { i: 21, k: FurnitureCode.BENCH, x: 12, z: 20, d: 225 },
       { i: 22, k: FurnitureCode.BENCH, x: 14, z: 20, d: 95 },
       { i: 23, k: FurnitureCode.BENCH, x: 16, z: 20 },
-      { i: 24, k: FurnitureCode.BENCH, x: 31, z: 30.3 },
+      { i: 24, e: 'w', k: FurnitureCode.BENCH, x: 31, z: 30.3 }, // a way: nodes and ways number separately
       { i: 25, k: FurnitureCode.WASTE_BASKET, x: 18, z: 20 },
       { i: 26, k: FurnitureCode.BUS_STOP, x: 22, z: 20 },
       { i: 31, k: FurnitureCode.STREET_CABINET, x: 26, z: 20 },
@@ -230,7 +230,10 @@ describe('tools/process.py streetscape data', () => {
       { i: 7, x: 0, z: 0, k: CrossingKind.MARKED, kb: Kerb.LOWERED, r: r5, v: 0 },
       { i: 9, x: 300, z: 300, k: CrossingKind.UNMARKED },
     ]);
-    expect(out.kb).toEqual([{ i: 10, x: 40, z: 40, kb: Kerb.RAISED }]);
+    expect(out.kb).toEqual([
+      { i: 10, x: 40, z: 40, kb: Kerb.RAISED },
+      { i: 26, x: 22, z: 20, kb: Kerb.RAISED }, // the bus stop, which is street furniture too
+    ]);
   });
 
   it('keeps ground parking with its hole, drops underground parking, and keeps spaces apart', () => {

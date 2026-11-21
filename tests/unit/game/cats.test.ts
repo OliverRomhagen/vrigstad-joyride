@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
-import { type Cat, type CatCar, CatColony, type CatDeps } from '../../../src/game/cats';
+import { type Cat, type CatCar, CatColony, type CatDeps, canTend } from '../../../src/game/cats';
 import type { BuildingIndex } from '../../../src/world/buildings';
 
 // A colony with no houses (so nothing spawns), flat dry ground and the player at the origin, walking.
@@ -17,7 +17,6 @@ function colony(water: (x: number, z: number) => boolean = () => false) {
     groundAt: () => 0,
     half: 1100,
     coarse: false,
-    wrap: a => Math.atan2(Math.sin(a), Math.cos(a)),
     geoCache: {},
     boxGeo: () => new THREE.BufferGeometry(),
     paintMat: new THREE.MeshBasicMaterial(),
@@ -158,6 +157,19 @@ describe('owning a cat', () => {
     for (let i = 0; i < 20; i++) c.update(player, 1 / 30);
     expect(cat.state).toBe('sit');
     expect(Math.hypot(cat.x - x, cat.z - z)).toBeCloseTo(0.8);
+  });
+
+  it('spawnNear makes a new stray on dry land right by the player, ready to adopt', () => {
+    const { c, player } = colony(x => x > 0); // water east of x = 0: the cat must land west of it
+    player.x = 50;
+    player.z = -20;
+    const k = c.spawnNear({ x: 0, z: -20 });
+    expect(c.cats).toHaveLength(2);
+    expect(k).toMatchObject({ owned: false, pets: 0, name: 'Kisse' });
+    expect(Math.hypot(k.x, k.z + 20)).toBeCloseTo(1.5); // CAT_NEW_M: every try is this far out, and one of them is dry
+    expect(k.x <= 0).toBe(true);
+    c.adopt(k);
+    expect(c.owned).toBe(k);
   });
 
   it('a second cat cannot be adopted while you own one', () => {
@@ -413,5 +425,19 @@ describe('naming your cat', () => {
     c.rename('Måns');
     c.sendHome();
     expect(toasts.at(-1)).toContain('Måns');
+  });
+});
+
+describe("a cat's menu", () => {
+  const player = { x: 0, z: 0 };
+  it("stays open while you are on foot within 4 m and the cat isn't running off", () => {
+    expect(canTend({ x: 3.9, z: 0, state: 'sit' }, player, false)).toBe(true);
+    expect(canTend({ x: 0, z: 2, state: 'follow' }, player, false)).toBe(true); // your own cat, following you
+    expect(canTend({ x: 4, z: 0, state: 'sit' }, player, false)).toBe(false);
+    expect(canTend({ x: 3, z: 3, state: 'follow' }, player, false)).toBe(false); // 4.24 m away
+  });
+  it('closes when the cat bolts or you get in a car', () => {
+    expect(canTend({ x: 1, z: 0, state: 'flee' }, player, false)).toBe(false);
+    expect(canTend({ x: 1, z: 0, state: 'sit' }, player, true)).toBe(false);
   });
 });

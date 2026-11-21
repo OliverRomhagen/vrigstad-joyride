@@ -5,11 +5,13 @@ import {
   BuildingKind,
   FurnitureCode,
   type FurniturePoint,
+  LandUse,
   ParkingKind,
   ParkingOrientation,
   ROAD_WIDTH_M,
   type Road,
   RoadClass,
+  RoadUse,
   StreetParking,
   Surface,
   type WorldData,
@@ -205,10 +207,10 @@ describe('placeFurniture: sources', () => {
     const fu: FurniturePoint[] = [{ i: 7, k: FurnitureCode.BENCH, x: 40.3, z: 60.1, d: 90 }, lamp(8, -40, 20)];
     const { placements } = place({ world: { fu } });
     expect(placements.map(p => [p.id, p.x, p.z, p.source])).toEqual([
-      ['osm:8', -40, 20, 'osm'],
-      ['osm:7', 40.3, 60.1, 'osm'],
+      ['osm:n8', -40, 20, 'osm'],
+      ['osm:n7', 40.3, 60.1, 'osm'],
     ]);
-    const [fx, fz] = facing(placements.find(p => p.id === 'osm:7')!.rotationY);
+    const [fx, fz] = facing(placements.find(p => p.id === 'osm:n7')!.rotationY);
     expect(fx).toBeCloseTo(1, 9); // 90° from north is east, +x
     expect(fz).toBeCloseTo(0, 9);
   });
@@ -319,12 +321,12 @@ describe('placeFurniture: Torget, bus stops and the church', () => {
   it('puts a bench and a bin at a bus stop, back from the kerb and facing the road', () => {
     const fu: FurniturePoint[] = [{ i: 50, k: FurnitureCode.BUS_STOP, x: 40, z: 8 }];
     const { placements } = place({ world: { r: [road(RoadClass.STREET, [-100, 0, 100, 0])], fu } });
-    const bench = placements.find(p => p.id === 'gen:bench:bus:50')!;
+    const bench = placements.find(p => p.id === 'gen:bench:bus:n50')!;
     expect(bench).toMatchObject({ x: 40, kind: 'bench' });
     expect(bench.z).toBeCloseTo(ROAD_WIDTH_M[RoadClass.STREET] / 2 + 2 + 0.3, 6);
     expect(facing(bench.rotationY)[1]).toBeCloseTo(-1, 9);
-    expect(placements.some(p => p.id === 'gen:waste-bin:bus:50')).toBe(true);
-    expect(placements.some(p => p.id === 'osm:50')).toBe(false); // a bus stop is context, never drawn
+    expect(placements.some(p => p.id === 'gen:waste-bin:bus:n50')).toBe(true);
+    expect(placements.some(p => p.id === 'osm:n50')).toBe(false); // a bus stop is context, never drawn
   });
 
   it('puts at most two benches round the church, facing it', () => {
@@ -413,5 +415,101 @@ describe('placeFurniture: by the houses (#305)', () => {
     expect(kinds(placements, 'wheelie-bin').length).toBeGreaterThanOrEqual(4); // bins at every house, out here too
     const lone = place({ world: { r: [VILLAGATAN()], b: houses(2, 15, -200, 40) }, profiles: [sides('outskirts')] });
     expect(kinds(lone.placements, 'mailbox').length).toBe(2); // too few for a stand: one each
+  });
+});
+
+describe('placeFurniture: review fixes', () => {
+  it('puts a bus stop mapped on the road itself beside the road, not along the carriageway', () => {
+    const fu: FurniturePoint[] = [{ i: 60, k: FurnitureCode.BUS_STOP, x: 40, z: 0 }];
+    const { placements } = place({ world: { r: [road(RoadClass.STREET, [-100, 0, 100, 0], { i: 6000 })], fu } });
+    const bench = placements.find(p => p.id === 'gen:bench:bus:n60')!;
+    expect(bench.x).toBeCloseTo(40, 6);
+    expect(Math.abs(bench.z)).toBeCloseTo(ROAD_WIDTH_M[RoadClass.STREET] / 2 + 2 + 0.3, 6);
+    expect(facing(bench.rotationY)[1]).toBeCloseTo(-Math.sign(bench.z), 6); // facing the road
+  });
+
+  it("finds a bus stop's road in the next lookup cell, past the grid's 14 m margin", () => {
+    // the road runs along x = 70; the stop at x = 45 is 25 m from it, in the 0..50 cell where the road isn't filed
+    const fu: FurniturePoint[] = [{ i: 61, k: FurnitureCode.BUS_STOP, x: 45, z: 0 }];
+    const { placements } = place({ world: { r: [road(RoadClass.STREET, [70, -200, 70, 200], { i: 6100 })], fu } });
+    const bench = placements.find(p => p.id === 'gen:bench:bus:n61');
+    expect(bench).toBeDefined();
+    expect(bench!.x).toBeCloseTo(70 - ROAD_WIDTH_M[RoadClass.STREET] / 2 - 2 - 0.3, 6); // on the stop's side
+  });
+
+  it('treats a street split where it carries straight on as one street, not a junction', () => {
+    // over many split points some lamp lands within a few metres of the join, where the next piece would count as
+    // another carriageway
+    let near = 0;
+    for (let length = 20; length <= 60; length++) {
+      const west = road(RoadClass.PRIMARY, [-length, 0, 0, 0], { i: 6200 + length * 2 }); // a main road: no minimum length
+      const east = road(RoadClass.PRIMARY, [0, 0, 200, 0], { i: 6201 + length * 2 });
+      const { placements, rejected } = place({
+        world: { r: [west, east] },
+        profiles: [sides('residential'), sides('residential')],
+      });
+      expect(rejected.junction).toBe(0);
+      near += placements.filter(p => p.kind === 'street-lamp' && Math.abs(p.x) < 4).length;
+    }
+    expect(near).toBeGreaterThan(0);
+  });
+
+  it("scales a lamp emitter's offset along the arm with the lamp", () => {
+    const lamp = {
+      id: 'x',
+      kind: 'street-lamp',
+      modelId: 'lamp-arm',
+      x: 0,
+      z: 0,
+      rotationY: 0,
+      scale: 2,
+      source: 'override',
+    } as const;
+    const [e] = lampEmitters([lamp]);
+    const [, y, z] = FURNITURE['street-lamp'].emitter!.offset;
+    expect(e.z).toBeCloseTo(2 * z, 9);
+    expect(e.y).toBeCloseTo(2 * y, 9);
+  });
+});
+
+describe('placeFurniture: second review', () => {
+  it("leaves out a bus stop's bin when its bench is turned down", () => {
+    const fu: FurniturePoint[] = [{ i: 70, k: FurnitureCode.BUS_STOP, x: 40, z: 8 }];
+    const world = { r: [road(RoadClass.STREET, [-100, 0, 100, 0], { i: 7000 })], fu };
+    const benchZ = ROAD_WIDTH_M[RoadClass.STREET] / 2 + 2 + 0.3;
+    // an exclusion over the bench's middle only: the bin, 1.9 m along the kerb, would pass on its own
+    const { placements } = place({ world, extra: { exclusions: [{ x: 40, z: benchZ, r: 1 }] } });
+    expect(placements.some(p => p.id === 'gen:bench:bus:n70')).toBe(false);
+    expect(placements.some(p => p.id === 'gen:waste-bin:bus:n70')).toBe(false);
+  });
+
+  it('tells a mapped node from a way with the same OSM id', () => {
+    const fu: FurniturePoint[] = [
+      { i: 5, k: FurnitureCode.BENCH, x: 40, z: 60 },
+      { i: 5, e: 'w', k: FurnitureCode.BENCH, x: -40, z: 60 },
+    ];
+    expect(place({ world: { fu } }).placements.map(p => p.id)).toEqual(['osm:n5', 'osm:w5']);
+  });
+
+  it("keeps a park's bench ids when a refresh adds a land area before it", () => {
+    const labels = [{ t: 'Torget', x: 0, z: 0, k: 'p' }];
+    const park = { k: LandUse.GRASS, p: square(100, 100, 40) };
+    const ids = (l: WorldData['l']) =>
+      place({ world: { labels, l } })
+        .placements.filter(p => p.id.startsWith('gen:bench:park'))
+        .map(p => p.id);
+    const before = ids([park]);
+    expect(before.length).toBe(2);
+    expect(ids([{ k: LandUse.FARMLAND, p: square(-300, -300, 50) }, park])).toEqual(before);
+  });
+
+  it('gives a lit path its lamps, but not a lit sidewalk mapped beside its street', () => {
+    const lamps = (extra: Partial<Road>) =>
+      kinds(
+        place({ world: { r: [road(RoadClass.PATH, [-100, 0, 100, 0], { lt: 1, ...extra })] } }).placements,
+        'street-lamp',
+      ).length;
+    expect(lamps({})).toBeGreaterThan(4);
+    expect(lamps({ s: RoadUse.SIDEWALK })).toBe(0);
   });
 });

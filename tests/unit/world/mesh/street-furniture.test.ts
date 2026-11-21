@@ -1,10 +1,10 @@
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
-import { FURNITURE, SHORT_LAMP_EMITTER } from '../../../../src/world/furniture/definitions';
+import { FURNITURE, type FurnitureModelId, SHORT_LAMP_EMITTER } from '../../../../src/world/furniture/definitions';
 import type { FurniturePlacement } from '../../../../src/world/furniture/placement';
 import { FURNITURE_MODELS, StreetFurniture } from '../../../../src/world/mesh/street-furniture';
 
-const BUDGET: Record<string, number> = {
+const BUDGET: Record<FurnitureModelId, number> = {
   'lamp-arm': 260,
   'lamp-arm-short': 260,
   'bench-wood': 300,
@@ -12,14 +12,18 @@ const BUDGET: Record<string, number> = {
   'wheelie-bin-green': 150,
   'wheelie-bin-black': 150,
   'mailbox-green': 80,
+  'mailbox-grey': 80,
+  'mailbox-black': 80,
   'mailbox-stand-3': 300,
+  'mailbox-stand-4': 300,
+  'mailbox-stand-5': 300,
   'mailbox-stand-6': 300,
   'street-cabinet': 60,
 };
 const tris = (g?: THREE.BufferGeometry) => (g ? g.getAttribute('position').count / 3 : 0);
 const place = (
   id: string,
-  modelId: string,
+  modelId: FurnitureModelId,
   x: number,
   z: number,
   rotationY = 0,
@@ -37,31 +41,34 @@ const place = (
   }) as FurniturePlacement;
 
 describe('street furniture models', () => {
-  it.each(Object.keys(BUDGET))('%s stays within its triangle budget, faces outwards and stands on the ground', id => {
-    const m = FURNITURE_MODELS[id]();
-    expect(tris(m.body) + tris(m.glass)).toBeLessThanOrEqual(BUDGET[id]);
-    for (const g of [m.body, m.glass]) {
-      if (!g) continue;
-      const p = g.getAttribute('position');
-      const n = g.getAttribute('normal');
-      const a = new THREE.Vector3();
-      const b = new THREE.Vector3();
-      const c = new THREE.Vector3();
-      const face = new THREE.Vector3();
-      const vn = new THREE.Vector3();
-      for (let i = 0; i < p.count; i += 3) {
-        a.fromBufferAttribute(p, i);
-        b.fromBufferAttribute(p, i + 1);
-        c.fromBufferAttribute(p, i + 2);
-        face.subVectors(c, b).cross(a.clone().sub(b)).normalize();
-        vn.fromBufferAttribute(n, i);
-        if (face.lengthSq() > 0.5) expect(face.dot(vn)).toBeGreaterThan(0); // counter-clockwise from outside
+  it.each(Object.keys(BUDGET) as FurnitureModelId[])(
+    '%s stays within its triangle budget, faces outwards and stands on the ground',
+    id => {
+      const m = FURNITURE_MODELS[id]();
+      expect(tris(m.body) + tris(m.glass)).toBeLessThanOrEqual(BUDGET[id]);
+      for (const g of [m.body, m.glass]) {
+        if (!g) continue;
+        const p = g.getAttribute('position');
+        const n = g.getAttribute('normal');
+        const a = new THREE.Vector3();
+        const b = new THREE.Vector3();
+        const c = new THREE.Vector3();
+        const face = new THREE.Vector3();
+        const vn = new THREE.Vector3();
+        for (let i = 0; i < p.count; i += 3) {
+          a.fromBufferAttribute(p, i);
+          b.fromBufferAttribute(p, i + 1);
+          c.fromBufferAttribute(p, i + 2);
+          face.subVectors(c, b).cross(a.clone().sub(b)).normalize();
+          vn.fromBufferAttribute(n, i);
+          if (face.lengthSq() > 0.5) expect(face.dot(vn)).toBeGreaterThan(0); // counter-clockwise from outside
+        }
+        g.computeBoundingBox();
+        expect(g.boundingBox!.min.y).toBeGreaterThanOrEqual(-1e-6);
       }
-      g.computeBoundingBox();
-      expect(g.boundingBox!.min.y).toBeGreaterThanOrEqual(-1e-6);
-    }
-    g_dispose(m);
-  });
+      g_dispose(m);
+    },
+  );
 
   it('matches the footprints and heights placement uses, and puts the lamp glass where the emitter is', () => {
     for (const [kind, id] of [
@@ -136,6 +143,16 @@ describe('StreetFurniture', () => {
     f.dispose();
   });
 
+  it('splits a model into cells, so meshes far apart are culled apart', () => {
+    const far = new StreetFurniture([place('a', 'lamp-arm', 10, 0), place('b', 'lamp-arm', 1010, 0)], {
+      groundAt: () => 0,
+    });
+    const lamps = far.meshes.filter(m => m.name === 'furniture:lamp-arm');
+    expect(lamps.map(m => m.count)).toEqual([1, 1]);
+    for (const m of lamps) expect(m.boundingSphere!.radius).toBeLessThan(10); // one lamp, not the 1 km between them
+    far.dispose();
+  });
+
   it('tints by source in the debug view, and only there', () => {
     expect(new StreetFurniture(placements, { groundAt: () => 0 }).meshes.every(m => m.instanceColor === null)).toBe(
       true,
@@ -155,11 +172,5 @@ describe('StreetFurniture', () => {
       mat.addEventListener('dispose', () => disposed.add(mat));
     f.dispose();
     expect(disposed.size).toBe(f.meshes.length + 2);
-  });
-
-  it('refuses a model it does not know', () => {
-    expect(() => new StreetFurniture([place('x', 'sofa', 0, 0)], { groundAt: () => 0 })).toThrow(
-      'unknown furniture model: sofa',
-    );
   });
 });

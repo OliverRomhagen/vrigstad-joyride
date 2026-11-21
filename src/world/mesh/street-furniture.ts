@@ -1,11 +1,11 @@
 import '../three-legacy';
 import * as THREE from 'three';
-import type { FurnitureSource } from '../furniture/definitions';
+import type { FurnitureModelId, FurnitureSource } from '../furniture/definitions';
 import type { FurniturePlacement } from '../furniture/placement';
 import { SOURCE_TINTS } from './sidewalk-mesh';
 
-// Street furniture as low-poly Swedish small-town models (#144): one InstancedMesh per model for the whole world, set
-// once and never updated. Models are built here from boxes and cylinders with a colour per part; placement never
+// Street furniture as low-poly Swedish small-town models (#144): one InstancedMesh per model and map cell, set once
+// and never updated. Models are built here from boxes and cylinders with a colour per part; placement never
 // sees them. Origin on the ground; +z is a bench's front and the way a lamp's arm reaches.
 
 /** A model: one vertex-coloured body, and the lamp glass apart so the night (#99) can light one shared material. */
@@ -56,29 +56,51 @@ const box = (w: number, h: number, d: number, x: number, y: number, z: number, r
 const cylinder = (rTop: number, rBottom: number, h: number, segments: number, y: number, open = false) =>
   new THREE.CylinderGeometry(rTop, rBottom, h, segments, 1, open).translate(0, y + h / 2, 0);
 
-/** A tapered pole with a single arm reaching over the road and a flat shoebox luminaire. `h` is the pole's height (m). */
-function lamp(h: number, arm: number, head: number): FurnitureModel {
-  const tilt = -0.18; // the arm rises a little towards its end
-  const armY = h - 0.25;
+/** A tapered pole with a single arm reaching over the road and a flat shoebox luminaire, `headScale` times the standard. */
+function lamp(heightM: number, armM: number, headScale: number): FurnitureModel {
+  const armTiltRad = -0.18; // the arm rises a little towards its end
+  const armY = heightM - 0.25;
   return {
     body: merge([
       [cylinder(0.16, 0.18, 0.45, 8, 0), POLE_DARK], // foot
-      [cylinder(0.055, 0.1, h - 0.45, 8, 0.45, true), POLE],
-      [box(0.07, 0.07, arm, 0, armY + (Math.sin(-tilt) * arm) / 2, (arm / 2) * Math.cos(tilt), tilt), POLE],
-      [box(0.26 * head, 0.1 * head, 0.55 * head, 0, armY + Math.sin(-tilt) * arm + 0.02, arm), POLE_DARK], // luminaire
+      [cylinder(0.055, 0.1, heightM - 0.45, 8, 0.45, true), POLE],
+      [
+        box(
+          0.07,
+          0.07,
+          armM,
+          0,
+          armY + (Math.sin(-armTiltRad) * armM) / 2,
+          (armM / 2) * Math.cos(armTiltRad),
+          armTiltRad,
+        ),
+        POLE,
+      ],
+      [
+        box(0.26 * headScale, 0.1 * headScale, 0.55 * headScale, 0, armY + Math.sin(-armTiltRad) * armM + 0.02, armM),
+        POLE_DARK,
+      ], // luminaire
     ]),
-    glass: merge([[box(0.2 * head, 0.03, 0.45 * head, 0, armY + Math.sin(-tilt) * arm - 0.045, arm), 0xf4ecd0]]),
+    glass: merge([
+      [box(0.2 * headScale, 0.03, 0.45 * headScale, 0, armY + Math.sin(-armTiltRad) * armM - 0.045, armM), 0xf4ecd0],
+    ]),
   };
 }
+
+const BACK_TILT = 0.1; // rad
+/** the lower back slat's middle: the back leg's front face at its height (-0.24 + 0.025 - 0.195 tan BACK_TILT), plus half a slat */
+const BACK_SLAT_Z = -0.24 + 0.025 - 0.195 * Math.tan(BACK_TILT) + 0.035 / 2;
 
 /** Slatted wooden seat and back on dark painted metal ends, 1.8 × 0.6 × 0.8 m; it faces +z. */
 function bench(): FurnitureModel {
   const parts: Part[] = [];
   for (const z of [-0.13, 0, 0.13]) parts.push([box(1.8, 0.04, 0.11, 0, 0.45, z), WOOD]);
-  for (const y of [0.6, 0.74]) parts.push([box(1.8, 0.1, 0.035, 0, y, -0.25 + (y - 0.6) * -0.15, 0.12), WOOD]);
+  // the back leans back by BACK_TILT (rotateX by a negative angle tips the top towards -z), the slats on the legs' front
+  for (const y of [0.6, 0.74])
+    parts.push([box(1.8, 0.1, 0.035, 0, y, BACK_SLAT_Z - (y - 0.6) * Math.tan(BACK_TILT), -BACK_TILT), WOOD]);
   for (const x of [-0.78, 0.78]) {
     parts.push([box(0.05, 0.43, 0.05, x, 0.215, 0.2), BENCH_METAL]); // front leg
-    parts.push([box(0.05, 0.8, 0.05, x, 0.405, -0.24, 0.1), BENCH_METAL]); // back leg and back support in one, tilted: lifted clear of the ground
+    parts.push([box(0.05, 0.8, 0.05, x, 0.405, -0.24, -BACK_TILT), BENCH_METAL]); // back leg and back support in one, tilted: lifted clear of the ground
     parts.push([box(0.05, 0.04, 0.5, x, 0.42, -0.02), BENCH_METAL]); // seat rail
   }
   return { body: merge(parts) };
@@ -161,7 +183,7 @@ function streetCabinet(): FurnitureModel {
 }
 
 /** Every model by id; the registry is the seam where a GLB-backed model could later stand in (#59). */
-export const FURNITURE_MODELS: Readonly<Record<string, () => FurnitureModel>> = {
+export const FURNITURE_MODELS: Readonly<Record<FurnitureModelId, () => FurnitureModel>> = {
   'lamp-arm': () => lamp(6.5, 1.25, 1),
   'lamp-arm-short': () => lamp(5, 1, 0.8),
   'bench-wood': bench,
@@ -186,9 +208,11 @@ export interface StreetFurnitureOptions {
 }
 
 const SOURCE_INDEX: Record<FurnitureSource, number> = { osm: 0, override: 1, procedural: 2 };
+/** each model's instances are split into cells this big (m), so the main and shadow passes cull whole cells, as the trees do */
+const CELL_M = 400;
 
 /**
- * The meshes for a set of placements: one InstancedMesh per model body and per lamp glass. Adds nothing to a scene;
+ * The meshes for a set of placements: one InstancedMesh per model body and per lamp glass in each CELL_M cell. Adds nothing to a scene;
  * dispose() frees every geometry and material made here.
  */
 export class StreetFurniture {
@@ -202,14 +226,16 @@ export class StreetFurniture {
       body: new THREE.MeshLambertMaterial({ vertexColors: true }),
       luminaire: new THREE.MeshLambertMaterial({ vertexColors: true }),
     };
-    const byModel = new Map<string, FurniturePlacement[]>();
+    // three bounds an InstancedMesh by all its instances: one for the whole world would never be culled
+    const byCell = new Map<string, { id: FurnitureModelId; list: FurniturePlacement[] }>();
     for (const p of placements) {
-      let list = byModel.get(p.modelId);
-      if (!list) {
-        list = [];
-        byModel.set(p.modelId, list);
+      const key = `${p.modelId}|${Math.floor(p.x / CELL_M)},${Math.floor(p.z / CELL_M)}`;
+      let cell = byCell.get(key);
+      if (!cell) {
+        cell = { id: p.modelId, list: [] };
+        byCell.set(key, cell);
       }
-      list.push(p);
+      cell.list.push(p);
     }
     const m = new THREE.Matrix4();
     const q = new THREE.Quaternion();
@@ -218,10 +244,8 @@ export class StreetFurniture {
     const up = new THREE.Vector3(0, 1, 0);
     const tint = new THREE.Color();
     let triangles = 0;
-    for (const [id, list] of byModel) {
-      const build = FURNITURE_MODELS[id];
-      if (!build) throw new Error(`unknown furniture model: ${id}`);
-      const model = build();
+    for (const { id, list } of byCell.values()) {
+      const model = FURNITURE_MODELS[id]();
       const parts: [THREE.BufferGeometry, THREE.MeshLambertMaterial, boolean][] = [
         [model.body, this.materials.body, true],
       ];
@@ -237,7 +261,7 @@ export class StreetFurniture {
         mesh.castShadow = shadows;
         mesh.receiveShadow = shadows;
         mesh.matrixAutoUpdate = false;
-        mesh.computeBoundingSphere(); // over the instances, so the whole set is culled together
+        mesh.computeBoundingSphere(); // over this cell's instances
         triangles += (geometry.getAttribute('position').count / 3) * list.length;
         this.meshes.push(mesh);
       }

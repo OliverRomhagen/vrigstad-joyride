@@ -10,6 +10,22 @@ export type FurnitureKind =
   | 'mailbox'
   | 'mailbox-stand'
   | 'street-cabinet';
+/** every model src/world/mesh/street-furniture.ts can build, so a misspelt id is a compile error */
+export type FurnitureModelId =
+  | 'lamp-arm'
+  | 'lamp-arm-short'
+  | 'bench-wood'
+  | 'bin-green'
+  | 'wheelie-bin-green'
+  | 'wheelie-bin-black'
+  | 'mailbox-green'
+  | 'mailbox-grey'
+  | 'mailbox-black'
+  | 'mailbox-stand-3'
+  | 'mailbox-stand-4'
+  | 'mailbox-stand-5'
+  | 'mailbox-stand-6'
+  | 'street-cabinet';
 /** where a road or place is, for what furniture it gets; see context.ts */
 export type FurnitureContext = 'torget' | 'centre' | 'main' | 'residential' | 'outer' | 'path';
 /** osm: drawn where OpenStreetMap maps it; override: local knowledge in overrides.ts; procedural: a rule placed it */
@@ -27,7 +43,7 @@ export interface LampEmitter {
 export interface FurnitureDefinition {
   kind: FurnitureKind;
   /** default model; context-specific variants are chosen in placement.ts */
-  modelId: string;
+  modelId: FurnitureModelId;
   /** footprint (m): x across, z front to back, in model space */
   widthM: number;
   depthM: number;
@@ -40,11 +56,10 @@ export interface FurnitureDefinition {
   treeClearanceM: number;
   /** a generated object this close to a mapped or override one of the same kind is a duplicate (m) */
   dedupeRadiusM: number;
-  /** benches and bins keep this far from a junction node (m); 0 for none (a lamp has its own rule) */
+  /** everything but a lamp keeps this far from a junction node (m); 0 for none (a lamp has its own rule) */
   junctionKeepM: number;
   /** steepest ground it may stand on (degrees) */
   maxSlopeDeg: number;
-  allowedContexts: readonly FurnitureContext[];
   emitter?: LampEmitter;
 }
 
@@ -61,7 +76,6 @@ export const FURNITURE: Readonly<Record<FurnitureKind, FurnitureDefinition>> = {
     dedupeRadiusM: 12,
     junctionKeepM: 0,
     maxSlopeDeg: 15,
-    allowedContexts: ['torget', 'centre', 'main', 'residential', 'path'],
     emitter: { offset: [0, 6.43, 1.25], direction: [0, -1, 0], coneDeg: 120, rangeM: 18 }, // the glass under the luminaire
   },
   bench: {
@@ -76,7 +90,6 @@ export const FURNITURE: Readonly<Record<FurnitureKind, FurnitureDefinition>> = {
     dedupeRadiusM: 4,
     junctionKeepM: 8,
     maxSlopeDeg: 8,
-    allowedContexts: ['torget', 'centre', 'main'],
   },
   'waste-bin': {
     kind: 'waste-bin',
@@ -90,7 +103,6 @@ export const FURNITURE: Readonly<Record<FurnitureKind, FurnitureDefinition>> = {
     dedupeRadiusM: 4,
     junctionKeepM: 8,
     maxSlopeDeg: 8,
-    allowedContexts: ['torget', 'centre', 'main'],
   },
   // #305: by the houses, at the property line facing the street
   'wheelie-bin': {
@@ -105,7 +117,6 @@ export const FURNITURE: Readonly<Record<FurnitureKind, FurnitureDefinition>> = {
     dedupeRadiusM: 2,
     junctionKeepM: 3,
     maxSlopeDeg: 10,
-    allowedContexts: ['centre', 'main', 'residential'],
   },
   mailbox: {
     kind: 'mailbox',
@@ -119,7 +130,6 @@ export const FURNITURE: Readonly<Record<FurnitureKind, FurnitureDefinition>> = {
     dedupeRadiusM: 3,
     junctionKeepM: 3,
     maxSlopeDeg: 15,
-    allowedContexts: ['centre', 'main', 'residential'],
   },
   'mailbox-stand': {
     kind: 'mailbox-stand',
@@ -133,7 +143,6 @@ export const FURNITURE: Readonly<Record<FurnitureKind, FurnitureDefinition>> = {
     dedupeRadiusM: 5,
     junctionKeepM: 5,
     maxSlopeDeg: 12,
-    allowedContexts: ['outer'],
   },
   'street-cabinet': {
     kind: 'street-cabinet',
@@ -147,12 +156,11 @@ export const FURNITURE: Readonly<Record<FurnitureKind, FurnitureDefinition>> = {
     dedupeRadiusM: 4,
     junctionKeepM: 3,
     maxSlopeDeg: 12,
-    allowedContexts: ['centre', 'main', 'residential'],
   },
 };
 
 /** the shorter lamp on residential streets and paths, with its light lower and nearer the pole */
-export const SHORT_LAMP_MODEL = 'lamp-arm-short';
+export const SHORT_LAMP_MODEL: FurnitureModelId = 'lamp-arm-short';
 export const SHORT_LAMP_EMITTER: LampEmitter = {
   offset: [0, 4.88, 1],
   direction: [0, -1, 0],

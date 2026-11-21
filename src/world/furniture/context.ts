@@ -1,7 +1,8 @@
 // Which context each road is in, for what furniture it gets, and where Torget is (#144). Pure: no three.js. The street
 // profile comes from the streetscape's classification (#187), so this doesn't classify streets a second time.
 import { RoadClass, RoadUse, type WorldData } from '../data';
-import { pointInPolygon, segmentDistance, signedPolygonArea } from '../polygon';
+import { pointInPolygon, segmentDistance, signedPolygonArea, vertexCentre } from '../polygon';
+import { arcLengths, pointAtArc } from '../polyline';
 import type { Point, RoadLine } from '../roads';
 import type { StreetSides } from '../streetscape-rules';
 import type { FurnitureContext } from './definitions';
@@ -28,9 +29,9 @@ export interface TorgetArea {
 
 /** Joins the pieces of Torget end to end into one closed ring; a circle round the label when they don't close. */
 export function torgetArea(data: WorldData, roads: { readonly lines: readonly RoadLine[] }): TorgetArea | null {
-  const ris = roads.lines.flatMap((_, ri) => (data.r[ri].n === TORGET_ROAD ? [ri] : []));
-  const ring = joinRing(ris.map(ri => roads.lines[ri].p.slice()));
-  if (ring) return withCentre(ring.flat(), ris, true);
+  const torgetRoads = roads.lines.flatMap((_, ri) => (data.r[ri].n === TORGET_ROAD ? [ri] : []));
+  const ring = joinRing(torgetRoads.map(ri => roads.lines[ri].p.slice()));
+  if (ring) return withCentre(ring.flat(), torgetRoads, true);
   const label = data.labels.find(l => l.t === 'Torget');
   if (!label) return null;
   const circle: number[] = [];
@@ -38,36 +39,30 @@ export function torgetArea(data: WorldData, roads: { readonly lines: readonly Ro
     const a = (k / 16) * Math.PI * 2;
     circle.push(label.x + Math.cos(a) * TORGET_FALLBACK_M, label.z + Math.sin(a) * TORGET_FALLBACK_M);
   }
-  return withCentre(circle, ris, false);
+  return withCentre(circle, torgetRoads, false);
 }
 
 function withCentre(ring: number[], roads: number[], fromData: boolean): TorgetArea {
-  let cx = 0;
-  let cz = 0;
-  for (let i = 0; i < ring.length; i += 2) {
-    cx += ring[i];
-    cz += ring[i + 1];
-  }
-  const n = ring.length / 2;
-  return { ring, roads, fromData, cx: cx / n, cz: cz / n };
+  const { x, z } = vertexCentre(ring);
+  return { ring, roads, fromData, cx: x, cz: z };
 }
 
-const close = (a: Point, b: Point) => Math.hypot(a[0] - b[0], a[1] - b[1]) < JOIN_M;
+const samePoint = (a: Point, b: Point) => Math.hypot(a[0] - b[0], a[1] - b[1]) < JOIN_M;
 
 /** The pieces joined end to end (any direction) into one ring without its closing vertex, or null if they don't close. */
 function joinRing(pieces: Point[][]): Point[] | null {
   if (!pieces.length) return null;
-  const left = pieces.slice(1);
+  const remaining = pieces.slice(1);
   const ring = pieces[0].slice();
-  while (left.length) {
+  while (remaining.length) {
     const end = ring[ring.length - 1];
-    const k = left.findIndex(p => close(p[0], end) || close(p[p.length - 1], end));
+    const k = remaining.findIndex(p => samePoint(p[0], end) || samePoint(p[p.length - 1], end));
     if (k < 0) return null;
-    const [p] = left.splice(k, 1);
-    const next = close(p[0], end) ? p : p.slice().reverse();
+    const [p] = remaining.splice(k, 1);
+    const next = samePoint(p[0], end) ? p : p.slice().reverse();
     ring.push(...next.slice(1));
   }
-  if (!close(ring[0], ring[ring.length - 1]) || ring.length < 4) return null;
+  if (!samePoint(ring[0], ring[ring.length - 1]) || ring.length < 4) return null;
   ring.pop();
   // the same ring whatever order or direction the pieces came in: one winding, starting at the lowest x (then z)
   if (signedPolygonArea(ring.flat()) < 0) ring.reverse();
@@ -88,24 +83,14 @@ function distanceToArea(ring: number[], x: number, z: number) {
   return best;
 }
 
-function midpoint(p: readonly Point[]): Point {
-  let total = 0;
-  for (let i = 1; i < p.length; i++) total += Math.hypot(p[i][0] - p[i - 1][0], p[i][1] - p[i - 1][1]);
-  let left = total / 2;
-  for (let i = 1; i < p.length; i++) {
-    const d = Math.hypot(p[i][0] - p[i - 1][0], p[i][1] - p[i - 1][1]);
-    if (left <= d && d > 0) {
-      const u = left / d;
-      return [p[i - 1][0] + (p[i][0] - p[i - 1][0]) * u, p[i - 1][1] + (p[i][1] - p[i - 1][1]) * u];
-    }
-    left -= d;
-  }
-  return p[p.length - 1];
+function midpoint(p: readonly Point[]) {
+  const arcs = arcLengths(p);
+  return pointAtArc(p, arcs, arcs[arcs.length - 1] / 2);
 }
 
 /**
  * Each road's context, first match:
- * - a lit footway, path or cycleway is `path`;
+ * - a lit footway, path or cycleway is `path`, but not a sidewalk or crossing mapped beside its street, which has its own lamps;
  * - a road whose middle is within TORGET_REACH_M of Torget is `torget`, or `centre` for a carriageway round the square;
  * - a street or bigger (service roads, tracks and unlit paths are `outer`) takes the streetscape's profile: `centre`,
  *   `main` for primary and secondary roads in residential areas, `residential` for streets there, `outer` in the outskirts.
@@ -118,10 +103,11 @@ export function roadContexts(
 ): FurnitureContext[] {
   return roads.lines.map((road, ri): FurnitureContext => {
     const r = data.r[ri];
-    if (road.c === RoadClass.PATH) return r.lt === 1 ? 'path' : 'outer';
+    const beside = r.s === RoadUse.SIDEWALK || r.s === RoadUse.CROSSING;
+    if (road.c === RoadClass.PATH) return r.lt === 1 && !beside ? 'path' : 'outer';
     if (road.p.length < 2) return 'outer';
-    const [mx, mz] = midpoint(road.p);
-    const carriageway = road.c <= RoadClass.STREET && r.s !== RoadUse.SIDEWALK && r.s !== RoadUse.CROSSING;
+    const { x: mx, z: mz } = midpoint(road.p);
+    const carriageway = road.c <= RoadClass.STREET && !beside;
     if (torget && distanceToArea(torget.ring, mx, mz) <= TORGET_REACH_M) return carriageway ? 'centre' : 'torget'; // the streets round the square are the centre's, and keep their lamps
     if (!carriageway) return 'outer';
     const profile = sides[ri]?.profile ?? 'outskirts';

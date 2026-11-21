@@ -3,7 +3,7 @@
 
 import { ROAD_WIDTH_M, RoadClass, RoadUse, type WorldData } from '../data';
 import { polygonArea, segmentDistance, segmentParam } from '../polygon';
-import { ROAD_CELL_M, type RoadLine } from '../roads';
+import type { RoadLine } from '../roads';
 
 /** a building between these footprints is a house (m²): smaller is a shed, larger a block or a barn */
 const HOUSE_MIN_M2 = 40;
@@ -54,7 +54,15 @@ function project(p: readonly (readonly [number, number])[], x: number, z: number
  */
 export function houseFronts(
   data: WorldData,
-  roads: { readonly lines: readonly RoadLine[]; readonly grid: ReadonlyMap<string, readonly number[]> },
+  roads: {
+    readonly lines: readonly RoadLine[];
+    forEachSegmentNear(
+      x: number,
+      z: number,
+      reachM: number,
+      visit: (ax: number, az: number, bx: number, bz: number, ri: number) => void,
+    ): void;
+  },
   eligible: (ri: number) => boolean,
 ): HouseFront[] {
   const driveways = roads.lines.flatMap((l, ri) => (data.r[ri].s === RoadUse.DRIVEWAY && l.p.length > 1 ? [l] : []));
@@ -70,36 +78,24 @@ export function houseFronts(
     }
     x /= b.p.length / 2;
     z /= b.p.length / 2;
-    // the cells round the house: the road grid files segments with a margin smaller than the reach
+    // every road with a segment within the reach; each is measured once, along its whole line
     let best: { ri: number; s: number; d: number; side: -1 | 1 } | null = null;
     const seen = new Set<number>();
-    for (
-      let gx = Math.floor((x - HOUSE_REACH_M) / ROAD_CELL_M);
-      gx <= Math.floor((x + HOUSE_REACH_M) / ROAD_CELL_M);
-      gx++
-    )
-      for (
-        let gz = Math.floor((z - HOUSE_REACH_M) / ROAD_CELL_M);
-        gz <= Math.floor((z + HOUSE_REACH_M) / ROAD_CELL_M);
-        gz++
-      ) {
-        const list = roads.grid.get(gx + ',' + gz);
-        if (!list) continue;
-        for (let i = 4; i < list.length; i += 5) {
-          const ri = list[i];
-          if (seen.has(ri)) continue;
-          seen.add(ri);
-          const road = roads.lines[ri];
-          if (road.c > RoadClass.STREET || data.r[ri].s === RoadUse.SIDEWALK || !eligible(ri)) continue;
-          const p = project(road.p, x, z);
-          if (p.d <= HOUSE_REACH_M && (!best || p.d < best.d)) best = { ri, ...p };
-        }
-      }
-    if (!best) continue;
-    const street = roads.lines[best.ri];
+    roads.forEachSegmentNear(x, z, HOUSE_REACH_M, (_ax, _az, _bx, _bz, ri) => {
+      if (seen.has(ri)) return;
+      seen.add(ri);
+      const road = roads.lines[ri];
+      if (road.c > RoadClass.STREET || data.r[ri].s === RoadUse.SIDEWALK || !eligible(ri)) return;
+      const p = project(road.p, x, z);
+      if (p.d <= HOUSE_REACH_M && (!best || p.d < best.d)) best = { ri, ...p };
+    });
+    // set inside the callback, so TypeScript can't see it change: name the result
+    const found = best as { ri: number; s: number; d: number; side: -1 | 1 } | null;
+    if (!found) continue;
+    const street = roads.lines[found.ri];
     const key = `h${Math.round(x * 10)}.${Math.round(z * 10)}`;
     // a driveway from this street to this house: the end near the street's edge marks the front
-    let front = best.s;
+    let front = found.s;
     let driveway = false;
     let nearest = DRIVEWAY_HOUSE_M;
     for (const dw of driveways)
@@ -113,14 +109,14 @@ export function houseFronts(
         // the mouth at the street's edge, on the house's side (or on the centre line, where the driveway joins it)
         if (
           atStreet.d > ROAD_WIDTH_M[street.c] / 2 + DRIVEWAY_STREET_M ||
-          (atStreet.side !== best.side && atStreet.d > 1)
+          (atStreet.side !== found.side && atStreet.d > 1)
         )
           continue;
         nearest = toHouse;
         front = atStreet.s;
         driveway = true;
       }
-    out.push({ key, x, z, p: b.p, ri: best.ri, side: best.side, s: front, driveway });
+    out.push({ key, x, z, p: b.p, ri: found.ri, side: found.side, s: front, driveway });
   }
   return out;
 }
