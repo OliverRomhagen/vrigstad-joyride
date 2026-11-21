@@ -41,6 +41,7 @@ const RUST = '#8a4a2a', // the boards
   TYRE = '#1c1c1c',
   CREAM = '#e8e2d2';
 const GATE_SIGN_Y_M = 4.6;
+const SALE_BOARD = { w: 4, h: 1.4, y: 1.9 } as const; // the TILL SALU board's size and the height of its middle (m)
 const OWNER_SEES_M = 30; // he turns to face you inside this distance
 const OWNER_TURN_K = 3; // how quickly he turns, per second
 const CAR_DETAIL_M = 150, // the cars wear the game's car models inside this distance of the yard's middle, on a computer
@@ -295,21 +296,11 @@ export class SkrotenMeshes {
     buys.position.set(-22, groundY(-22, 0) + 1.3, -0.08);
     gate.rotation.y = buys.rotation.y = Math.PI; // their fronts face the road
     yard.add(gate, buys);
-    // TILL SALU on two posts in front of the cars for sale, facing the yard
-    const sale = board(2.4, 0.9, 'TILL SALU', null),
-      saleY = groundY(SALE_SIGN.u, SALE_SIGN.v);
-    sale.position.set(SALE_SIGN.u, saleY + 1.6, SALE_SIGN.v);
+    // TILL SALU on two posts in front of the cars for sale, facing the yard, taped over with SNART until they can be bought
+    const sale = saleSign();
+    sale.position.set(SALE_SIGN.u, groundY(SALE_SIGN.u, SALE_SIGN.v), SALE_SIGN.v);
     sale.rotation.y = Math.PI;
     yard.add(sale);
-    put(
-      boxGeo([
-        [0.08, 1.6, 0.08, -1, 0.8, 0, POST],
-        [0.08, 1.6, 0.08, 1, 0.8, 0, POST],
-      ]),
-      SALE_SIGN.u,
-      saleY,
-      SALE_SIGN.v,
-    );
     for (const s of layout.signs) {
       const b = board(2.4, 1, 'SKROTEN', s.facing);
       b.position.set(s.u, groundY(s.u, s.v) + 2.2, s.v);
@@ -845,6 +836,42 @@ function bake(pieces: THREE.BufferGeometry[]) {
   }
   for (const p of pieces) p.dispose();
   return out;
+}
+
+// the TILL SALU sign standing on y = 0, its front to +z: a big board on two posts, and a strip of yellow tape across it saying SNART
+function saleSign() {
+  const g = new THREE.Group(),
+    { w, h, y } = SALE_BOARD,
+    sign = board(w, h, 'TILL SALU', null),
+    posts = new THREE.Mesh(
+      boxGeo([
+        [0.14, y + h / 2, 0.14, -w / 2 + 0.35, (y + h / 2) / 2, -0.1, POST],
+        [0.14, y + h / 2, 0.14, w / 2 - 0.35, (y + h / 2) / 2, -0.1, POST],
+      ]),
+      paintMat,
+    );
+  sign.position.y = y;
+  const cv = document.createElement('canvas');
+  cv.width = 512;
+  cv.height = 96;
+  const c = cv.getContext('2d')!;
+  c.fillStyle = '#f2c230';
+  c.fillRect(0, 0, 512, 96);
+  c.fillStyle = 'rgba(0,0,0,0.12)'; // the tape's torn ends
+  for (const x of [0, 500]) for (let k = 0; k < 96; k += 12) c.fillRect(x + ((k / 12) % 2) * 6, k, 6, 12);
+  c.fillStyle = '#1c1c1c';
+  c.font = 'bold 70px sans-serif';
+  c.textAlign = 'center';
+  c.textBaseline = 'middle';
+  c.fillText('SNART', 256, 52);
+  const map = new THREE.CanvasTexture(cv);
+  map.colorSpace = THREE.SRGBColorSpace;
+  const tape = new THREE.Mesh(new THREE.PlaneGeometry(w * 0.62, h * 0.3), new THREE.MeshLambertMaterial({ map }));
+  tape.position.set(w * 0.12, y - h * 0.45, 0.06); // across the bottom edge, under the lettering
+  tape.rotation.z = 0.1; // slapped on at a slant
+  posts.castShadow = tape.castShadow = true;
+  g.add(posts, sign, tape);
+  return g;
 }
 
 // a rusty board with white lettering on its front (+z), and an arrow under the text when `arrow` is given (1 right, -1 left)

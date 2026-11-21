@@ -509,7 +509,7 @@ export function yardLayout(
       outlines.push(rect(looseWheel.u, looseWheel.v, 1.6, 1.6));
     }
   }
-  outlines.push(rect(SALE_SIGN.u, SALE_SIGN.v, 2.6, 0.3));
+  outlines.push(rect(SALE_SIGN.u, SALE_SIGN.v, 3.6, 0.4)); // its posts and the board between them
 
   // more cars for sale, parked nose in under the carport, in four of its six bays
   if (carport) {
