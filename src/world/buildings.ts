@@ -190,4 +190,12 @@ export class BuildingIndex {
     }
     return hit;
   }
+
+  /** Stops the footprint at `index` from colliding; it stays in `footprints`. For a building the game rebuilds as walls you can pass between. */
+  stopColliding(index: number) {
+    for (const list of this.grid.values()) {
+      const i = list.indexOf(index);
+      if (i >= 0) list.splice(i, 1);
+    }
+  }
 }
