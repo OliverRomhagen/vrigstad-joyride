@@ -250,7 +250,7 @@ const { openKiosk, petCat, openOwnCat } = kioskCatMenus;
 const atSkroten = () => !!(game.inCar && game.pcar && places.skrotenAt(game.pcar.x, game.pcar.z));
 const skroten = new Skroten({ game, player, get stars() { return wanted.stars; }, openMenu, toast, atSkroten,
   modelId: c => vehicleVisuals.definition(meshed(c))?.id, wallet,
-  sellCar: c => { colony.hopOffCar(meshed(c)); actions.getOut(); removeCar(c); } });
+  sellCar: c => { colony.hopOffCar(meshed(c)); actions.getOut(); removeCar(c); fleet.parkAway(player); } });
 function nearPlace() { return game.inCar ? null : places.nearest(player.x, player.z); }
 function enterHouse(p: Place) { if (places.enter(p, player)) player.mesh.visible = false; }
 function leaveHouse() { if (!places.leave()) return; player.mesh.visible = true; $('hide').hidden = true; }

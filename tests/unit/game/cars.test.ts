@@ -249,6 +249,18 @@ describe('parkCars', () => {
     for (const c of cars.cars) expect(c.z).toBeLessThan(0);
   });
 
+  it('parks one more car out of sight with parkAway, as when Skroten buys one', () => {
+    const { cars } = fleet({ r: [STREET] });
+    cars.parkCars();
+    const before = cars.cars.length,
+      you = { x: 0, z: 0 };
+    cars.parkAway(you);
+    expect(cars.cars.length).toBe(before + 1);
+    const c = cars.cars[before]!;
+    expect(c.mode).toBe('parked');
+    expect(Math.hypot(c.x - you.x, c.z - you.z)).toBeGreaterThanOrEqual(260);
+  });
+
   it('parks none along a primary road', () => {
     const { cars } = fleet();
     cars.parkCars();
