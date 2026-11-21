@@ -43,11 +43,11 @@ import { installTestHook } from './test-hook';
 import { esc, MenuPlate } from './menu';
 import { KioskCatMenus } from './kiosk-cat-menus';
 import { Pets } from './pets';
-import { Commands, UsageError } from './commands';
+import { Commands } from './commands';
 import { CashRain } from './cash-rain';
 import { Confetti } from './confetti';
 import { DevConsole } from './devconsole';
-import { earn, newWallet, registerWalletCommands } from './economy';
+import { newWallet, registerWalletCommands } from './economy';
 import { Skroten } from './skroten';
 import { SKROT_CARPORT, SKROT_HALL, yardLayout } from './skroten-yard';
 import { SkrotenMeshes } from './render/skroten';
@@ -176,7 +176,7 @@ function addCar(type: CarType, x: number, z: number, h: number, mode: CarMode, a
   return fleet.add(carMeshes.attach(newCar(type, x, z, h, mode, T, pick(T.cols)), assetId));
 }
 function removeCar(c: Car) { carMeshes.detach(meshed(c)); fleet.remove(c); }
-const fleet = new Fleet({ roads, buildings, water, half: HALF, rnd, pick, addCar, placeCar: c => placeCar(meshed(c)), crash: (c, o, impact) => crashes.crash(c, o, impact),
+const fleet = new Fleet({ roads, buildings, water, half: HALF, rnd, pick, addCar: (t, x, z, h, m, model) => addCar(t, x, z, h, m, model as VehicleId | undefined), placeCar: c => placeCar(meshed(c)), crash: (c, o, impact) => crashes.crash(c, o, impact),
   canPark: (x, z) => streetIndex!.surfaceAt(x, z) === null,   // streetIndex is built before parkCars runs
   rammed: c => { if (c === game.pcar && game.ramCool <= 0) { game.ramCool = 6; wanted.addStar(pickLine(WANTED_LINES) + ' Ramming a police car. That will not help.'); } },
   get player() { return player; }, get inCar() { return game.inCar; } });
@@ -279,7 +279,7 @@ const { openKiosk, petCat, openOwnCat } = kioskCatMenus;
 // Skroten, which buys the car you drive in (src/game/skroten.ts); actions is declared further down
 const atSkroten = () => !!(game.inCar && game.pcar && places.skrotenAt(game.pcar.x, game.pcar.z));
 const skroten = new Skroten({ game, player, get stars() { return wanted.stars; }, openMenu, toast, atSkroten,
-  modelId: c => vehicleVisuals.definition(meshed(c))?.id, earn: kr => earn(wallet, kr),
+  modelId: c => vehicleVisuals.definition(meshed(c))?.id, wallet,
   sellCar: c => { colony.hopOffCar(meshed(c)); actions.getOut(); removeCar(c); } });
 function nearPlace() { return game.inCar ? null : places.nearest(player.x, player.z); }
 function enterHouse(p: Place) { if (places.enter(p, player)) player.mesh.visible = false; }
@@ -310,6 +310,7 @@ const commands = new Commands();
 const devcon = new DevConsole({ root: $('devcon'), commands, canvas, doc: document, get input() { return input; }, get enabled() { return DEV; }, get menuOpen() { return !kmenu.hidden; } });
 registerWalletCommands(commands, wallet);
 pets.registerCommands(commands);
+fleet.registerCommands(commands, new Map<string, CarType>([...VEHICLES.filter(v => !v.police).map(v => [v.id, v.archetype] as const), ['traktor', 'traktor']]), () => view.camYaw, c => carName(c));   // car <model>
 
 // ---------- input: keys, mouse look and the touch controls (src/game/input.ts) ----------
 // the dev console sees each key first, then the menus (src/game/menu.ts)
@@ -334,12 +335,6 @@ drawStars();
 function drawHealth() { hud.drawHealth(health.hp, game.inCar && game.pcar ? game.pcar.dmg : null); }
 // the title card (Gripen!, Däckad!) stays up this long
 function titleCard(title: string, msg: string) { hud.showTitleCard(title, msg); game.titleCardT = 3; }
-// car <model>: parks that car right by you, already yours (no star when you get in), for trying out Skroten and the models
-const CAR_MODELS = new Map<string, [CarType, VehicleId | undefined]>([...VEHICLES.filter(v => v.archetype !== 'polis').map(v => [v.id, [v.archetype, v.id]] as [string, [CarType, VehicleId]]), ['traktor', ['traktor', undefined]]]);
-commands.register('car', { usage: '<' + [...CAR_MODELS.keys()].join(' | ') + '>', help: 'park a car of that model next to you',
-  run: a => { const m = a[0] && CAR_MODELS.get(a[0].toLowerCase()); if (!m) throw new UsageError(a[0] ? 'No car called ' + a[0] + '.' : '');
-    if (game.inCar) return 'Get out of the car first.';
-    const o = { x: player.x + 3.5, z: player.z }; collide(o, 2.6); const c = addCar(m[0], o.x, o.z, view.camYaw, 'parked', m[1]); c.owned = true; return 'Parked a ' + carName(c) + ' next to you.'; } });
 
 // ---------- stealing and getting caught (the wanted level and the police: src/game/police.ts) ----------
 // the driver of a car you steal gets out, and stands there shouting for a while (src/game/render/shouting-drivers.ts)

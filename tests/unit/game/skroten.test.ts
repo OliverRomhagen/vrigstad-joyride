@@ -29,9 +29,7 @@ function skroten(o: { car?: Partial<Car>; model?: string; stars?: number } = {})
     toast: m => void calls.push('toast ' + m),
     atSkroten: () => onRing,
     modelId: () => o.model,
-    earn: kr => {
-      wallet.kr += kr;
-    },
+    wallet,
     sellCar: c => {
       calls.push('sold ' + c.type);
       game.inCar = false;

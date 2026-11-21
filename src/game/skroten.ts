@@ -2,7 +2,7 @@
 // Not with the police after you, and never a police car. On foot you can talk to him. main.ts passes in the menu plate, the wallet and
 // what happens to the car. No three.js or DOM here.
 import type { Car } from './cars';
-import { carPrice, fmtKr } from './economy';
+import { carPrice, earn, fmtKr, type Wallet } from './economy';
 import type { MenuItem } from './pets';
 import { NISSE_UV, yardToWorld } from './skroten-yard';
 import type { GameState } from './state';
@@ -34,7 +34,7 @@ export interface SkrotenDeps {
   toast(msg: string, secs?: number): void;
   atSkroten(): boolean; // the car you drive stands on Skroten's ring
   modelId(c: Car): string | undefined; // the model the car wears, if it has one
-  earn(kr: number): void; // adds to your wallet and redraws it
+  wallet: Wallet; // the HUD shows whatever it holds
   sellCar(c: Car): void; // puts you on foot beside the car, and takes the car away
 }
 
@@ -92,14 +92,14 @@ export class Skroten {
 
   // the offer is made again at the moment of sale: stars can come while the menu is open
   private sell(c: Car) {
-    const { toast, earn, sellCar } = this.g;
+    const { toast, wallet, sellCar } = this.g;
     const kr = this.offer(c);
     if (typeof kr === 'string') {
       toast(kr, 3.5);
       return;
     }
     sellCar(c);
-    earn(kr);
+    earn(wallet, kr);
     toast(NISSE + '”Affärer ä affärer. Ja frågar inte var den kommer ifrån.” +' + fmtKr(kr) + '.', 4);
   }
 }
