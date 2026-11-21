@@ -52,8 +52,8 @@ patterns = ["src/game/render/**", "src/game/presentation/**"]
 name = "sim"
 patterns = ["src/game/**"]
 
-# Everything else in src/: the map page and the lab, with the page modules listed above. It may import anything (it has
-# no rule), but the other zones may not import it.
+# Everything else in src/: the map page and the lab flags, with the page modules listed above. It may import anything (it
+# has no rule), but the other zones may not import it, so a lab gate stays in page code (#323).
 [[boundaries.zones]]
 name = "page"
 patterns = ["src/**"]

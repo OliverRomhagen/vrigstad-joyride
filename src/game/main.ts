@@ -91,11 +91,12 @@ setUpRenderer(renderer, coarse);
 const { scene, camera, sun, skyDome } = buildStage(coarse, location.search);
 const maxAnisotropy = renderer.capabilities.getMaxAnisotropy();
 
-// ---------- lab: opt-in experiments, switched on with ?lab=<id>,<id> (src/lab/) ----------
-// each one is imported only when its flag is on, so with everything off the game runs exactly as without the lab;
-// after the WebGL check, so none starts behind the fail screen, and one that fails to load or start only warns
+// ---------- lab: opt-in experiments, switched on with ?lab=<id>,<id> (src/lab/flags.ts) ----------
+// an experiment's code lives where it belongs, and lab.on('<id>') gates it where it's wired in, below or here (#323);
+// code behind a gate is loaded with import(), so with everything off the game runs exactly as without the lab.
+// After the WebGL check, so none starts behind the fail screen; one that fails to load or start should only warn
 const lab = LabFlags.fromSearch(location.search);
-if (lab.on('hello')) import('../lab/hello').then(m => m.startHello()).catch(err => console.warn('Lab: hello failed', err));
+if (lab.on('hello')) console.info('Lab: hello is on.'); // the smallest gate, for trying the flags
 
 // ---------- ground texture (also feeds the minimap: src/game/render/ground-texture.ts) ----------
 const ground = new GroundTexture(D, { coarse, maxTextureSize: renderer.capabilities.maxTextureSize, maxAnisotropy });
