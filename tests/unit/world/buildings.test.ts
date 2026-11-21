@@ -26,6 +26,7 @@ describe('collide', () => {
     index.stopColliding(0);
     expect(index.collide(o, 1)).toBe(false);
     expect(index.footprints).toHaveLength(1);
+    expect([...index.grid.values()].every(list => list.length > 0)).toBe(true);
   });
 
   it('collides with a solid too, which is no building and stays out of the footprints', () => {

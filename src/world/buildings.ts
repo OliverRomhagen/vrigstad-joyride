@@ -152,9 +152,11 @@ export class BuildingIndex {
 
   /** Stops the footprint at `index` from colliding; it stays in `footprints`. For a building the game rebuilds as walls you can pass between. */
   stopColliding(index: number) {
-    for (const list of this.grid.values()) {
+    // a cell left empty is dropped: readers such as the cat spawn take a non-empty list as having a house in it
+    for (const [key, list] of this.grid) {
       const i = list.indexOf(index);
       if (i >= 0) list.splice(i, 1);
+      if (!list.length) this.grid.delete(key);
     }
   }
 }
