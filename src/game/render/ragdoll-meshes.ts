@@ -4,8 +4,6 @@ import * as THREE from 'three';
 import type { KnockedDown } from '../ragdolls';
 import { HEAD, L_FOOT, L_HAND, L_HIP, L_SHOULDER, R_FOOT, R_HAND, R_HIP, R_SHOULDER } from '../sim/ragdoll';
 
-const SKIN = '#e2b796'; // personParts' skin colour
-
 type BoxPart = [number, number, number, number, number, number, string]; // [sx, sy, sz, x, y, z, colour], as boxGeo in ./models.ts takes it
 
 /** What the ragdoll meshes read from the rest of the game. */
@@ -70,7 +68,7 @@ export class RagdollMeshes {
   }
 
   private dress(body: KnockedDown): Drawn {
-    const { shirt, pants, hair } = body.npc.look,
+    const { shirt, pants, hair, skin } = body.npc.look,
       part = (key: string, parts: BoxPart[]) => {
         this.g.geoCache[key] ??= this.g.boxGeo(parts);
         const m = new THREE.Mesh(this.g.geoCache[key], this.g.paintMat);
@@ -79,8 +77,8 @@ export class RagdollMeshes {
         return m;
       };
     const torso = part('rag-torso' + shirt, [[0.5, 0.65, 0.28, 0, 0, 0, shirt]]);
-    const head = part('rag-head' + hair, [
-      [0.27, 0.27, 0.27, 0, 0, 0, SKIN],
+    const head = part('rag-head' + skin + hair, [
+      [0.27, 0.27, 0.27, 0, 0, 0, skin],
       [0.29, 0.1, 0.29, 0, 0.16, 0, hair],
     ]);
     const arms = [0, 1].map(() => part('rag-arm' + shirt, [[0.14, 0.6, 0.16, 0, 0, 0, shirt]]));
