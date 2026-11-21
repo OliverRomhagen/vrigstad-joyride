@@ -16,11 +16,12 @@ import { classifyStreetscape } from '../world/streetscape-rules';
 import { LEGACY_LIGHT } from '../world/three-legacy';
 import { treeSpots } from '../world/trees';
 import { Water } from '../world/water';
-import { applyFont, parseFont } from '../fonts/fonts';
+import { applyFont, BARLOW } from '../fonts/fonts';
+import { labFont } from '../lab/fonts';
 
 (function () {
 'use strict';
-applyFont(document, parseFont(location.search)); // ?font= (#75)
+applyFont(document, labFont(location.search) ?? BARLOW); // Barlow, or ?lab=fonts&font=<id> (src/lab/fonts/)
 const S = D.size, HALF = S / 2, N = D.n, EX = 2;
 const heightfield = new Heightfield(D, { exaggeration: EX }), hAt = heightfield.heightAt.bind(heightfield);
 const minE = heightfield.minElevationM, maxE = heightfield.maxElevationM;
