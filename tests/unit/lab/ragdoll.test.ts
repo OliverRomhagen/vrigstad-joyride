@@ -26,7 +26,7 @@ function run(r: Ragdoll, seconds: number, world = flat) {
 }
 function minY(r: Ragdoll) {
   let y = Infinity;
-  for (let i = 0; i < POINTS; i++) y = Math.min(y, r.p[i * 3 + 1]);
+  for (let i = 0; i < POINTS; i++) y = Math.min(y, r.pos[i * 3 + 1]);
   return y;
 }
 
@@ -57,10 +57,10 @@ describe('knockOver', () => {
 
   it('is as big as the pedestrian it replaces', () => {
     const r = knockOver(person, car(12), flat, 0.5, 0.9) as Ragdoll;
-    expect(r.p[HEAD * 3 + 1]).toBeCloseTo(1.62 * 0.9);
+    expect(r.pos[HEAD * 3 + 1]).toBeCloseTo(1.62 * 0.9);
     run(r, 12);
     expect(r.state).toBe('done');
-    expect(r.p[HEAD * 3 + 1]).toBeCloseTo(1.62 * 0.9);
+    expect(r.pos[HEAD * 3 + 1]).toBeCloseTo(1.62 * 0.9);
   });
 
   it('counts speed in reverse too, and throws them the way the car moves', () => {
@@ -79,7 +79,7 @@ describe('stepRagdoll', () => {
     run(r, 3);
     expect(r.state).toBe('lie');
     // lying down, not standing: the head is near the ground
-    expect(r.p[HEAD * 3 + 1]).toBeLessThan(0.6);
+    expect(r.pos[HEAD * 3 + 1]).toBeLessThan(0.6);
   });
 
   it('a faster car throws them further', () => {
@@ -105,7 +105,7 @@ describe('stepRagdoll', () => {
     expect(r.state).toBe('done');
     const { x, z } = ragdollCentre(r),
       stand = standingPose(x, z, r.h, 0);
-    for (let i = 0; i < POINTS * 3; i++) expect(r.p[i]).toBeCloseTo(stand[i], 5);
+    for (let i = 0; i < POINTS * 3; i++) expect(r.pos[i]).toBeCloseTo(stand[i], 5);
   });
 
   it('stops at a house wall', () => {
@@ -121,7 +121,7 @@ describe('stepRagdoll', () => {
     const r = knockOver(person, car(18), wall, 0.5) as Ragdoll;
     for (let t = 0; t < 3; t += STEP_S) {
       stepRagdoll(r, wall);
-      for (let i = 0; i < POINTS; i++) expect(r.p[i * 3 + 2]).toBeGreaterThan(-4.05);
+      for (let i = 0; i < POINTS; i++) expect(r.pos[i * 3 + 2]).toBeGreaterThan(-4.05);
     }
   });
 
@@ -144,7 +144,7 @@ describe('stepRagdoll', () => {
     for (let s = 0; s < 30; s++) {
       stepRagdoll(r, flat, [{ x: c.x, z: c.z + 0.3, r: 1.6 }]);
       for (let i = 0; i < POINTS * 3; i += 3)
-        fastest = Math.max(fastest, Math.hypot(r.p[i] - r.q[i], r.p[i + 2] - r.q[i + 2]) / STEP_S);
+        fastest = Math.max(fastest, Math.hypot(r.pos[i] - r.prev[i], r.pos[i + 2] - r.prev[i + 2]) / STEP_S);
     }
     expect(fastest).toBeLessThan(15);
   });
@@ -165,6 +165,6 @@ describe('stepRagdoll', () => {
       b = knockOver(person, car(14), flat, 0.3) as Ragdoll;
     run(a, 2);
     run(b, 2);
-    expect(a.p).toEqual(b.p);
+    expect(a.pos).toEqual(b.pos);
   });
 });

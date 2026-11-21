@@ -2,7 +2,7 @@
 // a person is nine points joined by sticks of fixed length (Verlet integration on a fixed timestep), so it tumbles,
 // bounces off the ground and the house walls, lies still for a moment, and then gets back up.
 
-/** The points, by index into `Ragdoll.p` (three numbers each: x, y, z in metres). */
+/** The points, by index into `Ragdoll.pos` (three numbers each: x, y, z in metres). */
 export const HEAD = 0,
   L_SHOULDER = 1,
   R_SHOULDER = 2,
@@ -77,16 +77,16 @@ const AWAY_KEEP = 0.25,
 
 export type RagdollState = 'fly' | 'lie' | 'up' | 'done';
 
-/** One knocked-over person. Plain data: `p` and `q` are this step's and the last step's positions, POINTS × (x, y, z). */
+/** One knocked-over person. Plain data: `pos` and `prev` are this step's and the last step's positions, POINTS × (x, y, z). */
 export interface Ragdoll {
-  p: number[];
-  q: number[];
+  pos: number[];
+  prev: number[];
   state: RagdollState;
   t: number; // s in this state ('up': 0..1 of the way up)
   still: number; // s every point has been slower than SETTLE_MS
   h: number; // the way they face when they stand again (rad, as a pedestrian's h)
   from: number[]; // where the points were when they started to get up
-  s: number; // their size, as the pedestrian mesh's scale: every stick is this times its standing length
+  scale: number; // their size, as the pedestrian mesh's scale: every stick is this times its standing length
 }
 
 /** What a ragdoll touches. */
@@ -160,8 +160,8 @@ export function knockOver(
   const launch = Math.min(speed, LAUNCH_MAX_MS);
   // thrown away from the side of the car they were on, a little more the further out they stood
   const away = Math.max(-1, Math.min(1, side / AWAY_SPREAD_M)) * AWAY_KEEP + (jitter - 0.5) * AWAY_JITTER;
-  const p = standingPose(person.x, person.z, person.h, world.groundAt(person.x, person.z), scale);
-  const q = p.slice();
+  const pos = standingPose(person.x, person.z, person.h, world.groundAt(person.x, person.z), scale);
+  const prev = pos.slice(); // a step back along the throw: that gap is their speed
   for (let i = 0; i < POINTS; i++) {
     // the bumper takes the legs: low is 0 at the head, 1 at the feet
     const low = 1 - POSE[i][1] / POSE[HEAD][1],
@@ -169,15 +169,15 @@ export function knockOver(
     const vx = (fx * k + sx * away) * launch,
       vz = (fz * k + sz * away) * launch;
     const vy = LIFT_MS + launch * (HEAD_LIFT + (FEET_LIFT - HEAD_LIFT) * low);
-    q[i * 3] -= vx * STEP_S;
-    q[i * 3 + 1] -= vy * STEP_S;
-    q[i * 3 + 2] -= vz * STEP_S;
+    prev[i * 3] -= vx * STEP_S;
+    prev[i * 3 + 1] -= vy * STEP_S;
+    prev[i * 3 + 2] -= vz * STEP_S;
   }
-  return { p, q, state: 'fly', t: 0, still: 0, h: person.h, from: [], s: scale };
+  return { pos, prev, state: 'fly', t: 0, still: 0, h: person.h, from: [], scale };
 }
 
 const _o = { x: 0, z: 0 };
-const _g: number[] = new Array(POINTS); // the ground under each point this step (m); looked up once, as the points move little within a step
+const _floor: number[] = new Array(POINTS); // how low each point may go this step (m): the ground under it plus POINT_R_M; looked up once, as the points move little within a step
 
 /** Moves a ragdoll on by one STEP_S: physics while it flies and lies, then a blend back to standing. */
 export function stepRagdoll(r: Ragdoll, world: RagdollWorld, pushers: readonly Pusher[] = []): void {
@@ -187,99 +187,153 @@ export function stepRagdoll(r: Ragdoll, world: RagdollWorld, pushers: readonly P
     blendUp(r, world);
     return;
   }
-  const { p, q } = r;
-  let fastest = 0;
-  for (let i = 0; i < POINTS * 3; i += 3) {
-    const vx = (p[i] - q[i]) * AIR_KEEP,
-      vy = (p[i + 1] - q[i + 1]) * AIR_KEEP,
-      vz = (p[i + 2] - q[i + 2]) * AIR_KEEP;
-    fastest = Math.max(fastest, Math.hypot(vx, vy, vz) / STEP_S);
-    q[i] = p[i];
-    q[i + 1] = p[i + 1];
-    q[i + 2] = p[i + 2];
-    p[i] += vx;
-    p[i + 1] += vy - GRAVITY_MS2 * STEP_S * STEP_S;
-    p[i + 2] += vz;
-  }
+  const fastest = fall(r);
   let pushed = false;
-  for (let i = 0; i < POINTS * 3; i += 3) {
-    const g = pushers.length ? world.groundAt(p[i], p[i + 2]) : 0;
-    for (const c of pushers) {
-      const ex = p[i] - c.x,
-        ez = p[i + 2] - c.z,
-        d = Math.hypot(ex, ez);
-      if (d < c.r && d > 0.01 && p[i + 1] < g + PUSH_HEIGHT_M) {
-        // moving p is speed to Verlet, and it carries over: push only until the point moves out at PUSH_KICK_MS, so one the car
-        // lands on is moved out over a few steps rather than fired out in one
-        const ux = ex / d,
-          uz = ez / d,
-          out = (p[i] - q[i]) * ux + (p[i + 2] - q[i + 2]) * uz;
-        const m = Math.min(c.r - d, Math.max(0, PUSH_KICK_MS * STEP_S - out));
-        p[i] += ux * m;
-        p[i + 2] += uz * m;
-        pushed = true;
-      }
-    }
-    _o.x = p[i];
-    _o.z = p[i + 2];
-    if (world.collide(_o, POINT_R_M)) {
-      // a wall: stop the point against it, so it slides down instead of passing through
-      p[i] = q[i] = _o.x;
-      p[i + 2] = q[i + 2] = _o.z;
-    }
-    _g[i / 3] = world.groundAt(p[i], p[i + 2]) + POINT_R_M;
+  for (let point = 0; point < POINTS; point++) {
+    if (pushOutOfCars(r, point, world, pushers)) pushed = true;
+    stopAtWalls(r, point, world);
+    const i = point * 3;
+    _floor[point] = world.groundAt(r.pos[i], r.pos[i + 2]) + POINT_R_M;
   }
   for (let n = 0; n < ITERATIONS; n++) {
-    for (let s = 0; s < STICKS.length; s++) {
-      const a = STICKS[s][0] * 3,
-        b = STICKS[s][1] * 3;
-      const dx = p[b] - p[a],
-        dy = p[b + 1] - p[a + 1],
-        dz = p[b + 2] - p[a + 2],
-        d = Math.hypot(dx, dy, dz) || 1e-6;
-      const k = (d - REST[s] * r.s) / d / 2;
-      p[a] += dx * k;
-      p[a + 1] += dy * k;
-      p[a + 2] += dz * k;
-      p[b] -= dx * k;
-      p[b + 1] -= dy * k;
-      p[b + 2] -= dz * k;
-    }
-    for (let i = 0; i < POINTS * 3; i += 3) if (p[i + 1] < _g[i / 3]) p[i + 1] = _g[i / 3];
+    keepStickLengths(r);
+    keepAboveFloor(r);
   }
-  // once per step, for the points on the ground: bounce up a little and lose some of the slide
-  for (let i = 0; i < POINTS * 3; i += 3) {
-    if (p[i + 1] > _g[i / 3] + 1e-4) continue;
-    const vy = p[i + 1] - q[i + 1];
-    if (vy < 0) q[i + 1] = p[i + 1] + vy * BOUNCE;
-    q[i] = p[i] - (p[i] - q[i]) * GROUND_KEEP;
-    q[i + 2] = p[i + 2] - (p[i + 2] - q[i + 2]) * GROUND_KEEP;
+  bounceAndSlide(r);
+  advanceState(r, fastest, pushed);
+}
+
+// Verlet: a point's speed is how far it moved last step (pos - prev), so moving pos also changes its speed.
+
+/** Moves every point on by its speed, slowed by the air, and pulled down; returns how fast the fastest point was going (m/s). */
+function fall(r: Ragdoll): number {
+  const { pos, prev } = r;
+  let fastest = 0;
+  for (let point = 0; point < POINTS; point++) {
+    const i = point * 3;
+    const stepX = (pos[i] - prev[i]) * AIR_KEEP,
+      stepY = (pos[i + 1] - prev[i + 1]) * AIR_KEEP,
+      stepZ = (pos[i + 2] - prev[i + 2]) * AIR_KEEP;
+    fastest = Math.max(fastest, Math.hypot(stepX, stepY, stepZ) / STEP_S);
+    prev[i] = pos[i];
+    prev[i + 1] = pos[i + 1];
+    prev[i + 2] = pos[i + 2];
+    pos[i] += stepX;
+    pos[i + 1] += stepY - GRAVITY_MS2 * STEP_S * STEP_S;
+    pos[i + 2] += stepZ;
   }
-  if (r.state === 'fly') {
-    r.still = fastest < SETTLE_MS ? r.still + STEP_S : 0;
-    if (r.still >= SETTLE_S || r.t >= FLY_MAX_S) {
-      r.state = 'lie';
-      r.t = 0;
-    }
-  } else if (pushed)
-    r.t = 0; // nobody gets up while the car is still shoving them: they'd stand up inside it
-  else if (r.t >= LIE_S) {
-    r.state = 'up';
-    r.t = 0;
-    r.from = p.slice();
-    r.h = facing(r);
+  return fastest;
+}
+
+/** Shoves a point out of every car it is inside, if it is low enough for the car to reach; true if any car did. */
+function pushOutOfCars(r: Ragdoll, point: number, world: RagdollWorld, pushers: readonly Pusher[]): boolean {
+  if (!pushers.length) return false;
+  const { pos, prev } = r,
+    i = point * 3;
+  const ground = world.groundAt(pos[i], pos[i + 2]);
+  let pushed = false;
+  for (const car of pushers) {
+    const awayX = pos[i] - car.x,
+      awayZ = pos[i + 2] - car.z,
+      gap = Math.hypot(awayX, awayZ);
+    if (gap >= car.r || gap <= 0.01 || pos[i + 1] >= ground + PUSH_HEIGHT_M) continue;
+    // push only until the point moves out at PUSH_KICK_MS, as the push carries over into its speed: one the car
+    // lands on is moved out over a few steps rather than fired out in one
+    const outX = awayX / gap,
+      outZ = awayZ / gap,
+      outStep = (pos[i] - prev[i]) * outX + (pos[i + 2] - prev[i + 2]) * outZ;
+    const push = Math.min(car.r - gap, Math.max(0, PUSH_KICK_MS * STEP_S - outStep));
+    pos[i] += outX * push;
+    pos[i + 2] += outZ * push;
+    pushed = true;
+  }
+  return pushed;
+}
+
+/** Stops a point dead against a house wall, so it slides down the wall instead of passing through. */
+function stopAtWalls(r: Ragdoll, point: number, world: RagdollWorld): void {
+  const { pos, prev } = r,
+    i = point * 3;
+  _o.x = pos[i];
+  _o.z = pos[i + 2];
+  if (!world.collide(_o, POINT_R_M)) return;
+  pos[i] = prev[i] = _o.x;
+  pos[i + 2] = prev[i + 2] = _o.z;
+}
+
+/** Moves the two ends of every stick towards or away from each other, half each, until it has its standing length. */
+function keepStickLengths(r: Ragdoll): void {
+  const { pos } = r;
+  for (let stick = 0; stick < STICKS.length; stick++) {
+    const a = STICKS[stick][0] * 3,
+      b = STICKS[stick][1] * 3;
+    const dx = pos[b] - pos[a],
+      dy = pos[b + 1] - pos[a + 1],
+      dz = pos[b + 2] - pos[a + 2],
+      length = Math.hypot(dx, dy, dz) || 1e-6;
+    const half = (length - REST[stick] * r.scale) / length / 2; // each end moves this share of the gap between them, which closes half the error
+    pos[a] += dx * half;
+    pos[a + 1] += dy * half;
+    pos[a + 2] += dz * half;
+    pos[b] -= dx * half;
+    pos[b + 1] -= dy * half;
+    pos[b + 2] -= dz * half;
+  }
+}
+
+/** Lifts any point below its floor (_floor) back up onto it. */
+function keepAboveFloor(r: Ragdoll): void {
+  for (let point = 0; point < POINTS; point++) {
+    const y = point * 3 + 1;
+    if (r.pos[y] < _floor[point]) r.pos[y] = _floor[point];
+  }
+}
+
+/** Once per step, for the points on the ground: they bounce up a little and lose some of their slide. */
+function bounceAndSlide(r: Ragdoll): void {
+  const { pos, prev } = r;
+  for (let point = 0; point < POINTS; point++) {
+    const i = point * 3;
+    if (pos[i + 1] > _floor[point] + 1e-4) continue;
+    const stepY = pos[i + 1] - prev[i + 1];
+    if (stepY < 0) prev[i + 1] = pos[i + 1] + stepY * BOUNCE;
+    prev[i] = pos[i] - (pos[i] - prev[i]) * GROUND_KEEP;
+    prev[i + 2] = pos[i + 2] - (pos[i + 2] - prev[i + 2]) * GROUND_KEEP;
+  }
+}
+
+/** Flying, they lie down once they have come to rest; lying, they get up once left alone for LIE_S. */
+function advanceState(r: Ragdoll, fastest: number, pushed: boolean): void {
+  switch (r.state) {
+    case 'fly':
+      r.still = fastest < SETTLE_MS ? r.still + STEP_S : 0;
+      if (r.still >= SETTLE_S || r.t >= FLY_MAX_S) {
+        r.state = 'lie';
+        r.t = 0;
+      }
+      break;
+    case 'lie':
+      if (pushed)
+        r.t = 0; // nobody gets up while the car is still shoving them: they'd stand up inside it
+      else if (r.t >= LIE_S) {
+        r.state = 'up';
+        r.t = 0;
+        r.from = r.pos.slice();
+        r.h = facing(r);
+      }
+      break;
   }
 }
 
 /** Where a ragdoll is, from its hips (m). */
 export function ragdollCentre(r: Ragdoll): { x: number; z: number } {
-  const p = r.state === 'up' ? r.from : r.p;
+  const p = r.state === 'up' ? r.from : r.pos;
   return { x: (p[L_HIP * 3] + p[R_HIP * 3]) / 2, z: (p[L_HIP * 3 + 2] + p[R_HIP * 3 + 2]) / 2 };
 }
 
 // stands up facing the way their head points from their hips, as you would get up from lying down
 function facing(r: Ragdoll): number {
-  const p = r.p,
+  const p = r.pos,
     hx = (p[L_HIP * 3] + p[R_HIP * 3]) / 2,
     hz = (p[L_HIP * 3 + 2] + p[R_HIP * 3 + 2]) / 2;
   const dx = p[HEAD * 3] - hx,
@@ -293,14 +347,18 @@ function blendUp(r: Ragdoll, world: RagdollWorld) {
   const u = Math.min(1, r.t / GETUP_S),
     e = u * u * (3 - 2 * u); // smoothstep
   const { x, z } = ragdollCentre(r);
-  standingPose(x, z, r.h, world.groundAt(x, z), r.s, _pose);
-  for (let i = 0; i < POINTS * 3; i++) r.p[i] = r.q[i] = r.from[i] + (_pose[i] - r.from[i]) * e;
+  standingPose(x, z, r.h, world.groundAt(x, z), r.scale, _pose);
+  for (let i = 0; i < POINTS * 3; i++) r.pos[i] = r.prev[i] = r.from[i] + (_pose[i] - r.from[i]) * e;
   if (u >= 1) r.state = 'done';
 }
 
 /** How far apart points a and b are (m); the sticks keep these at their standing length. */
 export function pointGap(r: Ragdoll, a: number, b: number): number {
-  return Math.hypot(r.p[b * 3] - r.p[a * 3], r.p[b * 3 + 1] - r.p[a * 3 + 1], r.p[b * 3 + 2] - r.p[a * 3 + 2]);
+  return Math.hypot(
+    r.pos[b * 3] - r.pos[a * 3],
+    r.pos[b * 3 + 1] - r.pos[a * 3 + 1],
+    r.pos[b * 3 + 2] - r.pos[a * 3 + 2],
+  );
 }
 
 /** The sticks, and the length each one keeps at the standard size (m), for tests and the renderer. */

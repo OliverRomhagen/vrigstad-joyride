@@ -142,7 +142,7 @@ export class Ragdolls {
         this.g.geoCache[key] ??= this.g.boxGeo(parts);
         const m = new THREE.Mesh(this.g.geoCache[key], this.g.paintMat);
         m.castShadow = true;
-        m.scale.setScalar(r.s);
+        m.scale.setScalar(r.scale);
         return m;
       };
     const torso = part('rag-torso' + shirt, [[0.5, 0.65, 0.28, 0, 0, 0, shirt]]);
@@ -161,7 +161,7 @@ export class Ragdolls {
   }
 
   private sync(b: Body) {
-    const p = b.r.p,
+    const p = b.r.pos,
       put = (m: THREE.Object3D, v: THREE.Vector3) => m.position.copy(v);
     // torso: right is from the left side to the right, up from the hips to the shoulders
     at(p, R_SHOULDER, _a).add(at(p, R_HIP, _b));
