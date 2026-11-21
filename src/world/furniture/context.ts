@@ -2,6 +2,7 @@
 // profile comes from the streetscape's classification (#187), so this doesn't classify streets a second time.
 import { RoadClass, RoadUse, type WorldData } from '../data';
 import { pointInPolygon, segmentDistance, signedPolygonArea } from '../polygon';
+import { arcLengths, pointAtArc } from '../polyline';
 import type { Point, RoadLine } from '../roads';
 import type { StreetSides } from '../streetscape-rules';
 import type { FurnitureContext } from './definitions';
@@ -88,19 +89,9 @@ function distanceToArea(ring: number[], x: number, z: number) {
   return best;
 }
 
-function midpoint(p: readonly Point[]): Point {
-  let total = 0;
-  for (let i = 1; i < p.length; i++) total += Math.hypot(p[i][0] - p[i - 1][0], p[i][1] - p[i - 1][1]);
-  let left = total / 2;
-  for (let i = 1; i < p.length; i++) {
-    const d = Math.hypot(p[i][0] - p[i - 1][0], p[i][1] - p[i - 1][1]);
-    if (left <= d && d > 0) {
-      const u = left / d;
-      return [p[i - 1][0] + (p[i][0] - p[i - 1][0]) * u, p[i - 1][1] + (p[i][1] - p[i - 1][1]) * u];
-    }
-    left -= d;
-  }
-  return p[p.length - 1];
+function midpoint(p: readonly Point[]) {
+  const arcs = arcLengths(p);
+  return pointAtArc(p, arcs, arcs[arcs.length - 1] / 2);
 }
 
 /**
@@ -120,7 +111,7 @@ export function roadContexts(
     const r = data.r[ri];
     if (road.c === RoadClass.PATH) return r.lt === 1 ? 'path' : 'outer';
     if (road.p.length < 2) return 'outer';
-    const [mx, mz] = midpoint(road.p);
+    const { x: mx, z: mz } = midpoint(road.p);
     const carriageway = road.c <= RoadClass.STREET && r.s !== RoadUse.SIDEWALK && r.s !== RoadUse.CROSSING;
     if (torget && distanceToArea(torget.ring, mx, mz) <= TORGET_REACH_M) return carriageway ? 'centre' : 'torget'; // the streets round the square are the centre's, and keep their lamps
     if (!carriageway) return 'outer';

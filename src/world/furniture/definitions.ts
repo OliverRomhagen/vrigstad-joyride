@@ -32,9 +32,10 @@ export interface FurnitureDefinition {
   treeClearanceM: number;
   /** a generated object this close to a mapped or override one of the same kind is a duplicate (m) */
   dedupeRadiusM: number;
+  /** a bench or bin keeps this far from a junction node (m); 0 for none (a lamp has its own rule) */
+  junctionKeepM: number;
   /** steepest ground it may stand on (degrees) */
   maxSlopeDeg: number;
-  allowedContexts: readonly FurnitureContext[];
   emitter?: LampEmitter;
 }
 
@@ -49,8 +50,8 @@ export const FURNITURE: Readonly<Record<FurnitureKind, FurnitureDefinition>> = {
     carriagewayClearanceM: 0.5,
     treeClearanceM: 1.5,
     dedupeRadiusM: 12,
+    junctionKeepM: 0,
     maxSlopeDeg: 15,
-    allowedContexts: ['torget', 'centre', 'main', 'residential', 'path'],
     emitter: { offset: [0, 6.43, 1.25], direction: [0, -1, 0], coneDeg: 120, rangeM: 18 }, // the glass under the luminaire
   },
   bench: {
@@ -63,8 +64,8 @@ export const FURNITURE: Readonly<Record<FurnitureKind, FurnitureDefinition>> = {
     carriagewayClearanceM: 1.0,
     treeClearanceM: 2.5,
     dedupeRadiusM: 4,
+    junctionKeepM: 8,
     maxSlopeDeg: 8,
-    allowedContexts: ['torget', 'centre', 'main'],
   },
   'waste-bin': {
     kind: 'waste-bin',
@@ -76,8 +77,8 @@ export const FURNITURE: Readonly<Record<FurnitureKind, FurnitureDefinition>> = {
     carriagewayClearanceM: 0.6,
     treeClearanceM: 2.5,
     dedupeRadiusM: 4,
+    junctionKeepM: 8,
     maxSlopeDeg: 8,
-    allowedContexts: ['torget', 'centre', 'main'],
   },
 };
 

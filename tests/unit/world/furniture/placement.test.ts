@@ -357,3 +357,57 @@ describe('placeFurniture: determinism', () => {
     expect(e[0].y).toBeCloseTo(y, 6);
   });
 });
+
+describe('placeFurniture: review fixes', () => {
+  it('puts a bus stop mapped on the road itself beside the road, not along the carriageway', () => {
+    const fu: FurniturePoint[] = [{ i: 60, k: FurnitureCode.BUS_STOP, x: 40, z: 0 }];
+    const { placements } = place({ world: { r: [road(RoadClass.STREET, [-100, 0, 100, 0], { i: 6000 })], fu } });
+    const bench = placements.find(p => p.id === 'gen:bench:bus:60')!;
+    expect(bench.x).toBeCloseTo(40, 6);
+    expect(Math.abs(bench.z)).toBeCloseTo(ROAD_WIDTH_M[RoadClass.STREET] / 2 + 2 + 0.3, 6);
+    expect(facing(bench.rotationY)[1]).toBeCloseTo(-Math.sign(bench.z), 6); // facing the road
+  });
+
+  it("finds a bus stop's road in the next lookup cell, past the grid's 14 m margin", () => {
+    // the road runs along x = 70; the stop at x = 45 is 25 m from it, in the 0..50 cell where the road isn't filed
+    const fu: FurniturePoint[] = [{ i: 61, k: FurnitureCode.BUS_STOP, x: 45, z: 0 }];
+    const { placements } = place({ world: { r: [road(RoadClass.STREET, [70, -200, 70, 200], { i: 6100 })], fu } });
+    const bench = placements.find(p => p.id === 'gen:bench:bus:61');
+    expect(bench).toBeDefined();
+    expect(bench!.x).toBeCloseTo(70 - ROAD_WIDTH_M[RoadClass.STREET] / 2 - 2 - 0.3, 6); // on the stop's side
+  });
+
+  it('treats a street split where it carries straight on as one street, not a junction', () => {
+    // over many split points some lamp lands within a few metres of the join, where the next piece would count as
+    // another carriageway
+    let near = 0;
+    for (let length = 20; length <= 60; length++) {
+      const west = road(RoadClass.PRIMARY, [-length, 0, 0, 0], { i: 6200 + length * 2 }); // a main road: no minimum length
+      const east = road(RoadClass.PRIMARY, [0, 0, 200, 0], { i: 6201 + length * 2 });
+      const { placements, rejected } = place({
+        world: { r: [west, east] },
+        profiles: [sides('residential'), sides('residential')],
+      });
+      expect(rejected.junction).toBe(0);
+      near += placements.filter(p => p.kind === 'street-lamp' && Math.abs(p.x) < 4).length;
+    }
+    expect(near).toBeGreaterThan(0);
+  });
+
+  it("scales a lamp emitter's offset along the arm with the lamp", () => {
+    const lamp = {
+      id: 'x',
+      kind: 'street-lamp',
+      modelId: 'lamp-arm',
+      x: 0,
+      z: 0,
+      rotationY: 0,
+      scale: 2,
+      source: 'override',
+    } as const;
+    const [e] = lampEmitters([lamp]);
+    const [, y, z] = FURNITURE['street-lamp'].emitter!.offset;
+    expect(e.z).toBeCloseTo(2 * z, 9);
+    expect(e.y).toBeCloseTo(2 * y, 9);
+  });
+});

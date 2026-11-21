@@ -21,7 +21,7 @@ import { RoadNetwork } from '../world/roads';
 import { buildStreetscape, sidewalkCentreM, StreetscapeIndex } from '../world/streetscape';
 import { STREETSCAPE_OVERRIDES } from '../world/streetscape-overrides';
 import { FURNITURE_OVERRIDES } from '../world/furniture/overrides';
-import { placeFurniture } from '../world/furniture/placement';
+import { furnitureExclusions, placeFurniture } from '../world/furniture/placement';
 import { StreetFurniture } from '../world/mesh/street-furniture';
 import { classifyStreetscape } from '../world/streetscape-rules';
 import { col } from '../world/three-legacy';
@@ -218,7 +218,7 @@ addFootprint([KIOSK.x - KIOSK.w / 2, KIOSK.z - KIOSK.d / 2, KIOSK.x + KIOSK.w / 
 // after the trees, the streetscape and the places, which it keeps clear of; the kiosk is a footprint by now
 const DEBUG_FURNITURE = new URLSearchParams(location.search).get('debug') === 'furniture';   // ?debug=furniture tints by source
 const furniture = (function () {
-  const t0 = performance.now(), exclusions = places.list.map(p => ({ x: p.x, z: p.z, r: 2.5 }));   // where you stand at a safehouse door or the kiosk's lucka
+  const t0 = performance.now(), exclusions = furnitureExclusions(places.list);
   const layout = placeFurniture({ data: D, roads, heightfield, buildings, water, trees: allTreeSpots, street: street.layout, exclusions, overrides: FURNITURE_OVERRIDES });
   const draw = new StreetFurniture(layout.placements, { groundAt, debugSources: DEBUG_FURNITURE }); scene.add(...draw.meshes);
   return { layout, draw, ms: performance.now() - t0 };
