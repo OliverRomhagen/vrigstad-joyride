@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
+import { Commands } from '../../../src/game/commands';
 import {
   earn,
   FINE_PER_STAR_KR,
   fine,
   newWallet,
   pay,
+  registerWalletCommands,
   START_KR,
   TRISS_KR,
   TRISS_PLAN,
@@ -83,5 +85,17 @@ describe('Gripen! fine', () => {
   it('never takes more than you have', () => {
     expect(fine(50, 2)).toBe(50);
     expect(fine(0, 3)).toBe(0);
+  });
+});
+
+describe('wallet commands', () => {
+  it('adds riksdaler with kr and mynt, and takes no more than you have', () => {
+    const w = { kr: 100 },
+      c = new Commands();
+    registerWalletCommands(c, w);
+    expect(c.run('kr 50')).toBe('Wallet: 150 riksdaler.');
+    expect(c.run('mynt')).toBe('Wallet: 1\u00a0150 riksdaler.');
+    c.run('kr -5000');
+    expect(w.kr).toBe(0);
   });
 });

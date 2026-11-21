@@ -1,20 +1,24 @@
-// The dev console (#218): a line to type commands into, over the canvas. DOM only; the commands live in commands.ts.
-// Keys typed into it stop here, so they never reach the game's keydown handler and never drive the player.
+// The dev console (#218): a line to type commands into, over the canvas. DOM only; the commands live in commands.ts, and
+// each module registers its own. Keys typed into it stop here, so they never reach the game's keydown handler and never
+// drive the player.
 import { clamp } from '../world/math';
 import type { Commands } from './commands';
+import type { Input } from './input';
 
 const MAX_LINES = 60; // older output lines are dropped
 const MAX_HISTORY = 30; // typed lines that ArrowUp brings back
 
 /** Whether a keydown is the console's key: § (top left on a Swedish keyboard) or ` (the same key on US layouts). */
-export const isConsoleKey = (e: KeyboardEvent) =>
-  (e.key === '§' || e.key === '`') && !e.ctrlKey && !e.metaKey && !e.altKey; // Cmd+` cycles windows on macOS
+const isConsoleKey = (e: KeyboardEvent) => (e.key === '§' || e.key === '`') && !e.ctrlKey && !e.metaKey && !e.altKey; // Cmd+` cycles windows on macOS
 
 export interface DevConsoleDeps {
   root: HTMLElement; // #devcon: holds an output list and an input
   commands: Commands;
-  onOpen(): void; // let go of held keys and the pointer lock
-  onClose(): void; // give the game focus back
+  canvas: HTMLElement; // a click on the game closes the console, and closing gives the game focus back
+  doc: Pick<Document, 'exitPointerLock'>;
+  readonly input: Pick<Input, 'releaseKeys' | 'locked' | 'lockMouse'>; // a getter: Input sees keys through takeKey, so it's made after the console
+  readonly enabled: boolean; // dev mode (the dev server, or ?dev): § opens the console only then
+  readonly menuOpen: boolean; // an open menu keeps the cursor, and § doesn't open the console over it
 }
 
 /** The console box: opens and closes, runs typed lines through the commands and shows the result. */
@@ -25,6 +29,7 @@ export class DevConsole {
   private readonly history: string[] = [];
   private back = 0; // how far ArrowUp has gone into history; 0 is the line being typed
   private draft = ''; // the line being typed, kept while ArrowUp shows older ones
+  private relock = false; // the mouse was locked when the console opened, so closing it locks it again
 
   constructor(d: DevConsoleDeps) {
     this.d = d;
@@ -32,6 +37,8 @@ export class DevConsole {
     this.input = d.root.querySelector('input') as HTMLInputElement;
     this.input.addEventListener('keydown', e => this.key(e));
     this.input.addEventListener('keyup', e => e.stopPropagation());
+    // registered before Input's own listener (see DevConsoleDeps.input), so a click that closes the console can take the mouse back
+    d.canvas.addEventListener('pointerdown', () => this.close());
     d.commands.register('clear', {
       help: 'empty the console',
       run: () => {
@@ -45,15 +52,40 @@ export class DevConsole {
     return !this.d.root.hidden;
   }
 
+  /** The console freed the locked mouse and takes it back on close; a menu opened over it takes that over (until #335). */
+  get freedCursor() {
+    return this.relock;
+  }
+
   /** Gives the input focus back, after a click on the output or a Tab took it away. */
   focus() {
     this.input.focus();
   }
 
+  /**
+   * Sees each game key before the menus. With the console open and focus elsewhere (a click on its output, Tab), keys
+   * go back to it; in dev mode § opens it. True when the console took the key.
+   */
+  takeKey(e: KeyboardEvent): boolean {
+    if (this.isOpen) {
+      e.preventDefault();
+      if ((isConsoleKey(e) || e.code === 'Escape') && !e.repeat) this.close();
+      else this.focus(); // the key that takes focus back isn't typed
+      return true;
+    }
+    if (!this.d.enabled || e.repeat || this.d.menuOpen || !isConsoleKey(e)) return false;
+    e.preventDefault();
+    this.open();
+    return true;
+  }
+
   open() {
     if (this.isOpen) return;
-    this.d.root.hidden = false;
-    this.d.onOpen();
+    const { root, input, doc } = this.d;
+    root.hidden = false;
+    input.releaseKeys();
+    this.relock = input.locked();
+    if (this.relock) doc.exitPointerLock();
     this.input.focus();
   }
 
@@ -62,7 +94,9 @@ export class DevConsole {
     this.d.root.hidden = true;
     this.input.value = this.draft = '';
     this.back = 0;
-    this.d.onClose();
+    this.d.canvas.focus();
+    if (this.relock && !this.d.menuOpen) this.d.input.lockMouse(); // an open menu needs the cursor
+    this.relock = false;
   }
 
   /** Runs a line as if typed, and shows it with its result. */

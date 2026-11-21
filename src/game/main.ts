@@ -38,11 +38,11 @@ import { installTestHook } from './test-hook';
 import { esc, MenuPlate } from './menu';
 import { KioskCatMenus } from './kiosk-cat-menus';
 import { Pets } from './pets';
-import { Commands, parseKr, UsageError } from './commands';
+import { Commands } from './commands';
 import { CashRain } from './cash-rain';
 import { Confetti } from './confetti';
-import { DevConsole, isConsoleKey } from './devconsole';
-import { earn, fmtKr, newWallet, pay } from './economy';
+import { DevConsole } from './devconsole';
+import { newWallet, registerWalletCommands } from './economy';
 import { KIOSK, type Place, Places } from './places';
 import { CAT_SCRATCH_HP, LOW_HP, hurt, newHealth } from './health';
 import { HOME } from './player';
@@ -194,10 +194,10 @@ const { pickLine } = crashes;
 // the getters are read when the plate uses them, so they can name things declared further down
 const kmenu = $('kmenu');
 const menuPlate = new MenuPlate({ kmenu, canvas, doc: document, get input() { return input; }, get hasPets() { return !!colony.owned; }, openPets: () => openPets(), toast,
-  get consoleRelock() { return conRelock; }, closeConsole: () => devcon.close() });
+  get consoleRelock() { return devcon.freedCursor; }, closeConsole: () => devcon.close() });
 const { openMenu, closeMenu, openRename, menuKey } = menuPlate;
 // the getter is read when a pet is called, so it can name things declared further down
-const pets = new Pets({ colony, button: $('pets'), openMenu, openRename, esc, get caller() { return game.inCar && game.pcar ? game.pcar : player; } });
+const pets = new Pets({ colony, button: $('pets'), openMenu, openRename, esc, get caller() { return game.inCar && game.pcar ? game.pcar : player; }, get inCar() { return game.inCar; }, showHeart: cat => showHeart(cat) });
 const openPets = pets.open.bind(pets), drawPets = pets.draw.bind(pets);
 // ---------- the adopt heart: hovers over a stray once it has had a good pet, a third fuller for each good pet in a row (src/game/render/adopt-heart.ts) ----------
 const adoptHearts = new AdoptHearts({ scene, colony }), showHeart = adoptHearts.show.bind(adoptHearts), drawHearts = adoptHearts.update.bind(adoptHearts);
@@ -247,16 +247,16 @@ const trisslott = new Trisslott({ random: trissRnd, pick, now: () => performance
 (function () { const at = (new URLSearchParams(location.search).get('at') || '').split(',').map(Number);
   if (at.length < 2 || !at.every(Number.isFinite)) return; player.x = at[0]; player.z = at[1]; if (at.length > 2) view.camYaw = START_CAM[0] = at[2]; if (at.length > 3) START_CAM[1] = clamp(at[3], 0.06, 1.25); })();
 
+// ---------- dev console: § in dev mode; each module registers its own commands (src/game/devconsole.ts) ----------
+// before the input, whose pointerdown listener has to come after the console's
+const commands = new Commands();
+const devcon = new DevConsole({ root: $('devcon'), commands, canvas, doc: document, get input() { return input; }, get enabled() { return DEV; }, get menuOpen() { return !kmenu.hidden; } });
+registerWalletCommands(commands, wallet);
+pets.registerCommands(commands);
+
 // ---------- input: keys, mouse look and the touch controls (src/game/input.ts) ----------
 // the dev console sees each key first, then the menus (src/game/menu.ts)
-function consoleKey(e: KeyboardEvent) {
-  // keys typed in the console stop there and never get here; with the console open and focus elsewhere (a click on its output, Tab), keys go back to it
-  if (devcon.isOpen) { e.preventDefault(); if ((isConsoleKey(e) || e.code === 'Escape') && !e.repeat) devcon.close(); else devcon.focus(); return true; }   // the key that takes focus back isn't typed
-  if (DEV && !e.repeat && kmenu.hidden && isConsoleKey(e)) { e.preventDefault(); devcon.open(); return true; }
-  return menuKey(e);
-}
-canvas.addEventListener('pointerdown', () => devcon.close());   // before the input's own, so a click that closes the console can take the mouse back
-const input = new Input({ win: window, doc: document, canvas, $, coarse, menuKey: consoleKey,
+const input = new Input({ win: window, doc: document, canvas, $, coarse, menuKey: e => devcon.takeKey(e) || menuKey(e),
   get started() { return game.started; }, get menuOpen() { return !kmenu.hidden; },
   action: () => action(), respawn: () => respawn(), rain: () => cashRain.makeItRain(),
   jump: () => { if (jumpOk()) game.jumpQ = true; },   // queue only where a jump can start (see jumpOk)
@@ -277,24 +277,6 @@ function drawHealth() { hud.drawHealth(health.hp, game.inCar && game.pcar ? game
 // the big screen (Gripen!, Däckad!) stays up this long
 function bigScreen(title: string, msg: string) { hud.showBig(title, msg); game.bigT = 3; }
 hud.drawKr();   // the HUD keeps the money plate in step with the wallet from here on
-
-// ---------- dev console ----------
-// Each module's commands are registered here until main.ts is split up; a module that owns its state can register its own.
-const commands = new Commands();
-let conRelock = false;
-const devcon = new DevConsole({ root: $('devcon'), commands,
-  onOpen: () => { input.releaseKeys(); conRelock = input.locked(); if (conRelock) document.exitPointerLock(); },
-  onClose: () => { canvas.focus(); if (conRelock && kmenu.hidden) input.lockMouse(); conRelock = false; } });   // an open menu needs the cursor
-const MYNT_KR = 1000;   // what the mynt cheat adds
-function addKr(kr: number) { if (kr >= 0) earn(wallet, kr); else pay(wallet, Math.min(-kr, wallet.kr)); return 'Wallet: ' + fmtKr(wallet.kr) + '.'; }
-commands.register('kr', { usage: '<amount>', help: 'add riksdaler to your wallet; a negative amount takes them', run: a => addKr(parseKr(a[0])) });
-// adopt <pet>: a new random pet of that kind, right by you. Only cats so far; another kind of pet adds its entry here.
-const ADOPT = new Map([['cat', () => { if (colony.owned) return 'You already have a cat, ' + colony.owned.name + '. Set it free first (P).';
-  if (game.inCar) return 'Get out of the car first.';   // a cat made by the car would land inside it
-  const cat = colony.spawnNear(player); colony.adopt(cat); showHeart(cat); drawPets(); return 'Adopted a cat.'; }]]);
-commands.register('adopt', { usage: '<' + [...ADOPT.keys()].join(' | ') + '>', help: 'adopt a new random pet of that kind',
-  run: a => { const f = a[0] && ADOPT.get(a[0].toLowerCase()); if (!f) throw new UsageError(a[0] ? 'No pet called ' + a[0] + '.' : ''); return f(); } });
-commands.register('mynt', { help: 'add ' + fmtKr(MYNT_KR) + ' to your wallet', run: () => addKr(MYNT_KR) });
 
 // ---------- stealing and getting caught (the wanted level and the police: src/game/police.ts) ----------
 // the driver of a car you steal gets out, and stands there shouting for a while (src/game/render/shouting-drivers.ts)

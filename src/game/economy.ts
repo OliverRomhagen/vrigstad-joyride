@@ -1,5 +1,6 @@
 // Money (#76): the player's wallet, prices and payouts, as plain data and pure rules (no three.js, no DOM).
 // Selling cars, repairs and paying off a star build on pay / earn. Nothing here draws: the HUD shows whatever the wallet holds.
+import { type Commands, parseKr } from './commands';
 
 export const START_KR = 200; // what you have in your pocket at the start
 export const TRISS_KR = 30,
@@ -7,6 +8,7 @@ export const TRISS_KR = 30,
 export const KORV_KR = 25,
   RULLE_KR = 45; // korv me brö; a smålandsrulle
 export const RAIN_KR = 1000; // låt det regna: banknotes thrown in the air, for show
+const MYNT_KR = 1000; // what the mynt cheat adds
 const FINE_SHARE = 0.25; // Gripen! costs this share of your money, or FINE_PER_STAR_KR per star, whichever is more
 export const FINE_PER_STAR_KR = 100;
 
@@ -59,4 +61,19 @@ export function trissPrize(r: number): number {
 /** The fine for Gripen! with this many stars; never more than the wallet holds. */
 export function fine(kr: number, stars: number): number {
   return Math.min(kr, Math.max(Math.round(kr * FINE_SHARE), stars * FINE_PER_STAR_KR));
+}
+
+/** The wallet's dev console commands: `kr <amount>` adds riksdaler (a negative amount takes them), `mynt` adds MYNT_KR. */
+export function registerWalletCommands(commands: Pick<Commands, 'register'>, w: Wallet) {
+  const addKr = (kr: number) => {
+    if (kr >= 0) earn(w, kr);
+    else pay(w, Math.min(-kr, w.kr));
+    return 'Wallet: ' + fmtKr(w.kr) + '.';
+  };
+  commands.register('kr', {
+    usage: '<amount>',
+    help: 'add riksdaler to your wallet; a negative amount takes them',
+    run: a => addKr(parseKr(a[0])),
+  });
+  commands.register('mynt', { help: 'add ' + fmtKr(MYNT_KR) + ' to your wallet', run: () => addKr(MYNT_KR) });
 }
