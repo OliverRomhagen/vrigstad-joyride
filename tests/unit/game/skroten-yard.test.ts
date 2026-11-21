@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { NISSE_UV, RING_UV, YARD, yardLayout, yardToWorld } from '../../../src/game/skroten-yard';
+import {
+  NISSE_UV,
+  RING_UV,
+  SKROT_HALL,
+  worldToYard,
+  YARD,
+  yardLayout,
+  yardToWorld,
+} from '../../../src/game/skroten-yard';
 import { pointInPolygon, segmentDistance } from '../../../src/world/polygon';
 
 // how far (u, v) of the yard's frame is from the nearest outline you collide with; 0 inside one
@@ -27,6 +35,14 @@ describe('Skroten yard', () => {
     expect(Math.hypot(a.x - o.x, a.z - o.z)).toBeCloseTo(10, 2);
     expect(Math.hypot(b.x - o.x, b.z - o.z)).toBeCloseTo(10, 2);
     expect(b.z).toBeGreaterThan(o.z); // into the yard is southwards, away from Stockarydsvägen
+    const back = worldToYard(yardToWorld(-12, 30).x, yardToWorld(-12, 30).z);
+    expect(back.u).toBeCloseTo(-12, 2);
+    expect(back.v).toBeCloseTo(30, 2);
+  });
+
+  it('stops the fence short of the hall that becomes the workshop', () => {
+    expect(worldToYard(SKROT_HALL.x, SKROT_HALL.z).u).toBeGreaterThan(YARD.uMax);
+    expect(worldToYard(922, 80).u).toBeGreaterThan(YARD.uMax); // the hall's west wall
   });
 
   it('leaves the drive from the road through the gate to the ring clear for a car', () => {

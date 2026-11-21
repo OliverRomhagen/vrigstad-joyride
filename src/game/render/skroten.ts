@@ -2,8 +2,19 @@
 // the containers, the wrecks and the scrap heaps, the arrow signs by the road, and Skrot-Nisse, who turns to watch you come.
 // The layout comes from skroten-yard.ts; the static parts are baked into one mesh, so the yard costs a handful of draw calls.
 import * as THREE from 'three';
+import { pointInPolygon } from '../../world/polygon';
 import { makeRnd } from '../../world/random';
-import { CONTAINERS, HUT, NISSE_UV, YARD, YARD_GATE, YARD_TURN, type YardLayout, yardToWorld } from '../skroten-yard';
+import {
+  CONTAINERS,
+  HUT,
+  NISSE_UV,
+  SKROT_HALL,
+  YARD,
+  YARD_GATE,
+  YARD_TURN,
+  type YardLayout,
+  yardToWorld,
+} from '../skroten-yard';
 import { boxGeo, carGeo, mergeGeo, type Person, paintMat, personParts } from './models';
 
 const PANEL_M = 3; // a sheet of the fence, and the gap between its posts
@@ -24,6 +35,7 @@ export interface SkrotenMeshDeps {
   scene: THREE.Scene;
   heightAt(x: number, z: number): number;
   layout: YardLayout;
+  footprints: readonly { p: readonly number[] }[]; // the buildings' outlines, to find the hall that becomes the workshop
 }
 
 /** The yard and Skrot-Nisse; `update` turns him towards you. */
@@ -186,7 +198,7 @@ export class SkrotenMeshes {
     yard.rotation.y = YARD_TURN;
     const baked = new THREE.Mesh(bake(pieces), paintMat);
     baked.castShadow = baked.receiveShadow = true;
-    yard.add(baked, ground(-YARD.halfU, YARD.halfU, 0, YARD.depth), ground(-YARD.gateHalf, YARD.gateHalf, -5.5, 0));
+    yard.add(baked, ground(YARD.uMin, YARD.uMax, 0, YARD.depth), ground(-YARD.gateHalf, YARD.gateHalf, -5.5, 0));
 
     // the boards: SKROTEN over the gate, BILAR KÖPES on the fence, and an arrow sign either way along the road
     const gate = board(12, 1.5, 'SKROTEN', null);
@@ -221,6 +233,8 @@ export class SkrotenMeshes {
     nisse.rotation.y = -this.nisseH;
     scene.add(nisse);
     this.nisse = nisse;
+    const hall = g.footprints.find(b => pointInPolygon(b.p as number[], SKROT_HALL.x, SKROT_HALL.z));
+    if (hall) scene.add(workshop(heightAt, hall.p));
   }
 
   /** Turns Skrot-Nisse towards you while you are near. */
@@ -234,6 +248,75 @@ export class SkrotenMeshes {
     this.nisseH += d * Math.min(1, dt * NISSE_TURN_K);
     n.rotation.y = -this.nisseH;
   }
+}
+
+const HALL_WALL_M = 8, // the hall's height in the data
+  RIB_M = 0.7; // between the ribs of the sheet metal
+
+/** A wall of an outline: its first corner, its direction and length, and its outward normal. */
+type Wall = { x0: number; z0: number; ux: number; uz: number; len: number; nx: number; nz: number };
+// the outline's longest wall whose outward normal points along (dx, dz)
+function wallFacing(p: readonly number[], dx: number, dz: number) {
+  let best: Wall | null = null;
+  for (let i = 0, j = p.length - 2; i < p.length; j = i, i += 2) {
+    const ex = p[i]! - p[j]!,
+      ez = p[i + 1]! - p[j + 1]!,
+      len = Math.hypot(ex, ez),
+      mx = (p[i]! + p[j]!) / 2,
+      mz = (p[i + 1]! + p[j + 1]!) / 2;
+    let nx = ez / len,
+      nz = -ex / len;
+    if (pointInPolygon(p as number[], mx + nx * 0.3, mz + nz * 0.3)) {
+      nx = -nx;
+      nz = -nz;
+    }
+    if (nx * dx + nz * dz > 0.9 && (!best || len > best.len))
+      best = { x0: p[j]!, z0: p[j + 1]!, ux: ex / len, uz: ez / len, len, nx, nz };
+  }
+  return best;
+}
+
+// The workshop: ribs of sheet metal on the walls to the road (north) and to the yard (west), a garage door to the yard and a SKROTEN
+// sign high on the road side, in world coordinates.
+function workshop(heightAt: SkrotenMeshDeps['heightAt'], hall: readonly number[]) {
+  const pieces: THREE.BufferGeometry[] = [],
+    g = new THREE.Group(),
+    roadWall = wallFacing(hall, 0, -1),
+    yardWall = wallFacing(hall, -1, 0);
+  // a point `s` metres along the wall and `out` metres out from it, and the turn that lays a box's x along the wall
+  const along = (w: Wall, s: number, out: number) => ({
+    x: w.x0 + w.ux * s + w.nx * out,
+    z: w.z0 + w.uz * s + w.nz * out,
+    turn: -Math.atan2(w.uz, w.ux),
+  });
+  const place = (geo: THREE.BufferGeometry, x: number, y: number, z: number, turn: number) => {
+    pieces.push(geo.clone().applyMatrix4(new THREE.Matrix4().makeRotationY(turn).setPosition(x, y, z)));
+  };
+  const rib = boxGeo([[0.08, HALL_WALL_M - 0.6, 0.06, 0, (HALL_WALL_M - 0.6) / 2, 0, '#6e5b4b']]);
+  for (const w of [roadWall, yardWall]) {
+    if (!w) continue;
+    for (let s = RIB_M / 2; s < w.len; s += RIB_M) {
+      const p = along(w, s, 0.05);
+      place(rib, p.x, heightAt(p.x, p.z) + 0.3, p.z, p.turn);
+    }
+  }
+  if (yardWall) {
+    const door = along(yardWall, yardWall.len / 2, 0.1),
+      slats: [number, number, number, number, number, number, string][] = [[5, 4.5, 0.08, 0, 2.25, 0, '#4a4d50']];
+    for (let y = 0.45; y < 4.5; y += 0.45) slats.push([5, 0.05, 0.1, 0, y, 0, '#3a3c3e']);
+    place(boxGeo(slats), door.x, heightAt(door.x, door.z), door.z, door.turn);
+  }
+  const m = new THREE.Mesh(bake(pieces), paintMat);
+  m.castShadow = m.receiveShadow = true;
+  g.add(m);
+  if (roadWall) {
+    const sign = board(9, 1.6, 'SKROTEN', null),
+      at = along(roadWall, roadWall.len / 2, 0.12);
+    sign.position.set(at.x, heightAt(at.x, at.z) + HALL_WALL_M - 2, at.z);
+    sign.rotation.y = Math.atan2(roadWall.nx, roadWall.nz); // its front, +z, faces out from the wall
+    g.add(sign);
+  }
+  return g;
 }
 
 // one geometry from coloured, non-indexed pieces with the same attributes

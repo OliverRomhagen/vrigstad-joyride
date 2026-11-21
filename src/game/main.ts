@@ -49,7 +49,7 @@ import { Confetti } from './confetti';
 import { DevConsole } from './devconsole';
 import { earn, newWallet, registerWalletCommands } from './economy';
 import { Skroten } from './skroten';
-import { yardLayout } from './skroten-yard';
+import { SKROT_HALL, yardLayout } from './skroten-yard';
 import { SkrotenMeshes } from './render/skroten';
 import { KIOSK, type Place, Places } from './places';
 import { CAT_SCRATCH_HP, LOW_HP, hurt, newHealth } from './health';
@@ -139,7 +139,7 @@ const water = new Water(D, roads), inWater = water.inWater.bind(water);
 const buildings = new BuildingIndex(D), { footprints: bPolys } = buildings;
 const addFootprint = buildings.addFootprint.bind(buildings), collide = buildings.collide.bind(buildings);
 const yard = yardLayout(); for (const p of yard.outlines) addFootprint(p);   // Skroten's fence, hut, wrecks and heaps (src/game/skroten-yard.ts), before any car parks
-addBuildings(scene, D, heightfield, { rnd, pick, maxAnisotropy });   // rolls rnd() for the house colours, before any tree spot
+addBuildings(scene, D, heightfield, { rnd, pick, maxAnisotropy, workshopAt: SKROT_HALL });   // rolls rnd() for the house colours, before any tree spot
 
 // ---------- trees: spruces and birches, each with its own shade, size and lean ----------
 const TREE_M2_PER_TRY = 110, TREE_ROAD_CLEARANCE_M = 2.5;   // one try at a tree per this much of a wood's bounding box; no trunk closer to a road's edge
@@ -261,7 +261,7 @@ const wanted = new Wanted({ roads, rnd, pick, removeCar, drive, toast,
 // the getter is read when a place uses it, so it follows the stars
 const places = new Places({ footprints: bPolys, roads: R, police: wanted.police, lieLow: secs => wanted.lieLow(secs), toast, get stars() { return wanted.stars; } });
 const placeMeshes = new PlaceMeshes({ scene, places, heightAt: hAt, col, boxGeo, paintMat, glass: GLASS });
-const skrotenMeshes = new SkrotenMeshes({ scene, heightAt: hAt, layout: yard });
+const skrotenMeshes = new SkrotenMeshes({ scene, heightAt: hAt, layout: yard, footprints: bPolys });
 addFootprint([KIOSK.x - KIOSK.w / 2, KIOSK.z - KIOSK.d / 2, KIOSK.x + KIOSK.w / 2, KIOSK.z - KIOSK.d / 2, KIOSK.x + KIOSK.w / 2, KIOSK.z + KIOSK.d / 2, KIOSK.x - KIOSK.w / 2, KIOSK.z + KIOSK.d / 2]);   // the kiosk collides like a building
 // ---------- street furniture: lamps, benches and bins from OSM, rules where OSM says nothing (#144, src/world/furniture/) ----------
 // after the trees, the streetscape and the places, which it keeps clear of; the kiosk is a footprint by now
