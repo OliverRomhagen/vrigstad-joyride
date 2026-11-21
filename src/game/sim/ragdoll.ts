@@ -74,6 +74,13 @@ const LIFT_MS = 1.5,
 const AWAY_SPREAD_M = 1.5; // standing this far to one side of the car's middle (m) throws them furthest that way
 const AWAY_KEEP = 0.25,
   AWAY_JITTER = 0.3; // sideways: the share at AWAY_SPREAD_M, and the most the jitter adds or takes
+// how one throw differs from the next, each from its own roll: the most each adds or takes
+const SPIN_MAX_RADS = 6; // turning about the up axis as they fly (rad/s), so they twist as well as flip
+const CARTWHEEL_MAX_RADS = 5; // turning about the way they are thrown (rad/s)
+const FLIP_SPREAD = 0.5; // share of the head-to-feet speed gap: a slow topple at -, a fast backflip at +
+const LIFT_SPREAD = 0.3; // share of the lift: some skid low, some fly high
+const LIMB_KICK_MS = 2.5; // a hand or foot's own kick (m/s, each way), so the limbs flail differently
+const HANDS_AND_FEET = [L_HAND, R_HAND, L_FOOT, R_FOOT];
 
 export type RagdollState = 'fly' | 'lie' | 'up' | 'done';
 
@@ -137,13 +144,14 @@ export function standingPose(
 /**
  * Knocks over the person standing at (x, z), facing h, `scale` times the standard size, hit by `car`; null if the car is too slow to
  * knock anyone over, or only brushes past them (beside or behind its middle), so they are pushed aside as before.
- * `jitter` (0..1, from a seeded stream) varies the tumble, so two hits don't look the same.
+ * `roll` (a seeded stream of 0..1) varies the tumble, so two hits don't look the same; one that always gives 0.5 throws the
+ * average throw.
  */
 export function knockOver(
   person: { x: number; z: number; h: number },
   car: HitCar,
   world: RagdollWorld,
-  jitter: number,
+  roll: () => number,
   scale = 1,
 ): Ragdoll | null {
   const speed = Math.abs(car.v);
@@ -158,21 +166,34 @@ export function knockOver(
     sz = -fx;
   if (Math.abs(side) > HIT_SIDE_M || ox * fx + oz * fz < 0) return null;
   const launch = Math.min(speed, LAUNCH_MAX_MS);
+  const spread = () => roll() * 2 - 1; // -1..1, 0 for the average throw
   // thrown away from the side of the car they were on, a little more the further out they stood
-  const away = Math.max(-1, Math.min(1, side / AWAY_SPREAD_M)) * AWAY_KEEP + (jitter - 0.5) * AWAY_JITTER;
+  const away = Math.max(-1, Math.min(1, side / AWAY_SPREAD_M)) * AWAY_KEEP + (spread() * AWAY_JITTER) / 2;
+  const spin = spread() * SPIN_MAX_RADS,
+    cartwheel = spread() * CARTWHEEL_MAX_RADS,
+    flip = 1 + spread() * FLIP_SPREAD,
+    lift = 1 + spread() * LIFT_SPREAD;
   const pos = standingPose(person.x, person.z, person.h, world.groundAt(person.x, person.z), scale);
   const prev = pos.slice(); // a step back along the throw: that gap is their speed
+  const midY = pos[1] / 2 + pos[L_FOOT * 3 + 1] / 2; // half way up them: the cartwheel turns about this height
   for (let i = 0; i < POINTS; i++) {
     // the bumper takes the legs: low is 0 at the head, 1 at the feet
     const low = 1 - POSE[i][1] / POSE[HEAD][1],
-      k = HEAD_KEEP + (FEET_KEEP - HEAD_KEEP) * low;
-    const vx = (fx * k + sx * away) * launch,
-      vz = (fz * k + sz * away) * launch;
-    const vy = LIFT_MS + launch * (HEAD_LIFT + (FEET_LIFT - HEAD_LIFT) * low);
+      k = (HEAD_KEEP + FEET_KEEP) / 2 + (FEET_KEEP - HEAD_KEEP) * (low - 0.5) * flip;
+    // how far the point is to the right of the throw (m) and above their middle: a turn moves it at that times the turn's rate
+    const right = (pos[i * 3] - person.x) * sx + (pos[i * 3 + 2] - person.z) * sz,
+      up = pos[i * 3 + 1] - midY;
+    const ahead = k * launch + spin * right,
+      aside = away * launch - cartwheel * up;
+    const vx = fx * ahead + sx * aside,
+      vz = fz * ahead + sz * aside;
+    const vy = (LIFT_MS + launch * (HEAD_LIFT + (FEET_LIFT - HEAD_LIFT) * low)) * lift + cartwheel * right;
     prev[i * 3] -= vx * STEP_S;
     prev[i * 3 + 1] -= vy * STEP_S;
     prev[i * 3 + 2] -= vz * STEP_S;
   }
+  for (const point of HANDS_AND_FEET)
+    for (let axis = 0; axis < 3; axis++) prev[point * 3 + axis] -= spread() * LIMB_KICK_MS * STEP_S;
   return { pos, prev, state: 'fly', t: 0, still: 0, h: person.h, from: [], scale };
 }
 
