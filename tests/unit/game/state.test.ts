@@ -11,7 +11,7 @@ describe('newGameState', () => {
       stolen: 0,
       treats: 0,
       clockS: 0,
-      bigT: 0, // no big screen up
+      titleCardT: 0, // no title card up
       ramCool: 0, // the first ram can give a star at once
     });
   });

@@ -92,9 +92,9 @@ body { isolation: isolate; }
 #hide { position: absolute; left: 50%; top: 12%; transform: translateX(-50%); padding: 6px 16px 8px; text-align: center; white-space: nowrap;
   font: 600 14px var(--display); letter-spacing: .06em; text-transform: uppercase; color: var(--gold); }
 #hide b { display: block; font: 700 34px/1 var(--display); letter-spacing: .02em; color: var(--ink); font-variant-numeric: tabular-nums; }
-#big { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; background: rgba(120, 20, 12, .45); }
-#big h2 { margin: 0; font: 700 clamp(56px, 16vw, 140px)/.95 var(--display); letter-spacing: .02em; color: #fff; text-shadow: 0 4px 0 var(--alarm); }
-#big p { margin: 6px 0 0; font: 500 16px var(--body); }
+#title-card { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; background: rgba(120, 20, 12, .45); }
+#title-card h2 { margin: 0; font: 700 clamp(56px, 16vw, 140px)/.95 var(--display); letter-spacing: .02em; color: #fff; text-shadow: 0 4px 0 var(--alarm); }
+#title-card p { margin: 6px 0 0; font: 500 16px var(--body); }
 
 #intro { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: auto; overflow: auto;
   background: linear-gradient(to top, rgba(12, 18, 16, .82), rgba(12, 18, 16, .25));
@@ -139,7 +139,7 @@ body { isolation: isolate; }
   <div id="toast" class="plate" hidden></div>
   <div id="hide" class="plate" hidden></div>
   <div id="hurt" aria-hidden="true"></div>
-  <div id="big" hidden><div><h2 id="big-t">Gripen!</h2><p id="big-p">Busted. The police drop you off at Torget.</p></div></div>
+  <div id="title-card" hidden><div><h2 id="title-card-t">Gripen!</h2><p id="title-card-p">Busted. The police drop you off at Torget.</p></div></div>
   <div id="intro">
     <div id="card">
       <h1>Vrigstad <span>Joyride</span></h1>

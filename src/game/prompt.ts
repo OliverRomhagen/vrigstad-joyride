@@ -23,7 +23,7 @@ export interface ActionPromptDeps {
   esc(t: string): string; // escapes a name for HTML
 }
 
-/** Redraws the prompt and the plates; main.ts calls `update` a few times a second. */
+/** Redraws the prompt and the plates; the loop calls `update` a few times a second. */
 export class ActionPrompt {
   private readonly g: ActionPromptDeps;
 
