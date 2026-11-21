@@ -325,10 +325,12 @@ function advanceState(r: Ragdoll, fastest: number, pushed: boolean): void {
   }
 }
 
-/** Where a ragdoll is, from its hips (m). */
-export function ragdollCentre(r: Ragdoll): { x: number; z: number } {
+/** Where a ragdoll is, from its hips (m); into `out` when given, so a step makes no new object. */
+export function ragdollCentre(r: Ragdoll, out: { x: number; z: number } = { x: 0, z: 0 }): { x: number; z: number } {
   const p = r.state === 'up' ? r.from : r.pos;
-  return { x: (p[L_HIP * 3] + p[R_HIP * 3]) / 2, z: (p[L_HIP * 3 + 2] + p[R_HIP * 3 + 2]) / 2 };
+  out.x = (p[L_HIP * 3] + p[R_HIP * 3]) / 2;
+  out.z = (p[L_HIP * 3 + 2] + p[R_HIP * 3 + 2]) / 2;
+  return out;
 }
 
 // stands up facing the way their head points from their hips, as you would get up from lying down
@@ -342,11 +344,12 @@ function facing(r: Ragdoll): number {
 }
 
 const _pose: number[] = new Array(POINTS * 3);
+const _centre = { x: 0, z: 0 };
 
 function blendUp(r: Ragdoll, world: RagdollWorld) {
   const u = Math.min(1, r.t / GETUP_S),
     e = u * u * (3 - 2 * u); // smoothstep
-  const { x, z } = ragdollCentre(r);
+  const { x, z } = ragdollCentre(r, _centre);
   standingPose(x, z, r.h, world.groundAt(x, z), r.scale, _pose);
   for (let i = 0; i < POINTS * 3; i++) r.pos[i] = r.prev[i] = r.from[i] + (_pose[i] - r.from[i]) * e;
   if (u >= 1) r.state = 'done';
