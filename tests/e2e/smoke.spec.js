@@ -79,27 +79,36 @@ test.describe('game (index.html)', () => {
     expect(errors).toEqual([]);
   });
 
-  test('draws the clouds in every quality and preset without shader errors, and they drift with time', async ({
-    page,
-  }) => {
-    const errors = watchErrors(page);
-    await page.goto('/index.html');
-    await expectWebGL(page);
-    const first = (await state(page)).clouds;
-    expect(first).toMatchObject({ cover: 'partly', seed: 1, quality: 'high' });
-    await frames(page, 3);
-    const later = (await state(page)).clouds;
-    expect(later.timeS).toBeGreaterThan(first.timeS);
-    expect(later.sunFactor).toBeGreaterThan(0.4);
-    expect(later.sunFactor).toBeLessThanOrEqual(1);
-    for (const query of ['clouds=mostly&cloudSeed=3&wind=90,12&cloudQuality=low', 'clouds=off']) {
-      await page.goto('/index.html?' + query);
+  // The sky with each kind of query, one page load per test: each load renders in software WebGL, so three in one test
+  // ran into the timeout on CI. The sky is a full-screen shader, so the page is kept small. Cloudy skies must drift,
+  // and let through at least minSun of the sunlight.
+  for (const { query, clouds, minSun } of [
+    { query: '', clouds: { cover: 'partly', seed: 1, quality: 'high' }, minSun: 0.4 },
+    {
+      query: 'clouds=mostly&cloudSeed=3&wind=90,12&cloudQuality=low',
+      clouds: { cover: 'mostly', seed: 3, quality: 'low', windFromDeg: 90, windSpeedMps: 12 },
+      minSun: 0,
+    },
+    { query: 'clouds=off', clouds: { cover: 'off', sunFactor: 1 } },
+  ])
+    test(`draws the clouds without shader errors${query ? ' with ?' + query : ''}${minSun === undefined ? '' : ', and they drift'}`, async ({
+      page,
+    }) => {
+      const errors = watchErrors(page);
+      await page.setViewportSize({ width: 640, height: 360 });
+      await page.goto('/index.html' + (query && '?' + query));
       await expectWebGL(page);
-      await frames(page, 2);
-    }
-    expect((await state(page)).clouds).toMatchObject({ cover: 'off', sunFactor: 1 });
-    expect(errors).toEqual([]);
-  });
+      const first = (await state(page)).clouds;
+      expect(first).toMatchObject(clouds);
+      if (minSun !== undefined) {
+        await frames(page, 3);
+        const later = (await state(page)).clouds;
+        expect(later.timeS).toBeGreaterThan(first.timeS);
+        expect(later.sunFactor).toBeGreaterThan(minSun);
+        expect(later.sunFactor).toBeLessThanOrEqual(1);
+      }
+      expect(errors).toEqual([]);
+    });
 
   test('ragdolls are on for everyone, without a lab flag', async ({ page }) => {
     const errors = watchErrors(page);
