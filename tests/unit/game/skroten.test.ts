@@ -1,12 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import type { Car } from '../../../src/game/cars';
+import { fmtKr } from '../../../src/game/economy';
 import type { MenuItem } from '../../../src/game/pets';
-import { OWNER_LINES, Skroten, type SkrotenDeps } from '../../../src/game/skroten';
-import { OWNER_UV, yardToWorld } from '../../../src/game/skroten-yard';
+import { carsForSale, OWNER_LINES, Skroten, type SkrotenDeps } from '../../../src/game/skroten';
+import { OWNER_UV, type YardCar, yardHeading, yardToWorld } from '../../../src/game/skroten-yard';
 import { newGameState } from '../../../src/game/state';
 
 // You drive `car` onto Skroten's ring with `stars`; `open` holds the last menu, `choose` picks from it.
-function skroten(o: { car?: Partial<Car>; model?: string; stars?: number } = {}) {
+function skroten(o: { car?: Partial<Car>; model?: string; stars?: number; kr?: number } = {}) {
   const calls: string[] = [];
   let open: {
     kind: string;
@@ -17,7 +18,7 @@ function skroten(o: { car?: Partial<Car>; model?: string; stars?: number } = {})
   } | null = null;
   const car = { type: 'volvo', dmg: 0, ...o.car } as Car;
   const game = { ...newGameState(), inCar: true, pcar: car as Car | null },
-    wallet = { kr: 0 };
+    wallet = { kr: o.kr ?? 0 };
   let onRing = true;
   const g: SkrotenDeps = {
     game,
@@ -29,6 +30,7 @@ function skroten(o: { car?: Partial<Car>; model?: string; stars?: number } = {})
     toast: m => void calls.push('toast ' + m),
     atSkroten: () => onRing,
     modelId: () => o.model,
+    carName: () => 'Volvo 240',
     wallet,
     sellCar: c => {
       calls.push('sold ' + c.type);
@@ -146,5 +148,90 @@ describe('Skroten', () => {
     moving.choose('sell');
     expect(moving.wallet.kr).toBe(0);
     expect(moving.game.inCar).toBe(true);
+  });
+});
+
+describe('Skroten sells the cars on its lot', () => {
+  // you stand on foot `away` m from a Volvo on the lot that costs 2 000, with `kr` in your pocket
+  function lot(o: { kr?: number; stars?: number; away?: number } = {}) {
+    const t = skroten({ kr: o.kr ?? 5000, stars: o.stars }),
+      car = { type: 'volvo', x: 0, z: 0, saleKr: 2000, owned: false } as Car;
+    t.game.inCar = false;
+    t.game.pcar = null;
+    Object.assign(t.g.player, { x: o.away ?? 2, z: 0 });
+    return { ...t, car };
+  }
+
+  it('names its price, and the car is yours once you pay it', () => {
+    const t = lot();
+    t.s.offerCar(t.car);
+    expect(t.menu()!.title).toBe('Plåt-Pelle: ”Den där Volvo 240? ' + fmtKr(2000) + ', å den ä din.”');
+    t.choose('buy');
+    expect(t.wallet.kr).toBe(3000);
+    expect(t.car.owned).toBe(true);
+    expect(t.car.saleKr).toBe(0);
+    expect(t.calls[0]).toContain('Den ä din nu');
+  });
+
+  it('keeps the car and your money when you say no, or cannot pay', () => {
+    const no = lot();
+    no.s.offerCar(no.car);
+    no.choose('no');
+    expect(no.wallet.kr).toBe(5000);
+    expect(no.car.owned).toBe(false);
+    const broke = lot({ kr: 1999 });
+    broke.s.offerCar(broke.car);
+    broke.choose('buy');
+    expect(broke.wallet.kr).toBe(1999);
+    expect(broke.car.owned).toBe(false);
+    expect(broke.calls[0]).toContain('Kom tebaks när du har pengarna');
+  });
+
+  it('sells nothing with the police after you, even when they come while the menu is open', () => {
+    const chased = lot({ stars: 1 });
+    chased.s.offerCar(chased.car);
+    expect(chased.menu()).toBeNull();
+    expect(chased.calls[0]).toContain('Inte mä snuten');
+    const late = lot();
+    late.s.offerCar(late.car);
+    (late.g as { stars: number }).stars = 1;
+    late.choose('buy');
+    expect(late.wallet.kr).toBe(5000);
+    expect(late.car.owned).toBe(false);
+  });
+
+  it('keeps his price on the plate only while you stand by the car on foot', () => {
+    const t = lot();
+    t.s.offerCar(t.car);
+    const stay = t.menu()!.stay!;
+    expect(stay()).toBe(true);
+    Object.assign(t.g.player, { x: 6 });
+    expect(stay()).toBe(false);
+  });
+
+  it("turns the yard's cars for sale into cars in the world, priced by model, leaving out models with no type", () => {
+    const spot = (model: YardCar['model'], u: number): YardCar => ({
+      u,
+      v: 30,
+      turn: Math.PI,
+      tilt: 0,
+      pitch: 0,
+      model,
+      colour: '#1f3b6a',
+      wrecked: false,
+      stack: 0,
+    });
+    const types: Record<string, 'volvo' | 'saab'> = { volvo240: 'volvo', saab900: 'saab', impala1970: 'volvo' },
+      cars = carsForSale(
+        [spot('volvo240', 16), spot('saab900', 19), spot('impala1970', 21), spot('micra-k11', 24)],
+        id => types[id],
+      );
+    expect(cars.map(c => [c.model, c.type, c.kr])).toEqual([
+      ['volvo240', 'volvo', 2000],
+      ['saab900', 'saab', 2500],
+      ['impala1970', 'volvo', 4000],
+    ]);
+    const at = yardToWorld(16, 30);
+    expect(cars[0]).toMatchObject({ x: at.x, z: at.z, h: yardHeading(Math.PI), colour: '#1f3b6a' });
   });
 });

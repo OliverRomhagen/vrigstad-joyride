@@ -15,6 +15,8 @@ const ALONG = { x: 0.9944, z: 0.1059 }, // the road's direction along the yard, 
   INTO = { x: -0.1059, z: 0.9944 }; // and the way into the yard, at right angles to it
 /** The yard frame's turn about y, for three.js: local x is u, local z is v. */
 export const YARD_TURN = -Math.atan2(ALONG.z, ALONG.x);
+/** The heading (Car.h: rad, 0 is north) of a car standing in the yard at `turn`: a model's nose, local -z, turned by YARD_TURN + turn. */
+export const yardHeading = (turn: number) => -(YARD_TURN + turn);
 /** A point inside the hall that becomes Skroten's workshop, to find its outline among the buildings. */
 export const SKROT_HALL = { x: 945, z: 88 } as const;
 /** A point inside the long open carport behind the yard. */
@@ -141,6 +143,8 @@ export interface Carport extends FloorArea {
 export interface YardLayout {
   fence: FenceRun[];
   yardCars: YardCar[];
+  /** The cars for sale: real cars that main.ts parks in the fleet, so they are neither drawn nor solid here. */
+  forSale: YardCar[];
   /** The wheel off the broken tractor, lying beside it. */
   looseWheel: { u: number; v: number } | null;
   heaps: Heap[];
@@ -513,7 +517,8 @@ export function yardLayout(
   outlines.push(rect(CONTAINERS.u, CONTAINERS.v, CONTAINERS.w, CONTAINERS.d * 2));
   outlines.push(rect(OWNER_UV.u, OWNER_UV.v, 0.7, 0.7)); // Plåt-Pelle stands his ground
 
-  const yardCars: YardCar[] = [];
+  const yardCars: YardCar[] = [],
+    forSale: YardCar[] = [];
   for (const row of WRECK_ROWS) {
     for (let u = row.u0; u <= row.u1 + 0.01; u += WRECK_GAP_M) {
       if (!row.fresh && rnd() < 0.12) continue; // a gap where one has gone to the crusher
@@ -540,7 +545,7 @@ export function yardLayout(
             wrecked: true,
             stack: 0,
           };
-      yardCars.push(below);
+      (row.fresh ? forSale : yardCars).push(below);
       if (row.stacks && rnd() < 0.45) {
         below.stack = 1;
         yardCars.push({
@@ -554,14 +559,8 @@ export function yardLayout(
         });
       }
     }
-    outlines.push(
-      rect(
-        (row.u0 + row.u1) / 2,
-        row.v,
-        row.u1 - row.u0 + 2.2,
-        (WRECK_HALF_LEN_M + (row.fresh ? 0 : WRECK_SPREAD_M)) * 2,
-      ),
-    );
+    if (!row.fresh)
+      outlines.push(rect((row.u0 + row.u1) / 2, row.v, row.u1 - row.u0 + 2.2, (WRECK_HALF_LEN_M + WRECK_SPREAD_M) * 2));
   }
   let looseWheel: { u: number; v: number } | null = null;
   for (const { broken, bay, ...spot } of TRACTORS) {
@@ -587,7 +586,7 @@ export function yardLayout(
     for (const k of [0, 1, 3, 4]) {
       const { turn, ...p } = inBay(carport, k),
         t = turn + (rnd() - 0.5) * 0.15;
-      yardCars.push({
+      forSale.push({
         ...p,
         turn: t,
         tilt: 0,
@@ -597,7 +596,6 @@ export function yardLayout(
         wrecked: false,
         stack: 0,
       });
-      outlines.push(rect(p.u, p.v, 2.1, 5, t));
     }
   }
 
@@ -620,6 +618,7 @@ export function yardLayout(
   return {
     fence,
     yardCars,
+    forSale,
     looseWheel,
     heaps,
     tyres,

@@ -10,6 +10,7 @@ import {
   registerWalletCommands,
   SCRAP_KR,
   START_KR,
+  salePrice,
   TRISS_KR,
   TRISS_PLAN,
   TRISS_TICKETS,
@@ -119,5 +120,16 @@ describe('what Skroten pays for a car', () => {
   it('never buys a police car', () => {
     expect(carPrice('polis', 'xc70-police', 0)).toBeNull();
     expect(carPrice('polis', undefined, 0)).toBeNull();
+  });
+});
+
+describe('what Plåt-Pelle asks for a car on his lot', () => {
+  it('asks two and a half times what Skroten pays for one whole, in round hundreds, and never sells a police car', () => {
+    expect(salePrice('volvo', 'volvo240')).toBe(2000);
+    expect(salePrice('saab', 'saab900')).toBe(2500);
+    expect(salePrice('volvo', 'impala1970')).toBe(4000);
+    expect(salePrice('epa', 'duett-epa')).toBe(1500);
+    expect(salePrice('saab', undefined)).toBe(2500); // by type when the model has no price
+    expect(salePrice('polis', undefined)).toBeNull();
   });
 });

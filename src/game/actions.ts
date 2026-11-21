@@ -44,6 +44,7 @@ export interface ActionsDeps {
   openSkroten(): boolean; // Skroten's offer for the car you drive on its ring; false when it makes none, so E gets you out
   nearOwner(): boolean; // you stand on foot next to Plåt-Pelle
   talkToOwner(): void;
+  offerCar(c: Car): void; // Plåt-Pelle's price for a car on Skroten's lot
   collide(o: Point, r: number): unknown;
   placeCar(c: Car): void;
   rnd(): number;
@@ -114,6 +115,7 @@ export class Actions {
       openSkroten,
       nearOwner,
       talkToOwner,
+      offerCar,
       rnd,
       pick,
       toast,
@@ -159,6 +161,10 @@ export class Actions {
     }
     const c = this.nearestCar();
     if (!c) return;
+    if (c.saleKr) {
+      offerCar(c);
+      return;
+    }
     if (c.mode === 'ai') {
       driverOut(c);
       toast(

@@ -10,6 +10,7 @@ import {
   worldToYard,
   YARD,
   YARD_CAR_MODELS,
+  type YardCar,
   yardFloorAt,
   yardLayout,
   yardToWorld,
@@ -158,9 +159,9 @@ describe('Skroten yard', () => {
           z = a.z + (b.z - a.z) * t;
         expect(clearanceXZ(y.outlines, x, z), `at ${x.toFixed(1)}, ${z.toFixed(1)}`).toBeGreaterThan(CAR_R_M);
       }
-    const under = y.yardCars.filter(w => pointInPolygon(CARPORT, yardToWorld(w.u, w.v).x, yardToWorld(w.u, w.v).z));
-    expect(under.filter(w => w.model !== 'traktor')).toHaveLength(4); // cars for sale
-    expect(under.filter(w => w.model === 'traktor' && !w.wrecked)).toHaveLength(1); // and the green tractor
+    const inCarport = (w: YardCar) => pointInPolygon(CARPORT, yardToWorld(w.u, w.v).x, yardToWorld(w.u, w.v).z);
+    expect(y.forSale.filter(inCarport)).toHaveLength(4); // cars for sale
+    expect(y.yardCars.filter(inCarport).filter(w => w.model === 'traktor' && !w.wrecked)).toHaveLength(1); // and the green tractor
   });
 
   it('gives the workshop an even floor clear of bumpy, rising ground, with a ramp from the door down to the yard', () => {
@@ -192,10 +193,13 @@ describe('Skroten yard', () => {
   it('keeps the wrecks on the west side and the cars for sale, standing straight, by the workshop and under the carport', () => {
     const y = yardLayout(FOOTPRINTS),
       cars = y.yardCars.filter(c => c.model !== 'traktor'),
-      fresh = cars.filter(c => !c.wrecked),
+      fresh = y.forSale,
       wrecks = cars.filter(c => c.wrecked);
     expect(fresh.length).toBeGreaterThanOrEqual(8);
+    expect(cars.every(c => c.wrecked)).toBe(true); // the yard's own props are all wrecks
     for (const c of fresh) {
+      expect(c.wrecked).toBe(false);
+      expect(c.model).not.toBe('traktor');
       expect(c.tilt).toBe(0);
       expect(c.pitch).toBe(0);
       expect(c.stack).toBe(0);
