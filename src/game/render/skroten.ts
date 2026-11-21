@@ -7,6 +7,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { pointInPolygon } from '../../world/polygon';
 import { makeRnd } from '../../world/random';
 import {
+  type Carport,
   CONTAINERS,
   HUT,
   NISSE_UV,
@@ -32,7 +33,7 @@ const PANEL_M = 3; // a sheet of the fence, and the gap between its posts
 const FENCE_COLOURS = ['#8b8f91', '#9a6a4a', '#6f7c86', '#a3a7a3', '#7e4a30', '#86847a'];
 const WIRE_HEIGHTS_M = [2.45, 2.65, 2.85];
 const SCRAP_COLOURS = ['#7d3a24', '#8f4f2c', '#6b6f6f', '#9a9a92', '#5c4434', '#a0522d', '#4f5a63'];
-const RUST = '#8a4a2a',
+const RUST = '#8a4a2a', // the boards
   POST = '#5b4a3a',
   WIRE = '#2e2e2e',
   TYRE = '#1c1c1c',
@@ -44,13 +45,24 @@ const WRECK_DETAIL_M = 150, // the wrecks wear the game's car models inside this
   WRECK_LOAD_M = 300; // and the models start loading when you come this close
 const WRECK_SINK_M = 0.1; // flat tyres
 const CONTAINER_H_M = 2.6;
-const HALL_H_M = 7, // the workshop's walls, from the lowest ground under them
+// the workshop as it stands: one storey of pale brick with a dark blue clad wing, a brown band under the eaves, and a cream gabled hall
+// with a rusty roof rising behind
+const HALL_H_M = 4.5, // the walls, from the lowest ground under them
   HALL_WALL_M = 0.25,
-  RIB_M = 0.7, // between the ribs of the sheet metal
-  SHEET = '#7f6a58',
-  SHEET_RIB = '#6e5b4b',
-  HALL_ROOF = '#5c6064',
-  CONCRETE = '#8e8b84';
+  GABLE_RISE_M = 2.6, // the gabled hall's ridge over the walls' top
+  CLAD_RIB_M = 0.5,
+  BRICK = '#cfc8b8',
+  CLAD = '#2f3b52',
+  FASCIA = '#6b3a2a',
+  GABLE_CREAM = '#d8c48a',
+  RUST_ROOF = '#6e3f28',
+  FLAT_ROOF = '#4a4c4e',
+  CONCRETE = '#8e8b84',
+  WINDOW_EVERY_M = 3.6;
+// the carport: wooden walls and posts under a long gabled roof of rusty sheet
+const SHED_WALL_M = 3.4,
+  SHED_RISE_M = 2,
+  WOOD = '#6b4a32';
 
 /** What the yard's meshes read from the rest of the game. */
 export interface SkrotenMeshDeps {
@@ -117,7 +129,7 @@ export class SkrotenMeshes {
 
     // gravel over the yard, and the drive out to the road, following the ground
     const gravel = new THREE.MeshLambertMaterial({
-      color: 0x6b6253,
+      color: 0x4a4946, // worn asphalt
       polygonOffset: true,
       polygonOffsetFactor: -1,
       polygonOffsetUnits: -2,
@@ -249,6 +261,7 @@ export class SkrotenMeshes {
     }
     scene.add(yard);
     if (layout.workshop) scene.add(hallMeshes(heightAt, layout.workshop));
+    if (layout.carport) scene.add(carportMeshes(heightAt, layout.carport));
 
     // Skrot-Nisse: blue overalls, a red cap with a peak, and a grey beard
     const nisse = personParts('#2f4f7f', '#2f4f7f', '#b8322a');
@@ -415,114 +428,196 @@ function propParts(p: WorkshopProp): BoxPart[] {
   ];
 }
 
-// the workshop in world coordinates: walls of sheet metal with ribs outside, the garage door's opening and its rolled-up door, a flat roof
-// and a concrete floor
-function hallMeshes(heightAt: SkrotenMeshDeps['heightAt'], ws: Workshop) {
-  const pieces: THREE.BufferGeometry[] = [],
-    p = ws.outline;
+// triangles of flat colour with their own normals, gathered into one geometry
+class Surfaces {
+  private readonly pos: number[] = [];
+  private readonly nor: number[] = [];
+  private readonly col: number[] = [];
+  private readonly _a = new THREE.Vector3();
+  private readonly _b = new THREE.Vector3();
+  /** A triangle, seen from the side its corners run counter-clockwise; `both` adds its back too. */
+  tri(a: number[], b: number[], c: number[], hex: string, both = false) {
+    const k = new THREE.Color(hex),
+      n = this._a
+        .set(b[0]! - a[0]!, b[1]! - a[1]!, b[2]! - a[2]!)
+        .cross(this._b.set(c[0]! - a[0]!, c[1]! - a[1]!, c[2]! - a[2]!))
+        .normalize();
+    this.pos.push(...a, ...b, ...c);
+    for (let i = 0; i < 3; i++) {
+      this.nor.push(n.x, n.y, n.z);
+      this.col.push(k.r, k.g, k.b);
+    }
+    if (both) this.tri(a, c, b, hex);
+  }
+  quad(a: number[], b: number[], c: number[], d: number[], hex: string, both = false) {
+    this.tri(a, b, c, hex, both);
+    this.tri(a, c, d, hex, both);
+  }
+  geometry() {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(this.pos, 3));
+    g.setAttribute('normal', new THREE.Float32BufferAttribute(this.nor, 3));
+    g.setAttribute('color', new THREE.Float32BufferAttribute(this.col, 3));
+    return g;
+  }
+}
+
+type WallT = Workshop['doorWall'];
+// a box along wall w from s0 to s1 metres, between heights y0 and y1, `out` metres out from its line and `thick` deep
+function wallBox(w: WallT, s0: number, s1: number, y0: number, y1: number, out: number, thick: number, c: string) {
+  const s = (s0 + s1) / 2;
+  return boxGeo([[s1 - s0, y1 - y0, thick, 0, (y0 + y1) / 2, 0, c]]).applyMatrix4(
+    placing(w.x0 + w.ux * s + w.nx * out, 0, w.z0 + w.uz * s + w.nz * out, -Math.atan2(w.uz, w.ux)),
+  );
+}
+const lowestUnder = (p: readonly number[], heightAt: SkrotenMeshDeps['heightAt']) => {
   let lo = Infinity;
   for (let i = 0; i < p.length; i += 2) lo = Math.min(lo, heightAt(p[i]!, p[i + 1]!));
-  const base = lo - 0.5,
-    top = lo + HALL_H_M;
-  const wallBox = (
-    w: Workshop['doorWall'],
-    s0: number,
-    s1: number,
-    y0: number,
-    y1: number,
-    out: number,
-    thick: number,
-    c: string,
-  ) => {
-    const s = (s0 + s1) / 2;
-    pieces.push(
-      boxGeo([[s1 - s0, y1 - y0, thick, 0, (y0 + y1) / 2, 0, c]]).applyMatrix4(
-        placing(w.x0 + w.ux * s + w.nx * out, 0, w.z0 + w.uz * s + w.nz * out, -Math.atan2(w.uz, w.ux)),
-      ),
-    );
-  };
+  return lo;
+};
+
+// the workshop in world coordinates: brick walls and the clad wing, windows and doors to the road and the yard, the garage door's opening
+// with its door rolled up inside, a flat roof with the gabled hall on it, and a concrete floor
+function hallMeshes(heightAt: SkrotenMeshDeps['heightAt'], ws: Workshop) {
+  const pieces: THREE.BufferGeometry[] = [],
+    p = ws.outline,
+    lo = lowestUnder(p, heightAt),
+    base = lo - 0.5,
+    top = lo + HALL_H_M,
+    xs = p.filter((_, i) => i % 2 === 0),
+    zs = p.filter((_, i) => i % 2 === 1),
+    [x0, x1, z0, z1] = [Math.min(...xs), Math.max(...xs), Math.min(...zs), Math.max(...zs)],
+    wingX = x0 + (x1 - x0) * 0.25; // walls west of this are the clad wing
   const { doorWall: dw, doorFrom, doorTo } = ws,
-    doorFoot = heightAt(dw.x0 + dw.ux * ((doorFrom + doorTo) / 2), dw.z0 + dw.uz * ((doorFrom + doorTo) / 2)),
+    doorMid = (doorFrom + doorTo) / 2,
+    doorFoot = heightAt(dw.x0 + dw.ux * doorMid, dw.z0 + dw.uz * doorMid),
     doorTop = doorFoot + WORKSHOP_DOOR.h;
   for (const w of ws.walls) {
-    const spans: [number, number][] =
-      w === dw
-        ? [
-            [-HALL_WALL_M / 2, doorFrom],
-            [doorTo, w.len + HALL_WALL_M / 2],
-          ]
-        : [[-HALL_WALL_M / 2, w.len + HALL_WALL_M / 2]];
-    for (const [s0, s1] of spans) wallBox(w, s0, s1, base, top, 0, HALL_WALL_M, SHEET);
-    for (let s = RIB_M / 2; s < w.len; s += RIB_M)
-      if (w !== dw || s < doorFrom - 0.1 || s > doorTo + 0.1)
-        wallBox(w, s - 0.04, s + 0.04, base, top - 0.2, HALL_WALL_M / 2 + 0.03, 0.06, SHEET_RIB);
-  }
-  wallBox(dw, doorFrom, doorTo, doorTop, top, 0, HALL_WALL_M, SHEET); // over the door
-  wallBox(dw, doorFrom - 0.15, doorFrom, doorFoot - 0.3, doorTop, 0.05, HALL_WALL_M + 0.12, '#3a3c3e'); // its frame
-  wallBox(dw, doorTo, doorTo + 0.15, doorFoot - 0.3, doorTop, 0.05, HALL_WALL_M + 0.12, '#3a3c3e');
-  wallBox(dw, doorFrom - 0.15, doorTo + 0.15, doorTop, doorTop + 0.15, 0.05, HALL_WALL_M + 0.12, '#3a3c3e');
-  wallBox(dw, doorFrom, doorTo, doorTop - 0.55, doorTop, -0.35, 0.45, '#4a4d50'); // the rolled-up door inside, under the lintel
-
-  // the roof, seen from above and from inside, and the floor following the ground
-  const roof = new THREE.Color(HALL_ROOF).convertSRGBToLinear(),
-    floor = new THREE.Color(CONCRETE).convertSRGBToLinear(),
-    pos: number[] = [],
-    nor: number[] = [],
-    cols: number[] = [];
-  const tri = (a: number[], b: number[], c: number[], ny: number, k: THREE.Color) => {
-    pos.push(...a, ...b, ...c);
-    for (let i = 0; i < 3; i++) {
-      nor.push(0, ny, 0);
-      cols.push(k.r, k.g, k.b);
+    const clad = Math.max(w.x0, w.x0 + w.ux * w.len) < wingX,
+      colour = clad ? CLAD : BRICK,
+      spans: [number, number][] =
+        w === dw
+          ? [
+              [-HALL_WALL_M / 2, doorFrom],
+              [doorTo, w.len + HALL_WALL_M / 2],
+            ]
+          : [[-HALL_WALL_M / 2, w.len + HALL_WALL_M / 2]];
+    for (const [s0, s1] of spans) pieces.push(wallBox(w, s0, s1, base, top, 0, HALL_WALL_M, colour));
+    pieces.push(wallBox(w, -0.2, w.len + 0.2, top - 0.45, top + 0.05, 0.1, 0.12, FASCIA)); // the band under the eaves
+    if (clad)
+      for (let s = CLAD_RIB_M / 2; s < w.len; s += CLAD_RIB_M)
+        if (w !== dw || s < doorFrom - 0.1 || s > doorTo + 0.1)
+          pieces.push(wallBox(w, s - 0.03, s + 0.03, base, top - 0.45, HALL_WALL_M / 2 + 0.02, 0.04, '#26303f'));
+    // windows towards the road and the yard, white frames round dark glass; a door every so often on the road side
+    if (w.nz < -0.7 || w === dw) {
+      const n = Math.floor(w.len / WINDOW_EVERY_M);
+      for (let i = 0; i < n; i++) {
+        const s = (w.len * (i + 0.5)) / n,
+          y = heightAt(w.x0 + w.ux * s, w.z0 + w.uz * s);
+        if (w === dw && s > doorFrom - 1.2 && s < doorTo + 1.2) continue;
+        if (w.nz < -0.7 && i % 4 === 2) {
+          pieces.push(wallBox(w, s - 0.55, s + 0.55, y, y + 2.15, HALL_WALL_M / 2, 0.06, '#f1efe8'));
+          pieces.push(wallBox(w, s - 0.45, s + 0.45, y, y + 2.05, HALL_WALL_M / 2 + 0.02, 0.06, '#5a3a2a'));
+          continue;
+        }
+        pieces.push(wallBox(w, s - 0.7, s + 0.7, y + 0.95, y + 2.25, HALL_WALL_M / 2, 0.06, '#f1efe8'));
+        pieces.push(wallBox(w, s - 0.6, s + 0.6, y + 1.05, y + 2.15, HALL_WALL_M / 2 + 0.02, 0.06, '#26323a'));
+      }
     }
-  };
-  const flat = [];
+  }
+  pieces.push(wallBox(dw, doorFrom, doorTo, doorTop, top, 0, HALL_WALL_M, CLAD)); // over the door
+  pieces.push(wallBox(dw, doorFrom - 0.15, doorFrom, doorFoot - 0.3, doorTop, 0.05, HALL_WALL_M + 0.12, '#3a3c3e')); // its frame
+  pieces.push(wallBox(dw, doorTo, doorTo + 0.15, doorFoot - 0.3, doorTop, 0.05, HALL_WALL_M + 0.12, '#3a3c3e'));
+  pieces.push(
+    wallBox(dw, doorFrom - 0.15, doorTo + 0.15, doorTop, doorTop + 0.15, 0.05, HALL_WALL_M + 0.12, '#3a3c3e'),
+  );
+  pieces.push(wallBox(dw, doorFrom, doorTo, doorTop - 0.5, doorTop, -0.35, 0.45, '#4a4d50')); // rolled up inside, under the lintel
+
+  // the flat roof, seen from above and from inside, and the floor following the ground
+  const sf = new Surfaces(),
+    flat: THREE.Vector2[] = [];
   for (let i = 0; i < p.length; i += 2) flat.push(new THREE.Vector2(p[i]!, p[i + 1]!));
   for (const [a, b, c] of THREE.ShapeUtils.triangulateShape(flat, [])) {
-    const A = [flat[a!]!.x, top, flat[a!]!.y],
-      B = [flat[b!]!.x, top, flat[b!]!.y],
-      C = [flat[c!]!.x, top, flat[c!]!.y];
-    tri(A, B, C, 1, roof);
-    tri(A, C, B, -1, roof);
+    const P = (k: number) => [flat[k]!.x, top, flat[k]!.y];
+    sf.tri(P(a!), P(b!), P(c!), FLAT_ROOF, true);
   }
-  const xs = flat.map(f => f.x),
-    zs = flat.map(f => f.y),
-    [x0, x1, z0, z1] = [Math.min(...xs), Math.max(...xs), Math.min(...zs), Math.max(...zs)];
   const cell = 1.5,
-    at = (x: number, z: number) => [x, heightAt(x, z) + 0.08, z],
-    inside = (x: number, z: number) => pointInPolygon(p as number[], x, z);
+    at = (x: number, z: number) => [x, heightAt(x, z) + 0.08, z];
   for (let x = x0; x < x1; x += cell)
-    for (let z = z0; z < z1; z += cell) {
-      if (!inside(x + cell / 2, z + cell / 2)) continue;
-      const a = at(x, z),
-        b = at(x + cell, z),
-        c = at(x + cell, z + cell),
-        d = at(x, z + cell);
-      tri(a, d, c, 1, floor); // counter-clockwise seen from above, with x east and z south
-      tri(a, c, b, 1, floor);
-    }
-  const surfaces = new THREE.BufferGeometry();
-  surfaces.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-  surfaces.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
-  surfaces.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3));
-  pieces.push(surfaces);
+    for (let z = z0; z < z1; z += cell)
+      if (pointInPolygon(p as number[], x + cell / 2, z + cell / 2))
+        sf.quad(at(x, z), at(x, z + cell), at(x + cell, z + cell), at(x + cell, z), CONCRETE);
+  // the gabled hall on the roof: cream gable ends, rusty roof planes, its ridge along x
+  const gx0 = x0 + (x1 - x0) * 0.3,
+    gx1 = x1 - (x1 - x0) * 0.2,
+    gz0 = z0 + (z1 - z0) * 0.35,
+    gz1 = z1 - (z1 - z0) * 0.1,
+    gm = (gz0 + gz1) / 2,
+    ridge = top + GABLE_RISE_M;
+  sf.quad([gx0, top, gz0], [gx0, ridge, gm], [gx1, ridge, gm], [gx1, top, gz0], RUST_ROOF, true);
+  sf.quad([gx0, top, gz1], [gx1, top, gz1], [gx1, ridge, gm], [gx0, ridge, gm], RUST_ROOF, true);
+  sf.tri([gx0, top, gz0], [gx0, top, gz1], [gx0, ridge, gm], GABLE_CREAM, true);
+  sf.tri([gx1, top, gz0], [gx1, top, gz1], [gx1, ridge, gm], GABLE_CREAM, true);
+  pieces.push(sf.geometry());
   const m = new THREE.Mesh(bake(pieces), paintMat);
   m.castShadow = m.receiveShadow = true;
-  // a SKROTEN sign high on the wall to the road
+  // a SKROTEN sign over the windows on the road side
   const g = new THREE.Group(),
-    road = ws.walls.reduce(
-      (best, w) => (w.nz < -0.9 && w.len > (best?.len ?? 0) ? w : best),
-      null as Workshop['doorWall'] | null,
-    );
+    road = ws.walls.reduce((best, w) => (w.nz < -0.9 && w.len > (best?.len ?? 0) ? w : best), null as WallT | null);
   g.add(m);
   if (road) {
-    const sign = board(9, 1.6, 'SKROTEN', null),
-      s = road.len / 2;
-    sign.position.set(road.x0 + road.ux * s + road.nx * 0.3, top - 1.6, road.z0 + road.uz * s + road.nz * 0.3);
+    const sign = board(7, 1.1, 'SKROTEN', null),
+      s = road.len * 0.3;
+    sign.position.set(road.x0 + road.ux * s + road.nx * 0.3, top - 1.05, road.z0 + road.uz * s + road.nz * 0.3);
     sign.rotation.y = Math.atan2(road.nx, road.nz); // its front, +z, faces out from the wall
     g.add(sign);
   }
   return g;
+}
+
+// the carport in world coordinates: wooden walls on three sides, posts along the open front, and the long gabled roof over its ridge
+function carportMeshes(heightAt: SkrotenMeshDeps['heightAt'], cp: Carport) {
+  const pieces: THREE.BufferGeometry[] = [],
+    lo = lowestUnder(cp.outline, heightAt),
+    base = lo - 0.5,
+    top = lo + SHED_WALL_M,
+    f = cp.front;
+  for (const w of cp.walls)
+    if (w !== f) pieces.push(wallBox(w, -HALL_WALL_M / 2, w.len + HALL_WALL_M / 2, base, top, 0, HALL_WALL_M, WOOD));
+  for (const q of cp.posts)
+    pieces.push(
+      boxGeo([[0.25, top - base, 0.25, 0, (top + base) / 2, 0, WOOD]]).applyMatrix4(
+        placing(q.x, 0, q.z, -Math.atan2(f.uz, f.ux)),
+      ),
+    );
+  pieces.push(wallBox(f, -0.2, f.len + 0.2, top - 0.35, top, -0.2, 0.2, '#5a3d29')); // the beam over the bays
+  // the roof: from the front eave and the back eave up to the ridge along the middle, overhanging a little; gable ends of wood
+  const sf = new Surfaces(),
+    over = 0.5,
+    depth = Math.max(...cp.walls.filter(w => w !== f && Math.abs(w.nx * f.nx + w.nz * f.nz) < 0.3).map(w => w.len)),
+    a = (s: number, d: number, y: number) => [f.x0 + f.ux * s - f.nx * d, y, f.z0 + f.uz * s - f.nz * d],
+    ridge = top + SHED_RISE_M;
+  sf.quad(
+    a(-over, -over, top - 0.15),
+    a(f.len + over, -over, top - 0.15),
+    a(f.len + over, depth / 2, ridge),
+    a(-over, depth / 2, ridge),
+    RUST_ROOF,
+    true,
+  );
+  sf.quad(
+    a(-over, depth / 2, ridge),
+    a(f.len + over, depth / 2, ridge),
+    a(f.len + over, depth + over, top - 0.15),
+    a(-over, depth + over, top - 0.15),
+    RUST_ROOF,
+    true,
+  );
+  for (const s of [0, f.len]) sf.tri(a(s, 0, top), a(s, depth, top), a(s, depth / 2, ridge), WOOD, true);
+  pieces.push(sf.geometry());
+  const m = new THREE.Mesh(bake(pieces), paintMat);
+  m.castShadow = m.receiveShadow = true;
+  return m;
 }
 
 // the model's meshes in one geometry each for its paint (white, for the instance colour) and the rest (its materials' colours)

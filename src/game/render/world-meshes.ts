@@ -86,17 +86,17 @@ export interface BuildingMeshOptions {
   rnd(): number;
   pick<T>(a: readonly T[]): T;
   maxAnisotropy: number;
-  /** A point inside a building to leave out, because the game draws it itself: Skroten's workshop (render/skroten.ts). */
-  skipAt?: { x: number; z: number };
+  /** A point inside each building to leave out, because the game draws it itself: Skroten's workshop and carport (render/skroten.ts). */
+  skip?: readonly { x: number; z: number }[];
 }
 /** The house shells in their colours, and one mesh of windows and trim. Rolls rnd() once or twice per house, in data order. */
 export function addBuildings(
   scene: THREE.Scene,
   D: WorldData,
   heightfield: Heightfield,
-  { rnd, pick, maxAnisotropy, skipAt }: BuildingMeshOptions,
+  { rnd, pick, maxAnisotropy, skip = [] }: BuildingMeshOptions,
 ) {
-  const isSkipped = (p: readonly number[]) => !!skipAt && inPoly(p as number[], skipAt.x, skipAt.z);
+  const isSkipped = (p: readonly number[]) => skip.some(s => inPoly(p as number[], s.x, s.z));
   const hAt = (x: number, z: number) => heightfield.heightAt(x, z);
   const winTex = (() => {
     const cv = document.createElement('canvas');

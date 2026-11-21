@@ -18,7 +18,9 @@ const HALL = [
   922.7, 73.4, 932.3, 73.5, 932.2, 79.0, 967.3, 79.5, 967.2, 90.2, 961.5, 90.1, 961.5, 94.4, 956.1, 94.4, 956.0, 98.7,
   931.7, 98.4, 931.7, 92.2, 922.5, 92.1,
 ];
-const FOOTPRINTS = [{ p: [0, 0, 10, 0, 10, 10, 0, 10] }, { p: HALL }, { p: [891, 134, 890, 113, 935, 112, 935, 134] }];
+// and the long carport behind the yard
+const CARPORT = [890.7, 134.5, 890.3, 113.0, 934.9, 112.0, 935.3, 133.6];
+const FOOTPRINTS = [{ p: [0, 0, 10, 0, 10, 10, 0, 10] }, { p: HALL }, { p: CARPORT }];
 const CAR_R_M = 1.5; // a car's collision radius (cars.ts)
 
 // how far the world point (x, z) is from the nearest outline you collide with; 0 inside one
@@ -83,7 +85,7 @@ describe('Skroten yard', () => {
 
   it('opens the yard onto the workshop, whose hall stops colliding as a block and gets walls with a door instead', () => {
     const y = yardLayout(FOOTPRINTS);
-    expect(y.hallIndex).toBe(1);
+    expect(y.passable).toEqual([1, 2]);
     expect(worldToYard(SKROT_HALL.x, SKROT_HALL.z).u).toBeGreaterThan(YARD.uMax);
     const ws = y.workshop!;
     expect(ws.doorTo - ws.doorFrom).toBe(WORKSHOP_DOOR.w);
@@ -119,7 +121,33 @@ describe('Skroten yard', () => {
   it('closes the fence at uMax without the hall', () => {
     const y = yardLayout([]);
     expect(y.workshop).toBeNull();
-    expect(y.hallIndex).toBe(-1);
+    expect(y.passable).toEqual([]);
     expect(Math.max(...y.fence.flatMap(f => [f.u0, f.u1]))).toBe(YARD.uMax);
+  });
+
+  it('opens the yard onto the carport: a car drives from the ring into an empty bay between its posts', () => {
+    const y = yardLayout(FOOTPRINTS),
+      cp = y.carport!;
+    expect(cp.posts).toHaveLength(7);
+    expect(cp.front.nz).toBeLessThan(-0.9); // open to the north, towards the yard and the road
+    const ring = yardToWorld(RING_UV.u, RING_UV.v),
+      s = cp.front.len * (2.5 / 6), // the third bay, left empty
+      mouth = {
+        x: cp.front.x0 + cp.front.ux * s + cp.front.nx * 3,
+        z: cp.front.z0 + cp.front.uz * s + cp.front.nz * 3,
+      },
+      inside = { x: mouth.x - cp.front.nx * 9, z: mouth.z - cp.front.nz * 9 };
+    for (const [a, b] of [
+      [ring, mouth],
+      [mouth, inside],
+    ] as const)
+      for (let t = 0.1; t <= 1; t += 0.05) {
+        const x = a.x + (b.x - a.x) * t,
+          z = a.z + (b.z - a.z) * t;
+        expect(clearanceXZ(y.outlines, x, z), `at ${x.toFixed(1)}, ${z.toFixed(1)}`).toBeGreaterThan(CAR_R_M);
+      }
+    expect(
+      y.wrecks.filter(w => pointInPolygon(CARPORT, yardToWorld(w.u, w.v).x, yardToWorld(w.u, w.v).z)),
+    ).toHaveLength(4);
   });
 });
