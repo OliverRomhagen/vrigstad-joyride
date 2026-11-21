@@ -84,17 +84,19 @@ jobs:
   smoke-result:
     name: Smoke tests (Playwright)
     needs: smoke
+    # always(), not !cancelled(): a job its if skips counts as passing a required check, so a cancelled run would let a PR merge untested.
     if: ${{ always() }}
     runs-on: ubuntu-latest
     steps:
+      # The screenshots are a convenience: a failed merge (say, no shard uploaded anything) mustn't fail a green suite.
       - uses: actions/upload-artifact/merge@v4
         if: ${{ !cancelled() }}
+        continue-on-error: true
         with:
           name: e2e-screenshots
           pattern: e2e-screenshots-*
           delete-merged: true
           retention-days: 14
-      # always(): the merge fails when no shard uploaded anything, and this step should still say why.
       - if: ${{ always() && needs.smoke.result != 'success' }}
         run: |
           echo "::error::Smoke tests ${{ needs.smoke.result }}: see the failing shard."
