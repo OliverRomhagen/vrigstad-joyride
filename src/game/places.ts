@@ -1,4 +1,4 @@
-// Places you can walk into: safehouses (lie low to lose your stars) and the trisslott kiosk on Torget.
+// Places you can walk into: safehouses (lie low to lose your stars) and the trisslott kiosk on Torget; and Skroten, which you drive into to sell a car.
 // Moved from src/game/main.ts (#177); render/places.ts draws them, and main.ts passes in the police, lying low and toasts. No three.js or DOM here.
 import { RoadClass } from '../world/data';
 import { pointInPolygon, segmentDistance } from '../world/polygon';
@@ -8,6 +8,7 @@ import { wrecked } from './health';
 const SAFE_S = 60,
   SAFE_SEEN_M = 60; // s inside to lose the stars; police closer than this (m) see you go in
 const REACH_M = 2.2; // how close you stand to a place's ring to use it
+const CAR_REACH_M = 4; // how close a car's middle comes to Skroten's ring to sell it
 const DOOR_MIN_WALL_M = 2.5; // a wall shorter than this gets no door
 const DOOR_OUT_M = 1.4; // the ring stands this far out from the door (m)
 const STREET_CLASS_MAX = RoadClass.TRACK; // only roads below this class (up to service roads, not tracks or paths) count as the street a door faces
@@ -20,9 +21,11 @@ const SAFEHOUSES: readonly (readonly [name: string, x: number, z: number])[] = [
 ];
 /** The kiosk on Torget: its middle, its size across x and z (m), and its counter, which faces south towards the spawn point. */
 export const KIOSK = { x: -13, z: 25.5, w: 3, d: 2.2, counterZ: 2.3 } as const;
+/** Skroten: its ring, in the yard behind the industrial buildings off Stockarydsvägen; you drive in between the buildings from the road to the north. */
+export const SKROTEN = { x: 657, z: -68 } as const;
 
 export interface Place {
-  kind: 'safe' | 'kiosk';
+  kind: 'safe' | 'kiosk' | 'skrot';
   name: string;
   x: number;
   z: number;
@@ -95,11 +98,18 @@ export class Places {
       this.list.push({ kind: 'safe', name, x: door.mx + door.nx * DOOR_OUT_M, z: door.mz + door.nz * DOOR_OUT_M });
     }
     this.list.push({ kind: 'kiosk', name: 'Kiosken', x: KIOSK.x, z: KIOSK.z + KIOSK.counterZ });
+    this.list.push({ kind: 'skrot', name: 'Skroten', x: SKROTEN.x, z: SKROTEN.z });
   }
 
-  /** The place whose ring you stand on, if any. */
+  /** The place whose ring you stand on, if any; Skroten is only for cars. */
   nearest(x: number, z: number) {
-    for (const p of this.list) if (Math.hypot(p.x - x, p.z - z) < REACH_M) return p;
+    for (const p of this.list) if (p.kind !== 'skrot' && Math.hypot(p.x - x, p.z - z) < REACH_M) return p;
+    return null;
+  }
+
+  /** Skroten, if a car stands on its ring here. */
+  skrotenAt(x: number, z: number) {
+    for (const p of this.list) if (p.kind === 'skrot' && Math.hypot(p.x - x, p.z - z) < CAR_REACH_M) return p;
     return null;
   }
 

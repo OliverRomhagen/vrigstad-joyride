@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { DMG_MAX } from '../../../src/game/health';
-import { KIOSK, Places, type PlacesDeps, streetDoor } from '../../../src/game/places';
+import { KIOSK, Places, type PlacesDeps, SKROTEN, streetDoor } from '../../../src/game/places';
 import { RoadClass } from '../../../src/world/data';
 import { square } from '../world/fixture';
 
@@ -53,13 +53,21 @@ describe('streetDoor', () => {
 });
 
 describe('Places', () => {
-  it('has a ring outside each safehouse door that is found, then the kiosk counter', () => {
+  it('has a ring outside each safehouse door that is found, then the kiosk counter and Skroten', () => {
     const { places: p } = places();
     expect(p.doors).toEqual([{ mx: 40, mz: -50, nx: 0, nz: -1 }]);
     expect(p.list).toEqual([
       { kind: 'safe', name: 'Gästgivaregatan', x: 40, z: -51.4 },
       { kind: 'kiosk', name: 'Kiosken', x: KIOSK.x, z: KIOSK.z + KIOSK.counterZ },
+      { kind: 'skrot', name: 'Skroten', x: SKROTEN.x, z: SKROTEN.z },
     ]);
+  });
+
+  it('finds Skroten for a car within 4 m of its ring, never for you on foot', () => {
+    const { places: p } = places();
+    expect(p.skrotenAt(SKROTEN.x + 3.9, SKROTEN.z)?.name).toBe('Skroten');
+    expect(p.skrotenAt(SKROTEN.x + 4.1, SKROTEN.z)).toBeNull();
+    expect(p.nearest(SKROTEN.x, SKROTEN.z)).toBeNull();
   });
 
   it('finds the place whose ring you stand on, within 2.2 m', () => {
