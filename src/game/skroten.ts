@@ -87,7 +87,7 @@ export class Skroten {
       k => {
         if (k === 'sell') this.sell(c);
       },
-      () => game.pcar === c && atSkroten(),
+      () => game.pcar === c && atSkroten() && !tooFastToGetOut(c),
     );
     return true;
   };
