@@ -15,7 +15,7 @@ export interface TestHookDeps {
   health: Health;
   cars: readonly Car[];
   labs: readonly string[]; // the lab experiments switched on
-  readonly ragdolls: number | null; // people knocked over right now, null without ?lab=ragdoll
+  readonly ragdolls: number; // people knocked over right now
   readonly stars: number;
   readonly cats: number;
   readonly ownCat: boolean;

@@ -101,14 +101,13 @@ test.describe('game (index.html)', () => {
     expect(errors).toEqual([]);
   });
 
-  test('the ragdoll lab loads only when ?lab=ragdoll asks for it', async ({ page }) => {
+  test('ragdolls are on for everyone, without a lab flag', async ({ page }) => {
     const errors = watchErrors(page);
-    await page.goto('/index.html?lab=ragdoll');
-    await page.locator('#go').click();
-    await expect.poll(async () => (await state(page)).ragdolls).toBe(0); // loaded, nobody knocked over yet
-    expect((await state(page)).lab).toEqual(['ragdoll']);
     await page.goto('/index.html');
-    expect(await state(page)).toMatchObject({ lab: [], ragdolls: null });
+    await page.locator('#go').click();
+    expect(await state(page)).toMatchObject({ lab: [], ragdolls: 0 }); // nobody knocked over yet
+    await page.goto('/index.html?lab=ragdoll'); // no longer an experiment: the flag is ignored
+    expect((await state(page)).lab).toEqual([]);
     expect(errors).toEqual([]);
   });
 

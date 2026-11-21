@@ -36,8 +36,9 @@ export interface Npc extends Point {
   phase: number;
   first: boolean;
   look: Look;
+  scale: number; // their size: 1 is the standard person
   mesh: PersonMesh;
-  down?: boolean; // knocked over: something else (the ragdoll lab experiment) moves and draws them until it clears this
+  down?: boolean; // knocked over: the ragdolls (src/game/ragdolls.ts) move them until they clear this
   lost?: number; // back on their feet off their path: they run back to it rather than snap, for at most this many more seconds
 }
 /** What a pedestrian wears, as personParts in src/game/render/models.ts takes it. */
@@ -165,9 +166,11 @@ export class Crowd {
         h: 0,
         phase: 0,
         first: true,
+        scale: 1,
         ...this.dress(pick(SHIRTS), pick(PANTS), pick(HAIR)),
       };
-      n.mesh.scale.setScalar(0.92 + rnd() * 0.14);
+      n.scale = 0.92 + rnd() * 0.14;
+      n.mesh.scale.setScalar(n.scale);
       scene.add(n.mesh);
       this.npcs.push(n);
       return;

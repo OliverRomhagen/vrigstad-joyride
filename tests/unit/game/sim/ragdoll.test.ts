@@ -13,7 +13,7 @@ import {
   STEP_S,
   standingPose,
   stepRagdoll,
-} from '../../../src/lab/ragdoll/ragdoll';
+} from '../../../../src/game/sim/ragdoll';
 
 // Flat ground at y = 0 and no houses, unless a test adds a wall.
 const flat: RagdollWorld = { groundAt: () => 0, collide: () => false };

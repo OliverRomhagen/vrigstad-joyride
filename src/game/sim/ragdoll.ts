@@ -1,4 +1,4 @@
-// Ragdoll physics for a person knocked over by a car (?lab=ragdoll; part of #35). Plain data and functions, no three.js:
+// Ragdoll physics for a person knocked over by a car (#35). Plain data and functions, no three.js:
 // a person is nine points joined by sticks of fixed length (Verlet integration on a fixed timestep), so it tumbles,
 // bounces off the ground and the house walls, lies still for a moment, and then gets back up.
 

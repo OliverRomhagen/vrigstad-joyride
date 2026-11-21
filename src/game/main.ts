@@ -12,7 +12,6 @@ import { CameraRig } from './render/camera-rig';
 import { ShoutingDrivers } from './render/shouting-drivers';
 import data from '../../data/vrigstad.json';
 import { LabFlags } from '../lab/flags';
-import type { Ragdolls } from '../lab/ragdoll';
 import { BuildingIndex } from '../world/buildings';
 import { ROAD_WIDTH_M as ROAD_W, type WorldData } from '../world/data';
 import { Heightfield } from '../world/heightfield';
@@ -42,6 +41,8 @@ import { KIOSK, type Place, Places } from './places';
 import { CAT_SCRATCH_HP, LOW_HP, hurt, newHealth } from './health';
 import { HOME } from './player';
 import { Wanted } from './police';
+import { Ragdolls } from './ragdolls';
+import { RagdollMeshes } from './render/ragdoll-meshes';
 import { PlaceMeshes } from './render/places';
 import { GroundTexture } from './render/ground-texture';
 import { BAR_BLUE, BAR_RED, barGeo, barMat, blob, blobTex, boxGeo, carGeo, carMat, GLASS, geoCache, PROFILES, paintMat, personParts, TRACTOR_CAB } from './render/models';
@@ -167,13 +168,14 @@ const driftFx = new DriftFx({ scene, groundAt, profiles: PROFILES, turboAt: TURB
 // ---------- pedestrians: walk the streets and footpaths, now and then stop for a while (src/game/pedestrians.ts) ----------
 // the getters are read when the pedestrians use them, so they can name things declared further down
 const crowd = new Crowd({ scene, roads, buildings, labels: D.labels, groundAt, walkOffset, coarse, rnd, pick, personParts, advance, cars,
-  get player() { return player; }, get inCar() { return game.inCar; }, get hit() { return ragdolls && ragdolls.hit; } });
+  get player() { return player; }, get inCar() { return game.inCar; }, get hit() { return ragdolls.hit; } });
 const updateNpcs = crowd.update.bind(crowd);
 
-// ---------- lab: ragdolls, people your car knocks over fly and tumble, then get up (?lab=ragdoll, src/lab/ragdoll/) ----------
-let ragdolls: Ragdolls | null = null;
-if (lab.on('ragdoll')) import('../lab/ragdoll').then(m => { ragdolls = new m.Ragdolls({ scene, world: { groundAt, collide }, crowd, coarse, geoCache, boxGeo, paintMat,
-  get pcar() { return game.inCar ? game.pcar : null; } }); }).catch(err => console.warn('Lab: ragdoll failed', err));
+// ---------- ragdolls: people your car knocks over fly and tumble, get up again, and cost you a star (src/game/ragdolls.ts) ----------
+// the getter and the star are read when someone is hit, so they can name things declared further down
+const ragdolls = new Ragdolls({ world: { groundAt, collide }, crowd, coarse, get pcar() { return game.inCar ? game.pcar : null; },
+  knockedDown: () => wanted.addStar('”Aj! Va gör du?!” Someone calls the police.') });
+const ragdollMeshes = new RagdollMeshes({ scene, groundAt, geoCache, boxGeo, paintMat, ragdolls });
 
 // ---------- cats: lounge by the house walls, wander a little, bolt from cars and running feet (src/game/cats.ts) ----------
 // the getters are read when the cats use them, so they can name things declared further down
@@ -272,13 +274,13 @@ const prompt = new ActionPrompt({ $, game, places, wanted, get menuOpen() { retu
 // ---------- main loop (src/game/loop.ts) ----------
 const loop = new GameLoop({ $, renderer, scene, camera, canvas, coarse, half: HALF, game, view, player, health, input, places, wanted, cars, startCam: START_CAM, barMat, barColours: [BAR_BLUE, BAR_RED], cameraRig,
   get toasting() { return hud.toasting; }, inWater, collide, groundAt, drive, updateTraffic, knockedOut, hurtPlayer, shake, toast,
-  updateTrisslott: dt => trisslott.update(dt), updatePlaces: dt => placeMeshes.update(dt), updateDriftFx, updateVehicles: (T, dt) => vehicleVisuals.update(T, dt), updateSmoke, updateNpcs: (T, dt) => { updateNpcs(T, dt); if (ragdolls) ragdolls.update(dt); }, updateCats,
+  updateTrisslott: dt => trisslott.update(dt), updatePlaces: dt => placeMeshes.update(dt), updateDriftFx, updateVehicles: (T, dt) => vehicleVisuals.update(T, dt), updateSmoke, updateNpcs: (T, dt) => { updateNpcs(T, dt); ragdolls.update(dt); ragdollMeshes.update(); }, updateCats,
   updateDrivers: (T, dt) => drivers.update(T, dt), updateBodies: (T, dt) => bodyMotion.update(T, dt), drawHearts, updateHud: dt => hud.update(dt), drawMini,
   updateSign, catRideLines: () => crashes.catRideLines(), closeMenuIfLeft: () => menuPlate.closeIfLeft(), updatePrompt: () => prompt.update(), drawHealth });
 $('go').addEventListener('click', loop.startGame);
 loop.start();
 
 // ---------- test hook: read-only state for the smoke tests (src/game/test-hook.ts) ----------
-installTestHook({ game, view, player, health, cars, labs: lab.list(), get ragdolls() { return ragdolls ? ragdolls.count : null; }, get stars() { return wanted.stars; }, get cats() { return cats.length; }, get ownCat() { return !!colony.owned; }, get displayCar() { return displayCar; },
+installTestHook({ game, view, player, health, cars, labs: lab.list(), get ragdolls() { return ragdolls.count; }, get stars() { return wanted.stars; }, get cats() { return cats.length; }, get ownCat() { return !!colony.owned; }, get displayCar() { return displayCar; },
   vehicleVisuals: { state: c => vehicleVisuals.state(meshed(c)) }, bodyMotion: { state: c => bodyMotion.state(meshed(c)) }, skyDome, street, debugStreetscape: DEBUG_STREETSCAPE, nearestCar });
 })();
