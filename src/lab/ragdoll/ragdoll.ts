@@ -14,7 +14,7 @@ export const HEAD = 0,
   R_FOOT = 8;
 export const POINTS = 9;
 
-// Standing, in the person's frame (x to their right, y up, z behind them; m): the same proportions as personParts in src/game/main.ts.
+// Standing, in the person's frame (x to their right, y up, z behind them; m): the same proportions as personParts in src/game/render/models.ts.
 const POSE: readonly (readonly [number, number, number])[] = [
   [0, 1.62, 0],
   [-0.33, 1.42, 0],
@@ -51,7 +51,7 @@ const REST = STICKS.map(([a, b]) =>
 export const STEP_S = 1 / 60; // fixed physics step (s)
 export const HIT_MIN_MS = 15 / 3.6; // slower than this (m/s) a car only pushes people aside, as before (#35: ~15 km/h)
 const LAUNCH_MAX_MS = 22; // the launch stops growing with the car's speed here (m/s), so nobody leaves the map
-const GRAVITY_MS2 = 16; // the player's jump gravity in main.ts, so a ragdoll falls as a hop does
+const GRAVITY_MS2 = 16; // the player's jump gravity (GRAVITY_MS2 in src/game/player.ts), so a ragdoll falls as a hop does
 const AIR_KEEP = 0.998; // share of its speed a point keeps per step in the air
 const GROUND_KEEP = 0.86; // share of its sliding speed a point on the ground keeps per step
 const BOUNCE = 0.3; // share of its falling speed a point keeps as it bounces up

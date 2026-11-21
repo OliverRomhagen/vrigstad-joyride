@@ -30,7 +30,7 @@ const MAX_STEPS = 4; // physics steps per frame at most, so a slow frame doesn't
 const CAR_PUSH_M = 1.6; // your car shoves a lying body within this radius of its middle (m)
 const SKIN = '#e2b796'; // personParts' skin colour
 
-type BoxPart = [number, number, number, number, number, number, string]; // [sx, sy, sz, x, y, z, colour], as boxGeo in main.ts takes it
+type BoxPart = [number, number, number, number, number, number, string]; // [sx, sy, sz, x, y, z, colour], as boxGeo in src/game/render/models.ts takes it
 
 /** What the ragdolls read from the rest of the game. The getters are read when used. */
 export interface RagdollDeps {
