@@ -31,6 +31,7 @@ export interface ViewState {
   camPitch: number; // radians above the horizon
   lookOff: number; // radians: in a car, how far you have looked away from straight ahead
   lookIdle: number; // s since you last looked around in a car; the view swings back ahead after a while
+  zoom: number; // times the normal camera distance (#208): above 1 is further out
 }
 
 export const newViewState = (camYaw: number, camPitch: number): ViewState => ({
@@ -38,4 +39,5 @@ export const newViewState = (camYaw: number, camPitch: number): ViewState => ({
   camPitch,
   lookOff: 0,
   lookIdle: 9,
+  zoom: 1,
 });

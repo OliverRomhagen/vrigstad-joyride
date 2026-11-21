@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <style>body{margin:0;font:14px system-ui,sans-serif}[hidden]{display:none!important}</style>
 <title>Vrigstad Joyride</title>
 <meta name="claude:viewport-fit-sides" content="cover">
@@ -21,7 +21,8 @@
   --body: "Barlow", "Helvetica Neue", Arial, sans-serif;
   color-scheme: dark;
 }
-html, body { height: 100%; }
+/* no pinch or double-tap zoom anywhere on the page (#208); pan stays, so the intro can still scroll on a small phone */
+html, body { height: 100%; touch-action: pan-x pan-y; }
 body { background: var(--sky); color: var(--ink); font-family: var(--body); font-size: 14px; line-height: 1.4; overflow: hidden;
   -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
 #stage { position: relative; height: 100%; overflow: hidden; }

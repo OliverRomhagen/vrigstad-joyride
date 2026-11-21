@@ -234,6 +234,7 @@ const input = new Input({ win: window, doc: document, canvas, $, coarse, menuKey
   jump: () => { if (jumpOk()) game.jumpQ = true; },   // queue only where a jump can start (see jumpOk)
   look: (dx, dy) => { if (game.inCar) { view.lookOff = wrap(view.lookOff + dx * 0.006); view.lookIdle = 0; } else view.camYaw = wrap(view.camYaw + dx * 0.006);
     view.camPitch = clamp(view.camPitch + dy * 0.004, 0.06, 1.25); },
+  zoom: f => cameraRig.zoom(f),
   lockLost: () => { if (!hud.toasting) toast('Click the game to look around with the mouse again.', 3); } });
 const { keys, joy } = input;
 

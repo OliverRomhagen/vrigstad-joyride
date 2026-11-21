@@ -2,7 +2,7 @@
 // drive; a crash shakes it. The sun's shadow and the sky dome follow it.
 // Moved from src/game/main.ts (#177); main.ts passes in the camera, the sun, the sky and the shared view state.
 import type * as THREE from 'three';
-import { wrap } from '../../world/math';
+import { clamp, wrap } from '../../world/math';
 import type { GameState, ViewState } from '../state';
 import type { Sky } from './sky';
 import { SUN_DIR, SUN_I } from './stage';
@@ -14,6 +14,8 @@ const SHAKE_S = 0.45,
   SHAKE_MIN_M = 0.08,
   SHAKE_MAX_M = 0.5,
   SHAKE_PER_DMG_M = 1 / 150; // s it lasts; camera offset (m) at the smallest and largest hit, and per point of car damage
+const ZOOM_MIN = 0.6,
+  ZOOM_MAX = 2; // camera zoom (#208), times the normal camera distance
 
 /** What the camera reads from the rest of the game. The getters are read every frame. */
 export interface CameraRigDeps {
@@ -47,6 +49,11 @@ export class CameraRig {
     this.shakeT = SHAKE_S;
   };
 
+  /** Multiplies the camera distance by `factor` (above 1 is further out), within ZOOM_MIN..ZOOM_MAX. */
+  zoom = (factor: number) => {
+    this.g.view.zoom = clamp(this.g.view.zoom * factor, ZOOM_MIN, ZOOM_MAX);
+  };
+
   /** Follows T, the player or the car they drive; `now` is the frame's time (ms), for the clouds. */
   update(T: Point, now: number, dt: number) {
     const { camera, sun, skyDome, game, view, groundAt, heightAt: hAt, rnd: dmgRnd } = this.g;
@@ -62,6 +69,7 @@ export class CameraRig {
       view.camYaw += wrap(game.pcar.h - game.pcar.slip * 0.6 + view.lookOff - view.camYaw) * Math.min(1, dt * 4.5);
       dist = 10 + Math.abs(game.pcar.v) * 0.09;
     } else dist = this.g.inside ? 15 : 6.2;
+    if (game.started) dist *= view.zoom;
     const cp = Math.cos(view.camPitch),
       cx = T.x - Math.sin(view.camYaw) * dist * cp,
       cz = T.z + Math.cos(view.camYaw) * dist * cp;
