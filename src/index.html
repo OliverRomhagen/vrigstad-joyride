@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <style>body{margin:0;font:14px system-ui,sans-serif}[hidden]{display:none!important}</style>
 <title>Vrigstad Joyride</title>
 <meta name="claude:viewport-fit-sides" content="cover">
@@ -21,9 +21,12 @@
   --body: "Barlow", "Helvetica Neue", Arial, sans-serif;
   color-scheme: dark;
 }
-html, body { height: 100%; }
+/* no pinch or double-tap zoom anywhere on the page (#208); pan stays, so the intro can still scroll on a small phone */
+html, body { height: 100%; touch-action: pan-x pan-y; }
 body { background: var(--sky); color: var(--ink); font-family: var(--body); font-size: 14px; line-height: 1.4; overflow: hidden;
   -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+/* Keep final presentation blending inside the page, including its HTML UI. */
+body { isolation: isolate; }
 #stage { position: relative; height: 100%; overflow: hidden; }
 #gl { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; outline: none; }
 #ui { position: absolute; inset: 0; pointer-events: none; display: grid; gap: 10px;
@@ -89,9 +92,9 @@ body { background: var(--sky); color: var(--ink); font-family: var(--body); font
 #hide { position: absolute; left: 50%; top: 12%; transform: translateX(-50%); padding: 6px 16px 8px; text-align: center; white-space: nowrap;
   font: 600 14px var(--display); letter-spacing: .06em; text-transform: uppercase; color: var(--gold); }
 #hide b { display: block; font: 700 34px/1 var(--display); letter-spacing: .02em; color: var(--ink); font-variant-numeric: tabular-nums; }
-#big { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; background: rgba(120, 20, 12, .45); }
-#big h2 { margin: 0; font: 700 clamp(56px, 16vw, 140px)/.95 var(--display); letter-spacing: .02em; color: #fff; text-shadow: 0 4px 0 var(--alarm); }
-#big p { margin: 6px 0 0; font: 500 16px var(--body); }
+#title-card { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; background: rgba(120, 20, 12, .45); }
+#title-card h2 { margin: 0; font: 700 clamp(56px, 16vw, 140px)/.95 var(--display); letter-spacing: .02em; color: #fff; text-shadow: 0 4px 0 var(--alarm); }
+#title-card p { margin: 6px 0 0; font: 500 16px var(--body); }
 
 #intro { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: auto; overflow: auto;
   background: linear-gradient(to top, rgba(12, 18, 16, .82), rgba(12, 18, 16, .25));
@@ -136,7 +139,7 @@ body { background: var(--sky); color: var(--ink); font-family: var(--body); font
   <div id="toast" class="plate" hidden></div>
   <div id="hide" class="plate" hidden></div>
   <div id="hurt" aria-hidden="true"></div>
-  <div id="big" hidden><div><h2 id="big-t">Gripen!</h2><p id="big-p">Busted. The police drop you off at Torget.</p></div></div>
+  <div id="title-card" hidden><div><h2 id="title-card-t">Gripen!</h2><p id="title-card-p">Busted. The police drop you off at Torget.</p></div></div>
   <div id="intro">
     <div id="card">
       <h1>Vrigstad <span>Joyride</span></h1>

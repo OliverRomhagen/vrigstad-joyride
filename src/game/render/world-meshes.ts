@@ -147,11 +147,12 @@ export function addBuildings(
       k: THREE.Color,
     ) => {
       const h = s / 2,
+        // counter-clockwise on the map, so the walls face out
         P = [
           [x - h, z - h],
-          [x + h, z - h],
-          [x + h, z + h],
           [x - h, z + h],
+          [x + h, z + h],
+          [x + h, z - h],
         ],
         pos: number[] = [];
       for (let i = 0; i < 4; i++) {

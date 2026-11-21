@@ -29,7 +29,7 @@
   #prompt { bottom: calc(9.5vh + 14px) !important; }
   #toast { top: 25% !important; }
   #hide { top: 14% !important; }
-  #big { z-index: 40; }
+  #title-card { z-index: 40; }
   #toast, #stars b { transition: none !important; animation: none !important; }
   `;
   document.head.appendChild(css);

@@ -38,7 +38,8 @@ function input(opts: { coarse?: boolean; started?: boolean; menuKey?: (e: Keyboa
     },
   });
   const calls: string[] = [],
-    looks: [number, number][] = [];
+    looks: [number, number][] = [],
+    zooms: number[] = [];
   const game = { started: opts.started ?? true, menuOpen: false };
   const deps: InputDeps = {
     win,
@@ -65,11 +66,14 @@ function input(opts: { coarse?: boolean; started?: boolean; menuKey?: (e: Keyboa
     look: (dx, dy) => {
       looks.push([dx, dy]);
     },
+    zoom: f => {
+      zooms.push(f);
+    },
     lockLost: () => {
       calls.push('lockLost');
     },
   };
-  return { i: new Input(deps), win, doc, canvas, els, calls, looks, game };
+  return { i: new Input(deps), win, doc, canvas, els, calls, looks, zooms, game };
 }
 
 describe('Input', () => {
@@ -176,6 +180,61 @@ describe('Input', () => {
     expect(i.keys.brake).toBe(false);
     fire(els['p-act'], 'click');
     expect(calls).toEqual(['jump', 'action']);
+  });
+
+  it('zooms out with the wheel on the game, and blocks the browser zoom anywhere', () => {
+    const { win, canvas, zooms } = input();
+    const out = fire(canvas, 'wheel', { deltaY: 100, deltaMode: 0, ctrlKey: false });
+    expect(zooms[0]).toBeCloseTo(Math.exp(0.15));
+    expect(out.defaultPrevented).toBe(true);
+    expect(fire(win, 'wheel', { ctrlKey: false }).defaultPrevented).toBe(false); // the intro still scrolls
+    expect(fire(win, 'wheel', { ctrlKey: true }).defaultPrevented).toBe(true); // a trackpad pinch
+    expect(fire(win, 'keydown', { code: 'Equal', key: '=', metaKey: true }).defaultPrevented).toBe(true);
+    expect(zooms).toHaveLength(1);
+  });
+
+  it('blocks ctrl + − on every layout, and lets ctrl + 0 reset the page zoom', () => {
+    const { win } = input();
+    expect(fire(win, 'keydown', { code: 'Slash', key: '-', ctrlKey: true }).defaultPrevented).toBe(true); // Swedish −
+    expect(fire(win, 'keydown', { code: 'NumpadAdd', key: '+', ctrlKey: true }).defaultPrevented).toBe(true);
+    expect(fire(win, 'keydown', { code: 'Digit0', key: '0', ctrlKey: true }).defaultPrevented).toBe(false);
+    expect(fire(win, 'keydown', { code: 'Slash', key: '-' }).defaultPrevented).toBe(false); // no ctrl: just a key
+  });
+
+  it('zooms a mouse wheel turned with ctrl held at the wheel rate, and a trackpad pinch faster', () => {
+    const { canvas, zooms } = input();
+    fire(canvas, 'wheel', { deltaY: 100, deltaMode: 0, ctrlKey: true }); // a mouse notch
+    fire(canvas, 'wheel', { deltaY: 3, deltaMode: 1, ctrlKey: true }); // a notch reported in lines
+    fire(canvas, 'wheel', { deltaY: 4, deltaMode: 0, ctrlKey: true }); // a pinch step
+    expect(zooms[0]).toBeCloseTo(Math.exp(0.15));
+    expect(zooms[1]).toBeCloseTo(Math.exp(48 * 0.0015));
+    expect(zooms[2]).toBeCloseTo(Math.exp(0.04));
+  });
+
+  it('pinches with two fingers on the game, which also ends the drag', () => {
+    const { i, canvas, zooms, looks } = input();
+    fire(canvas, 'pointerdown', { pointerId: 1, pointerType: 'touch', clientX: 0, clientY: 0 });
+    fire(canvas, 'pointerdown', { pointerId: 2, pointerType: 'touch', clientX: 100, clientY: 0 });
+    expect(i.dragging).toBe(false);
+    fire(canvas, 'pointermove', { pointerId: 2, pointerType: 'touch', clientX: 200, clientY: 0 }); // fingers apart: closer in
+    expect(zooms).toEqual([0.5]);
+    fire(canvas, 'pointermove', { pointerId: 1, pointerType: 'touch', clientX: 10, clientY: 0 });
+    expect(looks).toEqual([]);
+    fire(canvas, 'pointerup', { pointerId: 2 });
+    expect(i.dragging).toBe(true); // the finger left turns the camera again, from where it is now
+    fire(canvas, 'pointermove', { pointerId: 1, pointerType: 'touch', clientX: 50, clientY: 0 });
+    expect(zooms).toHaveLength(2);
+    expect(looks).toEqual([[40, 0]]);
+  });
+
+  it('keeps a third finger from turning the camera during a pinch', () => {
+    const { i, canvas, looks } = input();
+    fire(canvas, 'pointerdown', { pointerId: 1, pointerType: 'touch', clientX: 0, clientY: 0 });
+    fire(canvas, 'pointerdown', { pointerId: 2, pointerType: 'touch', clientX: 100, clientY: 0 });
+    fire(canvas, 'pointerdown', { pointerId: 3, pointerType: 'touch', clientX: 50, clientY: 50 });
+    expect(i.dragging).toBe(false);
+    fire(canvas, 'pointermove', { pointerId: 3, pointerType: 'touch', clientX: 80, clientY: 50 });
+    expect(looks).toEqual([]);
   });
 
   it('shows the touch controls on a touchscreen, or at the first touch', () => {
