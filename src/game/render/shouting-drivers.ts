@@ -4,14 +4,16 @@ import type * as THREE from 'three';
 
 type Point = { x: number; z: number };
 const SHIRTS = ['#b5463a', '#3f6b8a', '#5c7a4a', '#7a5a8a'];
+// same palette as the pedestrians' (src/game/pedestrians.ts), from light to dark
+const SKIN = ['#f6d5bd', '#e2b796', '#c98f6b', '#a86b45', '#7d4a2c'];
 const SHOUT_S = 14; // how long a driver stays (s)
 
 /** What the drivers read from the rest of the game. */
 export interface ShoutingDriverDeps {
   scene: THREE.Scene;
   groundAt(x: number, z: number): number;
-  personParts(shirt: string, pants: string): THREE.Object3D;
-  pick<T>(a: readonly T[]): T; // the game's rnd(), so the shirt rolls where it always did
+  personParts(shirt: string, pants: string, hair: string | null | undefined, skin: string): THREE.Object3D;
+  pick<T>(a: readonly T[]): T; // the game's rnd(); the skin roll comes after the shirt roll, so every later roll on the stream shifts (as with the pedestrians, AGENTS.md rule 5)
 }
 
 /** Drivers out of their cars; `update` turns them towards you and takes them away after a while. */
@@ -25,7 +27,7 @@ export class ShoutingDrivers {
 
   driverOut = (c: Point & { h: number }) => {
     const { scene, groundAt, personParts, pick } = this.g;
-    const p = Object.assign(personParts(pick(SHIRTS), '#3a3a3a'), { ttl: SHOUT_S });
+    const p = Object.assign(personParts(pick(SHIRTS), '#3a3a3a', null, pick(SKIN)), { ttl: SHOUT_S });
     p.position.set(c.x - Math.cos(c.h) * 2.2, 0, c.z - Math.sin(c.h) * 2.2);
     p.position.y = groundAt(p.position.x, p.position.z);
     scene.add(p);

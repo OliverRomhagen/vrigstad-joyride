@@ -219,7 +219,7 @@ $('pets').addEventListener('click', () => { if (menuPlate.menuKind === 'pets') c
 function drawTreats() { const el = $('treats'); el.hidden = false; el.textContent = 'Cat treats: ' + game.treats; }
 
 // ---------- player (walking, jumping, getting out: src/game/player.ts) ----------
-const player = { x: HOME.x, z: HOME.z, y: 0, vy: 0, h: 0, speed: 0, phase: 0, mesh: personParts('#f2c230', '#2b3a55', null, true) };   // y: metres above the ground
+const player = { x: HOME.x, z: HOME.z, y: 0, vy: 0, h: 0, speed: 0, phase: 0, mesh: personParts('#f2c230', '#2b3a55', null, '#e2b796', true) };   // y: metres above the ground
 collide(player, 0.6); scene.add(player.mesh);
 const jumpOk = () => !game.inCar && !places.inside && game.titleCardT <= 0;   // queue only where a jump can start, so a press inside a safehouse or under Gripen! can't fire as it ends
 (function () { const o = { x: player.x + 7, z: player.z + 3 }; collide(o, 2.6); displayCar = addCar(selectedVehicle?.archetype || 'volvo', o.x, o.z, 0.6, 'parked', selectedVehicle?.id ?? 'volvo240'); })();

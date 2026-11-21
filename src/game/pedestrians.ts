@@ -17,7 +17,8 @@ const LOST_RUN = 2; // back on their feet off their path, they run back to it at
 export const LOST_MAX_S = 8; // and if they're not there after this long (s), a house is in the way: they're put on it
 const SHIRTS = ['#b5463a', '#3f6b8a', '#5c7a4a', '#7a5a8a', '#d8d4c8', '#2b3a55', '#c9862f', '#8c1c1c', '#4d4a48'],
   PANTS = ['#3a3a3a', '#2b3a55', '#4a4038', '#5a6470', '#23272b'],
-  HAIR = ['#5a4632', '#2a2320', '#c9a560', '#8a8580', '#7a3f22'];
+  HAIR = ['#5a4632', '#2a2320', '#c9a560', '#8a8580', '#7a3f22'],
+  SKIN = ['#f6d5bd', '#e2b796', '#c98f6b', '#a86b45', '#7d4a2c']; // from light to dark
 
 type Point = { x: number; z: number };
 /** A person's mesh, as personParts in src/game/render/models.ts builds it. */
@@ -47,6 +48,7 @@ export interface Look {
   shirt: string;
   pants: string;
   hair: string;
+  skin: string;
 }
 
 /** What the pedestrians read from the rest of the game. The getters are read when used, so main.ts can declare those later. */
@@ -61,7 +63,7 @@ export interface CrowdDeps {
   coarse: boolean; // touch screen: fewer pedestrians
   rnd(): number; // the game's seeded stream, so the rolls stay in the order they were
   pick<T>(a: readonly T[]): T;
-  personParts(shirt: string, pants: string, hair: string): PersonMesh;
+  personParts(shirt: string, pants: string, hair: string, skin: string): PersonMesh;
   /** moves a walker on to the next segment at a junction of `graph` */
   advance(n: Npc, graph: Map<string, number[]>): void;
   cars: readonly Point[];
@@ -169,7 +171,7 @@ export class Crowd {
         first: true,
         gawk: 0,
         scale: 1,
-        ...this.dress(pick(SHIRTS), pick(PANTS), pick(HAIR)),
+        ...this.dress(pick(SHIRTS), pick(PANTS), pick(HAIR), pick(SKIN)),
       };
       n.scale = 0.92 + rnd() * 0.14;
       n.mesh.scale.setScalar(n.scale);
@@ -179,8 +181,8 @@ export class Crowd {
     }
   }
 
-  private dress(shirt: string, pants: string, hair: string) {
-    return { look: { shirt, pants, hair }, mesh: this.g.personParts(shirt, pants, hair) };
+  private dress(shirt: string, pants: string, hair: string, skin: string) {
+    return { look: { shirt, pants, hair, skin }, mesh: this.g.personParts(shirt, pants, hair, skin) };
   }
 
   private updateNpc(n: Npc, dt: number) {
