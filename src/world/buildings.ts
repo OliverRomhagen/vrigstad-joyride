@@ -49,7 +49,7 @@ export function roofParts(outline: PointXZ[], ridge: Building['g'], top: number)
       offsets.push(0);
     }
   });
-  const sides = [1, -1].map((s) => ring.filter((_, i) => s * offsets[i] >= 0)).filter((side) => side.length > 2);
+  const sides = [1, -1].map(s => ring.filter((_, i) => s * offsets[i] >= 0)).filter(side => side.length > 2);
   return { ring, yAt, sides };
 }
 
@@ -66,12 +66,16 @@ export interface BuildingShape extends RoofParts {
   top: number;
   /** footprint area (m²) */
   area: number;
-  /** +1 or -1 with the outline's winding, to find the outside of each wall */
+  /** +1 when the outline runs clockwise on a north-up map (x east, z south), -1 when counter-clockwise */
   winding: number;
 }
 
 /** Calls `visit` once per building, in `data.b` order, so a caller that rolls dice per building rolls them in that order. */
-export function forEachBuilding(data: WorldData, heightfield: Pick<Heightfield, 'heightAt'>, visit: (shape: BuildingShape) => void) {
+export function forEachBuilding(
+  data: WorldData,
+  heightfield: Pick<Heightfield, 'heightAt'>,
+  visit: (shape: BuildingShape) => void,
+) {
   for (const building of data.b) {
     const p = building.p;
     const n = p.length / 2;
@@ -109,6 +113,9 @@ export interface Footprint extends Bounds {
 
 /** side of a collision cell (m) */
 export const BUILDING_CELL_M = 40;
+/** footprints in this range (m²) count as homes and shops: the game gives them lawns and house details */
+export const HOUSE_MIN_M2 = 40,
+  HOUSE_MAX_M2 = 1500;
 
 /** Building footprints, a grid over them, and collision against them. */
 export class BuildingIndex {
@@ -129,7 +136,10 @@ export class BuildingIndex {
       for (let z = Math.floor(z0 / BUILDING_CELL_M); z <= Math.floor(z1 / BUILDING_CELL_M); z++) {
         const k = x + ',' + z;
         let list = this.grid.get(k);
-        if (!list) this.grid.set(k, (list = []));
+        if (!list) {
+          list = [];
+          this.grid.set(k, list);
+        }
         list.push(index);
       }
     }

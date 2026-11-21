@@ -36,7 +36,7 @@ const isLit = (material: THREE.Material): material is LitMaterial =>
   material instanceof THREE.MeshPhongMaterial ||
   material instanceof THREE.MeshStandardMaterial;
 const isOpaque = (material: MeshMaterial) =>
-  Array.isArray(material) ? material.every((m) => !m.transparent) : !material.transparent;
+  Array.isArray(material) ? material.every(m => !m.transparent) : !material.transparent;
 
 export function finishOf(material: THREE.Material): Finish {
   const name = material.name.toLowerCase();
@@ -135,7 +135,7 @@ export class ToonStyle {
     if (!Array.isArray(material)) return this.toonForOne(material);
     let toons = this.toonArrays.get(material);
     if (!toons) {
-      toons = material.map((m) => this.toonForOne(m));
+      toons = material.map(m => this.toonForOne(m));
       this.toonArrays.set(material, toons);
     } else for (let i = 0; i < material.length; i++) this.toonForOne(material[i]); // keeps them in sync
     return toons;

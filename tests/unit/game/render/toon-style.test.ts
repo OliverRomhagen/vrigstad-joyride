@@ -1,14 +1,14 @@
-import { expect, test, vi } from 'vitest';
 import * as THREE from 'three';
+import { expect, test, vi } from 'vitest';
 import {
-  FINISH_LEVELS,
   createToonStyle,
+  FINISH_LEVELS,
+  finishOf,
   INK_FLAG,
   TOON_FILL_SCALE,
   TOON_LEVELS,
   TOON_SUN_SCALE,
   ToonStyle,
-  finishOf,
   toonGradient,
 } from '../../../../src/game/render/toon-style';
 
@@ -16,7 +16,7 @@ const camera = new THREE.PerspectiveCamera();
 // Records each mesh's material as the renderer sees it, which is only during render().
 function recordingRenderer(scene: THREE.Scene) {
   const seen = new Map<THREE.Object3D, THREE.Material | THREE.Material[]>();
-  const render = vi.fn(() => scene.traverse((o) => o instanceof THREE.Mesh && seen.set(o, o.material)));
+  const render = vi.fn(() => scene.traverse(o => o instanceof THREE.Mesh && seen.set(o, o.material)));
   return { render, seen };
 }
 const box = new THREE.BoxGeometry();
@@ -50,12 +50,12 @@ test('vehicle finishes come from the GLB material names, or metalness', () => {
 test('each finish draws with its own ramp, shared between materials', () => {
   const scene = new THREE.Scene(),
     meshes = ['body paint', 'tail lamp red', 'smoky glass', 'roof paint'].map(
-      (name) => new THREE.Mesh(box, new THREE.MeshStandardMaterial({ name })),
+      name => new THREE.Mesh(box, new THREE.MeshStandardMaterial({ name })),
     );
   scene.add(...meshes);
   const renderer = recordingRenderer(scene);
   new ToonStyle(renderer).render(scene, camera);
-  const ramps = meshes.map((m) => (renderer.seen.get(m) as THREE.MeshToonMaterial).gradientMap as THREE.DataTexture);
+  const ramps = meshes.map(m => (renderer.seen.get(m) as THREE.MeshToonMaterial).gradientMap as THREE.DataTexture);
   expect(Array.from(ramps[1].image.data as Uint8Array)).toEqual([...FINISH_LEVELS.lamp]);
   expect(Array.from(ramps[2].image.data as Uint8Array)).toEqual([...FINISH_LEVELS.glass]);
   expect(ramps[3]).toBe(ramps[0]);
@@ -67,7 +67,11 @@ test('light shifts from the fill to the sun while drawing, and back after', () =
     sun = new THREE.DirectionalLight(0xffffff, 3);
   scene.add(fill, sun);
   let during: number[] = [];
-  new ToonStyle({ render: () => { during = [fill.intensity, sun.intensity]; } }).render(scene, camera);
+  new ToonStyle({
+    render: () => {
+      during = [fill.intensity, sun.intensity];
+    },
+  }).render(scene, camera);
   expect(during[0]).toBeCloseTo(2 * TOON_FILL_SCALE);
   expect(during[1]).toBeCloseTo(3 * TOON_SUN_SCALE);
   expect([fill.intensity, sun.intensity]).toEqual([2, 3]);
@@ -92,7 +96,7 @@ test('inked objects get crease lines on opaque meshes, once, sharing edges per g
   const style = new ToonStyle({ render: () => {} });
   style.render(scene, camera);
   style.render(scene, camera);
-  const ink = (mesh: THREE.Mesh) => mesh.children.filter((o) => o instanceof THREE.LineSegments) as THREE.LineSegments[];
+  const ink = (mesh: THREE.Mesh) => mesh.children.filter(o => o instanceof THREE.LineSegments) as THREE.LineSegments[];
   expect(ink(body)).toHaveLength(1);
   expect(ink(door)[0].geometry).toBe(ink(body)[0].geometry);
   expect(ink(body)[0].geometry).toBeInstanceOf(THREE.EdgesGeometry);
@@ -177,7 +181,11 @@ test('a failing render still puts the game materials back', () => {
     paint = new THREE.MeshLambertMaterial(),
     mesh = new THREE.Mesh(box, paint);
   scene.add(mesh);
-  const style = new ToonStyle({ render: () => { throw new Error('context lost'); } });
+  const style = new ToonStyle({
+    render: () => {
+      throw new Error('context lost');
+    },
+  });
   expect(() => style.render(scene, camera)).toThrow('context lost');
   expect(mesh.material).toBe(paint);
 });
