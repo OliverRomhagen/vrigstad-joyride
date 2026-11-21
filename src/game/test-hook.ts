@@ -1,5 +1,7 @@
 // The test hook: read-only state for the smoke tests (tests/e2e), so they do not have to read pixels. Keep it read-only.
 // Moved from src/game/main.ts (#177).
+import { FURNITURE } from '../world/furniture/definitions';
+import type { FurnitureLayout } from '../world/furniture/placement';
 import type { StreetscapeLayout } from '../world/streetscape';
 import type { Car } from './cars';
 import type { Health } from './health';
@@ -26,6 +28,8 @@ export interface TestHookDeps {
   skyDome: Pick<Sky, 'state'>;
   street: { layout: StreetscapeLayout; meshes: readonly unknown[]; tris: number; ms: number };
   debugStreetscape: boolean;
+  furniture: { layout: FurnitureLayout; draw: { meshes: readonly unknown[]; triangles: number }; ms: number };
+  debugFurniture: boolean;
   nearestCar(): Car | null;
   readonly kr: number; // in your wallet
   readonly banknotes: number; // in the air or on the ground
@@ -37,6 +41,23 @@ export interface TestHookDeps {
 /** Puts the hook on `window.__joyride`. */
 export function installTestHook(g: TestHookDeps) {
   const { game, view, player, health, cars, vehicleVisuals, bodyMotion, skyDome, street } = g;
+  function furnitureState() {
+    const { layout, draw, ms } = g.furniture;
+    const count = (key: 'kind' | 'source', value: string) => layout.placements.filter(p => p[key] === value).length;
+    return {
+      total: layout.placements.length,
+      byKind: Object.fromEntries(Object.keys(FURNITURE).map(k => [k, count('kind', k)])),
+      bySource: {
+        osm: count('source', 'osm'),
+        override: count('source', 'override'),
+        procedural: count('source', 'procedural'),
+      },
+      meshes: draw.meshes.length,
+      triangles: draw.triangles,
+      buildMs: Math.round(ms),
+      debug: g.debugFurniture,
+    };
+  }
   function streetscapeState() {
     const L = street.layout,
       m = L.sidewalkM,
@@ -99,6 +120,7 @@ export function installTestHook(g: TestHookDeps) {
         night: g.day.night,
         sunLight: g.day.sunLight,
         streetscape: streetscapeState(),
+        furniture: furnitureState(),
       };
     },
   };

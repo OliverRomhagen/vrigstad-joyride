@@ -79,6 +79,27 @@ test.describe('game (index.html)', () => {
     expect(errors).toEqual([]);
   });
 
+  test('places street lamps, benches and bins and reports them on the hook, also in the debug view', async ({
+    page,
+  }, testInfo) => {
+    const errors = watchErrors(page);
+    await page.goto('/index.html?debug=furniture&at=-30,48,2.3,0.35');
+    await expectWebGL(page);
+    const { furniture: f } = await state(page);
+    // what is mapped depends on the OSM snapshot; the rules always light the centre and furnish Torget
+    expect(f.byKind['street-lamp']).toBeGreaterThan(0);
+    expect(f.byKind.bench).toBeGreaterThanOrEqual(4);
+    expect(f.byKind['waste-bin']).toBeGreaterThanOrEqual(2);
+    expect(f.bySource.osm + f.bySource.override + f.bySource.procedural).toBe(f.total);
+    expect(f.meshes).toBeGreaterThan(0);
+    expect(f.meshes).toBeLessThanOrEqual(6 * 36); // at most six per 400 m cell, and the 2200 m world spans 6 × 6 cells
+    expect(f.debug).toBe(true);
+    await page.locator('#go').click();
+    await frames(page, 5);
+    await page.screenshot({ path: testInfo.outputPath('game-furniture-debug.png') });
+    expect(errors).toEqual([]);
+  });
+
   // The sky with each kind of query, one page load per test: each load renders in software WebGL, so three in one test
   // ran into the timeout on CI. The sky is a full-screen shader, so the page is kept small. Cloudy skies must drift,
   // and let through at least minSun of the sunlight.

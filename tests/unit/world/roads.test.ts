@@ -72,3 +72,19 @@ describe('junctions', () => {
     expect(roads.driveable).toEqual([0, 1]);
   });
 });
+
+describe('forEachSegmentNear', () => {
+  it('finds a segment filed in a neighbouring cell, which a lookup in the one cell would miss', () => {
+    // a road along x = 70, beyond the 14 m margin of the 0..50 cell; a point at x = 45 is 25 m from it
+    const roads = new RoadNetwork(makeWorld({ size: 400, r: [{ c: RoadClass.STREET, n: '', p: [70, -40, 70, 40] }] }), {
+      heightAt: () => 0,
+    });
+    expect(roads.nearestRoad(45, 0).ri).toBe(-1);
+    const seen = new Set<number>();
+    roads.forEachSegmentNear(45, 0, 30, (_ax, _az, _bx, _bz, ri) => seen.add(ri));
+    expect([...seen]).toEqual([0]);
+    const none = new Set<number>();
+    roads.forEachSegmentNear(-150, 0, 10, (_ax, _az, _bx, _bz, ri) => none.add(ri));
+    expect(none.size).toBe(0);
+  });
+});
