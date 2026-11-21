@@ -101,6 +101,16 @@ test.describe('game (index.html)', () => {
     expect(errors).toEqual([]);
   });
 
+  test('ragdolls are on for everyone, without a lab flag', async ({ page }) => {
+    const errors = watchErrors(page);
+    await page.goto('/index.html');
+    await page.locator('#go').click();
+    expect(await state(page)).toMatchObject({ lab: [], ragdolls: 0 }); // nobody knocked over yet
+    await page.goto('/index.html?lab=ragdoll'); // no longer an experiment: the flag is ignored
+    expect((await state(page)).lab).toEqual([]);
+    expect(errors).toEqual([]);
+  });
+
   test('loads with no console errors, a WebGL canvas and the default fleet, and Start shows the HUD', async ({
     page,
   }, testInfo) => {

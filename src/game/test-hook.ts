@@ -15,6 +15,7 @@ export interface TestHookDeps {
   health: Health;
   cars: readonly Car[];
   labs: readonly string[]; // the lab experiments switched on
+  readonly ragdolls: number; // people knocked over right now
   readonly stars: number;
   readonly cats: number;
   readonly ownCat: boolean;
@@ -56,6 +57,7 @@ export function installTestHook(g: TestHookDeps) {
       return {
         started: game.started,
         lab: g.labs,
+        ragdolls: g.ragdolls,
         x: player.x,
         z: player.z,
         y: player.y,
