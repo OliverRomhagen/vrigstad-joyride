@@ -53,7 +53,9 @@ const LOOK_PLAYER_M = 9,
   LOOK_PLAYER_SIDE_M = 1.8; // the same for you on foot
 const STUCK_S = 6,
   GHOST_S = 3; // blocked this long, a traffic car drives through what blocks it for GHOST_S
-const SPAWN_AWAY_M = 260; // new traffic appears at least this far from you
+const SPAWN_AWAY_M = 260; // new traffic, and a car parked to replace a sold one, appears at least this far from you
+const PARKED_CARS = 58; // parked when the village is built
+const PARK_AWAY_TRIES = 300; // tries at a far kerbside spot before giving up
 
 type Point = { x: number; z: number };
 /** Who drives a car: nobody yet (`parked`), nobody since you got out (`idle`), traffic (`ai`), the police, or you. */
@@ -217,6 +219,15 @@ export class Fleet {
   }
   // parked cars along streets and driveways
   parkCars() {
+    let count = 0;
+    for (let tries = 0; tries < 900 && count < PARKED_CARS; tries++) if (this.parkOne(null)) count++;
+  }
+  /** Parks one more car on a street at least SPAWN_AWAY_M from `farFrom`, out of sight: Skroten's sales keep the village's cars from running out. */
+  parkAway(farFrom: Point) {
+    for (let tries = 0; tries < PARK_AWAY_TRIES; tries++) if (this.parkOne(farFrom)) return;
+  }
+  // one try at a kerbside spot; with farFrom, only one at least SPAWN_AWAY_M from it
+  private parkOne(farFrom: Point | null): boolean {
     const {
         rnd,
         pick,
@@ -227,29 +238,27 @@ export class Fleet {
         canPark,
       } = this.g,
       cars = this.cars;
-    let count = 0;
-    for (let tries = 0; tries < 900 && count < 58; tries++) {
-      const r = pick(R);
-      if (r.c !== 2 && r.c !== 3) continue;
-      const i = 1 + Math.floor(rnd() * (r.p.length - 1)),
-        a = r.p[i - 1],
-        b = r.p[i],
-        L = Math.hypot(b[0] - a[0], b[1] - a[1]);
-      if (L < 6) continue;
-      const t = rnd(),
-        dx = (b[0] - a[0]) / L,
-        dz = (b[1] - a[1]) / L,
-        side = rnd() < 0.5 ? 1 : -1,
-        off = (ROAD_W[r.c] / 2 + 1.35) * side;
-      const o = { x: a[0] + (b[0] - a[0]) * t - dz * off, z: a[1] + (b[1] - a[1]) * t + dx * off };
-      if (Math.abs(o.x) > HALF - 20 || Math.abs(o.z) > HALF - 20) continue;
-      const ox = o.x,
-        oz = o.z;
-      if (buildings.collide(o, PARK_CLEAR_M) || water.inWater(ox, oz) || !canPark(ox, oz)) continue;
-      if (cars.some(c => Math.hypot(c.x - ox, c.z - oz) < 7)) continue;
-      this.g.addCar(this.civType(), ox, oz, Math.atan2(dx, -dz) + (side < 0 ? Math.PI : 0), 'parked');
-      count++;
-    }
+    const r = pick(R);
+    if (r.c !== 2 && r.c !== 3) return false;
+    const i = 1 + Math.floor(rnd() * (r.p.length - 1)),
+      a = r.p[i - 1],
+      b = r.p[i],
+      L = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    if (L < 6) return false;
+    const t = rnd(),
+      dx = (b[0] - a[0]) / L,
+      dz = (b[1] - a[1]) / L,
+      side = rnd() < 0.5 ? 1 : -1,
+      off = (ROAD_W[r.c] / 2 + 1.35) * side;
+    const o = { x: a[0] + (b[0] - a[0]) * t - dz * off, z: a[1] + (b[1] - a[1]) * t + dx * off };
+    if (Math.abs(o.x) > HALF - 20 || Math.abs(o.z) > HALF - 20) return false;
+    const ox = o.x,
+      oz = o.z;
+    if (buildings.collide(o, PARK_CLEAR_M) || water.inWater(ox, oz) || !canPark(ox, oz)) return false;
+    if (cars.some(c => Math.hypot(c.x - ox, c.z - oz) < 7)) return false;
+    if (farFrom && Math.hypot(ox - farFrom.x, oz - farFrom.z) < SPAWN_AWAY_M) return false;
+    this.g.addCar(this.civType(), ox, oz, Math.atan2(dx, -dz) + (side < 0 ? Math.PI : 0), 'parked');
+    return true;
   }
   // traffic that follows the street network
   advance(c: OnRoad, graph?: Map<string, number[]>) {
