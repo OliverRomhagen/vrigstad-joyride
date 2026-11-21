@@ -245,7 +245,9 @@ function makeItRain() {
 
 // trisslott (src/game/trisslott.ts): the vinstplan is in economy.ts; a win fires confetti, more for a bigger one, and a big one rains banknotes too
 const confetti = new Confetti($('confetti') as HTMLCanvasElement, cashRnd);
-const trissRnd = makeRnd(2000);                              // own stream for the scratch, which changes the wallet: deterministic like other gameplay
+// own stream for the scratch, from a new seed each page load so the tickets differ between sessions; ?seed=n pins it, for tests and replays
+const TRISS_SEED = Number(new URLSearchParams(location.search).get('seed')) || crypto.getRandomValues(new Uint32Array(1))[0];
+const trissRnd = makeRnd(TRISS_SEED);
 const trisslott = new Trisslott({ random: trissRnd, pick, now: () => performance.now() / 1000, toast,
   buy: () => { if (!pay(wallet, TRISS_KR)) { toast(broke(TRISS_KR), 3); return false; } drawKr(); return true; },
   win: kr => { earn(wallet, kr); drawKr(); if (!calmMotion.matches) confetti.burst(confettiCount(kr)); if (kr >= BIG_WIN_KR) banknotes.drop(player); },
