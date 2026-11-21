@@ -49,7 +49,7 @@ export interface GameLoopDeps {
   hurtPlayer(n: number): void;
   shake(dmg: number): void;
   toast(msg: string, secs?: number): void;
-  hideBig(): void; // when bigT runs out
+  hideTitleCard(): void; // when titleCardT runs out
   // stepped every frame, in this order
   updateTrisslott(dt: number): void;
   updatePlaces(dt: number): void; // spins the places' gems
@@ -86,7 +86,7 @@ export class GameLoop {
     this.g = g;
   }
 
-  // a line that waits for the toast and any big screen to clear, so it doesn't cut off what was just said
+  // a line that waits for the toast and any title card to clear, so it doesn't cut off what was just said
   sayLater = (line: string) => {
     this.laterLine = line;
   };
@@ -139,9 +139,9 @@ export class GameLoop {
     game.clockS += dt;
     if (game.started) regen(health, dt);
     if (health.hp <= 0) g.knockedOut(); // here, not where the hit lands: that can be halfway through moving the car
-    if (game.bigT > 0) {
-      game.bigT -= dt;
-      if (game.bigT <= 0) g.hideBig();
+    if (game.titleCardT > 0) {
+      game.titleCardT -= dt;
+      if (game.titleCardT <= 0) g.hideTitleCard();
     }
     if (game.ramCool > 0) game.ramCool -= dt;
     g.updateTrisslott(dt);
@@ -159,7 +159,11 @@ export class GameLoop {
         mx,
         my,
         view.camYaw,
-        { run: !!keys.run || joy.on, wet: g.inWater(player.x, player.z), still: game.bigT > 0 || !!places.inside },
+        {
+          run: !!keys.run || joy.on,
+          wet: g.inWater(player.x, player.z),
+          still: game.titleCardT > 0 || !!places.inside,
+        },
         g.half,
       );
       g.collide(player, 0.5);
@@ -182,7 +186,7 @@ export class GameLoop {
           }
         }
       const wetNow = g.inWater(player.x, player.z); // after this frame's move: take-off and wading depth follow where the player stands now
-      hop(player, dt, jump && !wetNow && !places.inside && game.bigT <= 0); // on foot, Space and the touch Brake button jump
+      hop(player, dt, jump && !wetNow && !places.inside && game.titleCardT <= 0); // on foot, Space and the touch Brake button jump
       // walking: arms swing against the legs and the body bobs; in the air: legs apart and both arms up
       const air = player.y > 0,
         sw = air ? 0.5 : Math.sin(player.phase) * 0.75,
@@ -220,7 +224,7 @@ export class GameLoop {
     // HUD
     g.drawHearts(dt);
     g.updateHud(dt);
-    if (!g.toasting && this.laterLine && game.bigT <= 0) {
+    if (!g.toasting && this.laterLine && game.titleCardT <= 0) {
       g.toast(this.laterLine, 3);
       this.laterLine = null;
     }

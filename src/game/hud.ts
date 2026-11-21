@@ -83,17 +83,17 @@ export class Hud {
     }
   }
 
-  /** The big screen (Gripen!, Däckad!); it replaces any line from the same moment. The caller times it. */
-  showBig(title: string, msg: string) {
+  /** The title card (Gripen!, Däckad!); it replaces any line from the same moment. The caller times it. */
+  showTitleCard(title: string, msg: string) {
     const { $ } = this.g;
-    $('big-t').textContent = title;
-    $('big-p').textContent = msg;
-    $('big').hidden = false;
+    $('title-card-t').textContent = title;
+    $('title-card-p').textContent = msg;
+    $('title-card').hidden = false;
     this.hideToast();
   }
 
-  hideBig() {
-    this.g.$('big').hidden = true;
+  hideTitleCard() {
+    this.g.$('title-card').hidden = true;
   }
 
   /** A red flash that fades, stronger for a harder hurt of `n` health. */
