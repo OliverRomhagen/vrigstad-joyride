@@ -21,11 +21,11 @@ const counterClockwise = <T>(points: T[], winding: number) => (winding > 0 ? [..
  */
 function eachShellVertex(shape: BuildingShape, emit: (x: number, y: number, z: number, surface: Surface) => void) {
   const { ring, yAt, sides, outline, base, top, winding } = shape;
-  const walls = counterClockwise(ring, winding);
-  const m = walls.length;
+  const corners = counterClockwise(ring, winding);
+  const m = corners.length;
   for (let i = 0; i < m; i++) {
-    const start = walls[i];
-    const end = walls[(i + 1) % m];
+    const start = corners[i];
+    const end = corners[(i + 1) % m];
     const startTop = yAt(start);
     const endTop = yAt(end);
     emit(start.x, base, start.z, 'wallFoot');
@@ -51,7 +51,7 @@ function eachShellVertex(shape: BuildingShape, emit: (x: number, y: number, z: n
     const n = rim.length;
     let cx = 0;
     let cz = 0;
-    for (const v of rim) {
+    for (const v of outline) {
       cx += v.x / n;
       cz += v.z / n;
     }
