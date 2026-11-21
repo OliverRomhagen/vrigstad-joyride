@@ -40,7 +40,7 @@ function actions(
     cat?: Cat | null;
     menuOpen?: boolean;
     skroten?: boolean;
-    nisse?: boolean;
+    owner?: boolean;
     kr?: number;
   } = {},
 ) {
@@ -85,8 +85,8 @@ function actions(
     openKiosk: () => void calls.push('kiosk'),
     atSkroten: () => !!o.skroten,
     openSkroten: () => void calls.push('skroten'),
-    nearNisse: () => !!o.nisse,
-    talkNisse: () => void calls.push('nisse'),
+    nearOwner: () => !!o.owner,
+    talkToOwner: () => void calls.push('owner'),
     collide: () => {},
     placeCar: () => {},
     rnd: () => o.roll ?? 0.9,
@@ -167,11 +167,11 @@ describe('Actions.action', () => {
     expect(t.calls.at(-1)).toBe('skroten');
   });
 
-  it('E on foot next to Skrot-Nisse talks to him, before any car nearby', () => {
-    const t = actions({ cars: [parked()], nisse: true });
+  it('E on foot next to Plåt-Pelle talks to him, before any car nearby', () => {
+    const t = actions({ cars: [parked()], owner: true });
     t.a.action();
     expect(t.game.inCar).toBe(false);
-    expect(t.calls).toEqual(['nisse']);
+    expect(t.calls).toEqual(['owner']);
   });
 
   it('calls the police when a neighbour sees you take a car', () => {

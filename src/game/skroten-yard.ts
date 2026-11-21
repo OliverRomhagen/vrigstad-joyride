@@ -39,9 +39,9 @@ const SIGNS_XZ = [
   { x: 965, z: 62.1, facing: -1 },
 ] as const;
 
-/** The ring you drive onto to sell a car, just inside the gate, and where Skrot-Nisse stands beside it. */
+/** The ring you drive onto to sell a car, just inside the gate, and where Plåt-Pelle stands beside it. */
 export const RING_UV = { u: 0, v: 10 } as const;
-export const NISSE_UV = { u: -7.5, v: 9 } as const;
+export const OWNER_UV = { u: -7.5, v: 9 } as const;
 /** The hut by the gate: its middle and its size along u and v (m). Its door is on the end towards the ring. */
 export const HUT = { u: -13, v: 7, w: 7, d: 3 } as const;
 /** Two containers side by side, and one on top across them. */
@@ -439,7 +439,7 @@ export function yardLayout(
 
   outlines.push(rect(HUT.u, HUT.v, HUT.w, HUT.d));
   outlines.push(rect(CONTAINERS.u, CONTAINERS.v, CONTAINERS.w, CONTAINERS.d * 2));
-  outlines.push(rect(NISSE_UV.u, NISSE_UV.v, 0.7, 0.7)); // Skrot-Nisse stands his ground
+  outlines.push(rect(OWNER_UV.u, OWNER_UV.v, 0.7, 0.7)); // Plåt-Pelle stands his ground
 
   const wrecks: Wreck[] = [];
   for (const row of WRECK_ROWS) {
