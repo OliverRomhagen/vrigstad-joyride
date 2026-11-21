@@ -4,6 +4,7 @@
 import type { Car } from './cars';
 import { carPrice, earn, fmtKr, type Wallet } from './economy';
 import type { MenuItem } from './pets';
+import { tooFastToGetOut } from './player';
 import { OWNER_UV, yardToWorld } from './skroten-yard';
 import type { GameState } from './state';
 
@@ -66,15 +67,15 @@ export class Skroten {
     else toast(OWNER_SAYS + OWNER_LINES[this.said++ % OWNER_LINES.length], 4);
   };
 
-  /** E on the ring: Skroten's offer for the car you drive, on the menu plate. */
+  /** E on the ring: Skroten's offer for the car you drive, on the menu plate. False when there is none: off the ring, or refused (it says why). */
   open = () => {
     const { game, openMenu, toast, atSkroten } = this.g,
       c = game.pcar;
-    if (!game.inCar || !c) return;
+    if (!game.inCar || !c || !atSkroten()) return false;
     const kr = this.offer(c);
     if (typeof kr === 'string') {
       toast(kr, 3.5);
-      return;
+      return false;
     }
     openMenu(
       'skrot',
@@ -88,11 +89,19 @@ export class Skroten {
       },
       () => game.pcar === c && atSkroten(),
     );
+    return true;
   };
 
-  // the offer is made again at the moment of sale: stars can come while the menu is open
+  /** The car you drive stands on the ring, and Skroten would make an offer for it. */
+  buys() {
+    const { game, atSkroten } = this.g;
+    return !!(game.inCar && game.pcar && atSkroten() && typeof this.offer(game.pcar) === 'number');
+  }
+
+  // the offer is made again at the moment of sale: stars can come while the menu is open, and the car can drive off before it closes
   private sell(c: Car) {
-    const { toast, wallet, sellCar } = this.g;
+    const { game, toast, wallet, sellCar, atSkroten } = this.g;
+    if (game.pcar !== c || !atSkroten() || tooFastToGetOut(c)) return;
     const kr = this.offer(c);
     if (typeof kr === 'string') {
       toast(kr, 3.5);

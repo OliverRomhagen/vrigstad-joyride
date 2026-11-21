@@ -83,8 +83,11 @@ function actions(
     openOwnCat: () => void calls.push('ownCat'),
     petCat: () => void calls.push('pet'),
     openKiosk: () => void calls.push('kiosk'),
-    atSkroten: () => !!o.skroten,
-    openSkroten: () => void calls.push('skroten'),
+    openSkroten: () => {
+      if (!o.skroten) return false;
+      calls.push('skroten');
+      return true;
+    },
     nearOwner: () => !!o.owner,
     talkToOwner: () => void calls.push('owner'),
     collide: () => {},
@@ -172,6 +175,14 @@ describe('Actions.action', () => {
     t.a.action();
     expect(t.game.inCar).toBe(false);
     expect(t.calls).toEqual(['owner']);
+  });
+
+  it('gets you out when Skroten makes no offer: off its ring, or refused', () => {
+    const c = parked(),
+      t = actions({ cars: [c], skroten: false });
+    t.a.action();
+    t.a.action();
+    expect(t.game.inCar).toBe(false);
   });
 
   it('calls the police when a neighbour sees you take a car', () => {
