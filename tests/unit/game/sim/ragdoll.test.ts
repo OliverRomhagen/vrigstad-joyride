@@ -207,9 +207,9 @@ describe('stepRagdoll', () => {
     expect(r.state).toBe('done');
   });
 
-  it('is deterministic: the same hit plays out the same', () => {
-    const a = knockOver(person, car(14), flat, () => 0.3) as Ragdoll,
-      b = knockOver(person, car(14), flat, () => 0.3) as Ragdoll;
+  it('is deterministic: the same stream throws the same way', () => {
+    const a = knockOver(person, car(14), flat, makeRnd(7)) as Ragdoll,
+      b = knockOver(person, car(14), flat, makeRnd(7)) as Ragdoll;
     run(a, 2);
     run(b, 2);
     expect(a.pos).toEqual(b.pos);
