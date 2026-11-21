@@ -276,7 +276,6 @@ drawStars();
 function drawHealth() { hud.drawHealth(health.hp, game.inCar && game.pcar ? game.pcar.dmg : null); }
 // the big screen (Gripen!, Däckad!) stays up this long
 function bigScreen(title: string, msg: string) { hud.showBig(title, msg); game.bigT = 3; }
-hud.drawKr();   // the HUD keeps the money plate in step with the wallet from here on
 
 // ---------- stealing and getting caught (the wanted level and the police: src/game/police.ts) ----------
 // the driver of a car you steal gets out, and stands there shouting for a while (src/game/render/shouting-drivers.ts)

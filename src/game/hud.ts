@@ -40,6 +40,7 @@ export class Hud {
     const mini = g.$('mini') as HTMLCanvasElement;
     this.mctx = mini.getContext('2d') as CanvasRenderingContext2D;
     this.MW = mini.width;
+    this.drawKr();
   }
 
   /** whether a toast is showing */
@@ -93,7 +94,7 @@ export class Hud {
   }
 
   /** The money plate (fmtKr: 10 000 riksdaler), redrawn only when the amount changes. */
-  drawKr() {
+  private drawKr() {
     if (this.g.kr === this.shownKr) return;
     this.shownKr = this.g.kr;
     this.g.$('kr').textContent = fmtKr(this.g.kr);
@@ -105,7 +106,7 @@ export class Hud {
     el.hidden = false;
     el.replaceChildren(
       'Trisslotter: ' + bought + ' · Vinster: ' + won,
-      document.createElement('br'),
+      el.ownerDocument.createElement('br'),
       'Insatt: ' + fmtKr(bought * TRISS_KR) + ' · Vunnit: ' + fmtKr(wonKr),
     );
   }
