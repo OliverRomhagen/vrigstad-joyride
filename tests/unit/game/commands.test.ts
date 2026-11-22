@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { Commands, parseKr, UsageError } from '../../../src/game/commands';
+import { type Call, Commands, parseKr, UsageError } from '../../../src/game/commands';
 
 describe('commands', () => {
   const echo = () => {
@@ -19,7 +19,9 @@ describe('commands', () => {
   });
 
   it('lists every command in help, sorted, with its usage', () => {
-    expect(echo().run('help')).toBe('echo <words>: say the words back\nhelp: list the commands');
+    expect(echo().run('help')).toBe(
+      'echo <words>: say the words back\nhelp [command]: list the commands, or show how to use one',
+    );
   });
 
   it('shows the usage line for bad arguments, and passes other errors on', () => {
@@ -37,10 +39,192 @@ describe('commands', () => {
     expect(() => c.run('boom')).toThrow('broken');
   });
 
+  it('shows how to use one command with help <command>', () => {
+    const c = echo();
+    expect(c.run('help echo')).toBe('echo <words>: say the words back');
+    expect(c.run('help fly')).toBe('No command called fly. Usage: help [command]');
+  });
+
+  it('runs a command by any of its aliases, and refuses an alias that is taken', () => {
+    const c = echo();
+    c.register('teleport', { aliases: ['tp'], help: 'go', run: (a, call) => call.name + ' ' + a.join(' ') });
+    expect(c.run('TP torget')).toBe('teleport torget');
+    expect(c.run('help tp')).toBe('teleport: go (also tp)');
+    expect(() => c.register('tp', { help: '', run: () => '' })).toThrow();
+    expect(() => c.register('jump', { aliases: ['echo'], help: '', run: () => '' })).toThrow();
+  });
+
+  it('takes a command out again with the function register returns', () => {
+    const c = echo();
+    const drop = c.register('fly', { aliases: ['f'], help: 'fly', run: () => 'flying' });
+    expect(c.run('f')).toBe('flying');
+    drop();
+    expect(c.run('fly')).toBe('Unknown command: fly. Type help for the list.');
+    expect(c.run('f')).toBe('Unknown command: f. Type help for the list.');
+    c.register('fly', { help: 'fly again', run: () => 'again' });
+    drop(); // a stale remover leaves the new command alone
+    expect(c.run('fly')).toBe('again');
+  });
+
+  it('leaves a later registration of the same command alone when an old remover runs again', () => {
+    const c = echo();
+    const fly = { help: 'fly', run: () => 'flying' };
+    const drop = c.register('fly', fly);
+    drop();
+    c.register('fly', fly);
+    drop();
+    expect(c.run('fly')).toBe('flying');
+  });
+
+  it('hides dev commands outside dev mode, and says why when one is typed', () => {
+    let dev = false;
+    const c = new Commands({ allowed: a => a === 'player' || dev });
+    c.register('god', { help: 'no damage', run: () => 'god on' });
+    c.register('wave', { help: 'wave', access: 'player', run: () => 'hej' });
+    expect(c.names()).toEqual(['help', 'wave']);
+    expect(c.run('god')).toBe('god works in dev mode only (?dev).');
+    expect(c.complete('g')).toEqual([]);
+    dev = true;
+    expect(c.names()).toEqual(['god', 'help', 'wave']);
+    expect(c.run('god')).toBe('god on');
+  });
+
+  describe('hooks', () => {
+    it('wrap every run, the first added outermost, and see the call and its result', () => {
+      const c = echo();
+      const seen: string[] = [];
+      c.use((call, next) => {
+        seen.push('outer ' + call.name + ' ' + call.source);
+        return '[' + next() + ']';
+      });
+      c.use((call, next) => {
+        seen.push('inner ' + call.args.join(','));
+        return next().toUpperCase();
+      });
+      expect(c.run('echo a b', 'test')).toBe('[A B]');
+      expect(seen).toEqual(['outer echo test', 'inner a,b']);
+    });
+
+    it('run the command once when a hook calls next twice', () => {
+      const c = new Commands();
+      let runs = 0;
+      c.register('count', { help: 'count', run: () => String(++runs) });
+      c.use((_call, next) => {
+        next();
+        return next();
+      });
+      expect(c.run('count')).toBe('1');
+      expect(runs).toBe(1);
+    });
+
+    it('run a command that throws once too, when a hook catches the error and calls next again', () => {
+      const c = new Commands();
+      let runs = 0;
+      c.register('boom', {
+        help: 'boom',
+        run: () => {
+          runs++;
+          throw new Error('half done');
+        },
+      });
+      c.use((_call, next) => {
+        try {
+          return next();
+        } catch {
+          return next(); // a retry: gets the same error, not a second run
+        }
+      });
+      expect(() => c.run('boom')).toThrow('half done');
+      expect(runs).toBe(1);
+    });
+
+    it('can stop a command by not calling next, and see its usage line', () => {
+      const c = echo();
+      let ran = false;
+      c.register('stars', {
+        usage: '<n>',
+        help: 'stars',
+        run: () => {
+          ran = true;
+          return 'ok';
+        },
+      });
+      const drop = c.use((call, next) => (call.source === 'url' ? 'Not from the URL.' : next()));
+      expect(c.run('stars 3', 'url')).toBe('Not from the URL.');
+      expect(ran).toBe(false);
+      c.register('bad', {
+        usage: '<n>',
+        help: 'bad',
+        run: () => {
+          throw new UsageError();
+        },
+      });
+      const results: string[] = [];
+      c.use((_call, next) => {
+        const r = next();
+        results.push(r);
+        return r;
+      });
+      c.run('bad');
+      expect(results).toEqual(['Usage: bad <n>']);
+      drop();
+      expect(c.run('stars 3', 'url')).toBe('ok');
+    });
+
+    it('get the registered name and the source on the call the command sees', () => {
+      const c = new Commands();
+      let got: Call | undefined;
+      c.register('teleport', {
+        aliases: ['tp'],
+        help: '',
+        run: (_a, call) => {
+          got = call;
+          return '';
+        },
+      });
+      c.run('tp torget', 'script');
+      expect(got).toEqual({ name: 'teleport', args: ['torget'], source: 'script' });
+    });
+  });
+
+  describe('complete', () => {
+    const places = () => {
+      const c = echo();
+      c.register('go', {
+        help: 'go',
+        complete: i => (i === 0 ? ['torget', 'Slättsjön', 'skroten'] : []),
+        run: () => '',
+      });
+      return c;
+    };
+
+    it('offers command names while the name is typed', () => {
+      expect(places().complete('')).toEqual(['echo', 'go', 'help']);
+      expect(places().complete('  e')).toEqual(['echo']);
+    });
+
+    it("offers the command's words for the argument being typed, in any case", () => {
+      expect(places().complete('go ')).toEqual(['Slättsjön', 'skroten', 'torget']);
+      expect(places().complete('go s')).toEqual(['Slättsjön', 'skroten']);
+      expect(places().complete('GO T')).toEqual(['torget']);
+      expect(places().complete('go torget ')).toEqual([]);
+      expect(places().complete('echo ')).toEqual([]);
+      expect(places().complete('fly ')).toEqual([]);
+    });
+
+    it('offers command names for help', () => {
+      expect(places().complete('help e')).toEqual(['echo']);
+      expect(places().complete('help echo ')).toEqual([]);
+    });
+  });
+
   it('refuses a name twice, or a name that is not a lower-case word', () => {
     const c = echo();
     expect(() => c.register('echo', { help: '', run: () => '' })).toThrow();
     expect(() => c.register('Tp torget', { help: '', run: () => '' })).toThrow();
+    expect(() => c.register('go', { aliases: ['go'], help: '', run: () => '' })).toThrow();
+    expect(() => c.register('go', { aliases: ['tp', 'tp'], help: '', run: () => '' })).toThrow();
+    expect(c.run('go')).toBe('Unknown command: go. Type help for the list.');
   });
 });
 
