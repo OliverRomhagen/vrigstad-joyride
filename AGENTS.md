@@ -20,7 +20,7 @@ npm run preview             # serve the built dist/ locally
 npx playwright install chromium   # once, for the smoke tests
 npm run test:e2e            # Playwright smoke tests against the built pages in dist/; build first. Before a commit, run only yours (see Tests)
 npm run data                # rebuild data/vrigstad.json from data/raw/ (Python standard library only); run npm run build after, the data is built into the pages
-npm run data:report         # what the streetscape rules infer from data/vrigstad.json (the second half of the coverage report)
+npm run data:report         # what the streetscape and street furniture rules infer from data/vrigstad.json (the second half of the coverage reports)
 tools/fetch.sh              # re-download OSM + elevation (rarely needed; hits public APIs)
 ```
 
@@ -126,7 +126,7 @@ Until the migration reaches a given rule, don't make the existing code worse in 
 - **Smoke tests** (Playwright, [#43](https://github.com/OliverRomhagen/vrigstad-joyride/issues/43)): the pages load without console errors, Start works, the player can move and get into a car. Every PR keeps them green. When you add a major feature, add one smoke step for it.
 - **Unit tests** (Vitest, [#52](https://github.com/OliverRomhagen/vrigstad-joyride/issues/52)): game rules and pure helpers such as height lookup, driving model, wanted level, police AI and spatial queries. Write them for new gameplay rules; use the seeded RNG for deterministic scenarios. They live in `tests/unit/`, mirroring `src/`, and run in CI on every PR that changes more than docs, labels, issue forms, agent files or other workflows (`.github/workflows/unit.yml`). Build test worlds small and by hand (`tests/unit/world/fixture.ts`), not from `data/vrigstad.json`, so each expected value can be worked out.
 - **No pixel-diff tests.** Headless WebGL output varies. Assert on state exposed through the test hook instead, and attach screenshots to the PR when visuals change.
-- For review screenshots, `?at=x,z,yaw,pitch` starts the player at (x, z) looking that way, and `?debug=streetscape` tints the streetscape by its evidence (mapped, derived, inferred).
+- For review screenshots, `?at=x,z,yaw,pitch` starts the player at (x, z) looking that way, `?debug=streetscape` tints the streetscape by its evidence (mapped, derived, inferred), and `?debug=furniture` tints street furniture by its source (OSM, override, procedural).
 - The sky's clouds take URL parameters for visual testing: `?clouds=clear|scattered|partly|mostly|off`, `cloudSeed=7`, `wind=250,7` (from degrees, m/s), `cloudSoft=1.3` and `cloudQuality=low|high` (`src/world/clouds.ts`).
 - The smoke tests live in `tests/e2e/` and run in CI on every PR that changes more than docs, labels, issue forms, agent files or other workflows (`.github/workflows/e2e.yml`), which also fails if the committed `data/vrigstad.json` is stale and uploads screenshots of both pages as the `e2e-screenshots` artifact. They read game state from `window.__joyride.state()` (defined in `src/game/test-hook.ts`); add a field there when a new smoke step needs one, and keep the hook read-only.
 - **Static analysis** ([Fallow](https://github.com/fallow-rs/fallow), [#107](https://github.com/OliverRomhagen/vrigstad-joyride/issues/107)), configured in `fallow.toml`, is the last step of `npm run check`, so it runs before every commit and in CI (`.github/workflows/check.yml`), and takes well under a second:
