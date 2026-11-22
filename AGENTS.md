@@ -185,6 +185,6 @@ Code terms, so docs, issues and PRs use one word for one thing:
 | System | A function the sim runs every step over the entities it handles (traffic, the chase). With an ECS, the entities that have a given set of components |
 | Sim | Gameplay state and rules: plain data and functions, no three.js or DOM (Architecture rules, rule 2) |
 | Render | The code that reads sim state each frame and draws it; it never writes to the sim |
-| Intent | What input becomes: `throttle / steer / brake / action`. Gameplay reads intents, never keys or touches |
+| Intent | What held input becomes: `throttle / steer / brake`. Gameplay reads intents, never keys or touches; a one-off action, such as pressing E, is a command (`docs/console.md`) |
 
 Update this file when a convention changes. If you notice the instructions are wrong or out of date, fix them in your PR.
