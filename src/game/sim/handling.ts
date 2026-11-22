@@ -12,12 +12,15 @@ export type Handling = {
   throttleResponseS: number;
 };
 
-const MAX_LOCK_RAD = 0.6; // front-wheel angle at full stick, standing still
-const LOCK_FADE_MS = 13; // m/s at which the lock has halved; it fades with speed squared, so a fast car's small correction stays small
+// in one object so the tunables registry (car-tunables.ts) can change them while the game runs
+export const STEERING = {
+  MAX_LOCK_RAD: 0.6, // front-wheel angle at full stick, standing still
+  LOCK_FADE_MS: 13, // m/s at which the lock has halved; it fades with speed squared, so a fast car's small correction stays small
+};
 
 /** Yaw rate in rad/s of a car at speed v (m/s) with the stick at steer (−1..1), from the bicycle model. */
 export function yawRate(v: number, steer: number, wheelbaseM: number): number {
-  return (v / wheelbaseM) * Math.tan((steer * MAX_LOCK_RAD) / (1 + (v / LOCK_FADE_MS) ** 2));
+  return (v / wheelbaseM) * Math.tan((steer * STEERING.MAX_LOCK_RAD) / (1 + (v / STEERING.LOCK_FADE_MS) ** 2));
 }
 
 /** Moves current toward target as a first-order lag with time constant responseS; frame-rate independent. */
