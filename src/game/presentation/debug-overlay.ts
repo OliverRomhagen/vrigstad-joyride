@@ -26,6 +26,10 @@ const CSS = `
 #debug-graph { display: block; width: 120px; height: 36px; margin-bottom: 3px; }
 #debug-errors { background: rgba(150, 20, 20, .9); color: #fff; border-radius: 4px; padding: 4px 8px; white-space: pre-wrap; word-break: break-word; }
 #debug-errors:empty { display: none; }
+/* a phone held upright has the minimap, hearts and stars across the top, and toasts under them: go below those */
+@media (max-width: 600px) { #debug { top: calc(250px + env(safe-area-inset-top, 0px)); } }
+/* a phone on its side has the toasts at 22% of very little height: drop the graph so the numbers end above them */
+@media (max-height: 500px) and (min-width: 601px) { #debug-graph { display: none; } }
 `;
 
 /** Formats an uncaught error event, or a rejection's reason, as one line. */
