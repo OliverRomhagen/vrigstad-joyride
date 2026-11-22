@@ -255,7 +255,9 @@ export class Fleet {
       }
       const { at } = spot;
       if (nowS - spot.soldAt < LOT_RESTOCK_S || Math.hypot(at.x - farFrom.x, at.z - farFrom.z) < SPAWN_AWAY_M) continue;
-      if (this.cars.some(c => Math.hypot(c.x - at.x, c.z - at.z) < LOT_CLEAR_M)) continue;
+      // the cars on the neighbouring spots stand closer than LOT_CLEAR_M, side by side, and don't count
+      if (this.cars.some(c => Math.hypot(c.x - at.x, c.z - at.z) < LOT_CLEAR_M && !this.lot.some(s => s.car === c)))
+        continue;
       spot.car = this.parkOneForSale(at, this.g.pick(this.lot).at);
     }
   }

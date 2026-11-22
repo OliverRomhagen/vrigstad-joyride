@@ -372,10 +372,11 @@ describe('the car command', () => {
 });
 
 describe("Skroten's lot", () => {
-  // two spots far from the fixture's player at (0, -800); the parked cars roll no paint, so their colour is the type's first
+  // two spots side by side, as close as the yard's fresh row puts them, far from the fixture's player at (0, -800);
+  // the parked cars roll no paint, so their colour is the type's first
   const LOT: CarForSale[] = [
     { x: 100, z: 0, h: 0.5, type: 'volvo', model: 'volvo240', colour: '#123456', kr: 2000 },
-    { x: 106, z: 0, h: 0.5, type: 'saab', model: 'micra-k11', colour: '#654321', kr: 1000 },
+    { x: 102.6, z: 0, h: 0.5, type: 'saab', model: 'micra-k11', colour: '#654321', kr: 1000 },
   ];
   const at = (cars: Fleet, p: CarForSale) => cars.cars.filter(c => Math.hypot(c.x - p.x, c.z - p.z) < 0.01);
 
@@ -384,7 +385,7 @@ describe("Skroten's lot", () => {
     cars.parkForSale(LOT);
     expect(cars.cars.map(c => [c.type, c.x, c.z, c.h, c.mode, c.saleKr])).toEqual([
       ['volvo', 100, 0, 0.5, 'parked', 2000],
-      ['saab', 106, 0, 0.5, 'parked', 1000],
+      ['saab', 102.6, 0, 0.5, 'parked', 1000],
     ]);
     expect(log.models).toEqual(['volvo240', 'micra-k11']);
     const sold = cars.cars.pop()!;
