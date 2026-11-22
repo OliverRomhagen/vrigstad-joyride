@@ -73,7 +73,14 @@ const LIFT_MS = 1.5,
   FEET_LIFT = 0.3; // up: LIFT_MS (m/s) plus a share
 const AWAY_SPREAD_M = 1.5; // standing this far to one side of the car's middle (m) throws them furthest that way
 const AWAY_KEEP = 0.25,
-  AWAY_JITTER = 0.3; // sideways: the share at AWAY_SPREAD_M, and the most the jitter adds or takes
+  AWAY_JITTER = 0.15; // sideways: the share at AWAY_SPREAD_M, and the most the jitter adds or takes
+// how one throw differs from the next, each from its own roll: the most each adds or takes
+const SPIN_MAX_RADS = 6; // turning about the up axis as they fly (rad/s), so they twist as well as flip
+const CARTWHEEL_MAX_RADS = 5; // turning about the way they are thrown (rad/s)
+const FLIP_SPREAD = 0.5; // share of the head-to-feet speed gap: a slow topple at -, a fast backflip at +
+const LIFT_SPREAD = 0.3; // share of the lift: some skid low, some fly high
+const LIMB_KICK_MS = 2.5; // a hand or foot's own kick (m/s, each way), so the limbs flail differently
+const HANDS_AND_FEET = [L_HAND, R_HAND, L_FOOT, R_FOOT];
 
 export type RagdollState = 'fly' | 'lie' | 'up' | 'done';
 
@@ -137,15 +144,57 @@ export function standingPose(
 /**
  * Knocks over the person standing at (x, z), facing h, `scale` times the standard size, hit by `car`; null if the car is too slow to
  * knock anyone over, or only brushes past them (beside or behind its middle), so they are pushed aside as before.
- * `jitter` (0..1, from a seeded stream) varies the tumble, so two hits don't look the same.
+ * `roll` (a seeded stream of 0..1) varies the tumble, so two hits don't look the same; one that always gives 0.5 throws the
+ * average throw.
  */
 export function knockOver(
   person: { x: number; z: number; h: number },
   car: HitCar,
   world: RagdollWorld,
-  jitter: number,
+  roll: () => number,
   scale = 1,
 ): Ragdoll | null {
+  const hit = bumperHit(person, car);
+  if (!hit) return null;
+  const spread = () => roll() * 2 - 1; // -1..1, 0 for the average throw
+  const thrown = rollThrow(hit, spread);
+  const pos = standingPose(person.x, person.z, person.h, world.groundAt(person.x, person.z), scale);
+  const prev = pos.slice(); // a step back along the throw: that gap is their speed
+  const midY = pos[HEAD * 3 + 1] / 2 + pos[L_FOOT * 3 + 1] / 2; // half way up them: the cartwheel turns about this height
+  for (let point = 0; point < POINTS; point++) {
+    const i = point * 3;
+    pointSpeed(thrown, point, pos[i] - person.x, pos[i + 1] - midY, pos[i + 2] - person.z, _speed);
+    prev[i] -= _speed.x * STEP_S;
+    prev[i + 1] -= _speed.y * STEP_S;
+    prev[i + 2] -= _speed.z * STEP_S;
+  }
+  kickLimbs(prev, spread);
+  return { pos, prev, state: 'fly', t: 0, still: 0, h: person.h, from: [], scale };
+}
+
+/** How the bumper meets a person: the way the car moves (a unit vector along the ground), its speed (m/s) and how far
+ * to the left of its middle they stand (m). */
+interface BumperHit {
+  fx: number;
+  fz: number;
+  speed: number;
+  left: number;
+}
+
+/** How a person is thrown. Plain data, rolled once per hit. */
+interface Throw {
+  fx: number; // the way they are thrown: the car's (a unit vector along the ground)
+  fz: number;
+  launch: number; // m/s
+  away: number; // share of the launch that goes to the left of the throw (negative: to the right)
+  spin: number; // rad/s about the up axis
+  cartwheel: number; // rad/s about the way they are thrown
+  flip: number; // times the average gap between the feet's speed and the head's
+  lift: number; // times the average lift
+}
+
+// null if the car is too slow, or the person is beside or behind its middle
+function bumperHit(person: { x: number; z: number }, car: HitCar): BumperHit | null {
   const speed = Math.abs(car.v);
   if (speed < HIT_MIN_MS) return null;
   const sign = Math.sign(car.v),
@@ -153,27 +202,59 @@ export function knockOver(
     fz = -Math.cos(car.vh) * sign;
   const ox = person.x - car.x,
     oz = person.z - car.z,
-    side = ox * fz - oz * fx,
-    sx = fz,
-    sz = -fx;
-  if (Math.abs(side) > HIT_SIDE_M || ox * fx + oz * fz < 0) return null;
-  const launch = Math.min(speed, LAUNCH_MAX_MS);
+    left = ox * fz - oz * fx;
+  if (Math.abs(left) > HIT_SIDE_M || ox * fx + oz * fz < 0) return null;
+  return { fx, fz, speed, left };
+}
+
+/** Takes the throw's rolls, always in this order, so the same stream throws the same way. */
+function rollThrow({ fx, fz, speed, left }: BumperHit, spread: () => number): Throw {
   // thrown away from the side of the car they were on, a little more the further out they stood
-  const away = Math.max(-1, Math.min(1, side / AWAY_SPREAD_M)) * AWAY_KEEP + (jitter - 0.5) * AWAY_JITTER;
-  const pos = standingPose(person.x, person.z, person.h, world.groundAt(person.x, person.z), scale);
-  const prev = pos.slice(); // a step back along the throw: that gap is their speed
-  for (let i = 0; i < POINTS; i++) {
-    // the bumper takes the legs: low is 0 at the head, 1 at the feet
-    const low = 1 - POSE[i][1] / POSE[HEAD][1],
-      k = HEAD_KEEP + (FEET_KEEP - HEAD_KEEP) * low;
-    const vx = (fx * k + sx * away) * launch,
-      vz = (fz * k + sz * away) * launch;
-    const vy = LIFT_MS + launch * (HEAD_LIFT + (FEET_LIFT - HEAD_LIFT) * low);
-    prev[i * 3] -= vx * STEP_S;
-    prev[i * 3 + 1] -= vy * STEP_S;
-    prev[i * 3 + 2] -= vz * STEP_S;
-  }
-  return { pos, prev, state: 'fly', t: 0, still: 0, h: person.h, from: [], scale };
+  const away = Math.max(-1, Math.min(1, left / AWAY_SPREAD_M)) * AWAY_KEEP + spread() * AWAY_JITTER;
+  return {
+    fx,
+    fz,
+    launch: Math.min(speed, LAUNCH_MAX_MS),
+    away,
+    spin: spread() * SPIN_MAX_RADS,
+    cartwheel: spread() * CARTWHEEL_MAX_RADS,
+    flip: 1 + spread() * FLIP_SPREAD,
+    lift: 1 + spread() * LIFT_SPREAD,
+  };
+}
+
+const _speed = { x: 0, y: 0, z: 0 };
+
+/**
+ * The speed a point leaves at (m/s), into `out`: the throw, plus the turns. (dx, dy, dz) is the point from their middle
+ * (m); a turn moves a point at its rate times how far it is from the turn's axis, across the line to it.
+ */
+function pointSpeed(
+  t: Throw,
+  point: number,
+  dx: number,
+  dy: number,
+  dz: number,
+  out: { x: number; y: number; z: number },
+): void {
+  const sx = t.fz,
+    sz = -t.fx; // to the left of the throw
+  const front = dx * t.fx + dz * t.fz,
+    left = dx * sx + dz * sz;
+  // the bumper takes the legs: low is 0 at the head, 1 at the feet, and the feet go fastest
+  const low = 1 - POSE[point][1] / POSE[HEAD][1],
+    keep = (HEAD_KEEP + FEET_KEEP) / 2 + (FEET_KEEP - HEAD_KEEP) * (low - 0.5) * t.flip;
+  const ahead = keep * t.launch + t.spin * left,
+    aside = t.away * t.launch - t.spin * front - t.cartwheel * dy;
+  out.x = t.fx * ahead + sx * aside;
+  out.y = (LIFT_MS + t.launch * (HEAD_LIFT + (FEET_LIFT - HEAD_LIFT) * low)) * t.lift + t.cartwheel * left;
+  out.z = t.fz * ahead + sz * aside;
+}
+
+/** Gives each hand and foot a kick of its own, so the limbs flail differently from one throw to the next. */
+function kickLimbs(prev: number[], spread: () => number): void {
+  for (const point of HANDS_AND_FEET)
+    for (let axis = 0; axis < 3; axis++) prev[point * 3 + axis] -= spread() * LIMB_KICK_MS * STEP_S;
 }
 
 const _o = { x: 0, z: 0 };
