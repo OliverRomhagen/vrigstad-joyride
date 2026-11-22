@@ -261,10 +261,13 @@ describe('commands', () => {
     });
   });
 
-  it('refuses a name twice, or a name that is not a lower-case word', () => {
+  it('refuses a name twice, or a name that is not kebab-case', () => {
     const c = echo();
     expect(() => c.register('echo', { help: 'x', run: () => '' })).toThrow();
     expect(() => c.register('Tp torget', { help: 'x', run: () => '' })).toThrow();
+    for (const bad of ['tp-', 'tp--torget', 'tpTorget'])
+      expect(() => c.register(bad, { help: 'x', run: () => '' })).toThrow('kebab-case');
+    expect(() => c.register('tp-torget', { help: 'x', run: () => '' })).not.toThrow();
     expect(() => c.register('go', { aliases: ['go'], help: 'x', run: () => '' })).toThrow();
     expect(() => c.register('go', { aliases: ['tp', 'tp'], help: 'x', run: () => '' })).toThrow();
     expect(c.run('go')).toBe('Unknown command: go. Type help for the list.');
