@@ -87,7 +87,7 @@ export class Tunables {
   /** Sets a number; a RangeError for an unknown key, a value that isn't a number, or one outside its range. */
   set(key: string, value: number): void {
     const t = this.need(key);
-    if (!Number.isFinite(value)) throw new RangeError(`${key} is a number`);
+    if (!Number.isFinite(value)) throw new RangeError(`${key} must be a number`);
     if (value < t.min || value > t.max) throw new RangeError(`${key} is from ${t.min} to ${t.max} ${t.unit}`);
     t.set(value);
   }

@@ -58,7 +58,7 @@ describe('Tunables', () => {
       'car.grip is from 0 to 5 1/s',
       'No tunable called car.wings',
       'car.grip: write key:value',
-      'car.grip is a number',
+      'car.grip must be a number',
     ]);
     expect(car).toEqual({ SPEED: 30, GRIP: 2 });
     expect(t.override('')).toEqual([]);
