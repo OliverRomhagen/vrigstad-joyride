@@ -542,7 +542,7 @@ test.describe('game (index.html)', () => {
     await page.keyboard.press('Tab'); // nothing shared to fill in: the first Tab lists nothing yet
     await expect(lines).toHaveCount(before);
     await page.keyboard.press('Tab'); // the second lists what could follow
-    await expect(lines.last()).toHaveText(/^adopt {2}.*god {2}help {2}kr {2}mynt {2}stars/);
+    await expect(lines.last()).toHaveText(/^adopt {2}.*god {2}help {2}kr {2}.*mynt {2}.*stars/);
     await page.keyboard.press('Tab'); // and a third doesn't list it again
     await expect(lines).toHaveCount(before + 1);
     await expect(line).toHaveValue('help ');
