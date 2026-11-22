@@ -61,6 +61,8 @@ interface Part {
   y0: number;
   y1: number;
   colour: Token;
+  /** a walkway: its top follows BridgeIndex.curbAt on this side instead of y1 */
+  walkway?: -1 | 1;
 }
 
 function crossSection(b: Bridge, top: boolean): { parts: Part[]; railing: Railing } {
@@ -72,8 +74,8 @@ function crossSection(b: Bridge, top: boolean): { parts: Part[]; railing: Railin
     const beamTop = WALKWAY_CURB_M + EDGE_BEAM_UP_M;
     const parts: Part[] = [
       { o0: -h, o1: h, y0: -SLAB_DEPTH_M, y1: -UNDER_RIBBON_M, colour: 'concrete' },
-      { o0: -w, o1: -c, y0: -UNDER_RIBBON_M, y1: WALKWAY_CURB_M, colour: 'walkway' },
-      { o0: c, o1: w, y0: -UNDER_RIBBON_M, y1: WALKWAY_CURB_M, colour: 'walkway' },
+      { o0: -w, o1: -c, y0: -UNDER_RIBBON_M, y1: WALKWAY_CURB_M, colour: 'walkway', walkway: -1 },
+      { o0: c, o1: w, y0: -UNDER_RIBBON_M, y1: WALKWAY_CURB_M, colour: 'walkway', walkway: 1 },
       { o0: -h, o1: -w, y0: -UNDER_RIBBON_M, y1: beamTop, colour: 'edgeBeam' },
       { o0: w, o1: h, y0: -UNDER_RIBBON_M, y1: beamTop, colour: 'edgeBeam' },
     ];
@@ -227,7 +229,7 @@ export class BridgeMesh {
   readonly meshes: THREE.Mesh[] = [];
   readonly triangles: number = 0;
 
-  constructor(index: Pick<BridgeIndex, 'bridges' | 'surfaceAt'>, { materials, top }: BridgeMeshOptions) {
+  constructor(index: Pick<BridgeIndex, 'bridges' | 'surfaceAt' | 'curbAt'>, { materials, top }: BridgeMeshOptions) {
     for (const b of index.bridges) {
       const { parts, railing } = crossSection(b, top);
       const q = resample(b.p, SWEEP_STEP_M);
@@ -250,16 +252,23 @@ export class BridgeMesh {
         for (let i = 1; i < frames.length; i++) {
           const [f0, f1] = [frames[i - 1], frames[i]];
           // corners in order round the prism: start left, end left, end right, start right
-          const corner = (dy: number): V3[] => [
-            at(f0, part.o0, dy),
-            at(f1, part.o0, dy),
-            at(f1, part.o1, dy),
-            at(f0, part.o1, dy),
+          const corner = (dy: (f: typeof f0) => number): V3[] => [
+            at(f0, part.o0, dy(f0)),
+            at(f1, part.o0, dy(f1)),
+            at(f1, part.o1, dy(f1)),
+            at(f0, part.o1, dy(f0)),
           ];
           const faces = [0, 2, 4, 5];
           if (i === frames.length - 1) faces.push(1);
           if (i === 1) faces.push(3);
-          body.prism(corner(part.y0), corner(part.y1), faces, part.colour);
+          const side = part.walkway;
+          const top = side ? (f: typeof f0) => index.curbAt(b, f.s, side) : () => part.y1;
+          body.prism(
+            corner(() => part.y0),
+            corner(top),
+            faces,
+            part.colour,
+          );
         }
 
       const rails = new Soup();

@@ -75,9 +75,11 @@ sun.shadow.bias = -0.0004; sun.shadow.normalBias = 1.2;
 scene.add(sun);
 
 // ---- streetscape: the game's layout of pavements, corners, parking and crossings, painted as 2D outlines (#187) ----
+const bridgeIndex = new BridgeIndex(D, heightfield);   // the bridges (#238): their walkways fit the streetscape below
 const street = (function () {
   const roads = new RoadNetwork(D, heightfield), buildings = new BuildingIndex(D);
   const sides = classifyStreetscape(D, roads, buildings, STREETSCAPE_OVERRIDES);
+  bridgeIndex.fitWalkways(roads.lines, (ri, side) => (side < 0 ? sides[ri].left : sides[ri].right).sidewalk === 'present');
   return buildStreetscape({ data: D, roads, heightfield, buildings, water: new Water(D, roads), sides });
 })();
 function paintStreetscape(pal, before) {
@@ -198,7 +200,7 @@ scene.add(terrain.surface, terrain.skirt);
 
 // ---- bridges (#238): the game's structures, drawing their own deck, since the map has no road ribbons ----
 const bridgeMat = new THREE.MeshLambertMaterial({ vertexColors: true });
-const bridges = new BridgeMesh(new BridgeIndex(D, heightfield), { materials: { body: bridgeMat, railing: bridgeMat }, top: true });
+const bridges = new BridgeMesh(bridgeIndex, { materials: { body: bridgeMat, railing: bridgeMat }, top: true });
 scene.add(...bridges.meshes);
 
 // ---- buildings ----

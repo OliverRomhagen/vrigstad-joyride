@@ -131,7 +131,6 @@ let streetIndex: StreetscapeIndex | null = null;   // the streetscape's walkable
 // what people, cats and cars stand on: the road, or the curb, pavement or parking area above it
 const groundAt = (x: number, z: number) => { const g = roads.groundAt(x, z), s = streetIndex && streetIndex.surfaceAt(x, z); return s !== null && s > g ? s : g; };
 const roadRibbons = addRoadRibbons(scene, roads, heightfield, maxAnisotropy, bridges);
-const bridgeMeshes = addBridges(scene, bridges);
 
 // ---------- water ----------
 const water = new Water(D, roads), inWater = water.inWater.bind(water);
@@ -157,6 +156,9 @@ const street = (function () {
 })();
 // on a bridge its walkway or inside its railings; else the pavement's centre line where a side has one, else today's walking line on the shoulder
 const walkOffset = (ri: number, side: number) => { const onBridge = bridges.walkOffsetM(ri); if (onBridge !== undefined) return onBridge; const sp = side < 0 ? street.sides[ri].left : street.sides[ri].right; return sidewalkCentreM(sp, R[ri].c) ?? ROAD_W[R[ri].c] / 2 + 0.8; };
+// the bridges' walkways carry on the pavements they meet, and ramp down where there is none (#238)
+bridges.fitWalkways(R, (ri, side) => (side < 0 ? street.sides[ri].left : street.sides[ri].right).sidewalk === 'present');
+const bridgeMeshes = addBridges(scene, bridges);
 // the forests' trees and the street trees, with a soft shadow under each baked into the ground texture (the minimap shows them too)
 const allTreeSpots = addTrees(scene, forestSpots, street.layout.trees, heightfield, HALF);   // every tree drawn, [x, z, scale, ...]: the street furniture keeps clear of them too
 ground.bakeTreeShadows(allTreeSpots, blobTex);

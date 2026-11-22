@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import data from '../../../data/vrigstad.json';
 import { archetypeOf, BridgeIndex, crest, WALKWAY_CURB_M } from '../../../src/world/bridges';
+import { BuildingIndex } from '../../../src/world/buildings';
 import { RoadClass, type WorldData } from '../../../src/world/data';
 import { Heightfield } from '../../../src/world/heightfield';
 import { RoadNetwork, roadLiftM } from '../../../src/world/roads';
+import { STREETSCAPE_OVERRIDES } from '../../../src/world/streetscape-overrides';
+import { classifyStreetscape } from '../../../src/world/streetscape-rules';
 import { makeWorld } from './fixture';
 
 // a terrain sloping 2 % to the east, so heights tell the deck from the ground
@@ -50,6 +53,47 @@ describe('BridgeIndex on a fixture', () => {
     expect(index.ribbonHeight(0, -20, 0, 0.25)).toBeUndefined();
     expect(index.walkOffsetM(0)).toBeUndefined();
     expect(index.walkOffsetM(1)).toBeCloseTo(4.5 + 2.15 / 2);
+  });
+});
+
+describe('walkways meeting the pavements', () => {
+  // the fixture's approaches: road 0 runs into the bridge's start, road 2 away from its end
+  const lines = roadWorld.r.map(r => ({ p: [0, 2].map(i => [r.p[i], r.p[i + 1]] as [number, number]) }));
+
+  it('carry on at full curb where the approach has a pavement on that side', () => {
+    const index = new BridgeIndex(roadWorld, sloped);
+    index.fitWalkways(lines, () => true);
+    const [b] = index.bridges;
+    expect(b.pavementOn).toEqual([
+      [true, true],
+      [true, true],
+    ]);
+    expect(index.curbAt(b, 0, -1)).toBe(WALKWAY_CURB_M);
+  });
+
+  it('ramp down to a lowered curb where it has none, matching left and right whichever way the road runs', () => {
+    const index = new BridgeIndex(roadWorld, sloped);
+    // only road 0's left (north, -z) and road 2's left have a pavement
+    index.fitWalkways(lines, (ri, side) => side < 0 && ri !== 1);
+    const [b] = index.bridges;
+    expect(b.pavementOn).toEqual([
+      [true, false],
+      [true, false],
+    ]);
+    expect(index.curbAt(b, 0, 1)).toBeCloseTo(0.02);
+    expect(index.curbAt(b, 0.75, 1)).toBeCloseTo(0.07);
+    expect(index.curbAt(b, 10, 1)).toBe(WALKWAY_CURB_M);
+    // the ground on the ramp follows it
+    expect(index.deckAt(-10 + 0.01, 5.5)! - index.deckAt(-10 + 0.01, 0)!).toBeCloseTo(0.02, 2);
+  });
+
+  it('flips left and right for an approach drawn the other way', () => {
+    const reversed = makeWorld({ r: [{ ...roadWorld.r[0], p: [-10, 0, -40, 0] }, roadWorld.r[1], roadWorld.r[2]] });
+    const index = new BridgeIndex(reversed, sloped);
+    const rl = reversed.r.map(r => ({ p: [0, 2].map(i => [r.p[i], r.p[i + 1]] as [number, number]) }));
+    // road 0 now runs west, away from the bridge: its right is the bridge's left
+    index.fitWalkways(rl, (ri, side) => ri === 0 && side > 0);
+    expect(index.bridges[0].pavementOn[0]).toEqual([true, false]);
   });
 });
 
@@ -174,5 +218,16 @@ describe('the six mapped bridges (data/vrigstad.json)', () => {
         last = g;
       }
     }
+  });
+
+  it('ramp the Jönköpingsvägen walkway down only where the east approach has no pavement', () => {
+    const roads = new RoadNetwork(D, new Heightfield(D), index);
+    const sides = classifyStreetscape(D, roads, new BuildingIndex(D), STREETSCAPE_OVERRIDES);
+    index.fitWalkways(roads.lines, (ri, side) => (side < 0 ? sides[ri].left : sides[ri].right).sidewalk === 'present');
+    // west: the centre's pavements on both sides; east: way 48175066's pavement on its left only
+    expect(index.bridges[0].pavementOn).toEqual([
+      [true, true],
+      [true, false],
+    ]);
   });
 });
