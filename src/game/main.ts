@@ -144,6 +144,7 @@ const waterT1 = performance.now(), waterLook = addWater(scene, waterBodies, shor
 // ---------- buildings (painted in Swedish house colours) + collision grid ----------
 const buildings = new BuildingIndex(D), { footprints: bPolys } = buildings;
 const addFootprint = buildings.addFootprint.bind(buildings), collide = buildings.collide.bind(buildings);
+buildings.addBarrier(bridges);   // the bridges' railings stop cars, people and cats as walls do (#238)
 addBuildings(scene, D, heightfield, { rnd, pick, maxAnisotropy });   // rolls rnd() for the house colours, before any tree spot
 
 // ---------- trees: spruces and birches, each with its own shade, size and lean ----------
