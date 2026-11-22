@@ -60,6 +60,8 @@ import { BAR_BLUE, BAR_RED, barGeo, barMat, blob, blobTex, boxGeo, carGeo, carMa
 import { buildStage, SUN_DIR, setUpRenderer } from './render/stage';
 import { addBuildings, addRoadRibbons, addStreetscapeMeshes, addTerrain, addTrees } from './render/world-meshes';
 import { type CarType, specFor } from './sim/vehicle-spec';
+import { Tunables } from './sim/tunables';
+import { registerCarTunables } from './sim/car-tunables';
 import { newGameState, newViewState } from './state';
 import { Trisslott, trisslottSeed } from './trisslott';
 import { makeClock, skyAt, START_H, tickClock } from './day-cycle';
@@ -178,6 +180,10 @@ const selectedVehicle = vehicleDefinition(new URLSearchParams(location.search).g
 // dev mode (#218): on with npm run dev, or with ?dev on any build (preview links too). § or ` then opens the dev console.
 const DEV = import.meta.env.DEV || new URLSearchParams(location.search).has('dev');
 const calmMotion = matchMedia('(prefers-reduced-motion: reduce)');
+// gameplay numbers (#217): the cars' are in the registry so far. ?tune=driving.grip:8,vehicle.volvo.topSpeed:45 overrides them
+const tunables = new Tunables();
+registerCarTunables(tunables);
+for (const err of tunables.override(new URLSearchParams(location.search).get('tune') ?? '')) console.warn('?tune=', err);
 let displayCar: RenderedCar | null = null;
 function carName(c: Car) { return vehicleVisuals.definition(meshed(c))?.name || c.T.name; }
 fleet.parkCars();   // parked cars along streets and driveways
