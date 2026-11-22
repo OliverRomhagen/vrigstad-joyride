@@ -82,6 +82,7 @@ test.describe('game (index.html)', () => {
   test('builds the six mapped bridges and starts you on the Jönköpingsvägen deck', async ({ page }, testInfo) => {
     const errors = watchErrors(page);
     await page.goto('/index.html?at=-33.9,-8.4,1.6,0.3');
+    await page.setViewportSize({ width: 640, height: 360 }); // keep software WebGL affordable
     await expectWebGL(page);
     const { bridges: b } = await state(page);
     expect(b.count).toBe(6);
