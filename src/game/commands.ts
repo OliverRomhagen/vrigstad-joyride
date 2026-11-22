@@ -154,8 +154,9 @@ export class Commands {
   usageFor(line: string): string | undefined {
     const typed = line.trimStart().split(/\s+/)[0];
     const name = typed ? this.resolve(typed.toLowerCase()) : undefined;
-    const cmd = name === undefined ? undefined : this.byName.get(name);
-    if (!cmd || name === undefined || !this.canRun(cmd)) return undefined;
+    if (name === undefined) return undefined;
+    const cmd = this.byName.get(name);
+    if (!cmd || !this.canRun(cmd)) return undefined;
     return this.usage(name, cmd);
   }
 

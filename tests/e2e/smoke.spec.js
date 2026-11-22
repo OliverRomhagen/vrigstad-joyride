@@ -527,7 +527,8 @@ test.describe('game (index.html)', () => {
     await line.fill('ado cat');
     await line.evaluate(el => el.setSelectionRange(3, 3)); // the caret after "ado": Tab completes there, keeping the rest
     await page.keyboard.press('Tab');
-    await expect(line).toHaveValue('adopt  cat');
+    await expect(line).toHaveValue('adopt cat'); // the space already there, not a second one
+    expect(await line.evaluate(el => el.selectionStart)).toBe(6);
     await line.fill('help ');
     const lines = page.locator('#devcon li');
     const before = await lines.count();
@@ -538,6 +539,14 @@ test.describe('game (index.html)', () => {
     await page.keyboard.press('Tab'); // and a third doesn't list it again
     await expect(lines).toHaveCount(before + 1);
     await expect(line).toHaveValue('help ');
+    await line.fill('');
+    await page.keyboard.press('Tab');
+    await page.keyboard.type('x');
+    await page.keyboard.press('Backspace'); // typing away and back starts over: the next Tab is a first one again
+    await page.keyboard.press('Tab');
+    await expect(lines).toHaveCount(before + 1);
+    await page.keyboard.press('Tab');
+    await expect(lines).toHaveCount(before + 2);
     await page.keyboard.press('Escape');
     expect(await state(page)).toMatchObject({ devcon: false });
     await page.keyboard.press('KeyL'); // låt det regna: 1 000 kr in the air

@@ -41,7 +41,10 @@ export class DevConsole {
     this.input = d.root.querySelector('input') as HTMLInputElement;
     this.hint = d.root.querySelector('.hint') as HTMLElement;
     this.input.addEventListener('keydown', e => this.key(e));
-    this.input.addEventListener('input', () => this.showUsage());
+    this.input.addEventListener('input', () => {
+      this.tabbed = this.listed = undefined; // typing starts over: only two Tabs in a row list the choices
+      this.showUsage();
+    });
     this.input.addEventListener('keyup', e => e.stopPropagation());
     // registered before Input's own listener (see DevConsoleDeps.input), so a click that closes the console can take the mouse back
     d.canvas.addEventListener('pointerdown', () => this.close());
@@ -136,7 +139,9 @@ export class DevConsole {
       rest = this.input.value.slice(caret);
     const { line: next, choices } = tabComplete(line, this.d.commands.complete(line));
     if (next !== line) {
-      this.input.value = next + rest;
+      // a completed word's space would double one already after the caret: use that one, and put the caret past it
+      const head = next.endsWith(' ') && /^\s/.test(rest) ? next.slice(0, -1) : next;
+      this.input.value = head + rest;
       this.input.setSelectionRange(next.length, next.length);
     } else if (choices.length && this.listed !== this.input.value) {
       if (this.tabbed === this.input.value) {
