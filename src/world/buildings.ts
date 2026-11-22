@@ -122,9 +122,18 @@ export class BuildingIndex {
   readonly footprints: Footprint[] = [];
   /** each cell lists the indices of the footprints whose bounding box touches it */
   readonly grid = new Map<string, number[]>();
+  private readonly barriers: { collide(o: { x: number; z: number }, r: number): boolean }[] = [];
 
   constructor(data: WorldData) {
     for (const b of data.b) this.addFootprint(b.p);
+  }
+
+  /**
+   * Adds something else that `collide` pushes out from, without a footprint: a bridge's railings (#238), which
+   * people, cats and the streetscape must not take for a house.
+   */
+  addBarrier(barrier: { collide(o: { x: number; z: number }, r: number): boolean }) {
+    this.barriers.push(barrier);
   }
 
   /** Adds an outline that things collide with; returns its index in `footprints`. */
@@ -188,6 +197,7 @@ export class BuildingIndex {
         }
       }
     }
+    for (const b of this.barriers) if (b.collide(o, r)) hit = true;
     return hit;
   }
 }

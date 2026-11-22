@@ -1,6 +1,6 @@
 import '../three-legacy';
 import * as THREE from 'three';
-import { type Bridge, type BridgeArchetype, type BridgeIndex, EDGE_BEAM_M, WALKWAY_CURB_M } from '../bridges';
+import { type Bridge, type BridgeArchetype, type BridgeIndex, RAILING_INSET_M, WALKWAY_CURB_M } from '../bridges';
 import { mitreAt, pointAtArc, resample } from '../polyline';
 import { hash01 } from '../random';
 
@@ -25,8 +25,6 @@ const UNDERSIDE_SHADE = 0.6;
 
 /** the parts are swept every this many metres, so the crest is smooth (m) */
 const SWEEP_STEP_M = 1;
-/** railings start and end this far inside the deck's ends (m) */
-const RAILING_INSET_M = 0.3;
 
 // ---------- cross-sections (game-design values, all inferred: OSM maps none of this here) ----------
 const SLAB_DEPTH_M = 0.7;
@@ -35,6 +33,7 @@ const UNDER_RIBBON_M = 0.05;
 const EDGE_BEAM_UP_M = 0.15;
 const STEEL_PLATE_M = 0.12;
 const STEEL_GIRDER_M = 0.45;
+/** a girder's width: twice BridgeIndex's steel railing offset, so the railing stands on the girder's middle */
 const STEEL_GIRDER_W_M = 0.15;
 const STEEL_GIRDER_UP_M = 0.1;
 const TIMBER_BOARDS_M = 0.08;
@@ -83,7 +82,7 @@ function crossSection(b: Bridge, top: boolean): { parts: Part[]; railing: Railin
     return {
       parts,
       railing: {
-        offsetM: h - EDGE_BEAM_M / 2,
+        offsetM: b.railingM,
         footM: beamTop,
         heightM: WALKWAY_CURB_M + 1.1 - beamTop,
         postEveryM: 2,
@@ -106,7 +105,7 @@ function crossSection(b: Bridge, top: boolean): { parts: Part[]; railing: Railin
         { o0: g, o1: h, y0: -STEEL_GIRDER_M, y1: STEEL_GIRDER_UP_M, colour: paint },
       ],
       railing: {
-        offsetM: h - STEEL_GIRDER_W_M / 2,
+        offsetM: b.railingM,
         footM: STEEL_GIRDER_UP_M,
         // a cycle bridge's 3 m deck gets the higher railing
         heightM: (b.halfWidthM >= 1.5 ? 1.3 : 1.2) - STEEL_GIRDER_UP_M,
@@ -138,7 +137,7 @@ function crossSection(b: Bridge, top: boolean): { parts: Part[]; railing: Railin
       },
     ],
     railing: {
-      offsetM: h - 0.05,
+      offsetM: b.railingM,
       footM: surface,
       heightM: 1,
       postEveryM: 1.5,

@@ -53,6 +53,45 @@ describe('BridgeIndex on a fixture', () => {
   });
 });
 
+describe('railings', () => {
+  const index = new BridgeIndex(roadWorld, sloped);
+  const [b] = index.bridges;
+  const CAR_R = 1.5;
+
+  it('stand on the edge beams, inside the deck', () => {
+    expect(b.railingM).toBeCloseTo(b.halfWidthM - 0.2);
+  });
+
+  it('push a car back onto the deck, and leave one on the carriageway alone', () => {
+    const car = { x: 0, z: b.railingM - 0.5 };
+    expect(index.collide(car, CAR_R)).toBe(true);
+    expect(car.z).toBeCloseTo(b.railingM - CAR_R);
+    expect(car.x).toBe(0);
+    const onRoad = { x: 3, z: -2 };
+    expect(index.collide(onRoad, CAR_R)).toBe(false);
+    expect(onRoad).toEqual({ x: 3, z: -2 });
+  });
+
+  it('push something that reached the far side back out there, and stop short of the deck ends', () => {
+    const out = { x: 0, z: -(b.railingM + 0.3) };
+    expect(index.collide(out, 0.5)).toBe(true);
+    expect(out.z).toBeCloseTo(-(b.railingM + 0.5));
+    // past the railing's end, 0.3 m inside the deck end, on the approach
+    expect(index.collide({ x: -10.5, z: b.railingM }, 0.1)).toBe(false);
+  });
+
+  it('keep a car off a footbridge: it stops at the railing ends', () => {
+    const w = makeWorld({ r: [{ c: RoadClass.PATH, n: '', p: [0, 0, 8, 0], i: 9, br: { cy: 1 } }] });
+    const foot = new BridgeIndex(w, { heightAt: () => 0 });
+    const car = { x: 0.2, z: 0 };
+    expect(foot.collide(car, CAR_R)).toBe(true);
+    expect(car.x).toBeLessThan(0.2);
+    // people walk clear of the railings
+    const walker = { x: 4, z: foot.walkOffsetM(0)! };
+    expect(foot.collide(walker, 0.35)).toBe(false);
+  });
+});
+
 describe('grouping and archetypes', () => {
   it('joins pieces that share an end, whichever way they run, but not across a class or layer change', () => {
     const w = makeWorld({
