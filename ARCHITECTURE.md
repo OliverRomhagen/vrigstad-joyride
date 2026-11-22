@@ -65,7 +65,7 @@ src/
               wanted level, pedestrians. step(state, input, dt). No three.js, no DOM.
     render/   three.js scene and the game's ground texture; syncs meshes
               from sim state each frame
-    input/    keyboard, touch, gamepad ──► Input intents
+    input/    keyboard, touch, gamepad ──► intents and commands
     audio/    reacts to sim events
     loop.ts   fixed-timestep sim, interpolated render
     store.svelte.ts   HUD state the UI reads
@@ -80,11 +80,11 @@ tests/
 ### Data flow in the game
 
 ```
- Input devices ──► input/ ──► Input intents
+ Input devices ──► input/ ──► intents, commands
                                    │
                                    ▼
                ┌──────── sim.step(state, input, dt) ────────┐  fixed 60 Hz
-               │  state: plain objects     events: busted,  │
+               │  state: plain objects     events: caught,  │
                │                           star-added, ...  │
                └──────┬───────────────────────────┬─────────┘
                       │ read only                 │
@@ -99,6 +99,28 @@ tests/
 - **sim/ has no three.js** so game rules can be unit-tested in Node, run at a fixed timestep (same feel at any framerate), and later run on a server or in a worker for multiplayer (#1).
 - **The UI only reads a store** so Svelte's reactivity never touches the hot loop. The game writes HUD values when they change (speed throttled to ~10 Hz), not every frame.
 - **Events, not calls, between systems.** The sim says "a star was added"; the UI shows a toast, audio plays a siren, render flashes the lights. New features plug in without editing the sim.
+
+### Commands in, events out
+
+The direction the boundaries above add up to: a small, deterministic sim core with two doors. **Commands** go in, **events** come out, and everything else is a client of those two: input, UI, audio, render, the network, dev tools and tests.
+
+```
+ keys, touch, gamepad ─┐                                  ┌─► audio, HUD, render
+ the console, panels  ─┼─► commands ─► sim.step ─► events ┼─► the Log, achievements, stats
+ links, scripts, tests ┤    (hooks: Log,                  └─► the network (#1)
+ the network (#1)     ─┘     Record for replays)
+```
+
+- **A command is a named thing that can happen**: `enter`, `buy trisslott`, `stars 3`, and later `set vehicle.volvo.top-speed 45` (#357). Players, dev tools and tests all go through the same registry (`docs/console.md`, #354), with access (`player` or `dev`) and the source on each call. A command only calls its module's rule. Player actions move there in #366.
+- **Input still becomes intents** (rule 3): what is held every frame (`throttle`, `steer`, `brake`) stays an intent, and what happens once (pressing E to get into a car) becomes a command. Today a command runs between frames; once the sim steps on a fixed timestep (#49), a command that changes sim state queues an intent for the next step (#361).
+- **An event is a named thing that happened**, in the past tense: `caught`, `star-added`, `knocked-over`. One typed bus in sim code delivers them after the step that raised them (after the frame, until #49), so a listener never changes that step. A listener gets its own off switch, like the console's hooks. The bus comes in #367.
+- **A feature is a plugin**: its commands, its event listeners, its hooks and its panel, installed and taken out as one. Cats, pets, the trisslott and lab experiments (#323) fit that shape; so would mods, later, without a new design.
+- **Content is a registry**: places, cars and shop items are lists that commands read (a `choice` argument). A new place then completes in the console and works with `go`, without wiring of its own.
+- **Overlays are panels** in one host, the console's (`docs/console.md`, "Panels and plugins"), so the kiosk and cat menus and a future phone ask one owner for the cursor (#335).
+
+Why: once #49 and #361 land, replays and multiplayer need only the commands in, each stamped with its step, and a deterministic step (the seeded `rnd()` of rule 5). Key remapping and accessibility become another mapping. A tutorial waits for a command, and a test runs one. A new reaction to something (a siren, a line, an achievement) is a listener, not an edit to the module where it happens.
+
+This is a direction, not a rewrite: code moves when it is touched for another reason, or in the tickets above.
 
 ## Stack
 
@@ -127,7 +149,7 @@ Short records so settled questions stay settled. Add one when you make a choice 
 - **HUD stays DOM; in-world UI uses canvas textures.** HTML-in-canvas (#56) replaces the canvas textures once browsers support it.
 - **No physics engine yet.** Collisions are hand-rolled. Rapier is the candidate when crashes (#40) need more (#54).
 - **One command registry, and modules own their commands (#218).** `src/game/commands.ts` is sim code; the console box is page code over it. A command reads typed arguments and calls its module's API; logging, access, recording and multiplayer go in hooks around every run, not in the commands. See [docs/console.md](docs/console.md).
-- **Lab experiments live in `src/lab/`, one folder each, off by default (#227).** `src/lab/flags.ts` lists them, each with an English name and what it costs; `?lab=<id>,<id>` switches them on, and later the settings menu (#78) and the console (#218) set the same flags. The game reads them once, at page load, so a change there takes a reload until experiments can start and stop while it runs. Gameplay asks the flags, never the URL. Each experiment is loaded with a dynamic `import()` only when its flag is on. While the page is built as one file it still ships in that file but doesn't run; with multi-file output it becomes its own chunk. Dropping one means deleting its folder and its entry. `src/lab/hello/` is the template.
+- **Lab experiments are written where their code belongs, off by default (#227, #323).** An experiment's code goes where it would live once it graduates (a module in `src/game/` or `src/game/sim/`, `src/game/render/`, `src/world/`, or a page module), in its own files where possible, so the architecture checks apply from its first commit. In `src/lab/`, the ragdolls (#253) met those checks only when they graduated, and splitting their rules from their drawing then was most of the work. `src/lab/flags.ts` lists the experiments, each with an English name and what it costs; `?lab=<id>,<id>` switches them on, and later the settings menu (#78) and the console (#218) set the same flags. The game reads them once, at page load, so a change there takes a reload until experiments can start and stop while it runs. Gameplay asks the flags, never the URL. The flags are page code, which sim and render code can't import, so each gate is a `lab.on('<id>')` check where page code wires the experiment in, and sim and render code get it as a constant or a callback when they're built. An experiment may change the rules, but only behind its flag. Its code is loaded with a dynamic `import()` behind the check, so with the flag off it doesn't run; while the page is built as one file it still ships in that file, and with multi-file output it becomes its own chunk. It's imported statically only when it must apply before the page draws, such as a font. Graduating deletes its entry and turns each gate into ordinary wiring; dropping one deletes its files too.
 - **No ECS yet.** Plain arrays per system; revisit with miniplex when entity kinds multiply (#55).
 
 ## Coordinates and data
