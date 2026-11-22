@@ -57,7 +57,7 @@ describe('tunable commands', () => {
     c.run('set cat.naps 9');
     expect(c.run('reset car.grip')).toBe('car.grip = 2 1/s');
     expect(cat.NAPS).toBe(9);
-    expect(c.run('reset')).toBe('Every tunable is back to its default.');
+    expect(c.run('reset')).toBe('Every tunable is back to its default (1 had changed).');
     expect(car).toEqual({ SPEED: 10, GRIP: 2 });
     expect(cat.NAPS).toBe(3);
   });
@@ -77,6 +77,30 @@ describe('tunable commands', () => {
     registerTunableCommands(c, t);
     expect(c.run('get vehicle.volvo.top-speed')).toMatch(/^vehicle\.volvo\.top-speed = [\d.]+ m\/s: /);
     expect(c.run('list steering').split('\n')).toHaveLength(2);
-    t.reset();
+  });
+
+  it('shows a typed value in full, without float noise', () => {
+    const { c } = console_();
+    expect(c.run('set car.grip 1.0000001')).toBe('car.grip = 1.0000001 1/s (was 2)');
+    expect(c.run('set car.grip 0.1')).toBe('car.grip = 0.1 1/s (was 1.0000001)');
+  });
+
+  it('marks a number with its own reset as changed once set, even to its default', () => {
+    const t = new Tunables();
+    let response = 0.2;
+    t.add(
+      'car.response',
+      { unit: 's', min: 0, max: 1, help: 'response' },
+      () => response,
+      v => (response = v),
+      () => (response = 0.2),
+    );
+    const c = new Commands();
+    registerTunableCommands(c, t);
+    c.run('set car.response 0.2');
+    expect(c.run('list')).toBe('car: 1 number, 1 changed');
+    expect(c.run('list car')).toBe('car.response = 0.2 s (default 0.2)');
+    c.run('reset car.response');
+    expect(c.run('list')).toBe('car: 1 number');
   });
 });

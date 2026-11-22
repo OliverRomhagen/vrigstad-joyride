@@ -6,7 +6,7 @@ import type { TunableInfo, Tunables } from './tunables';
 
 /** Adds set, get, list and reset over every number in `tunables`. */
 export function registerTunableCommands(commands: Pick<Commands, 'register'>, tunables: Tunables): void {
-  const key = () => choice('tunable', () => tunables.keys());
+  const tunableArg = () => choice('tunable', () => tunables.keys());
   const show = (k: string) => `${k} = ${fmt(tunables.get(k))} ${info(tunables, k).unit}`;
 
   commands.register(
@@ -15,7 +15,7 @@ export function registerTunableCommands(commands: Pick<Commands, 'register'>, tu
       help: 'change a gameplay number while the game runs',
       details: 'The value is in the number’s unit and range: get <tunable> shows both. reset puts it back.',
       examples: ['set driving.grip 8', 'set vehicle.volvo.top-speed 45'],
-      args: [key(), described(num('value'), 'in the tunable’s unit, within its range')],
+      args: [tunableArg(), described(num('value'), 'in the tunable’s unit, within its range')],
       run: ({ tunable, value }) => {
         const before = tunables.get(tunable);
         try {
@@ -34,10 +34,10 @@ export function registerTunableCommands(commands: Pick<Commands, 'register'>, tu
     command({
       help: 'show a gameplay number, its unit, range and default',
       examples: ['get driving.grip'],
-      args: [key()],
+      args: [tunableArg()],
       run: ({ tunable }) => {
-        const t = info(tunables, tunable);
-        return `${show(tunable)}: ${t.help}\nDefault ${fmt(t.defaultValue)}, from ${fmt(t.min)} to ${fmt(t.max)} ${t.unit}.`;
+        const entry = info(tunables, tunable);
+        return `${show(tunable)}: ${entry.help}\nDefault ${fmt(entry.defaultValue)}, from ${fmt(entry.min)} to ${fmt(entry.max)} ${entry.unit}.`;
       },
     }),
   );
@@ -50,26 +50,28 @@ export function registerTunableCommands(commands: Pick<Commands, 'register'>, tu
         'On its own it lists the groups, with how many numbers each has changed. A changed number shows its default.',
       examples: ['list', 'list driving', 'list vehicle.volvo'],
       args: [optional(prefix(tunables))],
-      run: ({ prefix: p }) => {
-        const changed = (k: string) => tunables.get(k) !== info(tunables, k).defaultValue;
-        if (p === undefined) {
+      run: ({ prefix: start }) => {
+        if (start === undefined) {
           // a group is a key without its last part: `vehicle.volvo` for `vehicle.volvo.top-speed`
           const groups = new Map<string, string[]>();
           for (const k of tunables.keys()) {
-            const g = k.slice(0, k.lastIndexOf('.'));
-            groups.set(g, [...(groups.get(g) ?? []), k]);
+            const group = k.slice(0, k.lastIndexOf('.'));
+            const keys = groups.get(group);
+            if (keys) keys.push(k);
+            else groups.set(group, [k]);
           }
           return [...groups]
-            .map(([g, keys]) => {
-              const n = keys.filter(changed).length;
-              return `${g}: ${keys.length} number${keys.length > 1 ? 's' : ''}${n ? `, ${n} changed` : ''}`;
+            .map(([group, keys]) => {
+              const changedCount = keys.filter(k => tunables.isChanged(k)).length;
+              const changed = changedCount ? `, ${changedCount} changed` : '';
+              return `${group}: ${keys.length} number${keys.length > 1 ? 's' : ''}${changed}`;
             })
             .join('\n');
         }
         return tunables
           .keys()
-          .filter(k => k === p || k.startsWith(p + '.'))
-          .map(k => (changed(k) ? `${show(k)} (default ${fmt(info(tunables, k).defaultValue)})` : show(k)))
+          .filter(k => k === start || k.startsWith(start + '.'))
+          .map(k => (tunables.isChanged(k) ? `${show(k)} (default ${fmt(info(tunables, k).defaultValue)})` : show(k)))
           .join('\n');
       },
     }),
@@ -80,10 +82,15 @@ export function registerTunableCommands(commands: Pick<Commands, 'register'>, tu
     command({
       help: 'put a gameplay number back to its default, or every one',
       examples: ['reset driving.grip', 'reset'],
-      args: [optional(key())],
+      args: [optional(tunableArg())],
       run: ({ tunable }) => {
-        tunables.reset(tunable);
-        return tunable === undefined ? 'Every tunable is back to its default.' : show(tunable);
+        if (tunable !== undefined) {
+          tunables.reset(tunable);
+          return show(tunable);
+        }
+        const changedCount = tunables.keys().filter(k => tunables.isChanged(k)).length;
+        tunables.reset();
+        return `Every tunable is back to its default (${changedCount} had changed).`;
       },
     }),
   );
@@ -102,20 +109,20 @@ function prefix(tunables: Tunables): Arg<'prefix', string> {
   return {
     ...choice('prefix', prefixes),
     parse: w => {
-      const p = w.toLowerCase().replace(/\.$/, '');
-      if (!prefixes().includes(p)) throw new UsageError(`No tunable starts with ${w}.`);
-      return p;
+      const start = w.toLowerCase().replace(/\.$/, '');
+      if (!prefixes().includes(start)) throw new UsageError(`No tunable starts with ${w}.`);
+      return start;
     },
   };
 }
 
 function info(tunables: Tunables, key: string): TunableInfo {
-  const t = tunables.entry(key);
-  if (!t) throw new UsageError('No tunable called ' + key + '.');
-  return t;
+  const entry = tunables.entry(key);
+  if (!entry) throw new UsageError('No tunable called ' + key + '.');
+  return entry;
 }
 
-// rounds away float noise (0.30000000000000004) without hiding a value someone typed
+// rounds away float noise (0.30000000000000004, 17 digits) without hiding a value someone typed (12.0000001)
 function fmt(v: number): string {
-  return String(Number(v.toPrecision(6)));
+  return String(Number(v.toPrecision(12)));
 }

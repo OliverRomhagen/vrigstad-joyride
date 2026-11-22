@@ -515,8 +515,10 @@ test.describe('game (index.html)', () => {
     };
     await expect(await run('adopt dog')).toHaveText('No pet called dog. Usage: adopt <cat>');
     await expect(await run('adopt cat')).toHaveText('Adopted a cat.');
-    await expect(await run('set driving.grip 8')).toHaveText(/^driving\.grip = 8 1\/s \(was [\d.]+\)$/); // the tunables (#357)
-    await expect(await run('reset driving.grip')).not.toHaveText(/= 8 /);
+    const setLine = await run('set driving.grip 8'); // the tunables (#357)
+    await expect(setLine).toHaveText(/^driving\.grip = 8 1\/s \(was [\d.]+\)$/);
+    const was = (await setLine.textContent()).match(/was ([\d.]+)/)[1];
+    await expect(await run('reset driving.grip')).toHaveText(`driving.grip = ${was} 1/s`);
     await expect(await run('adopt --help')).toHaveText(
       'adopt <cat>: adopt a new random pet of that kind\nExamples:\n  adopt cat',
     ); // every command answers --help
