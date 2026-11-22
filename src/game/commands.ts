@@ -107,13 +107,17 @@ export class Commands {
     if (!cmd || name === undefined) return `Unknown command: ${typed}. Type help for the list.`;
     if (!this.canRun(cmd)) return `${name} works in dev mode only (?dev).`;
     const call: Call = { name, args, source };
+    let answer: string | undefined;
+    // runs the command once, however many times the hooks call next(): a second call gets the same line back
     const inner = () => {
+      if (answer !== undefined) return answer;
       try {
-        return cmd.run(args, call);
+        answer = cmd.run(args, call);
       } catch (err) {
-        if (err instanceof UsageError) return `${err.message ? err.message + ' ' : ''}Usage: ${this.usage(name, cmd)}`;
-        throw err;
+        if (!(err instanceof UsageError)) throw err;
+        answer = `${err.message ? err.message + ' ' : ''}Usage: ${this.usage(name, cmd)}`;
       }
+      return answer;
     };
     // the first hook is the outermost: fold from the last one in
     const chain = this.hooks.reduceRight<() => string>((next, hook) => () => hook(call, next), inner);

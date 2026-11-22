@@ -105,6 +105,18 @@ describe('commands', () => {
       expect(seen).toEqual(['outer echo test', 'inner a,b']);
     });
 
+    it('run the command once when a hook calls next twice', () => {
+      const c = new Commands();
+      let runs = 0;
+      c.register('count', { help: 'count', run: () => String(++runs) });
+      c.use((_call, next) => {
+        next();
+        return next();
+      });
+      expect(c.run('count')).toBe('1');
+      expect(runs).toBe(1);
+    });
+
     it('can stop a command by not calling next, and see its usage line', () => {
       const c = echo();
       let ran = false;
