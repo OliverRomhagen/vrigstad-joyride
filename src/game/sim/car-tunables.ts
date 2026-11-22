@@ -107,8 +107,8 @@ const RESPONSE: Record<'steerResponseS' | 'throttleResponseS', TunableSpec & { n
 };
 
 // Each number is written to every spec of the type (specsOfType, tuneResponse), so it reaches cars already driving and
-// every model. A model may bring its own response times: the type's default means "not tuned", so setting it, or a reset,
-// gives each model its own back.
+// every model. A model may bring its own response times: a set value, even the type's default, wins over them, and only a
+// reset gives each model its own back.
 function registerType(t: Tunables, type: CarType): void {
   const base = VEHICLE_SPECS[type];
   for (const field of Object.keys(SPEC) as (keyof typeof SPEC)[]) {
@@ -129,7 +129,8 @@ function registerType(t: Tunables, type: CarType): void {
       `vehicle.${type}.${name}`,
       spec,
       () => base.handling[field],
-      v => tuneResponse(type, field, v === defaultValue ? undefined : v, defaultValue),
+      v => tuneResponse(type, field, v, defaultValue),
+      () => tuneResponse(type, field, undefined, defaultValue),
     );
   }
 }

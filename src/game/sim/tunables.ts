@@ -20,25 +20,27 @@ export interface Tunable extends TunableSpec {
   readonly defaultValue: number;
   get(): number;
   set(value: number): void;
+  /** puts the default back, for a number whose default isn't one value (`set(defaultValue)` otherwise) */
+  reset?(): void;
 }
 
 const KEY = /^[a-z][a-zA-Z0-9]*(\.[a-z][a-zA-Z0-9]*)+$/;
 
 /** What `entry` shows of a tunable: everything but the way in, so a caller can't skip the range check. */
-export type TunableInfo = Omit<Tunable, 'get' | 'set'>;
+export type TunableInfo = Omit<Tunable, 'get' | 'set' | 'reset'>;
 
 /** The registry; the game makes one and every area adds its numbers to it. */
 export class Tunables {
   private readonly byKey = new Map<string, Tunable>();
 
   /** Adds a number reached through get and set; its current value becomes its default. */
-  add(key: string, spec: TunableSpec, get: () => number, set: (value: number) => void): void {
+  add(key: string, spec: TunableSpec, get: () => number, set: (value: number) => void, reset?: () => void): void {
     if (!KEY.test(key)) throw new Error('tunable keys are dotted lower camel case: ' + key);
     if (this.byKey.has(key)) throw new Error('tunable already registered: ' + key);
     const defaultValue = get();
     if (!(spec.min <= defaultValue && defaultValue <= spec.max))
       throw new Error(`${key}: default ${defaultValue} is outside ${spec.min}..${spec.max}`);
-    this.byKey.set(key, { ...spec, key, defaultValue, get, set });
+    this.byKey.set(key, { ...spec, key, defaultValue, get, set, ...(reset && { reset }) });
   }
 
   /**
@@ -74,7 +76,7 @@ export class Tunables {
   entry(key: string): TunableInfo | undefined {
     const t = this.byKey.get(key);
     if (!t) return undefined;
-    const { get: _get, set: _set, ...info } = t;
+    const { get: _get, set: _set, reset: _reset, ...info } = t;
     return info;
   }
 
@@ -92,7 +94,9 @@ export class Tunables {
 
   /** Puts one number back to its default, or every number when no key is given. */
   reset(key?: string): void {
-    for (const t of key === undefined ? this.byKey.values() : [this.need(key)]) t.set(t.defaultValue);
+    for (const t of key === undefined ? this.byKey.values() : [this.need(key)])
+      if (t.reset) t.reset();
+      else t.set(t.defaultValue);
   }
 
   /**

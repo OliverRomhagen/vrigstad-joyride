@@ -52,6 +52,14 @@ describe('registerCarTunables', () => {
     expect(VEHICLE_SPECS.epa.handling.steerResponseS).toBe(0.16);
   });
 
+  it("sets a response time to the type's default over a model's own, as a slider dragged back to it does", () => {
+    const own = specFor('saab', { handling: { steerResponseS: 0.14 } });
+    t.set('vehicle.saab.steerResponse', VEHICLE_SPECS.saab.handling.steerResponseS);
+    expect(own.handling.steerResponseS).toBe(VEHICLE_SPECS.saab.handling.steerResponseS);
+    t.reset('vehicle.saab.steerResponse');
+    expect(own.handling.steerResponseS).toBe(0.14);
+  });
+
   it('gives a copy made after the tune the tuned response, and its own value back on reset (as ?tune= does at load)', () => {
     t.override('vehicle.traktor.steerResponse:0.05');
     const own = specFor('traktor', { handling: { steerResponseS: 0.3 } }),
