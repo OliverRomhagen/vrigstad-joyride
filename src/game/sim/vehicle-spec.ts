@@ -37,8 +37,8 @@ export type VehicleSpec = {
 
 // Wheelbase and rear axle are where the procedural model draws its wheels; a GLB model brings its own measured ones.
 // Response times: the civilian cars answer a little late, so they feel some weight; the police stay sharp for the chase.
-// not read-only: the tunables registry (car-tunables.ts) changes the numbers in it while the game runs
-export const VEHICLE_SPECS: Record<CarType, VehicleSpec> = {
+// The tunables registry (car-tunables.ts) changes the numbers in each spec while the game runs; a type's spec is never replaced.
+export const VEHICLE_SPECS: Readonly<Record<CarType, VehicleSpec>> = {
   volvo: {
     name: 'Volvo 240',
     max: 38,
@@ -140,8 +140,8 @@ export type ModelOverrides = {
 };
 
 // one spec per type and model, made the first time it's asked for, so cars that share both share one object, and a
-// tuned number reaches every car of the type (specsOfType, tuneResponse)
-const forModel = new WeakMap<ModelOverrides, Partial<Record<CarType, VehicleSpec>>>();
+// tuned number reaches every car of the type (specsOfType, tuneResponse). Models come from the fixed table in
+// render/vehicle-registry.ts, so this holds at most one copy per model, and a lookup walks a handful.
 const copies = new Map<CarType, { spec: VehicleSpec; model: ModelOverrides }[]>();
 
 type Response = Pick<Handling, 'steerResponseS' | 'throttleResponseS'>;
@@ -153,11 +153,12 @@ export function specFor(type: CarType, model?: ModelOverrides): VehicleSpec {
   const base = VEHICLE_SPECS[type];
   if (!base) throw new Error(`unknown car type: ${type}`);
   if (!model?.wheelbase && !model?.rearAxle && !model?.handling && !model?.suspension) return base;
-  const known = forModel.get(model)?.[type];
-  if (known) return known;
+  const ofType = copies.get(type) ?? [];
+  const known = ofType.find(c => c.model === model);
+  if (known) return known.spec;
   const spec = mergeModel(type, base, model);
-  forModel.set(model, { ...forModel.get(model), [type]: spec });
-  copies.set(type, [...(copies.get(type) ?? []), { spec, model }]);
+  ofType.push({ spec, model });
+  copies.set(type, ofType);
   return spec;
 }
 
