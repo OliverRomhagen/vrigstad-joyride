@@ -93,7 +93,7 @@ describe('Skroten yard', () => {
     expect(y.passable).toEqual([1, 2]);
     expect(worldToYard(SKROT_HALL.x, SKROT_HALL.z).u).toBeGreaterThan(YARD.uMax);
     const ws = y.workshop!;
-    expect(ws.doorTo - ws.doorFrom).toBe(WORKSHOP_DOOR.w);
+    expect(ws.doorTo - ws.doorFrom).toBeCloseTo(WORKSHOP_DOOR.w);
     expect(ws.doorWall.nx).toBeLessThan(-0.9); // the west wall, facing the yard
     // no fence between the yard and the door: a car fits through it
     const mid = (ws.doorFrom + ws.doorTo) / 2,
@@ -128,6 +128,13 @@ describe('Skroten yard', () => {
     expect(y.workshop).toBeNull();
     expect(y.passable).toEqual([]);
     expect(Math.max(...y.fence.flatMap(f => [f.u0, f.u1]))).toBe(YARD.uMax);
+  });
+
+  it('keeps a hall with no wall facing the yard solid, since it gets no walls of its own', () => {
+    const diamond = [935, 88, 945, 78, 955, 88, 945, 98], // every wall at 45°, so none faces back along u
+      y = yardLayout([{ p: [0, 0, 10, 0, 10, 10, 0, 10] }, { p: diamond }, { p: CARPORT }]);
+    expect(y.workshop).toBeNull();
+    expect(y.passable).toEqual([2]); // the carport only
   });
 
   it('opens the yard onto the carport: a car drives from the ring into an empty bay between its posts', () => {

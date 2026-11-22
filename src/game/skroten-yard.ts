@@ -346,6 +346,7 @@ const FRESH_COLOURS = ['#b9bab4', '#1f3b6a', '#8c1c1c', '#e8e4d8', '#2b2b2b', '#
 export const SALE_SIGN = { u: 21, v: 25.2, w: 5 } as const; // w: the TILL SALU board's width (m), its posts inside it
 const WRECK_GAP_M = 2.6; // between the middles of neighbours in a row
 const WRECK_HALF_LEN_M = 2.7; // half the longest car's length, for the row's outline
+const WRECK_SPREAD_M = 0.5; // how far a wreck's jitter (±0.4 m, ±0.15 rad) can carry its ends past its row's line
 const TRACTORS = [
   // two old tractors: a broken red one in the yard, leaning where its wheel came off, and a green one that still runs, in the carport's
   // last bay (here only when there is no carport)
@@ -553,7 +554,14 @@ export function yardLayout(
         });
       }
     }
-    outlines.push(rect((row.u0 + row.u1) / 2, row.v, row.u1 - row.u0 + 2.2, WRECK_HALF_LEN_M * 2));
+    outlines.push(
+      rect(
+        (row.u0 + row.u1) / 2,
+        row.v,
+        row.u1 - row.u0 + 2.2,
+        (WRECK_HALF_LEN_M + (row.fresh ? 0 : WRECK_SPREAD_M)) * 2,
+      ),
+    );
   }
   let looseWheel: { u: number; v: number } | null = null;
   for (const { broken, bay, ...spot } of TRACTORS) {
@@ -618,7 +626,7 @@ export function yardLayout(
     signs: SIGNS_XZ.map(s => ({ ...worldToYard(s.x, s.z), facing: s.facing })),
     workshop,
     carport,
-    passable: [hallIndex, shedIndex].filter(i => i >= 0),
+    passable: [workshop ? hallIndex : -1, carport ? shedIndex : -1].filter(i => i >= 0), // only a building whose walls were built
     outlines,
   };
 }
