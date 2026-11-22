@@ -41,10 +41,10 @@ describe('tunable commands', () => {
     expect(c.run('get car.grip')).toBe('car.grip = 4 1/s: grip\nDefault 2, from 0 to 5 1/s.');
   });
 
-  it('lists every number or those under a prefix, and shows the default of a changed one', () => {
+  it('lists the groups, or the numbers under a prefix, and shows the default of a changed one', () => {
     const { c } = console_();
     c.run('set car.grip 4');
-    expect(c.run('list')).toBe('car.grip = 4 1/s (default 2)\ncar.top-speed = 10 m/s\ncat.naps = 3 per hour');
+    expect(c.run('list')).toBe('car: 2 numbers, 1 changed\ncat: 1 number');
     expect(c.run('list car')).toBe('car.grip = 4 1/s (default 2)\ncar.top-speed = 10 m/s');
     expect(c.run('list car.')).toBe(c.run('list car'));
     expect(c.run('list car.grip')).toBe('car.grip = 4 1/s (default 2)');

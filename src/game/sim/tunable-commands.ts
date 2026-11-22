@@ -45,20 +45,33 @@ export function registerTunableCommands(commands: Pick<Commands, 'register'>, tu
   commands.register(
     'list',
     command({
-      help: 'list the gameplay numbers, or the ones under a prefix',
-      details: 'A number changed from its default shows the default after it.',
+      help: 'list the groups of gameplay numbers, or the numbers in one',
+      details:
+        'On its own it lists the groups, with how many numbers each has changed. A changed number shows its default.',
       examples: ['list', 'list driving', 'list vehicle.volvo'],
       args: [optional(prefix(tunables))],
-      run: ({ prefix: p }) =>
-        tunables
+      run: ({ prefix: p }) => {
+        const changed = (k: string) => tunables.get(k) !== info(tunables, k).defaultValue;
+        if (p === undefined) {
+          // a group is a key without its last part: `vehicle.volvo` for `vehicle.volvo.top-speed`
+          const groups = new Map<string, string[]>();
+          for (const k of tunables.keys()) {
+            const g = k.slice(0, k.lastIndexOf('.'));
+            groups.set(g, [...(groups.get(g) ?? []), k]);
+          }
+          return [...groups]
+            .map(([g, keys]) => {
+              const n = keys.filter(changed).length;
+              return `${g}: ${keys.length} number${keys.length > 1 ? 's' : ''}${n ? `, ${n} changed` : ''}`;
+            })
+            .join('\n');
+        }
+        return tunables
           .keys()
-          .filter(k => p === undefined || k === p || k.startsWith(p + '.'))
-          .map(k => {
-            const v = tunables.get(k),
-              d = info(tunables, k).defaultValue;
-            return v === d ? show(k) : `${show(k)} (default ${fmt(d)})`;
-          })
-          .join('\n'),
+          .filter(k => k === p || k.startsWith(p + '.'))
+          .map(k => (changed(k) ? `${show(k)} (default ${fmt(info(tunables, k).defaultValue)})` : show(k)))
+          .join('\n');
+      },
     }),
   );
 
