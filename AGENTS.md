@@ -176,4 +176,16 @@ Until the migration reaches a given rule, don't make the existing code worse in 
 | Trisslott | Swedish scratch lottery ticket (kiosk minigame) |
 | Safehouse | A house where you can lie low to clear stars |
 
+Code terms, so docs, issues and PRs use one word for one thing:
+
+| Term | Meaning |
+|---|---|
+| ECS | Entity–component–system: entities are plain data, made of components, and systems are functions over every entity with a given set of components. Not adopted yet (#55). Say ECS, not "component pattern" or "entity system" |
+| Entity | One thing in the sim: a car, a cat, a pedestrian. Plain data, no methods |
+| ECS component | One named piece of data on an entity (`position`, `police`). Write "ECS component" where "component" could mean a Svelte component |
+| System | A function the sim runs every step over the entities it handles (traffic, the chase). With an ECS, the entities that have a given set of components |
+| Sim | Gameplay state and rules: plain data and functions, no three.js or DOM (Architecture rules, rule 2) |
+| Render | The code that reads sim state each frame and draws it; it never writes to the sim |
+| Intent | What held input becomes: `throttle / steer / brake`. Gameplay reads intents, never keys or touches; a one-off action, such as pressing E, is a command (`docs/console.md`) |
+
 Update this file when a convention changes. If you notice the instructions are wrong or out of date, fix them in your PR.
