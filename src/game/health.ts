@@ -1,5 +1,7 @@
 // Health and damage (#80): the player's health and each car's damage, as plain data and pure rules (no three.js, no DOM).
 // Crashes (#40), knocking down pedestrians (#35), food (#30), drink (#16) and cat scratches build on hurt / heal / damageCar.
+import { command, optional, toggle } from './command-args';
+import type { Commands } from './commands';
 
 export const HP_MAX = 100;
 export const KORV_HP = 10,
@@ -28,13 +30,17 @@ export const CRACK_AT = [20, 50, 75]; // cracked glass: the windscreen and rear 
 export interface Health {
   hp: number;
   calm: number; // s since the last hurt
+  god: boolean; // the dev console's god mode: nothing takes health
 }
 
-export const newHealth = (): Health => ({ hp: HP_MAX, calm: REGEN_DELAY_S });
+export const newHealth = (): Health => ({ hp: HP_MAX, calm: REGEN_DELAY_S, god: false });
+
+/** Whether n health would come off: false in god mode, or once the player is out. */
+export const canHurt = (h: Health, n: number) => n > 0 && h.hp > 0 && !h.god;
 
 /** Takes n health. True when this knocks the player out (health hits zero). */
 export function hurt(h: Health, n: number): boolean {
-  if (n <= 0 || h.hp <= 0) return false;
+  if (!canHurt(h, n)) return false;
   h.hp = Math.max(0, h.hp - n);
   h.calm = 0;
   return h.hp === 0;
@@ -135,4 +141,23 @@ export function wakeSpot<S extends Spot & { kind: string }>(
     }
   }
   return spot;
+}
+
+/** The dev console's `god [on|off]`: on its own it flips. Switching it on fills the health up too. */
+export function registerHealthCommands(commands: Pick<Commands, 'register'>, h: Health, drawHealth: () => void): void {
+  commands.register(
+    'god',
+    command({
+      help: 'god mode: nothing takes your health',
+      details: 'Crashes, cars and cats still happen; only the health stays. The police can still catch you.',
+      examples: ['god', 'god off'],
+      args: [optional(toggle('on'))],
+      run: ({ on }) => {
+        h.god = on ?? !h.god;
+        if (h.god) heal(h, HP_MAX);
+        drawHealth();
+        return h.god ? 'God mode on.' : 'God mode off.';
+      },
+    }),
+  );
 }

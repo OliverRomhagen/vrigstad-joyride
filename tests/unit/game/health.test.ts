@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { Commands } from '../../../src/game/commands';
 import {
   CRASH_COOL_S,
   crackLevel,
@@ -16,6 +17,7 @@ import {
   REGEN_DELAY_S,
   REGEN_HP_S,
   regen,
+  registerHealthCommands,
   runOverHurt,
   smokeLevel,
   topSpeedShare,
@@ -41,7 +43,7 @@ describe('player health', () => {
     const h = newHealth();
     h.hp = 50;
     expect(hurt(h, 0)).toBe(false);
-    expect(h).toEqual({ hp: 50, calm: REGEN_DELAY_S });
+    expect(h).toEqual({ hp: 50, calm: REGEN_DELAY_S, god: false });
   });
 
   it('heals up to the maximum', () => {
@@ -182,5 +184,24 @@ describe('waking up after a knock-out', () => {
 
   it('comes to at home when that is nearer, even with a kiosk closer still', () => {
     expect(wakeSpot(25, 0, home, places)).toBe(home);
+  });
+});
+
+describe('god mode', () => {
+  it('takes no health while on, and fills it up when switched on', () => {
+    const h = newHealth(),
+      c = new Commands();
+    let drawn = 0;
+    registerHealthCommands(c, h, () => drawn++);
+    hurt(h, 40);
+    expect(c.run('god')).toBe('God mode on.');
+    expect(h.hp).toBe(HP_MAX);
+    expect(hurt(h, HP_MAX)).toBe(false);
+    expect(h.hp).toBe(HP_MAX);
+    expect(c.run('god on')).toBe('God mode on.'); // on stays on, rather than flipping
+    expect(c.run('god')).toBe('God mode off.');
+    expect(hurt(h, HP_MAX)).toBe(true);
+    expect(c.run('god maybe')).toBe('on is on or off. Usage: god [on]');
+    expect(drawn).toBe(3);
   });
 });

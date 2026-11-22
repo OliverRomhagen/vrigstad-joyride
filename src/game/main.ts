@@ -49,7 +49,7 @@ import { Confetti } from './confetti';
 import { DevConsole } from './devconsole';
 import { newWallet, registerWalletCommands } from './economy';
 import { KIOSK, type Place, Places } from './places';
-import { CAT_SCRATCH_HP, LOW_HP, hurt, newHealth } from './health';
+import { CAT_SCRATCH_HP, canHurt, LOW_HP, hurt, newHealth, registerHealthCommands } from './health';
 import { HOME } from './player';
 import { Wanted } from './police';
 import { Ragdolls } from './ragdolls';
@@ -299,6 +299,8 @@ const commands = new Commands();
 const devcon = new DevConsole({ root: $('devcon'), commands, canvas, doc: document, get input() { return input; }, get enabled() { return DEV; }, get menuOpen() { return !kmenu.hidden; } });
 registerWalletCommands(commands, wallet);
 pets.registerCommands(commands);
+wanted.registerCommands(commands);
+registerHealthCommands(commands, health, drawHealth);
 
 // ---------- input: keys, mouse look and the touch controls (src/game/input.ts) ----------
 // the dev console sees each key first, then the menus (src/game/menu.ts)
@@ -331,7 +333,7 @@ const drivers = new ShoutingDrivers({ scene, groundAt, personParts, pick }), dri
 const actions = new Actions({ game, view, player, cars, places, wanted, health, wallet, menuOpen: () => !kmenu.hidden, closeMenu, showPlayer: v => { player.mesh.visible = v; }, nearPlace, enterHouse, leaveHouse, nearCat, catFirst, openOwnCat, petCat, openKiosk, collide, placeCar, rnd, pick, toast, carName,
   spokenName: c => vehicleVisuals.definition(meshed(c))?.spokenName, driverOut, spawnTraffic, drawStolen: () => { $('count').textContent = 'Cars stolen: ' + game.stolen; }, drawHealth, titleCard, sayLater: line => loop.sayLater(line), pickLine });
 const { nearestCar, action, respawn, busted, knockedOut } = actions;
-function hurtPlayer(n: number) { if (n <= 0) return; const was = health.hp;
+function hurtPlayer(n: number) { if (!canHurt(health, n)) return; const was = health.hp;
   hud.flashHurt(n); hurt(health, n); drawHealth();
   if (was >= LOW_HP && health.hp < LOW_HP && health.hp > 0) loop.sayLater('”Ja behöver nog en korv me brö.”'); }   // a hint at the kiosk
 

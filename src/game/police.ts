@@ -2,6 +2,8 @@
 // Moved from src/game/main.ts (#177); main.ts passes in car spawning, removal and the driving model, the roads, the seeded rolls and what the HUD shows. No three.js or DOM here.
 import { clamp, wrap } from '../world/math';
 import type { RoadNetwork } from '../world/roads';
+import { command, int } from './command-args';
+import type { Commands } from './commands';
 import { wrecked } from './health';
 
 export const MAX_STARS = 3; // one police car per star
@@ -77,6 +79,39 @@ export class Wanted {
     this.police.length = 0;
     this.g.drawStars();
     this.g.showEvading(false);
+  }
+
+  /** Sets the wanted level, for the dev console: 0 clears it, fewer stars send the extra police cars away. */
+  setStars(n: number) {
+    n = clamp(Math.round(n), 0, MAX_STARS);
+    if (n === 0) return this.clear();
+    this.stars = n;
+    this.evade = this.bust = 0;
+    let live = this.police.filter(p => !wrecked(p)).length;
+    for (let i = this.police.length - 1; i >= 0 && live > n; i--) {
+      if (wrecked(this.police[i])) continue;
+      this.g.removeCar(this.police[i]);
+      this.police.splice(i, 1);
+      live--;
+    }
+    this.g.drawStars();
+    this.g.showEvading(false);
+  }
+
+  /** The dev console's `stars <0-3>`. */
+  registerCommands(commands: Pick<Commands, 'register'>) {
+    commands.register(
+      'stars',
+      command({
+        help: 'set the wanted level; 0 calls the police off',
+        examples: ['stars 3', 'stars 0'],
+        args: [int('stars', { min: 0, max: MAX_STARS })],
+        run: ({ stars }) => {
+          this.setStars(stars);
+          return stars === 0 ? 'Not wanted.' : `Wanted: ${stars} star${stars > 1 ? 's' : ''}.`;
+        },
+      }),
+    );
   }
 
   /** Starts the safehouse timer; it only runs while `lyingLow` and you have stars. */

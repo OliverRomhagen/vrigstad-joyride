@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { Commands } from '../../../src/game/commands';
 import { DMG_MAX } from '../../../src/game/health';
 import { MAX_STARS, type PoliceCar, Wanted, type WantedDeps } from '../../../src/game/police';
 import { makeRnd } from '../../../src/world/random';
@@ -162,5 +163,25 @@ describe('Wanted', () => {
     run(w, 1, 0);
     expect(w.bust).toBe(0);
     expect(w.evade).toBeGreaterThan(0.9);
+  });
+});
+
+describe('stars, from the console', () => {
+  it('sets the stars, sends the extra police away when they fall, and clears at 0', () => {
+    const { w, world } = wanted(),
+      c = new Commands();
+    w.registerCommands(c);
+    expect(c.run('stars 3')).toBe('Wanted: 3 stars.');
+    w.update(0.01, target, 0);
+    expect(w.police).toHaveLength(3);
+    w.police[2].dmg = DMG_MAX; // a wreck is out of the chase: it stays where it is
+    expect(c.run('stars 1')).toBe('Wanted: 1 star.');
+    expect(w.police).toHaveLength(2);
+    expect(w.police[1].dmg).toBe(DMG_MAX);
+    expect(world.removed).toBe(1);
+    expect(c.run('stars 4')).toBe('stars is from 0 to 3. Usage: stars <stars>');
+    expect(c.run('stars 0')).toBe('Not wanted.');
+    expect(w.stars).toBe(0);
+    expect(w.police).toHaveLength(0);
   });
 });
