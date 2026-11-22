@@ -671,20 +671,21 @@ test.describe('game (index.html)', () => {
     await page.goto('/index.html?dev');
     const lot = (await state(page)).forSale;
     expect(lot.length).toBeGreaterThanOrEqual(8);
-    // stand 3.5 m from the first car on the yard's side (towards the road): the cars stand side by side, noses to the yard
+    // stand 3.5 m behind the first car (its nose points along (sin h, -cos h)): the cars stand side by side, noses to the yard
     const c = lot[0];
-    await page.goto(`/index.html?dev&at=${c.x + 0.37},${c.z - 3.48},0`);
+    await page.goto(`/index.html?dev&at=${c.x - Math.sin(c.h) * 3.5},${c.z + Math.cos(c.h) * 3.5},0`);
     await page.locator('#go').click();
     await page.keyboard.press('Backquote');
     await page.keyboard.type('kr 5000');
     await page.keyboard.press('Enter');
     await page.keyboard.press('Escape');
+    const { kr } = await state(page);
     await expect(page.locator('#prompt')).toContainText('Buy the ');
     await page.keyboard.press('KeyE');
     await expect(page.locator('#kmenu')).toContainText('å den ä din');
     await page.screenshot({ path: testInfo.outputPath('game-skroten-buy.png') });
     await page.keyboard.press('Digit1');
-    expect(await state(page)).toMatchObject({ kr: 5200 - c.kr, inCar: false, stars: 0 });
+    expect(await state(page)).toMatchObject({ kr: kr - c.kr, inCar: false, stars: 0 });
     await expect(page.locator('#prompt')).toContainText('Get in the ');
     await page.keyboard.press('KeyE');
     expect(await state(page)).toMatchObject({ inCar: true, stars: 0 });

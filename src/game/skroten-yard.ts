@@ -349,6 +349,7 @@ const FRESH_COLOURS = ['#b9bab4', '#1f3b6a', '#8c1c1c', '#e8e4d8', '#2b2b2b', '#
 /** The TILL SALU sign, in front of the row of cars for sale, facing the yard. */
 export const SALE_SIGN = { u: 21, v: 25.2, w: 5 } as const; // w: the TILL SALU board's width (m), its posts inside it
 const WRECK_GAP_M = 2.6; // between the middles of neighbours in a row
+const FRESH_GAP_M = 2.9; // the same for the cars for sale: wider than two cars' collision reach (2.7 m), so none nudges its neighbours
 const WRECK_HALF_LEN_M = 2.7; // half the longest car's length, for the row's outline
 const WRECK_SPREAD_M = 0.5; // how far a wreck's jitter (±0.4 m, ±0.15 rad) can carry its ends past its row's line
 const TRACTORS = [
@@ -520,7 +521,7 @@ export function yardLayout(
   const yardCars: YardCar[] = [],
     forSale: YardCar[] = [];
   for (const row of WRECK_ROWS) {
-    for (let u = row.u0; u <= row.u1 + 0.01; u += WRECK_GAP_M) {
+    for (let u = row.u0; u <= row.u1 + 0.01; u += row.fresh ? FRESH_GAP_M : WRECK_GAP_M) {
       if (!row.fresh && rnd() < 0.12) continue; // a gap where one has gone to the crusher
       const below: YardCar = row.fresh
         ? {

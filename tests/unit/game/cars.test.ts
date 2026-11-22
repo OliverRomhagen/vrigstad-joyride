@@ -39,7 +39,7 @@ function fleet(world: Partial<WorldData> = { r: [MAIN_ROAD] }, canPark = (_x: nu
     crashes: [] as [Car, Car | null][],
     rammed: [] as Car[],
     placed: new Set<Car>(),
-    models: [] as (string | undefined)[],
+    models: [] as (string | null | undefined)[],
   };
   const player = { x: 0, z: -800 };
   const cars: Fleet = new Fleet({
@@ -339,7 +339,7 @@ describe('the car command', () => {
     expect(Math.hypot(parked.x - player.x, parked.z - player.z)).toBeCloseTo(3.5);
     expect(log.models.at(-1)).toBe('volvo240');
     c.run('car traktor');
-    expect(log.models.at(-1)).toBeUndefined(); // the tractor has no model of its own
+    expect(log.models.at(-1)).toBeNull(); // the tractor has no model of its own, and rolls for none
   });
 
   it('refuses a model it does not know, and Tab offers the ones it does', () => {
@@ -376,7 +376,7 @@ describe("Skroten's lot", () => {
   // the parked cars roll no paint, so their colour is the type's first
   const LOT: CarForSale[] = [
     { x: 100, z: 0, h: 0.5, type: 'volvo', model: 'volvo240', colour: '#123456', kr: 2000 },
-    { x: 102.6, z: 0, h: 0.5, type: 'saab', model: 'micra-k11', colour: '#654321', kr: 1000 },
+    { x: 102.9, z: 0, h: 0.5, type: 'saab', model: 'micra-k11', colour: '#654321', kr: 1000 },
   ];
   const at = (cars: Fleet, p: CarForSale) => cars.cars.filter(c => Math.hypot(c.x - p.x, c.z - p.z) < 0.01);
 
@@ -385,7 +385,7 @@ describe("Skroten's lot", () => {
     cars.parkForSale(LOT);
     expect(cars.cars.map(c => [c.type, c.x, c.z, c.h, c.mode, c.saleKr])).toEqual([
       ['volvo', 100, 0, 0.5, 'parked', 2000],
-      ['saab', 102.6, 0, 0.5, 'parked', 1000],
+      ['saab', 102.9, 0, 0.5, 'parked', 1000],
     ]);
     expect(log.models).toEqual(['volvo240', 'micra-k11']);
     const sold = cars.cars.pop()!;
@@ -441,6 +441,35 @@ describe("Skroten's lot", () => {
       expect(at(cars, lot[2]!).map(c => c.type)).toEqual(['traktor']);
       expect([...at(cars, LOT[0]!), ...at(cars, LOT[1]!)].map(c => c.type)).not.toContain('traktor');
     }
+  });
+
+  it('puts a car for sale shoved off its spot back on it, out of your sight', () => {
+    const { cars, log } = fleet({ r: [STREET] });
+    cars.parkForSale(LOT);
+    const shoved = cars.cars[0]!;
+    Object.assign(shoved, { x: 96, z: 2, h: 1.4, vh: 1.4, wet: true }); // rammed into a puddle
+    cars.restockLot({ x: 120, z: 0 }, 0); // you stand by the lot
+    expect(shoved).toMatchObject({ x: 96, z: 2, saleKr: 2000 });
+    cars.restockLot({ x: -500, z: 0 }, 0);
+    expect(shoved).toMatchObject({ x: 100, z: 0, h: 0.5, vh: 0.5, wet: false, saleKr: 2000 });
+    expect(log.placed.has(shoved)).toBe(true);
+    expect(cars.cars.length).toBe(2);
+  });
+
+  it('parks no new car on a spot a neighbour was shoved onto', () => {
+    const { cars } = fleet({ r: [STREET] }),
+      far = { x: -500, z: 0 };
+    cars.parkForSale(LOT);
+    const [bought, neighbour] = cars.cars as [Car, Car];
+    bought.saleKr = 0;
+    bought.x = 300; // driven off
+    cars.restockLot(far, 0);
+    Object.assign(neighbour, { x: 100.5, z: 1 }); // shoved onto the empty spot
+    cars.restockLot(far, LOT_RESTOCK_S); // spot 0 is looked at first: it is blocked; then the neighbour goes back on its own
+    expect(at(cars, LOT[0]!)).toEqual([]);
+    expect(neighbour).toMatchObject({ x: 102.9, z: 0 });
+    cars.restockLot(far, LOT_RESTOCK_S); // now spot 0 is clear
+    expect(at(cars, LOT[0]!)).toHaveLength(1);
   });
 
   it('leaves the cars still for sale where they are', () => {

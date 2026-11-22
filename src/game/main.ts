@@ -192,12 +192,13 @@ const placeCar = carMeshes.placeCar.bind(carMeshes);
 // every car has its meshes: addCar attaches them before the Fleet holds it, so the sim's Car is a RenderedCar here
 const meshed = (c: Car) => c as RenderedCar;
 // the car gets its meshes, then the Fleet holds it, so a car in the list always has them; the rolls keep their order: the model (its own stream), then the colour (rnd)
-function addCar(type: CarType, x: number, z: number, h: number, mode: CarMode, assetId: VehicleId | undefined = carMeshes.pickModel(type), colour?: string) {
+// assetId null: no model, and no roll of the model stream for one
+function addCar(type: CarType, x: number, z: number, h: number, mode: CarMode, assetId: VehicleId | null | undefined = carMeshes.pickModel(type), colour?: string) {
   const T = specFor(type, vehicleDefinition(assetId ?? null));
-  return fleet.add(carMeshes.attach(newCar(type, x, z, h, mode, T, colour ?? pick(T.cols)), assetId));
+  return fleet.add(carMeshes.attach(newCar(type, x, z, h, mode, T, colour ?? pick(T.cols)), assetId ?? undefined));
 }
 function removeCar(c: Car) { carMeshes.detach(meshed(c)); fleet.remove(c); }
-const fleet = new Fleet({ roads, buildings, water, half: HALF, rnd, pick, addCar: (t, x, z, h, m, model, colour) => addCar(t, x, z, h, m, model as VehicleId | undefined, colour), placeCar: c => placeCar(meshed(c)), crash: (c, o, impact) => crashes.crash(c, o, impact),
+const fleet = new Fleet({ roads, buildings, water, half: HALF, rnd, pick, addCar: (t, x, z, h, m, model, colour) => addCar(t, x, z, h, m, model as VehicleId | null | undefined, colour), placeCar: c => placeCar(meshed(c)), crash: (c, o, impact) => crashes.crash(c, o, impact),
   canPark: (x, z) => streetIndex!.surfaceAt(x, z) === null,   // streetIndex is built before parkCars runs
   rammed: c => { if (c === game.pcar && game.ramCool <= 0) { game.ramCool = 6; wanted.addStar(pickLine(WANTED_LINES) + ' Ramming a police car. That will not help.'); } },
   get player() { return player; }, get inCar() { return game.inCar; } });
