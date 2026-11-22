@@ -62,6 +62,8 @@ import { BAR_BLUE, BAR_RED, barGeo, barMat, blob, blobTex, boxGeo, carGeo, carMa
 import { buildStage, SUN_DIR, setUpRenderer } from './render/stage';
 import { addBuildings, addRoadRibbons, addStreetscapeMeshes, addTerrain, addTrees, addWater } from './render/world-meshes';
 import { type CarType, specFor } from './sim/vehicle-spec';
+import { Tunables } from './sim/tunables';
+import { registerCarTunables } from './sim/car-tunables';
 import { newGameState, newViewState } from './state';
 import { Trisslott, trisslottSeed } from './trisslott';
 import { makeClock, skyAt, START_H, tickClock } from './day-cycle';
@@ -101,11 +103,12 @@ setUpRenderer(renderer, coarse);
 const { scene, camera, hemi, sun, skyDome } = buildStage(coarse, location.search);
 const maxAnisotropy = renderer.capabilities.getMaxAnisotropy();
 
-// ---------- lab: opt-in experiments, switched on with ?lab=<id>,<id> (src/lab/) ----------
-// each one is imported only when its flag is on, so with everything off the game runs exactly as without the lab;
-// after the WebGL check, so none starts behind the fail screen, and one that fails to load or start only warns
+// ---------- lab: opt-in experiments, switched on with ?lab=<id>,<id> (src/lab/flags.ts) ----------
+// an experiment's code lives where it belongs, and lab.on('<id>') gates it here or where it's wired in below (#323);
+// code behind a gate is loaded with import(), so with everything off the game runs exactly as without the lab.
+// After the WebGL check, so none starts behind the fail screen; one that fails to load or start should only warn
 const lab = LabFlags.fromSearch(location.search);
-if (lab.on('hello')) import('../lab/hello').then(m => m.startHello()).catch(err => console.warn('Lab: hello failed', err));
+if (lab.on('hello')) console.info('Lab: hello is on.'); // the smallest gate, for trying the flags
 
 // ---------- time of day: 05:00 to 19:00, then a short blend into the next morning (src/game/day-cycle.ts, src/game/render/daylight.ts) ----------
 // ?time=18.5 starts at that hour; ?cycle=off holds it there
@@ -183,6 +186,10 @@ const selectedVehicle = vehicleDefinition(new URLSearchParams(location.search).g
 // dev mode (#218): on with npm run dev, or with ?dev on any build (preview links too). § or ` then opens the dev console.
 const DEV = import.meta.env.DEV || new URLSearchParams(location.search).has('dev');
 const calmMotion = matchMedia('(prefers-reduced-motion: reduce)');
+// gameplay numbers (#217): the cars' are in the registry so far. ?tune=driving.grip:8,vehicle.volvo.top-speed:45 overrides them
+const tunables = new Tunables();
+registerCarTunables(tunables);
+for (const err of tunables.override(new URLSearchParams(location.search).get('tune') ?? '')) console.warn('?tune=', err);
 let displayCar: RenderedCar | null = null;
 function carName(c: Car) { return vehicleVisuals.definition(meshed(c))?.name || c.T.name; }
 fleet.parkCars();   // parked cars along streets and driveways
