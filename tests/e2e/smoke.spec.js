@@ -515,6 +515,9 @@ test.describe('game (index.html)', () => {
     };
     await expect(await run('adopt dog')).toHaveText('No pet called dog. Usage: adopt <cat>');
     await expect(await run('adopt cat')).toHaveText('Adopted a cat.');
+    await expect(await run('adopt --help')).toHaveText(
+      'adopt <cat>: adopt a new random pet of that kind\nExamples:\n  adopt cat',
+    ); // every command answers --help
     expect(await state(page)).toMatchObject({ ownCat: true });
     await expect(page.locator('#pets')).toBeVisible();
     await expect(await run('adopt cat')).toHaveText('You already have a cat, Kisse. Set it free first (P).');
