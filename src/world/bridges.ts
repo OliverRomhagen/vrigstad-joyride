@@ -57,8 +57,6 @@ const TIMBER_EXTRA_M = 0.6;
 const TIMBER_MIN_M = 1.8;
 /** a path longer than this is a steel footbridge even without bicycle=designated (m) */
 const STEEL_SPAN_M = 10;
-/** people on a footbridge walk this far in from its railings, clear of them (m) */
-const FOOTBRIDGE_WALK_IN_M = 0.5;
 /** each archetype's railing stands this far in from the deck's edge: on the edge beam, on the girder, on the boards (m) */
 const RAILING_IN_M: Record<BridgeArchetype, number> = {
   'road-slab': EDGE_BEAM_M / 2,
@@ -233,11 +231,11 @@ export class BridgeIndex {
     return this.base.heightAt(x, z) + lift + crest(b.riseM, s / b.spanM);
   }
 
-  /** How far from the centre line people walk on bridge road ri: the walkway's middle, or inside a footbridge's edge. */
+  /** How far from the centre line people walk on road bridge ri: the walkway's middle. Pedestrians walk paths on their centre line. */
   walkOffsetM(ri: number) {
     const b = this.byRoad.get(ri);
     if (!b) return undefined;
-    return b.walkwayM > 0 ? b.carriageM / 2 + b.walkwayM / 2 : b.railingM - FOOTBRIDGE_WALK_IN_M;
+    return b.walkwayM > 0 ? b.carriageM / 2 + b.walkwayM / 2 : undefined;
   }
 
   /**
