@@ -479,7 +479,7 @@ test.describe('game (index.html)', () => {
     expect(errors).toEqual([]);
   });
 
-  test('with ?dev, the console opens with §, its keys never move the player, Tab completes, kr and mynt add money, adopt cat gives you a cat (and L makes it rain)', async ({
+  test('with ?dev, the console opens with §, its keys never move the player, Tab completes, kr and mynt add money, set changes a tunable, adopt cat gives you a cat (and L makes it rain)', async ({
     page,
   }) => {
     await page.goto('/index.html');
@@ -515,6 +515,8 @@ test.describe('game (index.html)', () => {
     };
     await expect(await run('adopt dog')).toHaveText('No pet called dog. Usage: adopt <cat>');
     await expect(await run('adopt cat')).toHaveText('Adopted a cat.');
+    await expect(await run('set driving.grip 8')).toHaveText(/^driving\.grip = 8 1\/s \(was [\d.]+\)$/); // the tunables (#357)
+    await expect(await run('reset driving.grip')).not.toHaveText(/= 8 /);
     await expect(await run('adopt --help')).toHaveText(
       'adopt <cat>: adopt a new random pet of that kind\nExamples:\n  adopt cat',
     ); // every command answers --help
@@ -538,7 +540,7 @@ test.describe('game (index.html)', () => {
     await page.keyboard.press('Tab'); // nothing shared to fill in: the first Tab lists nothing yet
     await expect(lines).toHaveCount(before);
     await page.keyboard.press('Tab'); // the second lists what could follow
-    await expect(lines.last()).toHaveText(/^adopt {2}.*help {2}kr {2}mynt/);
+    await expect(lines.last()).toHaveText(/^adopt {2}.*help {2}kr {2}.*mynt/);
     await page.keyboard.press('Tab'); // and a third doesn't list it again
     await expect(lines).toHaveCount(before + 1);
     await expect(line).toHaveValue('help ');

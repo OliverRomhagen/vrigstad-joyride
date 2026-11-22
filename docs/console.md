@@ -175,9 +175,10 @@ Each step is a PR of its own, in this order; the first two are what #218 asks fo
    usage line of the command being typed. Page code in `devconsole.ts`; a smoke step types a command and checks it ran.
 2. **The core dev commands**, each in the module that owns the state, with `command()`: `god`, `stars <0-3>` (police),
    `go <place>` (from #346's spots), `car <model>`, `fps`. Each one's rule gets a unit test in its module.
-3. **Tunables** (#217). One adapter turns the registry's entries into `set <key> <value>`, `get <key>`, `list
-   [prefix]` and `reset [key]`, with the key as a `choice` and the value as a `num` with the entry's range and unit. A
-   tunable never registers a command of its own.
+3. **Tunables** (#217, built in #357). `src/game/sim/tunable-commands.ts` turns the registry's entries into
+   `set <tunable> <value>`, `get <tunable>`, `list [prefix]` and `reset [tunable]`, with the key as a `choice` and the
+   value as a `num` checked against the entry's range. A tunable never registers a command of its own. `?tune=` sets
+   the same numbers at load, in dev mode only.
 4. **Tabs, panels and the Log tab.** The console box gets the panel contract (see [Panels and
    plugins](#panels-and-plugins)), and the Dev tab and a Log tab are its first two panels. The Log is a small `Log` in
    sim code (a ring buffer of `{ level, text, at }`) that any module writes to; warnings that go to `console.warn`
