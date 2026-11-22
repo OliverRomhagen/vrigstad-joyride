@@ -85,9 +85,9 @@ const FRAGMENT_LIGHT = /* glsl */ `
   outgoingLight = mix(outgoingLight, horizonC * 0.85, grazing * 0.45);
   #ifdef WATER_FULL
   vec3 mirrored = vec3(-toEye.x, toEye.y, -toEye.z);
-  float sparkle = wNoise(wp * 1.9 + vec2(17.0, uTime * 0.6));
+  float sparkle = wNoise(wp * 2.6 + vec2(17.0, uTime * 0.6));
   float toSun = dot(mirrored, uSunDir) + (sparkle - 0.5) * 0.1;
-  outgoingLight += vec3(1.0, 0.96, 0.86) * uGlint * uSunLight * smoothstep(0.955, 0.975, toSun) * step(0.8, sparkle);
+  outgoingLight += vec3(1.0, 0.96, 0.86) * uGlint * uSunLight * smoothstep(0.962, 0.978, toSun) * step(0.9, sparkle);
   #endif
   #include <opaque_fragment>
 `;

@@ -63,7 +63,11 @@ export class TerrainMesh {
         const side = at(i + 1) - x0;
         for (let b = 0; b <= m; b++)
           for (let a = 0; a <= m; a++)
-            block.pos.push(x0 + (side * a) / m - block.x0, heightfield.fineHeight(i, j, a, b), z0 + (side * b) / m - block.z0);
+            block.pos.push(
+              x0 + (side * a) / m - block.x0,
+              heightfield.fineHeight(i, j, a, b),
+              z0 + (side * b) / m - block.z0,
+            );
         for (let b = 0; b < m; b++)
           for (let a = 0; a < m; a++) {
             const k = first + b * (m + 1) + a;

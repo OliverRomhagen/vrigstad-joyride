@@ -220,7 +220,8 @@ export class Heightfield {
       }
 
     // past the world's edge there is no neighbour to agree with: the edge takes the cut at every sub-sample
-    const detailOf = (i: number, j: number, own: number) => (i < 0 || j < 0 || i >= cells || j >= cells ? own : detail[j * cells + i]);
+    const detailOf = (i: number, j: number, own: number) =>
+      i < 0 || j < 0 || i >= cells || j >= cells ? own : detail[j * cells + i];
     for (let j = 0; j < cells; j++)
       for (let i = 0; i < cells; i++) {
         const c = detail[j * cells + i];
