@@ -49,6 +49,11 @@ commands.register('go', command({
   places) completes and parses without registering again.
 - The plain shape still works: `register(name, { usage, help, run(words) })`, throwing `UsageError` for bad
   arguments. The existing commands (`kr`, `mynt`, `adopt`, `clear`) use it, and move over when someone touches them.
+- **A group** holds commands under one name: `group({ help, subcommands: { set, get } })` registers `tune`, and
+  `tune set driving.grip 8` runs its `set`. Use one for a family of commands with names that other areas could want
+  (`list`, `reset`). The registry follows the subcommands for help, `--help`, Tab and the usage line, so
+  `tune set --help` and `help tune set` both work; hooks see the group's name, with the subcommand as the first
+  argument. A subcommand's examples start with the whole path (`tune set …`).
 - **Every command explains itself.** `help` is required: one line of up to 80 characters (`HELP_MAX`) saying what it
   does, and `register` refuses a command without it. Commands register at start-up, so a refused one stops the whole
   page: a module that registers commands calls its register function in a unit test (`registerWalletCommands` in
@@ -148,8 +153,8 @@ const stop = consoleUi.addPanel({
 ```
 
 - **A panel changes the game only through commands or the tunables registry** (#217), never by reaching into game
-  objects (Architecture rule 4). A slider runs `set vehicle.volvo.grip 0.8` with source `panel`; Copy reads `list
-  vehicle.volvo`. So the hooks see every change: the Log shows it, and the Record hook can replay a tuning session.
+  objects (Architecture rule 4). A slider runs `tune set vehicle.volvo.grip 0.8` with source `panel`; Copy reads
+  `tune list vehicle.volvo`. So the hooks see every change: the Log shows it, and the Record hook can replay a tuning session.
 - **A panel reads** through the registry too, or through a store the page already has, so it works the same when the
   sim runs in a worker (#49) or on a host (#1).
 - **A plugin is a bundle** of commands, hooks and a panel, all optional, installed and taken out as one:
@@ -175,9 +180,11 @@ Each step is a PR of its own, in this order; the first two are what #218 asks fo
    usage line of the command being typed. Page code in `devconsole.ts`; a smoke step types a command and checks it ran.
 2. **The core dev commands**, each in the module that owns the state, with `command()`: `god`, `stars <0-3>` (police),
    `go <place>` (from #346's spots), `car <model>`, `fps`. Each one's rule gets a unit test in its module.
-3. **Tunables** (#217). One adapter turns the registry's entries into `set <key> <value>`, `get <key>`, `list
-   [prefix]` and `reset [key]`, with the key as a `choice` and the value as a `num` with the entry's range and unit. A
-   tunable never registers a command of its own.
+3. **Tunables** (#217, built in #357). `src/game/sim/tunable-commands.ts` turns the registry's entries into
+   `tune set <tunable> <value>`, `tune get <tunable>`, `tune list [prefix]` and `tune reset [tunable]`, with the key as
+   a `choice` and the value as a `num` that the registry checks against the entry's range. They sit under `tune`, so
+   `list` and `reset` stay free for other areas. A tunable never registers a command of its own. `?tune=` sets the same
+   numbers at load, in dev mode only.
 4. **Tabs, panels and the Log tab.** The console box gets the panel contract (see [Panels and
    plugins](#panels-and-plugins)), and the Dev tab and a Log tab are its first two panels. The Log is a small `Log` in
    sim code (a ring buffer of `{ level, text, at }`) that any module writes to; warnings that go to `console.warn`
