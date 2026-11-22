@@ -57,12 +57,15 @@ const LOOK_PLAYER_M = 9,
   LOOK_PLAYER_SIDE_M = 1.8; // the same for you on foot
 const STUCK_S = 6,
   GHOST_S = 3; // blocked this long, a traffic car drives through what blocks it for GHOST_S
-const SPAWN_AWAY_M = 260; // new traffic, and a car parked to replace a sold one, appears at least this far from you
+const SPAWN_AWAY_M = 260; // new traffic, a car parked to replace a sold one and a new car on Skroten's lot appear at least this far from you
+export const LOT_RESTOCK_S = 120; // a spot on Skroten's lot stands empty at least this long after its car is sold
+const LOT_CLEAR_M = 3; // the spot is free when no car stands this close to it
 const PARKED_CARS = 58; // parked when the village is built
 const SPAWN_CLEAR_M = 7; // a new car, parked or in traffic, appears at least this far from every other car (#409)
 const PARK_AWAY_TRIES = 300; // tries at a far kerbside spot before giving up
 
 type Point = { x: number; z: number };
+type LotSpot = { at: CarForSale; car: Car | null; soldAt: number }; // a spot on Skroten's lot, the car for sale on it, and when it was sold (s)
 /** Who drives a car: nobody yet (`parked`), nobody since you got out (`idle`), traffic (`ai`), the police, or you. */
 export type CarMode = 'parked' | 'idle' | 'ai' | 'police' | 'player';
 /** A car. `h` is where its nose points and `vh` its line of travel (rad, 0 is north; they differ in a slide), `v` its speed along `vh` (m/s). */
@@ -191,6 +194,7 @@ export class Fleet {
   // already replaced
   private readonly noReplacement = new WeakSet<Car>();
   private readonly collideBuildings = (o: Point, r: number) => this.g.buildings.collide(o, r); // once, not a bind per car per frame
+  private readonly lot: LotSpot[] = [];
 
   constructor(g: FleetDeps) {
     this.g = g;
@@ -229,10 +233,30 @@ export class Fleet {
 
   /** Parks Skroten's cars for sale on its lot, at their asking price. Selling one back to Skroten parks no new car in the village. */
   parkForSale(lot: readonly CarForSale[]) {
-    for (const s of lot) {
-      const c = this.g.addCar(s.type, s.x, s.z, s.h, 'parked', s.model, s.colour);
-      c.saleKr = s.kr;
-      this.noReplacement.add(c);
+    for (const s of lot) this.lot.push({ at: s, car: this.parkOneForSale(s, s, s.colour), soldAt: 0 });
+  }
+  // a car for sale of stock's model and price at spot `at`; with no colour it rolls its paint
+  private parkOneForSale(at: CarForSale, stock: CarForSale, colour?: string) {
+    const c = this.g.addCar(stock.type, at.x, at.z, at.h, 'parked', stock.model, colour);
+    c.saleKr = stock.kr;
+    this.noReplacement.add(c);
+    return c;
+  }
+  /**
+   * Plåt-Pelle restocks his lot out of sight: a spot whose car was sold at least LOT_RESTOCK_S ago gets another of the lot's models,
+   * in a paint of its own, once nothing stands on it and you are SPAWN_AWAY_M from it. `nowS` is the game's clock.
+   */
+  restockLot(farFrom: Point, nowS: number) {
+    for (const spot of this.lot) {
+      if (spot.car) {
+        if (spot.car.saleKr) continue;
+        spot.car = null;
+        spot.soldAt = nowS;
+      }
+      const { at } = spot;
+      if (nowS - spot.soldAt < LOT_RESTOCK_S || Math.hypot(at.x - farFrom.x, at.z - farFrom.z) < SPAWN_AWAY_M) continue;
+      if (this.cars.some(c => Math.hypot(c.x - at.x, c.z - at.z) < LOT_CLEAR_M)) continue;
+      spot.car = this.parkOneForSale(at, this.g.pick(this.lot).at);
     }
   }
 

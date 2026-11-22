@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { type Car, type CarMode, Fleet, newCar, type TrafficCar, TURBO_AT } from '../../../src/game/cars';
+import {
+  type Car,
+  type CarForSale,
+  type CarMode,
+  Fleet,
+  LOT_RESTOCK_S,
+  newCar,
+  type TrafficCar,
+  TURBO_AT,
+} from '../../../src/game/cars';
 import { Commands } from '../../../src/game/commands';
 import { CRASH_COOL_S, DMG_MAX } from '../../../src/game/health';
 import { type CarType, specFor } from '../../../src/game/sim/vehicle-spec';
@@ -359,5 +368,64 @@ describe('the car command', () => {
     const sold = cars.cars.pop()!;
     cars.replaceSold(sold, { x: 0, z: 0 });
     expect(cars.cars).toEqual([]);
+  });
+});
+
+describe("Skroten's lot", () => {
+  // two spots far from the fixture's player at (0, -800); the parked cars roll no paint, so their colour is the type's first
+  const LOT: CarForSale[] = [
+    { x: 100, z: 0, h: 0.5, type: 'volvo', model: 'volvo240', colour: '#123456', kr: 2000 },
+    { x: 106, z: 0, h: 0.5, type: 'saab', model: 'micra-k11', colour: '#654321', kr: 1000 },
+  ];
+  const at = (cars: Fleet, p: CarForSale) => cars.cars.filter(c => Math.hypot(c.x - p.x, c.z - p.z) < 0.01);
+
+  it('parks each car for sale on its spot at its price, and selling one back parks no replacement', () => {
+    const { cars, log } = fleet({ r: [STREET] });
+    cars.parkForSale(LOT);
+    expect(cars.cars.map(c => [c.type, c.x, c.z, c.h, c.mode, c.saleKr])).toEqual([
+      ['volvo', 100, 0, 0.5, 'parked', 2000],
+      ['saab', 106, 0, 0.5, 'parked', 1000],
+    ]);
+    expect(log.models).toEqual(['volvo240', 'micra-k11']);
+    const sold = cars.cars.pop()!;
+    cars.replaceSold(sold, { x: 0, z: 0 });
+    expect(cars.cars.length).toBe(1);
+  });
+
+  it("restocks a sold spot once it has stood empty LOT_RESTOCK_S, out of your sight, with one of the lot's models", () => {
+    const { cars, log } = fleet({ r: [STREET] }),
+      far = { x: -500, z: 0 };
+    cars.parkForSale(LOT);
+    const bought = cars.cars[0]!;
+    bought.saleKr = 0;
+    cars.restockLot(far, 10); // the spot is sold at 10 s
+    bought.x = 300; // driven off
+    cars.restockLot(far, 10 + LOT_RESTOCK_S - 1);
+    expect(at(cars, LOT[0]!)).toEqual([]);
+    cars.restockLot({ x: 120, z: 0 }, 10 + LOT_RESTOCK_S); // you stand by the lot
+    expect(at(cars, LOT[0]!)).toEqual([]);
+    cars.restockLot(far, 10 + LOT_RESTOCK_S);
+    const [fresh] = at(cars, LOT[0]!);
+    expect(fresh).toMatchObject({ mode: 'parked', h: 0.5 });
+    expect(LOT.map(s => [s.type, s.kr])).toContainEqual([fresh!.type, fresh!.saleKr]);
+    expect(LOT.map(s => s.model)).toContain(log.models.at(-1));
+    expect(cars.cars.length).toBe(3);
+  });
+
+  it('parks no new car on a spot something stands on, such as the car you bought', () => {
+    const { cars } = fleet({ r: [STREET] }),
+      far = { x: -500, z: 0 };
+    cars.parkForSale(LOT);
+    cars.cars[0]!.saleKr = 0;
+    cars.restockLot(far, 0);
+    cars.restockLot(far, LOT_RESTOCK_S * 2);
+    expect(cars.cars.length).toBe(2);
+  });
+
+  it('leaves the cars still for sale where they are', () => {
+    const { cars } = fleet({ r: [STREET] });
+    cars.parkForSale(LOT);
+    cars.restockLot({ x: -500, z: 0 }, LOT_RESTOCK_S * 2);
+    expect(cars.cars.length).toBe(2);
   });
 });

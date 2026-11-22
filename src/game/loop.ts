@@ -73,6 +73,7 @@ export interface GameLoopDeps {
   catRideLines(): void;
   closeMenuIfLeft(): void;
   updatePrompt(): void;
+  restockLot(): void; // Plåt-Pelle refills Skroten's lot, out of sight
   drawHealth(): void;
   timeFrame(workStart: number): void; // after drawing: the frame's work began at workStart (ms, performance.now)
 }
@@ -249,6 +250,7 @@ export class GameLoop {
       g.closeMenuIfLeft();
       g.updatePrompt();
       g.drawHealth();
+      g.restockLot();
     }
     g.drawMini(T);
     g.renderer.render(g.scene, g.camera);
