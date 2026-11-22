@@ -68,7 +68,7 @@ export class Ragdolls {
   readonly hit = (n: Npc, car: { x: number; z: number }): boolean => {
     const pcar = this.g.pcar;
     if (car !== pcar || !pcar || this.bodies.length >= this.max) return false;
-    const r = knockOver(n, pcar, this.g.world, this.rnd(), n.scale);
+    const r = knockOver(n, pcar, this.g.world, this.rnd, n.scale);
     if (!r) return false;
     this.bodies.push({ npc: n, r, was: r.pos.slice(), shown: r.pos.slice() });
     if (this.starCool <= 0) {

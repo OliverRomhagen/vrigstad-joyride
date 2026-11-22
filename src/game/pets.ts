@@ -115,6 +115,7 @@ export class Pets {
     commands.register('adopt', {
       usage: '<' + [...adopt.keys()].join(' | ') + '>',
       help: 'adopt a new random pet of that kind',
+      examples: ['adopt cat'],
       run: a => {
         const f = a[0] && adopt.get(a[0].toLowerCase());
         if (!f) throw new UsageError(a[0] ? 'No pet called ' + a[0] + '.' : '');

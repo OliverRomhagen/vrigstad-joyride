@@ -3,6 +3,7 @@
 // drive the player.
 import { clamp } from '../world/math';
 import type { Commands } from './commands';
+import { tabComplete } from './console-complete';
 import type { Input } from './input';
 
 const MAX_LINES = 60; // older output lines are dropped
@@ -12,7 +13,7 @@ const MAX_HISTORY = 30; // typed lines that ArrowUp brings back
 const isConsoleKey = (e: KeyboardEvent) => (e.key === '§' || e.key === '`') && !e.ctrlKey && !e.metaKey && !e.altKey; // Cmd+` cycles windows on macOS
 
 export interface DevConsoleDeps {
-  root: HTMLElement; // #devcon: holds an output list and an input
+  root: HTMLElement; // #devcon: holds an output list, an input and a .hint under it
   commands: Commands;
   canvas: HTMLElement; // a click on the game closes the console, and closing gives the game focus back
   doc: Pick<Document, 'exitPointerLock'>;
@@ -26,16 +27,24 @@ export class DevConsole {
   private readonly d: DevConsoleDeps;
   private readonly out: HTMLElement;
   private readonly input: HTMLInputElement;
+  private readonly hint: HTMLElement;
   private readonly history: string[] = [];
   private back = 0; // how far ArrowUp has gone into history; 0 is the line being typed
   private draft = ''; // the line being typed, kept while ArrowUp shows older ones
+  private tabbed: string | undefined; // the line a Tab couldn't get further with: a second Tab on it lists the choices
+  private listed: string | undefined; // the line whose choices are already listed, so more Tabs don't list them again
   private relock = false; // the mouse was locked when the console opened, so closing it locks it again
 
   constructor(d: DevConsoleDeps) {
     this.d = d;
     this.out = d.root.querySelector('ol') as HTMLElement;
     this.input = d.root.querySelector('input') as HTMLInputElement;
+    this.hint = d.root.querySelector('.hint') as HTMLElement;
     this.input.addEventListener('keydown', e => this.key(e));
+    this.input.addEventListener('input', () => {
+      this.tabbed = this.listed = undefined; // typing starts over: only two Tabs in a row list the choices
+      this.showUsage();
+    });
     this.input.addEventListener('keyup', e => e.stopPropagation());
     // registered before Input's own listener (see DevConsoleDeps.input), so a click that closes the console can take the mouse back
     d.canvas.addEventListener('pointerdown', () => this.close());
@@ -94,6 +103,8 @@ export class DevConsole {
     this.d.root.hidden = true;
     this.input.value = this.draft = '';
     this.back = 0;
+    this.tabbed = this.listed = undefined;
+    this.showUsage();
     this.d.canvas.focus();
     if (this.relock && !this.d.menuOpen) this.d.input.lockMouse(); // an open menu needs the cursor
     this.relock = false;
@@ -116,6 +127,36 @@ export class DevConsole {
       console.error(err);
     }
     if (res) this.print(res);
+  }
+
+  /**
+   * Completes the word before the caret, keeping what follows it; when Tab can't get further, a second Tab lists what
+   * could follow, once.
+   */
+  private complete() {
+    const caret = this.input.selectionStart ?? this.input.value.length;
+    const line = this.input.value.slice(0, caret),
+      rest = this.input.value.slice(caret);
+    const { line: next, choices } = tabComplete(line, this.d.commands.complete(line));
+    if (next !== line) {
+      // a completed word's space would double one already after the caret: use that one, and put the caret past it
+      const head = next.endsWith(' ') && /^\s/.test(rest) ? next.slice(0, -1) : next;
+      this.input.value = head + rest;
+      this.input.setSelectionRange(next.length, next.length);
+    } else if (choices.length && this.listed !== this.input.value) {
+      if (this.tabbed === this.input.value) {
+        this.print(choices.join('  '));
+        this.listed = this.input.value;
+      } else this.tabbed = this.input.value;
+    }
+    this.showUsage();
+  }
+
+  /** Shows the usage line of the command being typed under the input, or nothing. */
+  private showUsage() {
+    const usage = this.d.commands.usageFor(this.input.value) ?? '';
+    this.hint.textContent = usage;
+    this.hint.hidden = !usage;
   }
 
   private print(text: string, cls?: string) {
@@ -143,6 +184,13 @@ export class DevConsole {
       this.run(this.input.value);
       this.input.value = this.draft = '';
       this.back = 0;
+      this.tabbed = this.listed = undefined;
+      this.showUsage();
+      return;
+    }
+    if (e.code === 'Tab') {
+      e.preventDefault(); // Tab completes here, and neither Tab nor Shift+Tab moves focus out of the console
+      if (!e.shiftKey) this.complete();
       return;
     }
     if (e.code === 'ArrowUp' || e.code === 'ArrowDown') {
@@ -152,6 +200,7 @@ export class DevConsole {
       if (this.back === 0) this.draft = this.input.value;
       this.back = back;
       this.input.value = back ? this.history[this.history.length - back] : this.draft;
+      this.showUsage();
     }
   }
 }
