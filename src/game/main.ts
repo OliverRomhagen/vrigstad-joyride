@@ -92,7 +92,7 @@ const waterT0 = performance.now(), baseGround = new Heightfield(D), waterBodies 
 const heightfield = new Heightfield(D, { cut: waterBodies }), hAt = heightfield.heightAt.bind(heightfield);
 // the mapped bridges (#238): their decks follow the ground before the channels are cut, so they span them at the
 // approaches' height; they are the ground within their footprints, carry the road ribbons, and keep reeds out from under them
-const bridges = new BridgeIndex(D, baseGround);
+const bridges = new BridgeIndex(D, baseGround, heightfield);
 const shore = layoutShore(waterBodies, baseGround, (x, z) => bridges.onDeck(x, z)), waterCutMs = performance.now() - waterT0;
 const _n = new THREE.Vector3();
 // what a car tilts with: on a bridge deck the uncut ground the deck follows, not the channel bank cut under it

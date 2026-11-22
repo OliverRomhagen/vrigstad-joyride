@@ -12,7 +12,7 @@ const D = data as unknown as WorldData;
 const base = new Heightfield(D);
 const bodies = new WaterBodies(D, base);
 const ground = new Heightfield(D, { cut: bodies });
-const bridges = new BridgeIndex(D, base);
+const bridges = new BridgeIndex(D, base, ground);
 const roads = new RoadNetwork(D, ground, bridges);
 const water = new Water(D, roads, { bodies, ground, decks: bridges });
 /** how deep each archetype's structure hangs under its driving surface (m), as bridge-mesh.ts builds it */
@@ -100,5 +100,17 @@ describe('the mapped bridges over the cut channels', () => {
         steepest = Math.min(steepest, ground.normalAt(x, z, n).y);
       }
     expect(steepest).toBeLessThan(0.8); // the cut ground there leans over 35°
+  });
+
+  it('meet the approach ribbons exactly across the whole width, where the cut leaves the ground a few cm off', () => {
+    for (const b of bridges.bridges) {
+      const ri = b.roads[0];
+      for (const s of [0, b.spanM])
+        for (const o of [-b.carriageM / 2, 0, b.carriageM / 2]) {
+          const [x, z] = at(b, s, o);
+          // the approach ribbon's vertex there: the cut ground plus its lift
+          expect(bridges.ribbonHeight(ri, x, z, 0.1)!, b.key).toBeCloseTo(ground.heightAt(x, z) + 0.1, 6);
+        }
+    }
   });
 });

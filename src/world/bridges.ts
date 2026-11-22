@@ -63,6 +63,8 @@ const RAILING_IN_M: Record<BridgeArchetype, number> = {
   'path-steel': 0.075,
   'path-timber': 0.05,
 };
+/** a deck eases from the approaches' ground onto the uncut ground over this much of each end (m) */
+const JOIN_M = 1;
 /** railings start and end this far inside the deck's ends, so they never reach across an approach (m) */
 export const RAILING_INSET_M = 0.3;
 
@@ -89,10 +91,13 @@ export class BridgeIndex {
   readonly bridges: Bridge[] = [];
   private readonly byRoad = new Map<number, Bridge>();
   private readonly base: Pick<Heightfield, 'heightAt'>;
+  private readonly ground: Pick<Heightfield, 'heightAt'>;
   private readonly at: DeckPoint = { s: 0, d: 0 };
 
-  constructor(data: WorldData, base: Pick<Heightfield, 'heightAt'>) {
+  /** `ground` is what the approach roads stand on, when it differs from `base`: the ground with the channels cut in */
+  constructor(data: WorldData, base: Pick<Heightfield, 'heightAt'>, ground = base) {
     this.base = base;
+    this.ground = ground;
     const pts = (ri: number): Point[] => {
       const p: Point[] = [];
       for (let i = 0; i < data.r[ri].p.length; i += 2) p.push([data.r[ri].p[i], data.r[ri].p[i + 1]]);
@@ -203,7 +208,7 @@ export class BridgeIndex {
 
   /** The driving surface at (x, z) on bridge b, `s` metres along it: the base terrain, the road lift and the crest. */
   surfaceAt(b: Bridge, x: number, z: number, s: number) {
-    return this.base.heightAt(x, z) + roadLiftM(b.roadClass) + crest(b.riseM, s / b.spanM);
+    return this.terrainAt(b, x, z, s) + roadLiftM(b.roadClass) + crest(b.riseM, s / b.spanM);
   }
 
   /** What people and cars stand on at (x, z) within a deck: the carriageway, or the walkway's curb; else null. */
@@ -228,7 +233,20 @@ export class BridgeIndex {
     const b = this.byRoad.get(ri);
     if (!b) return undefined;
     const s = this.locate(b, x, z)?.s ?? 0;
-    return this.base.heightAt(x, z) + lift + crest(b.riseM, s / b.spanM);
+    return this.terrainAt(b, x, z, s) + lift + crest(b.riseM, s / b.spanM);
+  }
+
+  /**
+   * The terrain a deck follows `s` metres along b: `base`, eased onto `ground` over the last JOIN_M at each end, so the
+   * deck meets the approach ribbon exactly across its whole width, where the cut leaves the ground a few cm off `base`.
+   */
+  private terrainAt(b: Bridge, x: number, z: number, s: number) {
+    const h = this.base.heightAt(x, z);
+    const fromEnd = Math.min(s, b.spanM - s);
+    if (this.ground === this.base || fromEnd >= JOIN_M) return h;
+    const g = this.ground.heightAt(x, z);
+    const t = Math.max(0, fromEnd / JOIN_M);
+    return g + (h - g) * t * t * (3 - 2 * t);
   }
 
   /** How far from the centre line people walk on road bridge ri: the walkway's middle. Pedestrians walk paths on their centre line. */

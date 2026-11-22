@@ -218,7 +218,7 @@ scene.add(...waterSurface.meshes);
 
 // ---- bridges (#238): the game's structures, drawing their own deck, since the map has no road ribbons ----
 const bridgeMat = new THREE.MeshLambertMaterial({ vertexColors: true });
-const bridges = new BridgeMesh(new BridgeIndex(D, new Heightfield(D, { exaggeration: EX })), { materials: { body: bridgeMat, railing: bridgeMat }, top: true, groundAt: hAt });
+const bridges = new BridgeMesh(new BridgeIndex(D, new Heightfield(D, { exaggeration: EX }), heightfield), { materials: { body: bridgeMat, railing: bridgeMat }, top: true, groundAt: hAt });
 scene.add(...bridges.meshes);
 
 // ---- buildings ----
