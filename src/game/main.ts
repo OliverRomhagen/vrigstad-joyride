@@ -223,7 +223,7 @@ const colony = new CatColony({ scene, buildings, inWater, groundAt, half: HALF, 
 const { cats } = colony, updateCats = colony.update.bind(colony), catFirst = colony.catFirst.bind(colony), nearCat = colony.nearest.bind(colony);
 
 // ---------- crashes: what you say and feel when you hit something, and what you say to your cat riding along (src/game/crashes.ts) ----------
-const crashes = new Crashes({ game, colony, get viewer() { return camera.position; }, toast, hurtPlayer, shake });
+const crashes = new Crashes({ game, colony, get viewer() { return camera.position; }, toast, hurtPlayer, get god() { return health.god; }, shake });
 const { pickLine } = crashes;
 
 // ---------- your pets: P (or the Pets button) calls them, sends them home or sets them free (src/game/pets.ts) ----------
@@ -251,7 +251,7 @@ const wallet = newWallet();
 const wanted = new Wanted({ roads, rnd, pick, removeCar, drive, toast,
   spawnCar: (x, z, h) => addCar('polis', x, z, h, 'police'),
   drawStars: () => drawStars(), showEvading: on => $('stars').classList.toggle('evading', on), caught: n => busted(n),
-  get lyingLow() { return !!places.inside; } });
+  get lyingLow() { return !!places.inside; }, get god() { return health.god; } });
 
 // ---------- places: safehouses (lie low to lose your stars) and the trisslott kiosk ----------
 // the getter is read when a place uses it, so it follows the stars

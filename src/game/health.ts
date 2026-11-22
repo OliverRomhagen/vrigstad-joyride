@@ -30,7 +30,7 @@ export const CRACK_AT = [20, 50, 75]; // cracked glass: the windscreen and rear 
 export interface Health {
   hp: number;
   calm: number; // s since the last hurt
-  god: boolean; // the dev console's god mode: nothing takes health
+  god: boolean; // the dev console's god mode: no health lost, your car takes no damage (crashCars), no getting caught (police.ts)
 }
 
 export const newHealth = (): Health => ({ hp: HP_MAX, calm: REGEN_DELAY_S, god: false });
@@ -105,7 +105,13 @@ const NO_HITS: never[] = []; // shared: a slow scrape along a wall calls crashCa
 /** A crash at this impact speed (m/s) of car a into car b, or into a wall when b is null, at clock nowS (s).
  * Damages each car not hit in the last CRASH_COOL_S (each keeps its own, so ramming a car that was just hit still damages yours)
  * and says what changed for it; empty when nothing took damage. */
-export function crashCars<C extends Crashable>(nowS: number, impact: number, a: C, b: C | null): CrashHit<C>[] {
+export function crashCars<C extends Crashable>(
+  nowS: number,
+  impact: number,
+  a: C,
+  b: C | null,
+  spared: C | null = null, // takes the hit but no damage: the car you drive in god mode
+): CrashHit<C>[] {
   const d = crashDamage(impact);
   if (d <= 0) return NO_HITS;
   const hits: CrashHit<C>[] = [];
@@ -113,7 +119,7 @@ export function crashCars<C extends Crashable>(nowS: number, impact: number, a: 
     if (nowS - car.hitAt < CRASH_COOL_S) continue;
     car.hitAt = nowS;
     const smoke = smokeLevel(car.dmg),
-      w = damageCar(car, d);
+      w = car !== spared && damageCar(car, d);
     hits.push({ car, wrecked: w, smokeUp: !w && smokeLevel(car.dmg) > smoke });
   }
   return hits;
@@ -148,8 +154,8 @@ export function registerHealthCommands(commands: Pick<Commands, 'register'>, h: 
   commands.register(
     'god',
     command({
-      help: 'god mode: nothing takes your health',
-      details: 'Crashes, cars and cats still happen; only the health stays. The police can still catch you.',
+      help: 'god mode: no hurt, no damage to your car, no getting caught',
+      details: 'Crashes and chases still happen: the police chase you, but can’t catch you.',
       examples: ['god', 'god off'],
       args: [optional(toggle('on'))],
       run: ({ on }) => {

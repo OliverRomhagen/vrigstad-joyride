@@ -135,7 +135,7 @@ describe('crashes', () => {
   const car = (dmg = 0) => ({ dmg, hitAt: -9 });
   const HARD_MS = 27; // 20 m/s over CRASH_MIN_MS: 45 damage
 
-  it('damages both cars in a hard hit, and only the car against a wall', () => {
+  it('damages both cars in a hard hit, only the car against a wall, and never a spared car', () => {
     const a = car(),
       b = car();
     expect(crashCars(0, HARD_MS, a, b).map(h => h.car)).toEqual([a, b]);
@@ -143,6 +143,10 @@ describe('crashes', () => {
     expect(b.dmg).toBe(45);
     const c = car();
     expect(crashCars(0, HARD_MS, c, null).map(h => h.car)).toEqual([c]);
+    const spared = car(),
+      other = car();
+    expect(crashCars(0, HARD_MS, spared, other, spared).map(h => h.wrecked)).toEqual([false, false]);
+    expect([spared.dmg, other.dmg]).toEqual([0, crashDamage(HARD_MS)]); // god mode spares the car you drive
   });
 
   it('ignores a slow bump, which also leaves the cooldown alone', () => {

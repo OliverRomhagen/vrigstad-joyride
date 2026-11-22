@@ -23,7 +23,7 @@ function wanted() {
   } as unknown as Pick<RoadNetwork, 'lines' | 'driveable'>;
   const toasts: string[] = [],
     driven: { thr: number; steer: number; brake: boolean }[] = [];
-  const world = { lyingLow: false, caught: 0, removed: 0, evading: false };
+  const world = { lyingLow: false, god: false, caught: 0, removed: 0, evading: false };
   const deps: WantedDeps = {
     roads,
     rnd,
@@ -47,6 +47,9 @@ function wanted() {
     },
     get lyingLow() {
       return world.lyingLow;
+    },
+    get god() {
+      return world.god;
     },
   };
   return { w: new Wanted(deps), toasts, driven, world };
@@ -163,6 +166,22 @@ describe('Wanted', () => {
     run(w, 1, 0);
     expect(w.bust).toBe(0);
     expect(w.evade).toBeGreaterThan(0.9);
+  });
+});
+
+describe('god mode', () => {
+  it('lets the police chase you but never catch you', () => {
+    const { w, world } = wanted();
+    world.god = true;
+    w.addStar();
+    w.update(0.01, target, 0);
+    w.police[0].x = 5;
+    run(w, 3);
+    expect(world.caught).toBe(0);
+    expect(w.stars).toBe(1);
+    world.god = false;
+    run(w, 2, 0, () => world.caught > 0);
+    expect(world.caught).toBe(1);
   });
 });
 

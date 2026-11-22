@@ -23,9 +23,14 @@ registers against, what is built, and what comes next. The player-facing story i
   or a server, and it knows nothing about the box you type into.
 - **`DevConsole`** (`src/game/devconsole.ts`) is page code: the DOM box, its keys, history and focus. It sends lines
   to the registry and prints what comes back. Svelte replaces it after #51; the registry doesn't change.
-- **Modules own their commands.** Each module that has some exports a function or a method that takes
-  `Pick<Commands, 'register'>`, and `main.ts` calls it once: `registerWalletCommands` in `src/game/economy.ts`, and
-  `registerCommands` on the pets.
+- **Modules own their commands.** A command is registered in the module that owns the state it changes, next to the
+  rule it calls, and `main.ts` calls the module's register function once. It takes `Pick<Commands, 'register'>`:
+  - a class registers its own with a `registerCommands` method (`Pets`, `Wanted`);
+  - a module of plain data and functions exports `register<Area>Commands` (`registerWalletCommands` in
+    `src/game/economy.ts`, `registerHealthCommands` in `src/game/health.ts`).
+
+  The one exception is an adapter that makes commands for every entry of a registry, such as the tunables' `set` and
+  `get` (#357): it gets a `*-commands.ts` file of its own beside the registry, since no one entry owns those commands.
 
 ## The contract
 

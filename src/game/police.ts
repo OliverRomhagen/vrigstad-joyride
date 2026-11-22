@@ -49,6 +49,7 @@ export interface WantedDeps {
   showEvading(on: boolean): void; // the stars show that you're getting away
   caught(stars: number): void; // Gripen! with this many stars: back to Torget; the stars are already cleared
   readonly lyingLow: boolean; // inside a safehouse
+  readonly god: boolean; // god mode: they chase you, but can't catch you
 }
 
 /** The wanted level and the police cars that come with it. */
@@ -146,7 +147,7 @@ export class Wanted {
         this.clear();
         this.g.toast('The police gave up. The coast is clear.');
       }
-    } else if (md < BUST_DIST_M && speed < BUST_SPEED_MS) {
+    } else if (!this.g.god && md < BUST_DIST_M && speed < BUST_SPEED_MS) {
       this.bust += dt;
       if (this.bust > BUST_S) {
         const n = this.stars;
