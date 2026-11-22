@@ -1,13 +1,17 @@
 // Which street each house belongs to, which side of it the house is on, and where its driveway meets the street
 // (#305). Pure: no three.js. The wheelie bins, mailboxes and street cabinets hang off this.
 
+import { HOUSE_MIN_M2 } from '../buildings';
 import { ROAD_WIDTH_M, RoadClass, RoadUse, type WorldData } from '../data';
 import { polygonArea, segmentDistance, segmentParam } from '../polygon';
 import type { RoadLine } from '../roads';
 
-/** a building between these footprints is a house (m²): smaller is a shed, larger a block or a barn */
-const HOUSE_MIN_M2 = 40;
-const HOUSE_MAX_M2 = 400;
+/**
+ * a home of its own, with its own mailbox and wheelie bins, is a house (buildings.ts' HOUSE_MIN_M2 up) of at most this
+ * (m²): the bigger ones the game also gives house details, up to HOUSE_MAX_M2 there, are blocks, shops and barns, whose
+ * bins and mailboxes are shared and not by the street
+ */
+const OWN_HOME_MAX_M2 = 400;
 /** a house's middle within this of a street's centre line belongs to it (m) */
 const HOUSE_REACH_M = 35;
 /** a driveway belongs to a house when one end is this close to the street's edge and the other this close to the house (m) */
@@ -69,7 +73,7 @@ export function houseFronts(
   const out: HouseFront[] = [];
   for (const b of data.b) {
     const area = polygonArea(b.p);
-    if (b.k !== 0 || area < HOUSE_MIN_M2 || area > HOUSE_MAX_M2) continue;
+    if (b.k !== 0 || area < HOUSE_MIN_M2 || area > OWN_HOME_MAX_M2) continue;
     let x = 0;
     let z = 0;
     for (let i = 0; i < b.p.length; i += 2) {
