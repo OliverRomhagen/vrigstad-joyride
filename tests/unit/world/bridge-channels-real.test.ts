@@ -88,4 +88,17 @@ describe('the mapped bridges over the cut channels', () => {
       }
     }
   });
+
+  it('need the uncut ground for the tilt of a car on a deck: the cut bank under it would tip the car over', () => {
+    const n = { x: 0, y: 0, z: 0 };
+    let steepest = 1;
+    for (const b of bridges.bridges)
+      for (let s = 0; s <= b.spanM; s += 0.5) {
+        const [x, z] = at(b, s);
+        // the page tilts cars by base.normalAt on a deck (src/game/main.ts): within a few degrees of level everywhere
+        expect(base.normalAt(x, z, n).y, b.key).toBeGreaterThan(0.995);
+        steepest = Math.min(steepest, ground.normalAt(x, z, n).y);
+      }
+    expect(steepest).toBeLessThan(0.8); // the cut ground there leans over 35°
+  });
 });

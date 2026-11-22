@@ -93,7 +93,8 @@ const heightfield = new Heightfield(D, { cut: waterBodies }), hAt = heightfield.
 const bridges = new BridgeIndex(D, baseGround);
 const shore = layoutShore(waterBodies, baseGround, (x, z) => bridges.onDeck(x, z)), waterCutMs = performance.now() - waterT0;
 const _n = new THREE.Vector3();
-const normalAt = (x: number, z: number) => heightfield.normalAt(x, z, _n);
+// what a car tilts with: on a bridge deck the uncut ground the deck follows, not the channel bank cut under it
+const normalAt = (x: number, z: number) => (bridges.onDeck(x, z) ? baseGround : heightfield).normalAt(x, z, _n);
 
 // ---------- renderer and stage: fog, lights, sky and camera (src/game/render/stage.ts) ----------
 const canvas = $('gl') as HTMLCanvasElement;
