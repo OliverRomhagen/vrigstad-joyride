@@ -4,9 +4,9 @@ import { viteSingleFile } from 'vite-plugin-singlefile';
 // The fonts (src/fonts/barlow.ts) stay files beside the page instead of being inlined like every other asset: a browser
 // downloads only the weights a page draws with, while inlined it would download every weight, in both formats.
 // Listed after viteSingleFile and enforced post like it, so it runs after the config hook that inlines everything.
-function fontFilesBesideThePage(): Plugin {
+function fontsAsFiles(): Plugin {
   return {
-    name: 'font-files-beside-the-page',
+    name: 'fonts-as-files',
     enforce: 'post',
     config(config) {
       config.build ??= {};
@@ -21,5 +21,5 @@ export default defineConfig({
   root: 'src',
   // keep @license comments, so the bundled three.js keeps the MIT notice its licence asks for
   build: { outDir: '../dist', rolldownOptions: { output: { comments: { legal: true } } } },
-  plugins: [viteSingleFile(), fontFilesBesideThePage()],
+  plugins: [viteSingleFile(), fontsAsFiles()],
 });
