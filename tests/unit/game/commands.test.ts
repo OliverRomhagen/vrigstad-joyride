@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { type Call, Commands, parseKr, UsageError } from '../../../src/game/commands';
+import { type Call, Commands, HELP_MAX, parseKr, UsageError } from '../../../src/game/commands';
 
 describe('commands', () => {
   const echo = () => {
@@ -50,8 +50,8 @@ describe('commands', () => {
     c.register('teleport', { aliases: ['tp'], help: 'go', run: (a, call) => call.name + ' ' + a.join(' ') });
     expect(c.run('TP torget')).toBe('teleport torget');
     expect(c.run('help tp')).toBe('teleport: go (also tp)');
-    expect(() => c.register('tp', { help: '', run: () => '' })).toThrow();
-    expect(() => c.register('jump', { aliases: ['echo'], help: '', run: () => '' })).toThrow();
+    expect(() => c.register('tp', { help: 'x', run: () => '' })).toThrow();
+    expect(() => c.register('jump', { aliases: ['echo'], help: 'x', run: () => '' })).toThrow();
   });
 
   it('takes a command out again with the function register returns', () => {
@@ -87,6 +87,49 @@ describe('commands', () => {
     dev = true;
     expect(c.names()).toEqual(['god', 'help', 'wave']);
     expect(c.run('god')).toBe('god on');
+  });
+
+  describe('help', () => {
+    it('refuses a command without one line of help, or with an example that runs something else', () => {
+      const c = new Commands();
+      const run = () => '';
+      expect(() => c.register('fly', { help: '  ', run })).toThrow('help is one line');
+      expect(() => c.register('fly', { help: 'fly\nhigh', run })).toThrow('help is one line');
+      expect(() => c.register('fly', { help: 'f'.repeat(HELP_MAX + 1), run })).toThrow('help is one line');
+      expect(() => c.register('fly', { help: 'fly', examples: ['jump 3'], run })).toThrow("doesn't run it");
+      expect(() => c.register('fly', { help: 'fly', aliases: ['f'], examples: ['fly', ' f 3'], run })).not.toThrow();
+    });
+
+    it('answers --help and -h for every command, before it runs and outside the hooks', () => {
+      const c = new Commands();
+      let runs = 0,
+        hooked = 0;
+      c.register('fly', {
+        usage: '<height>',
+        help: 'fly up',
+        aliases: ['f'],
+        params: [{ shown: '<height>', help: 'metres' }],
+        details: 'Lands where it took off.',
+        examples: ['fly 30'],
+        run: () => String(++runs),
+      });
+      c.use((_call, next) => {
+        hooked++;
+        return next();
+      });
+      const full = 'fly <height>: fly up (also f)\n  <height>: metres\nLands where it took off.\nExamples:\n  fly 30';
+      expect(c.run('fly --help')).toBe(full);
+      expect(c.run('f -h')).toBe(full);
+      expect(c.run('help fly')).toBe(full);
+      expect([runs, hooked]).toEqual([0, 1]); // only `help fly` ran a command: help itself
+      expect(c.run('fly 3 --help')).toBe('1'); // only on its own after the name
+    });
+
+    it('keeps --help for a dev command behind dev mode, like the command', () => {
+      const c = new Commands({ allowed: a => a === 'player' });
+      c.register('god', { help: 'never get hurt', run: () => 'on' });
+      expect(c.run('god --help')).toBe('god works in dev mode only (?dev).');
+    });
   });
 
   describe('hooks', () => {
@@ -176,7 +219,7 @@ describe('commands', () => {
       let got: Call | undefined;
       c.register('teleport', {
         aliases: ['tp'],
-        help: '',
+        help: 'x',
         run: (_a, call) => {
           got = call;
           return '';
@@ -218,12 +261,15 @@ describe('commands', () => {
     });
   });
 
-  it('refuses a name twice, or a name that is not a lower-case word', () => {
+  it('refuses a name twice, or a name that is not kebab-case', () => {
     const c = echo();
-    expect(() => c.register('echo', { help: '', run: () => '' })).toThrow();
-    expect(() => c.register('Tp torget', { help: '', run: () => '' })).toThrow();
-    expect(() => c.register('go', { aliases: ['go'], help: '', run: () => '' })).toThrow();
-    expect(() => c.register('go', { aliases: ['tp', 'tp'], help: '', run: () => '' })).toThrow();
+    expect(() => c.register('echo', { help: 'x', run: () => '' })).toThrow();
+    expect(() => c.register('Tp torget', { help: 'x', run: () => '' })).toThrow();
+    for (const bad of ['tp-', 'tp--torget', 'tpTorget'])
+      expect(() => c.register(bad, { help: 'x', run: () => '' })).toThrow('kebab-case');
+    expect(() => c.register('tp-torget', { help: 'x', run: () => '' })).not.toThrow();
+    expect(() => c.register('go', { aliases: ['go'], help: 'x', run: () => '' })).toThrow();
+    expect(() => c.register('go', { aliases: ['tp', 'tp'], help: 'x', run: () => '' })).toThrow();
     expect(c.run('go')).toBe('Unknown command: go. Type help for the list.');
   });
 });
