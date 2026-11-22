@@ -14,7 +14,7 @@ export interface LabExperiment {
  * `git grep "lab.on('<id>')"` finds its gates: graduating it deletes them and its entry here, dropping it its code too.
  */
 export const LAB_EXPERIMENTS = [
-  { id: 'hello', name: 'Hello lab', cost: 'Nothing: logs one line, the smallest gate, in src/game/main.ts' },
+  { id: 'hello', name: 'Hello lab', cost: 'Nothing: logs one line, as the smallest example of a gate' },
 ] as const satisfies readonly LabExperiment[];
 
 export type LabId = (typeof LAB_EXPERIMENTS)[number]['id'];
