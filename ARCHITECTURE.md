@@ -85,7 +85,7 @@ tests/
                                    ▼
                ┌──────── sim.step(state, input, dt) ────────┐  fixed 60 Hz
                │  state: plain objects     events: caught,  │
-               │                           starAdded, ...   │
+               │                           star-added, ...  │
                └──────┬───────────────────────────┬─────────┘
                       │ read only                 │
                       ▼                           ▼
@@ -111,9 +111,9 @@ The direction the boundaries above add up to: a small, deterministic sim core wi
  the network (#1)     ─┘     Record for replays)
 ```
 
-- **A command is a named thing that can happen**: `enter`, `buy trisslott`, `stars 3`, and later `set vehicle.volvo.topSpeed 45` (#357). Players, dev tools and tests all go through the same registry (`docs/console.md`, #354), with access (`player` or `dev`) and the source on each call. A command only calls its module's rule. Player actions move there in #366.
+- **A command is a named thing that can happen**: `enter`, `buy trisslott`, `stars 3`, and later `set vehicle.volvo.top-speed 45` (#357). Players, dev tools and tests all go through the same registry (`docs/console.md`, #354), with access (`player` or `dev`) and the source on each call. A command only calls its module's rule. Player actions move there in #366.
 - **Input still becomes intents** (rule 3): what is held every frame (`throttle`, `steer`, `brake`) stays an intent, and what happens once (pressing E to get into a car) becomes a command. Today a command runs between frames; once the sim steps on a fixed timestep (#49), a command that changes sim state queues an intent for the next step (#361).
-- **An event is a named thing that happened**, in the past tense: `caught`, `starAdded`, `knockedOver`. One typed bus in sim code delivers them after the step that raised them (after the frame, until #49), so a listener never changes that step. A listener gets its own off switch, like the console's hooks. The bus comes in #367.
+- **An event is a named thing that happened**, in the past tense: `caught`, `star-added`, `knocked-over`. One typed bus in sim code delivers them after the step that raised them (after the frame, until #49), so a listener never changes that step. A listener gets its own off switch, like the console's hooks. The bus comes in #367.
 - **A feature is a plugin**: its commands, its event listeners, its hooks and its panel, installed and taken out as one. Cats, pets, the trisslott and lab experiments (#323) fit that shape; so would mods, later, without a new design.
 - **Content is a registry**: places, cars and shop items are lists that commands read (a `choice` argument). A new place then completes in the console and works with `go`, without wiring of its own.
 - **Overlays are panels** in one host, the console's (`docs/console.md`, "Panels and plugins"), so the kiosk and cat menus and a future phone ask one owner for the cursor (#335).
