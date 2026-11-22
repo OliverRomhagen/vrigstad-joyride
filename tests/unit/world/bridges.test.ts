@@ -86,9 +86,9 @@ describe('railings', () => {
     const car = { x: 0.2, z: 0 };
     expect(foot.collide(car, CAR_R)).toBe(true);
     expect(car.x).toBeLessThan(0.2);
-    // people walk clear of the railings
-    const walker = { x: 4, z: foot.walkOffsetM(0)! };
-    expect(foot.collide(walker, 0.35)).toBe(false);
+    // pedestrians walk a path's centre line, clear of the railings
+    expect(foot.collide({ x: 4, z: 0 }, 0.35)).toBe(false);
+    expect(foot.walkOffsetM(0)).toBeUndefined();
   });
 });
 
