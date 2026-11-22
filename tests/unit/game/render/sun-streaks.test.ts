@@ -92,26 +92,34 @@ describe('SunStreaks', () => {
   it('puts the disc along the shared sun direction from the camera, never at a screen edge', () => {
     const { cam, streaks, sunDir } = make();
     cam.lookAt(10, 5, 50); // facing away from the sun
-    streaks.update(cam, 1, white);
+    streaks.update(cam, 1, 0, white);
     const disc = streaks.object.children.find(o => o instanceof THREE.Sprite) as THREE.Sprite;
     const toDisc = disc.position.clone().sub(cam.position).normalize();
     expect(toDisc.dot(sunDir)).toBeCloseTo(1, 6);
     sunDir.set(1, 1, 0).normalize(); // the day cycle moves the sun: the shared vector moves the disc too
-    streaks.update(cam, 1, white);
+    streaks.update(cam, 1, 0, white);
     expect(disc.position.clone().sub(cam.position).normalize().dot(sunDir)).toBeCloseTo(1, 6);
   });
 
   it('fades everything out with no direct sunlight, as midway through the night skip', () => {
     const { cam, streaks } = make();
     cam.lookAt(10, 7, -20);
-    streaks.update(cam, 1, white);
+    streaks.update(cam, 1, 0, white);
     expect(streaks.state()).toMatchObject({ streaks: true, disc: true, light: 1 });
-    streaks.update(cam, 0.1, white);
+    streaks.update(cam, 0.1, 0, white);
     const dim = streaks.state();
     expect(dim.light).toBeGreaterThan(0);
     expect(dim.light).toBeLessThan(1);
-    streaks.update(cam, 0, white);
+    streaks.update(cam, 0, 0, white);
     expect(streaks.state()).toMatchObject({ streaks: false, disc: false, light: 0 });
+  });
+
+  it('hides the disc behind a cloud, which depth can’t, while the clouds’ shade only dims the streaks', () => {
+    const { cam, streaks } = make();
+    cam.lookAt(10, 7, -20);
+    streaks.update(cam, 0.58, 1, white); // a cloud fully over the sun under ?clouds=mostly
+    expect(streaks.state()).toMatchObject({ disc: false, streaks: true });
+    expect(streaks.state().light).toBeLessThan(1);
   });
 
   it('follows the camera’s aspect after a resize, with no resize call, and frees its GPU resources', () => {
@@ -122,7 +130,7 @@ describe('SunStreaks', () => {
       THREE.ShaderMaterial
     >;
     cam.aspect = 0.5;
-    streaks.update(cam, 1, white);
+    streaks.update(cam, 1, 0, white);
     expect(quad.material.uniforms.aspect.value).toBe(0.5);
     const scene = new THREE.Scene();
     scene.add(streaks.object);

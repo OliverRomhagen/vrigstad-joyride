@@ -195,7 +195,7 @@ const grainPos = new THREE.Vector3(), grainQuat = new THREE.Quaternion();
 const sunStreaks = dayQs.get('sunrays') === 'off' ? null : new SunStreaks({ sunDir: SUN_DIR });
 if (sunStreaks) scene.add(sunStreaks.object);
 function placeCamera(T: { x: number; z: number }, now: number, dt: number) { cameraRig.update(T, now, dt);
-  sunStreaks?.update(camera, sky.sun * skyDome.sunFactor, sun.color);
+  sunStreaks?.update(camera, sky.sun * skyDome.sunFactor, skyDome.sunShade, sun.color);
   if (filmGrain.enabled) { filmGrain.setMoving(cameraMoved(grainPos, grainQuat, camera.position, camera.quaternion)); grainPos.copy(camera.position); grainQuat.copy(camera.quaternion); } }
 
 // ---------- drift effects: sparks at the rear wheels, a flame while boosting, skid marks (src/game/render/drift-fx.ts) ----------

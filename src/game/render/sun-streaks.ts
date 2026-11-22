@@ -25,7 +25,6 @@ const FORWARD_KNEE = 0.6,
   FORWARD_FLOOR = 0.15;
 const DISC_DIST_M = 2000; // inside the sky dome (3000 m) and the far plane; nearer things hide the disc
 const DISC_SIZE = 0.19; // the disc sprite's width over its distance: the lab's 29 at 150
-const FULL_LIGHT = 0.5; // direct light (0–1) at and above which the effect is at full strength
 
 export interface SunStreakOptions {
   /** unit direction to the sun; shared, not copied */
@@ -82,7 +81,7 @@ varying vec2 q;
 void main() {
   vec2 v = q - src;
   float d = length(v);
-  float phi = atan(dot(v, vec2(-axis.y, axis.x)), dot(v, axis));
+  float phi = atan(dot(v, vec2(-axis.y, axis.x)), dot(v, axis) + 1e-6); // atan(0, 0) is undefined in GLSL
   float keep = 1.0;
   for (int i = 0; i < ${RAYS.length}; i++) {
     vec4 r = rays[i];
@@ -183,17 +182,18 @@ export class SunStreaks {
 
   /**
    * `direct` is the sun's direct light, 0–1: the day cycle's (Sky.sun) times the clouds' shade (Sky.sunFactor). At 0,
-   * as midway through the night skip, everything here fades out. `sunColour` tints the disc.
+   * as midway through the night skip, everything here fades out. `cloudCover` (Sky.sunShade) hides the disc: the clouds
+   * are drawn in the sky dome, before it, so depth can't. `sunColour` tints the disc.
    */
-  update(camera: THREE.PerspectiveCamera, direct: number, sunColour: THREE.Color) {
+  update(camera: THREE.PerspectiveCamera, direct: number, cloudCover: number, sunColour: THREE.Color) {
     const d = this.sunDir,
       q = camera.quaternion,
       s = this.source;
-    this.light = smoothstep(0, FULL_LIGHT, direct);
+    this.light = smoothstep(0, 1, direct);
     this.disc.position.copy(camera.position).addScaledVector(d, DISC_DIST_M);
     this.disc.material.color.copy(sunColour).lerp(_white, 0.42);
-    this.disc.material.opacity = this.light;
-    this.disc.visible = this.light > 0;
+    this.disc.material.opacity = this.light * (1 - cloudCover);
+    this.disc.visible = this.disc.material.opacity > 0;
     const right = _axis.set(1, 0, 0).applyQuaternion(q).dot(d),
       up = _axis.set(0, 1, 0).applyQuaternion(q).dot(d),
       forward = -_axis.set(0, 0, 1).applyQuaternion(q).dot(d);
