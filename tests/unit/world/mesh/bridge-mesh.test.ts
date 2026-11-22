@@ -99,6 +99,22 @@ describe('BridgeMesh', () => {
     expect(box.max.y - deckTop).toBeLessThan(1.4);
   });
 
+  it('rests each end on an abutment down into a cut bank, closed and below the deck', () => {
+    // a channel 3 m deep under the middle of every bridge: the cut ground the page passes as groundAt
+    const cut = (x: number, z: number) => slope.heightAt(x, z) - 3;
+    const withAbutments = new BridgeMesh(index, { materials: materials(), top: false, groundAt: cut });
+    const [slab, , steel] = withAbutments.meshes;
+    expect(withAbutments.triangles).toBe(mesh.triangles + 3 * 2 * 12); // three bridges, two boxes of twelve triangles each
+    for (const body of [slab, steel]) {
+      expect(closedAndConsistent(body.geometry)).toBe(true);
+      expect(signedVolume(body.geometry)).toBeGreaterThan(0);
+    }
+    // the foot is buried 0.3 m below the cut bank at the road bridge's start
+    const lowest = new THREE.Box3().setFromObject(slab).min.y;
+    expect(lowest).toBeCloseTo(cut(500, 507.05) - 0.3, 0);
+    withAbutments.dispose();
+  });
+
   it('keeps the deck top under the ribbon in the game, and draws it on the map', () => {
     const [b] = index.bridges;
     const topAt = (meshes: THREE.Mesh[]) => {
