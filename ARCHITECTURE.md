@@ -98,7 +98,7 @@ tests/
 - **world/ is shared** so the game and the map can't drift apart, and so data-heavy work (mesh building, spatial indexes) is done once and tested once.
 - **sim/ has no three.js** so game rules can be unit-tested in Node, run at a fixed timestep (same feel at any framerate), and later run on a server or in a worker for multiplayer (#1).
 - **The UI only reads a store** so Svelte's reactivity never touches the hot loop. The game writes HUD values when they change (speed throttled to ~10 Hz), not every frame.
-- **Events, not calls, between systems.** The sim says "a star was added"; the UI shows a toast, audio plays a siren, render flashes the lights. New features plug in without editing the sim.
+- **Events, not calls, between sim, render, UI and audio.** The sim says "a star was added"; the UI shows a toast, audio plays a siren, render flashes the lights. New features plug in without editing the sim.
 
 ### Commands in, events out
 
@@ -150,7 +150,7 @@ Short records so settled questions stay settled. Add one when you make a choice 
 - **No physics engine yet.** Collisions are hand-rolled. Rapier is the candidate when crashes (#40) need more (#54).
 - **One command registry, and modules own their commands (#218).** `src/game/commands.ts` is sim code; the console box is page code over it. A command reads typed arguments and calls its module's API; logging, access, recording and multiplayer go in hooks around every run, not in the commands. See [docs/console.md](docs/console.md).
 - **Lab experiments are written where their code belongs, off by default (#227, #323).** An experiment's code goes where it would live once it graduates (a module in `src/game/` or `src/game/sim/`, `src/game/render/`, `src/world/`, or a page module), in its own files where possible, so the architecture checks apply from its first commit. In `src/lab/`, the ragdolls (#253) met those checks only when they graduated, and splitting their rules from their drawing then was most of the work. `src/lab/flags.ts` lists the experiments, each with an English name and what it costs; `?lab=<id>,<id>` switches them on, and later the settings menu (#78) and the console (#218) set the same flags. The game reads them once, at page load, so a change there takes a reload until experiments can start and stop while it runs. Gameplay asks the flags, never the URL. The flags are page code, which sim and render code can't import, so each gate is a `lab.on('<id>')` check where page code wires the experiment in, and sim and render code get it as a constant or a callback when they're built. An experiment may change the rules, but only behind its flag. Its code is loaded with a dynamic `import()` behind the check, so with the flag off it doesn't run; while the page is built as one file it still ships in that file, and with multi-file output it becomes its own chunk. It's imported statically only when it must apply before the page draws, such as a font. Graduating deletes its entry and turns each gate into ordinary wiring; dropping one deletes its files too.
-- **No ECS yet.** Plain arrays per system; revisit with miniplex when entity kinds multiply (#55).
+- **No ECS yet.** Plain arrays per entity kind; revisit with miniplex when entity kinds multiply (#55).
 
 ## Coordinates and data
 

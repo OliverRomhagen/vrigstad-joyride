@@ -165,3 +165,33 @@ export function command<const A extends readonly AnyArg[]>(spec: TypedCommand<A>
     },
   };
 }
+
+export interface GroupSpec {
+  help: string;
+  details?: string;
+  examples?: readonly string[];
+  access?: Access;
+  aliases?: readonly string[];
+  /** the commands under it, by the word that picks one: `{ set: command({ … }) }` */
+  subcommands: Readonly<Record<string, Command>>;
+}
+
+/**
+ * A command that only holds others: `tune set driving.grip 8` runs the `set` under `tune`. Typed on its own, or with a
+ * word that names none of them, it shows its usage line, which lists them.
+ */
+export function group(spec: GroupSpec): Command {
+  const names = Object.keys(spec.subcommands).sort();
+  return {
+    help: spec.help,
+    details: spec.details,
+    examples: spec.examples,
+    access: spec.access,
+    aliases: spec.aliases,
+    subcommands: spec.subcommands,
+    usage: `<${names.join('|')}> …`,
+    run: words => {
+      throw new UsageError(words[0] ? `No subcommand called ${words[0]}.` : '');
+    },
+  };
+}

@@ -62,6 +62,7 @@ import { addBuildings, addRoadRibbons, addStreetscapeMeshes, addTerrain, addTree
 import { type CarType, specFor } from './sim/vehicle-spec';
 import { Tunables } from './sim/tunables';
 import { registerCarTunables } from './sim/car-tunables';
+import { registerTunableCommands } from './sim/tunable-commands';
 import { newGameState, newViewState } from './state';
 import { Trisslott, trisslottSeed } from './trisslott';
 import { makeClock, skyAt, START_H, tickClock } from './day-cycle';
@@ -180,10 +181,13 @@ const selectedVehicle = vehicleDefinition(new URLSearchParams(location.search).g
 // dev mode (#218): on with npm run dev, or with ?dev on any build (preview links too). § or ` then opens the dev console.
 const DEV = import.meta.env.DEV || new URLSearchParams(location.search).has('dev');
 const calmMotion = matchMedia('(prefers-reduced-motion: reduce)');
-// gameplay numbers (#217): the cars' are in the registry so far. ?tune=driving.grip:8,vehicle.volvo.top-speed:45 overrides them
+// gameplay numbers (#217): the cars' are in the registry so far. In dev mode, ?tune=driving.grip:8,vehicle.volvo.top-speed:45
+// overrides them at load, and the console's tune set, get, list and reset change them while you play (#357)
 const tunables = new Tunables();
 registerCarTunables(tunables);
-for (const err of tunables.override(new URLSearchParams(location.search).get('tune') ?? '')) console.warn('?tune=', err);
+const tuneParam = new URLSearchParams(location.search).get('tune');
+if (tuneParam && !DEV) console.warn('?tune= works in dev mode only: add ?dev');
+else for (const err of tunables.override(tuneParam ?? '')) console.warn('?tune=', err);
 let displayCar: RenderedCar | null = null;
 function carName(c: Car) { return vehicleVisuals.definition(meshed(c))?.name || c.T.name; }
 fleet.parkCars();   // parked cars along streets and driveways
@@ -301,6 +305,7 @@ registerWalletCommands(commands, wallet);
 pets.registerCommands(commands);
 wanted.registerCommands(commands);
 registerHealthCommands(commands, health, drawHealth);
+registerTunableCommands(commands, tunables);
 
 // ---------- input: keys, mouse look and the touch controls (src/game/input.ts) ----------
 // the dev console sees each key first, then the menus (src/game/menu.ts)
