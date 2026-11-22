@@ -8,6 +8,8 @@ import { ROAD_WIDTH_M as ROAD_W } from '../world/data';
 import { Heightfield } from '../world/heightfield';
 import { BuildingShellsByMaterial } from '../world/mesh/building-shells';
 import { TerrainMesh } from '../world/mesh/terrain';
+import { WaterMaterial } from '../world/mesh/water-material';
+import { WaterSurface } from '../world/mesh/water-surface';
 import { makeRnd } from '../world/random';
 import { RoadNetwork } from '../world/roads';
 import { buildStreetscape } from '../world/streetscape';
@@ -15,23 +17,28 @@ import { STREETSCAPE_OVERRIDES } from '../world/streetscape-overrides';
 import { classifyStreetscape } from '../world/streetscape-rules';
 import { LEGACY_LIGHT } from '../world/three-legacy';
 import { treeSpots } from '../world/trees';
+import { layoutShore } from '../world/shore';
 import { Water } from '../world/water';
+import { MAP_WATER_DARK, MAP_WATER_LIGHT } from '../world/water-palette';
+import { WaterBodies } from '../world/water-shapes';
 
 (function () {
 'use strict';
 const S = D.size, HALF = S / 2, N = D.n, EX = 2;
-const heightfield = new Heightfield(D, { exaggeration: EX }), hAt = heightfield.heightAt.bind(heightfield);
+// the game's river channels and lake shores, cut into the same doubled relief (src/world/water-shapes.ts)
+const baseGround = new Heightfield(D), waterBodies = new WaterBodies(D, baseGround), shore = layoutShore(waterBodies, baseGround);
+const heightfield = new Heightfield(D, { exaggeration: EX, cut: waterBodies }), hAt = heightfield.heightAt.bind(heightfield);
 const minE = heightfield.minElevationM, maxE = heightfield.maxElevationM;
 document.getElementById('relief').textContent = Math.round(minE) + '–' + Math.round(maxE) + ' m above sea level';
 
 const PAL = {
   light: { streetSw: '#9a9a8e', sidewalk: '#e4ded2', parking: '#dcd8cf', crossing: '#ffffff', sky: '#dfe9ea', ground: '#eef0d2', land: ['#f1e9d8', '#f7edb0', '#e3dcd6', '#d5e8b8', '#cfe0bd', '#bcd9a2', '#a9d48f'],
-    water: '#9fcdea', waterLine: '#6fb0dc', contour: 'rgba(150,95,50,.42)',
+    water: '#9fcdea', waterLine: '#6fb0dc', sand: 'rgba(222,206,160,.9)', gravel: 'rgba(170,165,152,.8)', contour: 'rgba(150,95,50,.42)',
     road: [['#f0a03c', '#8a5a1e'], ['#f7d774', '#9a8440'], ['#ffffff', '#9a9a8e'], ['#ffffff', '#b0b0a4']], track: '#9c7a52', path: '#6b5a48',
     text: '#2b2b26', halo: 'rgba(255,255,255,.85)', tree: '#5f9150', earth: '#b79f7c',
     wall: '#e9e2d3', roof: '#7b6a5e', lmWall: '#a8392a', lmRoof: '#5b2a22' },
   dark: { streetSw: '#5b6660', sidewalk: '#3f4842', parking: '#343b37', crossing: '#9aa39c', sky: '#0e1513', ground: '#232d27', land: ['#2b2f2b', '#353522', '#2e2c2f', '#26372a', '#26352b', '#1c3a26', '#2c4a2c'],
-    water: '#163d57', waterLine: '#2a6289', contour: 'rgba(200,150,100,.26)',
+    water: '#163d57', waterLine: '#2a6289', sand: 'rgba(120,108,80,.9)', gravel: 'rgba(90,90,86,.8)', contour: 'rgba(200,150,100,.26)',
     road: [['#c98a3a', '#3a2a12'], ['#a8914a', '#332d16'], ['#5b6660', '#151a17'], ['#4b5550', '#151a17']], track: '#7a6548', path: '#8a7b68',
     text: '#dfe5dd', halo: 'rgba(10,14,12,.85)', tree: '#2f5a3a', earth: '#3a3229',
     wall: '#a9a497', roof: '#5f5a55', lmWall: '#c5543f', lmRoof: '#6b3028' }
@@ -76,7 +83,7 @@ scene.add(sun);
 const street = (function () {
   const roads = new RoadNetwork(D, heightfield), buildings = new BuildingIndex(D);
   const sides = classifyStreetscape(D, roads, buildings, STREETSCAPE_OVERRIDES);
-  return buildStreetscape({ data: D, roads, heightfield, buildings, water: new Water(D, roads), sides });
+  return buildStreetscape({ data: D, roads, heightfield, buildings, water: new Water(D, roads, { bodies: waterBodies }), sides });
 })();
 function paintStreetscape(pal, before) {
   if (before) {   // parking areas under the roads, so aisles run over them
@@ -170,6 +177,11 @@ function paint(pal) {
   for (const w of D.w) { ctx.beginPath(); for (const ring of w) trace(ring, true); ctx.fill('evenodd'); ctx.stroke(); }
   ctx.strokeStyle = pal.water;
   for (const w of D.ww) { ctx.lineWidth = (w.k === 0 ? 5.5 : 1.5) * K; ctx.beginPath(); trace(w.p); ctx.stroke(); }
+  // the shore's sand and gravel, as the game paints them
+  ctx.lineWidth = 2.6 * K;
+  for (const st of shore.stretches) { if (st.type !== 'sandy' && st.type !== 'stony') continue;
+    ctx.strokeStyle = st.type === 'sandy' ? pal.sand : pal.gravel; ctx.beginPath();
+    ctx.moveTo(P(st.x + st.nx - st.tx * 4), P(st.z + st.nz - st.tz * 4)); ctx.lineTo(P(st.x + st.nx + st.tx * 4), P(st.z + st.nz + st.tz * 4)); ctx.stroke(); }
   paintStreetscape(pal, true);
   // paths and tracks
   ctx.lineCap = 'butt';
@@ -192,7 +204,15 @@ function paint(pal) {
 const terrainMat = new THREE.MeshLambertMaterial({ map: texture }), earthMat = new THREE.MeshLambertMaterial({ side: THREE.DoubleSide });
 const BASE_DEPTH_M = 45;   // how far the solid base reaches below the lowest ground
 const terrain = new TerrainMesh(heightfield, { skirtDepthM: BASE_DEPTH_M, material: terrainMat, skirtMaterial: earthMat });
-scene.add(terrain.surface, terrain.skirt);
+scene.add(terrain.surface, ...terrain.refined, terrain.skirt);
+
+// ---- water: the game's lake and river surfaces, standing still, recoloured with the theme ----
+const waterHorizon = new THREE.Color(), waterSun = sun.position.clone().normalize();
+const waterLook = { colourSpace: 'as-written', detail: 'lite', sunDir: waterSun, horizon: waterHorizon };
+const lakeWater = new WaterMaterial({ ...waterLook, colours: MAP_WATER_LIGHT, flowing: false }), riverWater = new WaterMaterial({ ...waterLook, colours: MAP_WATER_LIGHT, flowing: true });
+Object.assign(riverWater.material, { polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
+const waterSurface = new WaterSurface(waterBodies, { lakeMaterial: lakeWater.material, riverMaterial: riverWater.material, exaggeration: EX });
+scene.add(...waterSurface.meshes);
 
 // ---- buildings ----
 // one mesh per material, so a theme change only recolours them
@@ -260,6 +280,7 @@ function applyTheme() {
   const pal = PAL[isDark() ? 'dark' : 'light'];
   scene.background = new THREE.Color(pal.sky);
   earthMat.color.set(pal.earth); treeMat.color.set(pal.tree);
+  waterHorizon.set(pal.sky); for (const w of [lakeWater, riverWater]) w.setColours(isDark() ? MAP_WATER_DARK : MAP_WATER_LIGHT);
   for (const k in mats) mats[k].color.set(pal[k]);
   paint(pal); legend(pal); requestRender();
 }

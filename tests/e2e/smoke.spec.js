@@ -79,6 +79,32 @@ test.describe('game (index.html)', () => {
     expect(errors).toEqual([]);
   });
 
+  // In Vrigstadsån's channel west of the bridge: the player starts in the water, below the bank either side (#263).
+  test('builds the lakes, the rivers in their channels and the shore, and starts you wet in the river', async ({
+    page,
+  }, testInfo) => {
+    const errors = watchErrors(page);
+    await page.goto('/index.html?at=-60,-518,1.6,0.3');
+    await expectWebGL(page);
+    const { water: w } = await state(page);
+    expect(w.lakes).toBe(4);
+    expect(w.courses).toBeGreaterThan(0);
+    expect(w.meshes).toBeGreaterThan(0);
+    expect(w.triangles).toBeGreaterThan(0);
+    expect(w.refinedCells).toBeGreaterThan(0);
+    expect(w.reeds).toBeGreaterThan(0);
+    expect(w.stones).toBeGreaterThan(0);
+    expect(w.shore.stony + w.shore.reedy + w.shore.sandy + w.shore.grassy).toBeGreaterThan(0);
+    // the ground under the player is under the river's level, and the game calls it water
+    expect(w.level).not.toBeNull();
+    expect(w.ground).toBeLessThan(w.level);
+    expect(w.wet).toBe(true);
+    await page.locator('#go').click();
+    await frames(page, 5);
+    await page.screenshot({ path: testInfo.outputPath('game-river-channel.png') });
+    expect(errors).toEqual([]);
+  });
+
   test('places street lamps, benches and bins and reports them on the hook, also in the debug view', async ({
     page,
   }, testInfo) => {

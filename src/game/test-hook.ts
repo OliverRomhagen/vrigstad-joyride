@@ -2,7 +2,9 @@
 // Moved from src/game/main.ts (#177).
 import { FURNITURE } from '../world/furniture/definitions';
 import type { FurnitureLayout } from '../world/furniture/placement';
+import type { ShoreLayout } from '../world/shore';
 import type { StreetscapeLayout } from '../world/streetscape';
+import type { WaterBodies } from '../world/water-shapes';
 import type { Car } from './cars';
 import type { Health } from './health';
 import type { PlayerState } from './player';
@@ -30,6 +32,17 @@ export interface TestHookDeps {
   debugStreetscape: boolean;
   furniture: { layout: FurnitureLayout; draw: { meshes: readonly unknown[]; triangles: number }; ms: number };
   debugFurniture: boolean;
+  water: {
+    bodies: Pick<WaterBodies, 'lakes' | 'courses' | 'levelAt'>;
+    surface: { meshes: readonly unknown[]; triangles: number };
+    props: { meshes: readonly unknown[]; triangles: number };
+    shore: ShoreLayout;
+    terrainTriangles: number;
+    refinedCells: number;
+    buildMs: number;
+    inWater(x: number, z: number): boolean;
+    hAt(x: number, z: number): number;
+  };
   nearestCar(): Car | null;
   readonly kr: number; // in your wallet
   readonly banknotes: number; // in the air or on the ground
@@ -74,6 +87,28 @@ export function installTestHook(g: TestHookDeps) {
       triangles: street.tris,
       buildMs: Math.round(street.ms),
       debug: g.debugStreetscape,
+    };
+  }
+  function waterState() {
+    const w = g.water,
+      level = w.bodies.levelAt(player.x, player.z),
+      count = (type: string) => w.shore.stretches.filter(s => s.type === type).length;
+    return {
+      lakes: w.bodies.lakes.length,
+      courses: w.bodies.courses.length,
+      meshes: w.surface.meshes.length + w.props.meshes.length,
+      triangles: w.surface.triangles,
+      propTriangles: w.props.triangles,
+      terrainTriangles: w.terrainTriangles,
+      refinedCells: w.refinedCells,
+      reeds: w.shore.reeds.length / 4,
+      stones: w.shore.stones.length / 4,
+      shore: { stony: count('stony'), reedy: count('reedy'), sandy: count('sandy'), grassy: count('grassy') },
+      buildMs: Math.round(w.buildMs),
+      // at the player: the water's level there (null on dry land), the ground, and whether the game calls it wet
+      level: Number.isNaN(level) ? null : level,
+      ground: w.hAt(player.x, player.z),
+      wet: w.inWater(player.x, player.z),
     };
   }
   (window as unknown as { __joyride: unknown }).__joyride = {
@@ -121,6 +156,7 @@ export function installTestHook(g: TestHookDeps) {
         sunLight: g.day.sunLight,
         streetscape: streetscapeState(),
         furniture: furnitureState(),
+        water: waterState(),
       };
     },
   };
