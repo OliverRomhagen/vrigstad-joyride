@@ -24,7 +24,8 @@ export interface Tunable extends TunableSpec {
   reset?(): void;
 }
 
-const KEY = /^[a-z][a-zA-Z0-9]*(\.[a-z][a-zA-Z0-9]*)+$/;
+// dotted kebab-case, like the other names people type: `vehicle.volvo.top-speed`, as `?vehicle=xc70-police`
+const KEY = /^[a-z][a-z0-9]*(-[a-z0-9]+)*(\.[a-z][a-z0-9]*(-[a-z0-9]+)*)+$/;
 
 /** What `entry` shows of a tunable: everything but the way in, so a caller can't skip the range check. */
 export type TunableInfo = Omit<Tunable, 'get' | 'set' | 'reset'>;
@@ -35,7 +36,7 @@ export class Tunables {
 
   /** Adds a number reached through get and set; its current value becomes its default. */
   add(key: string, spec: TunableSpec, get: () => number, set: (value: number) => void, reset?: () => void): void {
-    if (!KEY.test(key)) throw new Error('tunable keys are dotted lower camel case: ' + key);
+    if (!KEY.test(key)) throw new Error('tunable keys are dotted kebab-case: ' + key);
     if (this.byKey.has(key)) throw new Error('tunable already registered: ' + key);
     const defaultValue = get();
     if (!(spec.min <= defaultValue && defaultValue <= spec.max))
