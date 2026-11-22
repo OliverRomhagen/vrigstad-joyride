@@ -161,7 +161,7 @@ export class GroundTexture {
           ctx.strokeStyle = pass === 2 ? 'rgba(179,167,140,.35)' : pass ? '#b3a78c' : fill[c];
           ctx.lineWidth = (ROAD_W[c] + (pass === 2 ? 4.4 : pass ? 2.4 : 0)) * K;
           ctx.beginPath();
-          for (const r of D.r) if (r.c === c) trace(r.p);
+          for (const r of D.r) if (r.c === c && !r.br) trace(r.p); // not under a bridge: the channel bed shows there
           ctx.stroke();
         }
       ctx.shadowColor = 'rgba(0,0,0,.45)';

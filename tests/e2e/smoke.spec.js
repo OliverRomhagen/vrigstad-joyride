@@ -109,8 +109,11 @@ test.describe('game (index.html)', () => {
     const errors = watchErrors(page);
     await page.goto('/index.html?at=-33.9,-8.4,1.6,0.3');
     await expectWebGL(page);
-    const { bridges: b } = await state(page);
+    const { bridges: b, water: w } = await state(page);
     expect(b.count).toBe(6);
+    // over Vrigstadsån's channel, but on the deck: dry (#263)
+    expect(w.level).not.toBeNull();
+    expect(w.wet).toBe(false);
     expect(b.byArchetype).toEqual({ 'road-slab': 1, 'path-steel': 4, 'path-timber': 1 });
     expect(b.onDeck).toBe(true);
     // the player stands on groundAt, so on the deck's surface rather than the terrain under it

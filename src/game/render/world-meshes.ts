@@ -136,10 +136,14 @@ export function addRoadRibbons(
 
 // ---------- bridges: decks, edge beams, walkways and railings over the ribbons (#238) ----------
 /** The bridges' structure, timed for the test hook; the ribbons draw their driving surface. */
-export function addBridges(scene: THREE.Scene, bridges: BridgeIndex) {
+export function addBridges(scene: THREE.Scene, bridges: BridgeIndex, heightfield: Heightfield) {
   const t0 = performance.now();
   const material = new THREE.MeshLambertMaterial({ vertexColors: true });
-  const draw = new BridgeMesh(bridges, { materials: { body: material, railing: material }, top: false });
+  const draw = new BridgeMesh(bridges, {
+    materials: { body: material, railing: material },
+    top: false,
+    groundAt: (x, z) => heightfield.heightAt(x, z),
+  });
   scene.add(...draw.meshes);
   return { draw, ms: performance.now() - t0 };
 }

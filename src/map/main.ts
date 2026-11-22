@@ -188,14 +188,14 @@ function paint(pal) {
   // paths and tracks
   ctx.lineCap = 'butt';
   ctx.setLineDash([4 * K, 3 * K]); ctx.strokeStyle = pal.path; ctx.lineWidth = Math.max(1.2, 1.1 * K);
-  ctx.beginPath(); for (const r of D.r) if (r.c === 5) trace(r.p); ctx.stroke();
+  ctx.beginPath(); for (const r of D.r) if (r.c === 5 && !r.br) trace(r.p); ctx.stroke();
   ctx.setLineDash([8 * K, 4 * K]); ctx.strokeStyle = pal.track; ctx.lineWidth = Math.max(1.5, 2 * K);
-  ctx.beginPath(); for (const r of D.r) if (r.c === 4) trace(r.p); ctx.stroke();
+  ctx.beginPath(); for (const r of D.r) if (r.c === 4 && !r.br) trace(r.p); ctx.stroke();
   ctx.setLineDash([]); ctx.lineCap = 'round';
   // roads: all casings first, then fills, minor to major
   for (const pass of [1, 0]) for (const c of [3, 2, 1, 0]) {
     ctx.strokeStyle = pal.road[c][pass]; ctx.lineWidth = (ROAD_W[c] + (pass ? 2 : 0)) * K;
-    ctx.beginPath(); for (const r of D.r) if (r.c === c) trace(r.p); ctx.stroke();
+    ctx.beginPath(); for (const r of D.r) if (r.c === c && !r.br) trace(r.p); ctx.stroke();
   }
   paintStreetscape(pal, false);
   streetNames(pal);
@@ -218,7 +218,7 @@ scene.add(...waterSurface.meshes);
 
 // ---- bridges (#238): the game's structures, drawing their own deck, since the map has no road ribbons ----
 const bridgeMat = new THREE.MeshLambertMaterial({ vertexColors: true });
-const bridges = new BridgeMesh(new BridgeIndex(D, heightfield), { materials: { body: bridgeMat, railing: bridgeMat }, top: true });
+const bridges = new BridgeMesh(new BridgeIndex(D, new Heightfield(D, { exaggeration: EX })), { materials: { body: bridgeMat, railing: bridgeMat }, top: true, groundAt: hAt });
 scene.add(...bridges.meshes);
 
 // ---- buildings ----

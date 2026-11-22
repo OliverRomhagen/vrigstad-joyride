@@ -127,16 +127,17 @@ const terrainMesh = addTerrain(scene, heightfield, texture);
 
 // ---------- roads: crisp ribbons on the terrain + lookup grid + junction graph ----------
 // the mapped bridges (#238): their decks are the ground within their footprints, and carry the road ribbons
-const bridges = new BridgeIndex(D, heightfield);
+// the decks follow the ground before the channels are cut, so they span them at the approaches' height
+const bridges = new BridgeIndex(D, baseGround);
 const roads = new RoadNetwork(D, heightfield, bridges), { lines: R } = roads;
 let streetIndex: StreetscapeIndex | null = null;   // the streetscape's walkable height, built further down once the buildings and trees are known
 // what people, cats and cars stand on: the road, or the curb, pavement or parking area above it
 const groundAt = (x: number, z: number) => { const g = roads.groundAt(x, z), s = streetIndex && streetIndex.surfaceAt(x, z); return s !== null && s > g ? s : g; };
 const roadRibbons = addRoadRibbons(scene, roads, heightfield, maxAnisotropy, bridges);
-const bridgeMeshes = addBridges(scene, bridges);
+const bridgeMeshes = addBridges(scene, bridges, heightfield);
 
 // ---------- water: wet where the cut ground is under a lake's or river's level; surfaces, reeds and stones ----------
-const water = new Water(D, roads, { bodies: waterBodies, ground: heightfield }), inWater = water.inWater.bind(water);
+const water = new Water(D, roads, { bodies: waterBodies, ground: heightfield, decks: bridges }), inWater = water.inWater.bind(water);
 const waterT1 = performance.now(), waterLook = addWater(scene, waterBodies, shore, heightfield, { sunDir: SUN_DIR, horizon: (scene.fog as THREE.FogExp2).color, coarse }), waterMeshMs = performance.now() - waterT1;
 
 // ---------- buildings (painted in Swedish house colours) + collision grid ----------
