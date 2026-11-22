@@ -10,6 +10,8 @@ export interface Arg<N extends string, T> {
   readonly rest: boolean;
   parse(word: string): T;
   choices?(): readonly string[];
+  /** what it is, for `help <command>`: `km/h`, `a place on the map` */
+  readonly help?: string;
 }
 
 // biome-ignore lint/suspicious/noExplicitAny: the value type varies by argument; ArgValues reads each one back
@@ -90,6 +92,11 @@ export function rest<N extends string>(name: N): Arg<N, string> {
   return { ...arg(name, w => w), rest: true };
 }
 
+/** The same argument with a line saying what it is, for help: `described(int('speed'), 'km/h')`. */
+export function described<N extends string, T, A extends Arg<N, T>>(a: A, help: string): A {
+  return { ...a, help };
+}
+
 /** The same argument, left out allowed: its value is then undefined. Only the arguments at the end can be optional. */
 export function optional<N extends string, T>(a: Arg<N, T>): Arg<N, T> & { readonly optional: true } {
   return { ...a, optional: true };
@@ -104,6 +111,8 @@ function inRange(name: string, v: number, { min, max }: { min?: number; max?: nu
 
 export interface TypedCommand<A extends readonly AnyArg[]> {
   help: string;
+  details?: string;
+  examples?: readonly string[];
   access?: Access;
   aliases?: readonly string[];
   args: A;
@@ -121,14 +130,17 @@ export function command<const A extends readonly AnyArg[]>(spec: TypedCommand<A>
     if (a.rest && i !== args.length - 1) throw new Error('only the last argument can take the rest: ' + a.name);
     if (!a.optional && i > 0 && args[i - 1].optional) throw new Error('optional arguments go last: ' + a.name);
   });
-  const usage = args
-    .map(a => {
-      const shown = a.rest ? a.name + '…' : a.name;
-      return a.optional ? `[${shown}]` : `<${shown}>`;
-    })
-    .join(' ');
+  const shown = (a: AnyArg) => {
+    const n = a.rest ? a.name + '…' : a.name;
+    return a.optional ? `[${n}]` : `<${n}>`;
+  };
+  const usage = args.map(shown).join(' ');
+  const params = args.flatMap(a => (a.help ? [{ shown: shown(a), help: a.help }] : []));
   return {
     help: spec.help,
+    details: spec.details,
+    examples: spec.examples,
+    params: params.length ? params : undefined,
     access: spec.access,
     aliases: spec.aliases,
     usage: usage || undefined,
