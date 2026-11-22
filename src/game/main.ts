@@ -182,7 +182,7 @@ const selectedVehicle = vehicleDefinition(new URLSearchParams(location.search).g
 const DEV = import.meta.env.DEV || new URLSearchParams(location.search).has('dev');
 const calmMotion = matchMedia('(prefers-reduced-motion: reduce)');
 // gameplay numbers (#217): the cars' are in the registry so far. In dev mode, ?tune=driving.grip:8,vehicle.volvo.top-speed:45
-// overrides them at load, and the console's set, get, list and reset change them while you play (#357)
+// overrides them at load, and the console's tune set, get, list and reset change them while you play (#357)
 const tunables = new Tunables();
 registerCarTunables(tunables);
 const tuneParam = new URLSearchParams(location.search).get('tune');
