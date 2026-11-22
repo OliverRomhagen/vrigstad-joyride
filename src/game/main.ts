@@ -180,7 +180,7 @@ const selectedVehicle = vehicleDefinition(new URLSearchParams(location.search).g
 // dev mode (#218): on with npm run dev, or with ?dev on any build (preview links too). § or ` then opens the dev console.
 const DEV = import.meta.env.DEV || new URLSearchParams(location.search).has('dev');
 const calmMotion = matchMedia('(prefers-reduced-motion: reduce)');
-// gameplay numbers (#217): the cars' are in the registry so far. ?tune=driving.grip:8,vehicle.volvo.topSpeed:45 overrides them
+// gameplay numbers (#217): the cars' are in the registry so far. ?tune=driving.grip:8,vehicle.volvo.top-speed:45 overrides them
 const tunables = new Tunables();
 registerCarTunables(tunables);
 for (const err of tunables.override(new URLSearchParams(location.search).get('tune') ?? '')) console.warn('?tune=', err);

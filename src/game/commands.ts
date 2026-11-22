@@ -57,7 +57,7 @@ export interface CommandsOptions {
   allowed?(access: Access): boolean;
 }
 
-const NAME = /^[a-z][a-z0-9-]*$/;
+const NAME = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/; // kebab-case, as every name people type is (AGENTS.md, Naming)
 /** The longest a command's one line of help can be, so `help` stays a list you can read. */
 export const HELP_MAX = 80;
 const HELP_FLAGS = ['--help', '-h'];
@@ -92,7 +92,7 @@ export class Commands {
     for (const e of cmd.examples ?? [])
       if (!names.includes(e.trim().split(/\s+/)[0])) throw new Error(`${name}: the example "${e}" doesn't run it`);
     for (const n of names) {
-      if (!NAME.test(n)) throw new Error('command names are lower-case words: ' + n);
+      if (!NAME.test(n)) throw new Error('command names are kebab-case: ' + n);
       if (this.byName.has(n) || this.aliases.has(n)) throw new Error('command already registered: ' + n);
     }
     this.byName.set(name, cmd);
