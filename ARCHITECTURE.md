@@ -65,7 +65,7 @@ src/
               wanted level, pedestrians. step(state, input, dt). No three.js, no DOM.
     render/   three.js scene and the game's ground texture; syncs meshes
               from sim state each frame
-    input/    keyboard, touch, gamepad ──► Input intents
+    input/    keyboard, touch, gamepad ──► intents and commands
     audio/    reacts to sim events
     loop.ts   fixed-timestep sim, interpolated render
     store.svelte.ts   HUD state the UI reads
@@ -80,12 +80,12 @@ tests/
 ### Data flow in the game
 
 ```
- Input devices ──► input/ ──► Input intents
+ Input devices ──► input/ ──► intents, commands
                                    │
                                    ▼
                ┌──────── sim.step(state, input, dt) ────────┐  fixed 60 Hz
-               │  state: plain objects     events: busted,  │
-               │                           star-added, ...  │
+               │  state: plain objects     events: caught,  │
+               │                           starAdded, ...   │
                └──────┬───────────────────────────┬─────────┘
                       │ read only                 │
                       ▼                           ▼
@@ -111,7 +111,7 @@ The direction the boundaries above add up to: a small, deterministic sim core wi
  the network (#1)     ─┘     Record for replays)
 ```
 
-- **A command is a named thing that can happen**: `enter`, `buy trisslott`, `stars 3`, and later `set vehicle.volvo.grip 0.8` (#357). Players, dev tools and tests all go through the same registry (`docs/console.md`, #354), with access (`player` or `dev`) and the source on each call. A command only calls its module's rule. Player actions move there in #366.
+- **A command is a named thing that can happen**: `enter`, `buy trisslott`, `stars 3`, and later `set vehicle.volvo.topSpeed 45` (#357). Players, dev tools and tests all go through the same registry (`docs/console.md`, #354), with access (`player` or `dev`) and the source on each call. A command only calls its module's rule. Player actions move there in #366.
 - **Input still becomes intents** (rule 3): what is held every frame (`throttle`, `steer`, `brake`) stays an intent, and what happens once (pressing E to get into a car) becomes a command. Today a command runs between frames; once the sim steps on a fixed timestep (#49), a command that changes sim state queues an intent for the next step (#361).
 - **An event is a named thing that happened**, in the past tense: `caught`, `starAdded`, `knockedOver`. One typed bus in sim code delivers them after the step that raised them (after the frame, until #49), so a listener never changes that step. A listener gets its own off switch, like the console's hooks. The bus comes in #367.
 - **A feature is a plugin**: its commands, its event listeners, its hooks and its panel, installed and taken out as one. Cats, pets, the trisslott and lab experiments (#323) fit that shape; so would mods, later, without a new design.
