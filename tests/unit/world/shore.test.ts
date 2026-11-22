@@ -55,4 +55,17 @@ describe('layoutShore', () => {
     expect(north.length).toBeGreaterThan(0);
     for (const s of north) expect(s.type).toBe('stony');
   });
+
+  it('keeps every reed and stone out of where it is told to, such as under a bridge deck, and moves no other', () => {
+    const world = makeValley({ ww: [RIVER], w: [LAKE] });
+    const base = new Heightfield(world);
+    const under = (x: number) => Math.abs(x) < 30;
+    const kept = layoutShore(new WaterBodies(world, base), base, x => under(x));
+    const pick = (props: number[], keep: (x: number) => boolean) =>
+      Array.from({ length: props.length / 4 }, (_, i) => props.slice(i * 4, i * 4 + 4)).filter(p => keep(p[0]));
+    for (const k of ['reeds', 'stones'] as const) {
+      expect(pick(kept[k], under)).toEqual([]);
+      expect(pick(kept[k], () => true)).toEqual(pick(shore[k], x => !under(x)));
+    }
+  });
 });

@@ -88,7 +88,10 @@ const view = newViewState(START_CAM[0], START_CAM[1]);
 // the world's queries are bound once, so the code below calls them as plain functions
 const waterT0 = performance.now(), baseGround = new Heightfield(D), waterBodies = new WaterBodies(D, baseGround);
 const heightfield = new Heightfield(D, { cut: waterBodies }), hAt = heightfield.heightAt.bind(heightfield);
-const shore = layoutShore(waterBodies, baseGround), waterCutMs = performance.now() - waterT0;
+// the mapped bridges (#238): their decks follow the ground before the channels are cut, so they span them at the
+// approaches' height; they are the ground within their footprints, carry the road ribbons, and keep reeds out from under them
+const bridges = new BridgeIndex(D, baseGround);
+const shore = layoutShore(waterBodies, baseGround, (x, z) => bridges.onDeck(x, z)), waterCutMs = performance.now() - waterT0;
 const _n = new THREE.Vector3();
 const normalAt = (x: number, z: number) => heightfield.normalAt(x, z, _n);
 
@@ -126,9 +129,6 @@ const { canvas: tex2d, texture, K, P } = ground;
 const terrainMesh = addTerrain(scene, heightfield, texture);
 
 // ---------- roads: crisp ribbons on the terrain + lookup grid + junction graph ----------
-// the mapped bridges (#238): their decks are the ground within their footprints, and carry the road ribbons
-// the decks follow the ground before the channels are cut, so they span them at the approaches' height
-const bridges = new BridgeIndex(D, baseGround);
 const roads = new RoadNetwork(D, heightfield, bridges), { lines: R } = roads;
 let streetIndex: StreetscapeIndex | null = null;   // the streetscape's walkable height, built further down once the buildings and trees are known
 // what people, cats and cars stand on: the road, or the curb, pavement or parking area above it
