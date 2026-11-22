@@ -117,7 +117,7 @@ describe('commands', () => {
         hooked++;
         return next();
       });
-      const full = 'fly <height>: fly up (also f)\n  <height>: metres\nLands where it took off.\nExamples: fly 30';
+      const full = 'fly <height>: fly up (also f)\n  <height>: metres\nLands where it took off.\nExamples:\n  fly 30';
       expect(c.run('fly --help')).toBe(full);
       expect(c.run('f -h')).toBe(full);
       expect(c.run('help fly')).toBe(full);

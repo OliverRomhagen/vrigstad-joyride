@@ -206,7 +206,7 @@ export class Commands {
         `${this.usage(name, cmd)}: ${cmd.help}${aka}`,
         ...(cmd.params ?? []).map(p => `  ${p.shown}: ${p.help}`),
         ...(cmd.details ? [cmd.details] : []),
-        ...(cmd.examples?.length ? ['Examples: ' + cmd.examples.join(', ')] : []),
+        ...(cmd.examples?.length ? ['Examples:', ...cmd.examples.map(e => `  ${e}`)] : []), // one a line: an example may hold a comma
       ].join('\n');
     }
     return this.names()

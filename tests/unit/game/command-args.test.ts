@@ -104,7 +104,7 @@ describe('command', () => {
     );
     expect(c.run('t --help')).toBe(
       't <place> [speed]: go somewhere\n  <place>: a place on the map\n  [speed]: km/h\n' +
-        'In the car if you are in one.\nExamples: t torget, t skroten 40',
+        'In the car if you are in one.\nExamples:\n  t torget\n  t skroten 40',
     );
     expect(command({ help: 'x', args: [word('who')], run: () => '' }).params).toBeUndefined();
   });
