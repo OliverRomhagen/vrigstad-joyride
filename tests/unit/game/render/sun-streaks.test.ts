@@ -114,12 +114,50 @@ describe('SunStreaks', () => {
     expect(streaks.state()).toMatchObject({ streaks: false, disc: false, light: 0 });
   });
 
-  it('hides the disc behind a cloud, which depth can’t, while the clouds’ shade only dims the streaks', () => {
+  it('hides the disc and the streaks behind a cloud, which depth can’t, and dims them under a partial one', () => {
     const { cam, streaks } = make();
     cam.lookAt(10, 7, -20);
+    const strength = () => {
+      const u = (
+        streaks.object.children.find(o => o instanceof THREE.Mesh) as THREE.Mesh<
+          THREE.PlaneGeometry,
+          THREE.ShaderMaterial
+        >
+      ).material.uniforms;
+      return u.presence.value + u.glare.value;
+    };
+    streaks.update(cam, 1, 0, white);
+    const clear = strength();
+    streaks.update(cam, 0.79, 0.5, white); // half covered under ?clouds=partly
+    expect(strength()).toBeLessThan(clear * 0.4);
+    expect(streaks.state()).toMatchObject({ disc: true, streaks: true });
     streaks.update(cam, 0.58, 1, white); // a cloud fully over the sun under ?clouds=mostly
-    expect(streaks.state()).toMatchObject({ disc: false, streaks: true });
-    expect(streaks.state().light).toBeLessThan(1);
+    expect(streaks.state()).toMatchObject({ disc: false, streaks: false });
+  });
+
+  it('keeps the rays faint under a high sun and lets them grow as it sinks', () => {
+    const sunDir = new THREE.Vector3();
+    const streaks = new SunStreaks({ sunDir });
+    const presence = (elevationDeg: number) => {
+      const e = THREE.MathUtils.degToRad(elevationDeg);
+      sunDir.set(0, Math.sin(e), -Math.cos(e));
+      const cam = new THREE.PerspectiveCamera(58, 16 / 9, 0.8, 4200);
+      cam.lookAt(0, -0.35, -1); // the chase camera's pitch, facing the sun's azimuth
+      streaks.update(cam, 1, 0, white);
+      return (
+        streaks.object.children.find(o => o instanceof THREE.Mesh) as THREE.Mesh<
+          THREE.PlaneGeometry,
+          THREE.ShaderMaterial
+        >
+      ).material.uniforms.presence.value;
+    };
+    const midday = presence(55),
+      afternoon = presence(30),
+      evening = presence(12);
+    expect(midday).toBeGreaterThan(0); // off-screen sunlight is still there, just faint
+    expect(midday).toBeLessThan(evening * 0.35);
+    expect(afternoon).toBeGreaterThan(midday);
+    expect(evening).toBeGreaterThan(afternoon);
   });
 
   it('follows the camera’s aspect after a resize, with no resize call, and frees its GPU resources', () => {

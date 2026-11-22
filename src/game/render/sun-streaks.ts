@@ -8,14 +8,15 @@ import * as THREE from 'three';
 
 /**
  * The lab's five rays, measured for a 16:9 frame: angle off the fan's axis (rad), length and width (in frame heights,
- * width as the Gaussian's spread in rad) and opacity. Uneven on purpose: an even fan reads as a starburst.
+ * width as the Gaussian's spread in rad) and opacity. Uneven on purpose: an even fan reads as a starburst. Wide and
+ * faint, so neighbours overlap into one feathered fan instead of a few separate bright columns.
  */
 const RAYS: readonly (readonly [angle: number, length: number, spread: number, opacity: number])[] = [
-  [-0.735, 1.64, 0.13, 0.34],
-  [-0.365, 1.46, 0.105, 0.43],
-  [0.052, 1.47, 0.13, 0.37],
-  [0.496, 1.48, 0.105, 0.36],
-  [0.846, 1.8, 0.1, 0.27],
+  [-0.735, 1.64, 0.2, 0.16],
+  [-0.365, 1.46, 0.16, 0.22],
+  [0.052, 1.47, 0.21, 0.18],
+  [0.496, 1.48, 0.17, 0.17],
+  [0.846, 1.8, 0.15, 0.12],
 ];
 // Below FORWARD_KNEE (about 53° off the view axis, past the corners of a 2.2:1 frame) the projection's divisor eases
 // towards FORWARD_FLOOR instead of passing through 0, so a sun beside or behind the camera stays finite and on its own
@@ -23,6 +24,12 @@ const RAYS: readonly (readonly [angle: number, length: number, spread: number, o
 // leave from the disc.
 const FORWARD_KNEE = 0.6,
   FORWARD_FLOOR = 0.15;
+// The rays are a low-sun effect: full below about 12° (sun y 0.2), a fifth of that above about 53° (y 0.8), so
+// midday shows only a hint and late afternoon gets the drama. The halo keeps half its strength at midday.
+const LOW_SUN_Y = 0.2,
+  HIGH_SUN_Y = 0.8,
+  HIGH_SUN_RAYS = 0.2,
+  HIGH_SUN_HALO = 0.5;
 const DISC_DIST_M = 2000; // inside the sky dome (3000 m) and the far plane; nearer things hide the disc
 const DISC_SIZE = 0.19; // the disc sprite's width over its distance: the lab's 29 at 150
 
@@ -84,16 +91,16 @@ void main() {
   float phi = atan(dot(v, vec2(-axis.y, axis.x)), dot(v, axis) + 1e-6); // atan(0, 0) is undefined in GLSL
   // rays carry the sunlight while the sun is out of frame; facing it, the halo takes over and the rays step back,
   // so the image keeps its darks instead of washing out
-  float rayGain = max(2.0 * presence - 1.3 * glare, 0.0);
+  float rayGain = max(presence - 0.6 * glare, 0.0);
   float keep = 1.0;
   for (int i = 0; i < ${RAYS.length}; i++) {
     vec4 r = rays[i];
     float t = min(d / (r.y * reach), 1.0);
     float a = (phi - r.x) / (r.z * width);
-    keep *= 1.0 - min(r.w * (1.0 - pow(t, 1.6)) * exp(-a * a) * rayGain, 0.9);
+    keep *= 1.0 - r.w * (1.0 - t) * (1.0 - t) * exp(-a * a) * rayGain;
   }
-  float halo = 0.88 * pow(max(1.0 - d / (0.6 * max(aspect, 1.0)), 0.0), 2.6) * (0.4 * presence + 0.6 * glare);
-  float local = 0.85 * pow(max(1.0 - d / (0.29 * min(aspect, 1.0)), 0.0), 3.9) * glare;
+  float halo = 0.5 * pow(max(1.0 - d / (0.6 * max(aspect, 1.0)), 0.0), 2.6) * (0.3 * presence + 0.7 * glare);
+  float local = 0.6 * pow(max(1.0 - d / (0.29 * min(aspect, 1.0)), 0.0), 3.9) * glare;
   float alpha = 1.0 - keep * (1.0 - halo) * (1.0 - local);
   vec3 c = mix(vec3(1.0, 0.99, 0.92), vec3(1.0, 0.86, 0.64), smoothstep(0.0, 1.2, d));
   gl_FragColor = vec4(c * alpha, 1.0);
@@ -185,8 +192,9 @@ export class SunStreaks {
 
   /**
    * `direct` is the sun's direct light, 0–1: the day cycle's (Sky.sun) times the clouds' shade (Sky.sunFactor). At 0,
-   * as midway through the night skip, everything here fades out. `cloudCover` (Sky.sunShade) hides the disc: the clouds
-   * are drawn in the sky dome, before it, so depth can't. `sunColour` tints the disc.
+   * as midway through the night skip, everything here fades out. `cloudCover` (Sky.sunShade, how much a cloud covers
+   * the sun) hides the disc, which depth can't since the clouds are drawn in the sky dome before it, and takes the rays
+   * and glare away with it: a covered sun casts no streaks. `sunColour` tints the disc.
    */
   update(camera: THREE.PerspectiveCamera, direct: number, cloudCover: number, sunColour: THREE.Color) {
     const d = this.sunDir,
@@ -202,11 +210,12 @@ export class SunStreaks {
       forward = -_axis.set(0, 0, 1).applyQuaternion(q).dot(d);
     sunSource(right, up, forward, Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2), s);
     const u = this.quad.material.uniforms,
-      k = this.light * this.strength;
+      k = this.light * this.strength * (1 - cloudCover),
+      low = 1 - smoothstep(LOW_SUN_Y, HIGH_SUN_Y, d.y);
     u.src.value.set(s.x, s.y);
     u.aspect.value = camera.aspect;
-    u.presence.value = s.presence * k;
-    u.glare.value = s.glare * k;
+    u.presence.value = s.presence * k * (1 - cloudCover) * (HIGH_SUN_RAYS + (1 - HIGH_SUN_RAYS) * low);
+    u.glare.value = s.glare * k * (HIGH_SUN_HALO + (1 - HIGH_SUN_HALO) * low);
     // the fan opens towards a point half a frame below the bottom edge: straight down for a sun above the frame, as in
     // the lab, and across the frame for one beside it. The sun is never that low in view (it stays above the horizon,
     // the camera looks down), so the axis never degenerates.
@@ -214,8 +223,8 @@ export class SunStreaks {
       ay = -1 - s.y,
       len = Math.hypot(ax, ay) || 1;
     u.axis.value.set(ax / len, ay / len);
-    // a source far off screen lengthens the rays (same angles), so they still cross the frame
-    u.reach.value = this.reach * Math.max(1, Math.hypot(s.x, s.y) + 1);
+    // a source far off screen lengthens the rays (same angles) so they still reach into the frame, but they fade on the way
+    u.reach.value = this.reach * Math.max(1, 0.6 * Math.hypot(s.x, s.y) + 0.8);
     this.quad.visible = u.presence.value > 0.002 || u.glare.value > 0.002;
   }
 
