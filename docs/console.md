@@ -12,11 +12,12 @@ registers against, what is built, and what comes next. The player-facing story i
  DevConsole (typed, Tab) ─┐
  ?cmd= at start*    (url) ├─► Commands.run(line, source) ─► hooks ─► Command.run ─► wallet, pets, police, …
  binds, exec*    (script) │     │ access check                 (outermost first)        (their own API)
- tests             (test) ┘     │ alias → name
+ panels*          (panel) │     │ alias → name
+ tests             (test) ┘     │
                                 └─► one line back ─► the console's output (the Log tab, later)
 ```
 
-`*` not built yet: step 6 of [What comes next](#what-comes-next).
+`*` not built yet: steps 4 and 7 of [What comes next](#what-comes-next).
 
 - **`Commands`** (`src/game/commands.ts`) is the one registry. It is sim code, so it runs in a unit test, a worker
   or a server, and it knows nothing about the box you type into.
@@ -77,7 +78,7 @@ outermost. This is where cross-cutting work goes, so no command has to know abou
 | Record | keeps the lines that changed the sim, with the step they ran in, for replays | #49 |
 | Network | sends a host's commands to the other players, refuses a guest's dev command | #1 |
 
-The `source` on the call says where the line came from: `console`, `url`, `script` or `test`. An unknown command, or
+The `source` on the call says where the line came from: `console`, `url`, `script` (binds, `exec`), `panel` or `test`. An unknown command, or
 one that isn't allowed, is answered before the hooks, so a hook never sees it; the Log tab takes those lines from the
 console itself.
 
@@ -94,7 +95,7 @@ A line is split on spaces; there is no quoting. A `rest` argument gets the words
 
 ### Commands that take time
 
-Planned, and built with the first command that needs it (`bench`, step 5), so no code waits unused:
+Planned, and built with the first command that needs it (`bench`, step 6), so no code waits unused:
 
 - A command defines one of `run(values, call): string` or `runAsync(values, call): Promise<string>`; `command()` takes
   either, so typed arguments work the same.
@@ -108,6 +109,43 @@ Planned, and built with the first command that needs it (`bench`, step 5), so no
 
 Until then, a long job answers "started" at once and reports through the Log.
 
+## Panels and plugins
+
+The registry is the shell, and it stays pure: it knows nothing about panels. UI that does more than a line of text,
+such as a tuning board with sliders, is a **panel**: page code that the console box hosts, in a tab of its own or a
+section of one.
+
+```ts
+const stop = consoleUi.addPanel({
+  id: 'tune-cars',
+  title: 'Cars',
+  mount(el) {            // a plain DOM element: lil-gui, plain DOM or Svelte (#51) all fit
+    …
+    return () => { … };  // unmount
+  },
+});
+```
+
+- **A panel changes the game only through commands or the tunables registry** (#217), never by reaching into game
+  objects (Architecture rule 4). A slider runs `set vehicle.volvo.grip 0.8` with source `panel`; Copy reads `list
+  vehicle.volvo`. So the hooks see every change: the Log shows it, and the Record hook can replay a tuning session.
+- **A panel reads** through the registry too, or through a store the page already has, so it works the same when the
+  sim runs in a worker (#49) or on a host (#1).
+- **A plugin is a bundle** of commands, hooks and a panel, all optional, installed and taken out as one:
+
+  ```ts
+  installPlugin({ id: 'tune-cars', access: 'dev', commands: { … }, hooks: [ … ], panel: { … } });
+  ```
+
+  Every part already returns the function that takes it out again, so uninstalling calls them. A plugin turns on
+  with `?dev` or a lab flag (#227), and costs nothing until then, loaded with `import()`.
+- Not everything has to be a plugin: a core command stays in the module that owns its state (step 2). A plugin is for
+  a tool that comes and goes as a whole, such as the car tuning board (#277), the stats and lil-gui view of #53, or a
+  workbench nobody has thought of yet.
+
+`consoleUi` and `installPlugin` are page code, built in step 4; their names can change then. A panel library such as
+lil-gui would be a new dependency: dev only, loaded with `import()` with its plugin, and its PR says why.
+
 ## What comes next
 
 Each step is a PR of its own, in this order; the first two are what #218 asks for.
@@ -119,19 +157,22 @@ Each step is a PR of its own, in this order; the first two are what #218 asks fo
 3. **Tunables** (#217). One adapter turns the registry's entries into `set <key> <value>`, `get <key>`, `list
    [prefix]` and `reset [key]`, with the key as a `choice` and the value as a `num` with the entry's range and unit. A
    tunable never registers a command of its own.
-4. **The Log tab.** A small `Log` in sim code (a ring buffer of `{ level, text, at }`) that any module writes to, and
-   that the console shows beside the Dev tab. Warnings that go to `console.warn` today go there too. Chat (#7) is a
-   third tab later.
-5. **Performance.** A small `Perf` module in sim code that the frame loop and the systems write marks to, timed with a
+4. **Tabs, panels and the Log tab.** The console box gets the panel contract (see [Panels and
+   plugins](#panels-and-plugins)), and the Dev tab and a Log tab are its first two panels. The Log is a small `Log` in
+   sim code (a ring buffer of `{ level, text, at }`) that any module writes to; warnings that go to `console.warn`
+   today go there too. Chat (#7) is a third tab later.
+5. **The first plugin: car tuning** (#277). Sliders over the cars' tunables that change the feel while you drive, and
+   a Copy button for the values to paste into code. It needs steps 3 and 4, and shows the plugin shape works.
+6. **Performance.** A small `Perf` module in sim code that the frame loop and the systems write marks to, timed with a
    clock passed in (`performance.now()` in the page, a fake in tests), so a test or a replay stays deterministic.
    `perf on|off`, `perf top` and `perf mark <name>` read it into the Log tab or the debug overlay (#257). A timing hook
    (`commands.use`) times the commands themselves. Heavy measuring, such as `bench pathfind 1000`, runs as a job in a
    worker (or WebAssembly) that the command only starts: `run` answers at once ("started"), and the job posts its result
    to the Log when it is done.
-6. **Lines from outside the box.** `?cmd=god;go torget` runs at start in dev mode, with source `url`, so a preview
+7. **Lines from outside the box.** `?cmd=god;go torget` runs at start in dev mode, with source `url`, so a preview
    link or a smoke test starts where it needs to; `exec <name>` and `bind <key> <line>` (dev) follow when someone
    wants them. `;` separates lines in all of them.
-7. **Commands into the sim step** (with #49). Today a command changes state the moment it runs, between frames. Once
+8. **Commands into the sim step** (with #49). Today a command changes state the moment it runs, between frames. Once
    the sim steps on a fixed timestep, a command that changes sim state queues an intent that the next step applies,
    which is what replays and multiplayer need. The contract above stays; only what `run` does inside changes.
 
