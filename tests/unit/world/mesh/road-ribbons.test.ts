@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
+import { BridgeIndex } from '../../../../src/world/bridges';
 import { ROAD_WIDTH_M, RoadClass } from '../../../../src/world/data';
 import { RoadRibbons } from '../../../../src/world/mesh/road-ribbons';
 import { type Point, RoadNetwork, roadLiftM } from '../../../../src/world/roads';
@@ -154,5 +155,45 @@ describe('RoadRibbons after the move to polyline.ts', () => {
     // each quad is pl, l, r, pl, r, pr: vertex 1 is the l edge, vertex 2 the r edge
     expect(pos.getX(1)).toBeCloseTo(-ROAD_WIDTH_M[RoadClass.STREET] / 2, 6);
     expect(pos.getX(2)).toBeCloseTo(ROAD_WIDTH_M[RoadClass.STREET] / 2, 6);
+  });
+});
+
+describe('RoadRibbons on a bridge (#238)', () => {
+  const asphalt = new THREE.Texture();
+  const slope = { heightAt: (x: number) => 5 + 0.02 * x };
+  const world = makeWorld({
+    r: [
+      { c: RoadClass.PRIMARY, n: '', p: [-40, 0, -10, 0], i: 1 },
+      { c: RoadClass.PRIMARY, n: '', p: [-10, 0, 10, 0], i: 2, br: { l: 1 } },
+    ],
+  });
+  const roads = new RoadNetwork(world, slope);
+  const options = { asphalt, roadColours: ROAD_COLOURS, centreLineColour: 0xffffff };
+  const plain = new RoadRibbons(roads, slope, options);
+  const bridges = new BridgeIndex(world, slope);
+  const onDeck = new RoadRibbons(roads, slope, { ...options, heightOf: bridges.ribbonHeight.bind(bridges) });
+  const positions = (r: RoadRibbons) => Array.from(r.meshes[0].geometry.getAttribute('position').array);
+
+  it('leaves every other road exactly as it was', () => {
+    // the approach is the first road, so its vertices lead the buffer
+    const approach = 5 * 6 * 3; // 30 m at 6 m a step: five quads of six vertices, three numbers each
+    expect(positions(onDeck).slice(0, approach)).toEqual(positions(plain).slice(0, approach));
+  });
+
+  it('follows the deck every metre on the bridge, matching groundAt', () => {
+    const pos = onDeck.meshes[0].geometry.getAttribute('position');
+    const ground = new RoadNetwork(world, slope, bridges);
+    let n = 0;
+    for (let i = 0; i < pos.count; i++) {
+      const x = pos.getX(i);
+      if (x <= -10) continue;
+      n++;
+      // the ribbon's edge is inside the deck, so the ground there is the carriageway's surface
+      expect(pos.getY(i)).toBeCloseTo(ground.groundAt(x, pos.getZ(i) * 0.999), 5);
+    }
+    expect(n).toBe(20 * 6 - 3); // the first quad's three vertices at x = -10 are skipped with the approach's
+    // the crest in the middle, where the slope's terrain is 5 m
+    for (let i = 0; i < pos.count; i++)
+      if (Math.abs(pos.getX(i)) < 1e-6) expect(pos.getY(i)).toBeCloseTo(5 + roadLiftM(RoadClass.PRIMARY) + 0.25, 5);
   });
 });

@@ -1,5 +1,7 @@
 // The test hook: read-only state for the smoke tests (tests/e2e), so they do not have to read pixels. Keep it read-only.
 // Moved from src/game/main.ts (#177).
+
+import type { BridgeIndex } from '../world/bridges';
 import { FURNITURE } from '../world/furniture/definitions';
 import type { FurnitureLayout } from '../world/furniture/placement';
 import type { ShoreLayout } from '../world/shore';
@@ -30,6 +32,11 @@ export interface TestHookDeps {
   skyDome: Pick<Sky, 'state'>;
   street: { layout: StreetscapeLayout; meshes: readonly unknown[]; tris: number; ms: number };
   debugStreetscape: boolean;
+  bridges: {
+    index: Pick<BridgeIndex, 'bridges' | 'deckAt'>;
+    draw: { draw: { meshes: readonly unknown[]; triangles: number }; ms: number };
+    groundAt(x: number, z: number): number;
+  };
   furniture: { layout: FurnitureLayout; draw: { meshes: readonly unknown[]; triangles: number }; ms: number };
   debugFurniture: boolean;
   water: {
@@ -111,6 +118,30 @@ export function installTestHook(g: TestHookDeps) {
       wet: w.inWater(player.x, player.z),
     };
   }
+  function bridgeState() {
+    const { index, draw, groundAt } = g.bridges;
+    const byArchetype: Record<string, number> = { 'road-slab': 0, 'path-steel': 0, 'path-timber': 0 };
+    for (const b of index.bridges) byArchetype[b.archetype]++;
+    const deck = index.deckAt(player.x, player.z);
+    return {
+      count: index.bridges.length,
+      byArchetype,
+      list: index.bridges.map(b => ({
+        key: b.key,
+        archetype: b.archetype,
+        spanM: Math.round(b.spanM * 10) / 10,
+        widthM: Math.round(b.halfWidthM * 20) / 10,
+        riseM: Math.round(b.riseM * 100) / 100,
+        source: b.source,
+      })),
+      onDeck: deck !== null,
+      deckY: deck,
+      groundY: groundAt(player.x, player.z),
+      meshes: draw.draw.meshes.length,
+      triangles: draw.draw.triangles,
+      buildMs: Math.round(draw.ms),
+    };
+  }
   (window as unknown as { __joyride: unknown }).__joyride = {
     state: () => {
       const n = g.nearestCar(),
@@ -157,6 +188,7 @@ export function installTestHook(g: TestHookDeps) {
         streetscape: streetscapeState(),
         furniture: furnitureState(),
         water: waterState(),
+        bridges: bridgeState(),
       };
     },
   };

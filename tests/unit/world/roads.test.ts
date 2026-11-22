@@ -88,3 +88,15 @@ describe('forEachSegmentNear', () => {
     expect(none.size).toBe(0);
   });
 });
+
+describe('groundAt with bridges (#238)', () => {
+  const deck = { deckAt: (x: number, z: number) => (Math.abs(x) < 10 && Math.abs(z) < 6 ? 9 : null) };
+  const roads = new RoadNetwork(makeWorld({ r: [MAIN_ROAD] }), terrainAt(3), deck);
+
+  it('stands on the deck within its footprint and on the road as before outside it', () => {
+    expect(roads.groundAt(0, 0)).toBe(9);
+    expect(roads.groundAt(0, 5.9)).toBe(9);
+    expect(roads.groundAt(20, 0)).toBe(3 + roadLiftM(RoadClass.PRIMARY));
+    expect(roads.groundAt(0, 30)).toBe(3);
+  });
+});

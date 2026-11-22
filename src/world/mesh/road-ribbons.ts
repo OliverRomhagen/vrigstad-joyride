@@ -12,7 +12,12 @@ export interface RoadRibbonOptions {
   roadColours: Readonly<Record<RoadClass, number>>;
   /** sRGB colour of the centre line */
   centreLineColour: number;
+  /** the deck height of a ribbon vertex on a bridge road, undefined elsewhere (BridgeIndex.ribbonHeight) */
+  heightOf?: (ri: number, x: number, z: number, lift: number) => number | undefined;
 }
+
+/** bridge roads are cut every metre, so the ribbon follows the deck's crest (m) */
+const BRIDGE_STEP_M = 1;
 
 /** the last ribbon is the centre line, painted on primary and secondary roads */
 const CENTRE_LINE = ROAD_WIDTH_M.length;
@@ -34,12 +39,15 @@ export class RoadRibbons {
   constructor(
     roads: Pick<RoadNetwork, 'lines'>,
     heightfield: Pick<Heightfield, 'heightAt'>,
-    { asphalt, roadColours, centreLineColour }: RoadRibbonOptions,
+    { asphalt, roadColours, centreLineColour, heightOf }: RoadRibbonOptions,
   ) {
     const positions: number[][] = Array.from({ length: CENTRE_LINE + 1 }, () => []);
     const uvs: number[][] = Array.from({ length: CENTRE_LINE + 1 }, () => []);
-    const ribbon = (out: number[], uvOut: number[], points: Point[], width: number, lift: number) => {
-      const q = resample(points, STEP_M);
+    const ribbon = (ri: number, out: number[], uvOut: number[], points: Point[], width: number, lift: number) => {
+      const onBridge = heightOf?.(ri, points[0][0], points[0][1], lift) !== undefined;
+      const q = resample(points, onBridge ? BRIDGE_STEP_M : STEP_M);
+      const y = (x: number, z: number) =>
+        (onBridge ? heightOf?.(ri, x, z, lift) : undefined) ?? heightfield.heightAt(x, z) + lift;
       let pl: number[] = [];
       let pr: number[] = [];
       let v = 0;
@@ -47,8 +55,8 @@ export class RoadRibbons {
       const u = width / TILE_M;
       for (let i = 0; i < q.length; i++) {
         const { lx, lz, rx, rz } = ribbonEdges(q, i, width);
-        const l = [lx, heightfield.heightAt(lx, lz) + lift, lz];
-        const r = [rx, heightfield.heightAt(rx, rz) + lift, rz];
+        const l = [lx, y(lx, lz), lz];
+        const r = [rx, y(rx, rz), rz];
         if (i > 0) {
           v += Math.hypot(q[i][0] - q[i - 1][0], q[i][1] - q[i - 1][1]) / TILE_M;
           out.push(
@@ -78,10 +86,10 @@ export class RoadRibbons {
         pv = v;
       }
     };
-    for (const r of roads.lines) {
-      ribbon(positions[r.c], uvs[r.c], r.p, ROAD_WIDTH_M[r.c], roadLiftM(r.c));
-      if (r.c < 2) ribbon(positions[CENTRE_LINE], uvs[CENTRE_LINE], r.p, CENTRE_LINE_WIDTH_M, CENTRE_LINE_LIFT_M);
-    }
+    roads.lines.forEach((r, ri) => {
+      ribbon(ri, positions[r.c], uvs[r.c], r.p, ROAD_WIDTH_M[r.c], roadLiftM(r.c));
+      if (r.c < 2) ribbon(ri, positions[CENTRE_LINE], uvs[CENTRE_LINE], r.p, CENTRE_LINE_WIDTH_M, CENTRE_LINE_LIFT_M);
+    });
 
     positions.forEach((p, i) => {
       if (!p.length) return;
