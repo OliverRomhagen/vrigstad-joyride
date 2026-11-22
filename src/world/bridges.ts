@@ -30,6 +30,8 @@ export interface Bridge {
   railingM: number;
   /** the crest of the deck above its ends (m) */
   riseM: number;
+  /** whether a pavement carries on from each walkway, [start, end] × [left, right]; a walkway that meets none ramps down */
+  pavementOn: [[boolean, boolean], [boolean, boolean]];
   /** evidence for the inferred parts, in #187's words: heights, structure and railings are always inferred */
   source: { width: Source; structure: Source };
   x0: number;
@@ -49,6 +51,9 @@ const WALKWAY_M = 2.15;
 const EDGE_BEAM_M = 0.4;
 /** the walkway's curb above the carriageway: the centre profile's, as on the approach pavements (m) */
 export const WALKWAY_CURB_M = 0.12;
+/** a walkway that meets no pavement ramps down to a lowered curb over this, as the streetscape's strips end (m) */
+const WALKWAY_RAMP_M = 1.5;
+const WALKWAY_LOWERED_M = 0.02;
 /** a footbridge's deck: path width plus this, at least the minimum (m) */
 const STEEL_EXTRA_M = 1;
 const STEEL_MIN_M = 2.5;
@@ -162,6 +167,10 @@ export class BridgeIndex {
         halfWidthM: half,
         railingM: half - RAILING_IN_M[archetype],
         riseM: Math.min(RISE_M[archetype], (grade * spanM) / 4),
+        pavementOn: [
+          [true, true],
+          [true, true],
+        ],
         source: { width: r.w ? 'mapped' : 'derived', structure: 'inferred' },
         x0: Math.min(...p.map(q => q[0])) - half,
         x1: Math.max(...p.map(q => q[0])) + half,
@@ -219,9 +228,40 @@ export class BridgeIndex {
       const at = this.locate(b, x, z);
       if (!at || Math.abs(at.d) > b.halfWidthM) continue;
       const walkway = b.walkwayM > 0 && Math.abs(at.d) > b.carriageM / 2;
-      return this.surfaceAt(b, x, z, at.s) + (walkway ? WALKWAY_CURB_M : 0);
+      return this.surfaceAt(b, x, z, at.s) + (walkway ? this.curbAt(b, at.s, at.d < 0 ? -1 : 1) : 0);
     }
     return null;
+  }
+
+  /** The walkway's top above the driving surface `s` metres along b, on its left (-1) or right (1). */
+  curbAt(b: Bridge, s: number, side: -1 | 1) {
+    const end = s < b.spanM / 2 ? 0 : 1;
+    const fromEnd = end ? b.spanM - s : s;
+    if (b.pavementOn[end][side < 0 ? 0 : 1] || fromEnd >= WALKWAY_RAMP_M) return WALKWAY_CURB_M;
+    return WALKWAY_LOWERED_M + ((WALKWAY_CURB_M - WALKWAY_LOWERED_M) * Math.max(0, fromEnd)) / WALKWAY_RAMP_M;
+  }
+
+  /**
+   * Notes which walkway ends meet a pavement, from the streetscape: `hasPavement(ri, side)` for each road that ends at
+   * a bridge, on its own left (-1) or right (1). A bridge end with no road at it meets none.
+   */
+  fitWalkways(lines: readonly { readonly p: readonly Point[] }[], hasPavement: (ri: number, side: -1 | 1) => boolean) {
+    for (const b of this.bridges) {
+      if (!b.walkwayM) continue;
+      for (const end of [0, 1] as const) {
+        const key = nodeKey(end ? b.p[b.p.length - 1] : b.p[0]);
+        const found: [boolean, boolean] = [false, false];
+        lines.forEach((r, ri) => {
+          if (this.byRoad.has(ri) || r.p.length < 2) return;
+          const atStart = nodeKey(r.p[0]) === key;
+          if (!atStart && nodeKey(r.p[r.p.length - 1]) !== key) return;
+          // a road running on in the bridge's own direction has the same left and right; one running back, the other
+          const same = end === 0 ? !atStart : atStart;
+          for (const k of [0, 1] as const) if (hasPavement(ri, (k === 0) === same ? -1 : 1)) found[k] = true;
+        });
+        b.pavementOn[end] = found;
+      }
+    }
   }
 
   onDeck(x: number, z: number) {
