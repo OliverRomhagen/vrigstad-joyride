@@ -157,9 +157,9 @@ export function registerHealthCommands(commands: Pick<Commands, 'register'>, h: 
       help: 'god mode: no hurt, no damage to your car, no getting caught',
       details: 'Crashes and chases still happen: the police chase you, but can’t catch you.',
       examples: ['god', 'god off'],
-      args: [optional(toggle('on'))],
-      run: ({ on }) => {
-        h.god = on ?? !h.god;
+      args: [optional(toggle('mode'))],
+      run: ({ mode }) => {
+        h.god = mode ?? !h.god;
         if (h.god) heal(h, HP_MAX);
         drawHealth();
         return h.god ? 'God mode on.' : 'God mode off.';

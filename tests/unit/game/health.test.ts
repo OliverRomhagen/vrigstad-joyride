@@ -205,7 +205,7 @@ describe('god mode', () => {
     expect(c.run('god on')).toBe('God mode on.'); // on stays on, rather than flipping
     expect(c.run('god')).toBe('God mode off.');
     expect(hurt(h, HP_MAX)).toBe(true);
-    expect(c.run('god maybe')).toBe('on is on or off. Usage: god [on]');
+    expect(c.run('god maybe')).toBe('mode is on or off. Usage: god [mode]');
     expect(drawn).toBe(3);
   });
 });
