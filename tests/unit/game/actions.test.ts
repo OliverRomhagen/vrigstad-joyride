@@ -170,7 +170,7 @@ describe('Actions.action', () => {
     expect(t.calls.at(-1)).toBe('skroten');
   });
 
-  it('E on foot next to Plåt-Pelle talks to him, before any car nearby', () => {
+  it('E on foot next to Plåt-Pelle talks to him, when he is nearer than any car', () => {
     const t = actions({ cars: [parked()], owner: true });
     t.a.action();
     expect(t.game.inCar).toBe(false);

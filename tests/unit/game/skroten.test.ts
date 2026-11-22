@@ -105,6 +105,8 @@ describe('Skroten', () => {
     expect(t.s.nearOwner()).toBe(false); // still in the car
     t.game.inCar = false;
     expect(t.s.nearOwner()).toBe(true);
+    expect(t.s.nearOwner({ x: at.x + 4, z: at.z })).toBe(false); // a car nearer than him: E gets you in
+    expect(t.s.nearOwner({ x: at.x + 7, z: at.z })).toBe(true);
     Object.assign(t.g.player, { x: at.x + 3.1 });
     expect(t.s.nearOwner()).toBe(false);
     t.s.talk();

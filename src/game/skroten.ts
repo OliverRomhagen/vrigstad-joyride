@@ -54,10 +54,11 @@ export class Skroten {
     return carPrice(c.type, this.g.modelId(c), c.dmg) ?? OWNER_SAYS + '”En polisbil? Ä du inte klok? Den rör ja inte.”';
   }
 
-  /** You stand on foot next to Plåt-Pelle. */
-  nearOwner() {
-    const { game, player } = this.g;
-    return !game.inCar && Math.hypot(player.x - OWNER_AT.x, player.z - OWNER_AT.z) < TALK_M;
+  /** You stand on foot next to Plåt-Pelle, nearer him than `car` (the car E would get you into), so E right after getting out on the ring gets you back in. */
+  nearOwner(car?: { x: number; z: number } | null) {
+    const { game, player } = this.g,
+      d = Math.hypot(player.x - OWNER_AT.x, player.z - OWNER_AT.z);
+    return !game.inCar && d < TALK_M && (!car || d < Math.hypot(player.x - car.x, player.z - car.z));
   }
 
   /** E next to him: his next line, or a word about the police. */
