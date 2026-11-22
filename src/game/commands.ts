@@ -6,7 +6,7 @@
 export type Access = 'dev' | 'player';
 
 /** Where a line came from, so a hook can tell a typed line from a script or a test. */
-export type CallSource = 'console' | 'url' | 'script' | 'test';
+export type CallSource = 'console' | 'url' | 'script' | 'panel' | 'test';
 
 /** One run of a command, as the command and the hooks see it. */
 export interface Call {
