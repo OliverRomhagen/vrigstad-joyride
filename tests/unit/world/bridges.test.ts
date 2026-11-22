@@ -3,7 +3,7 @@ import data from '../../../data/vrigstad.json';
 import { archetypeOf, BridgeIndex, crest, WALKWAY_CURB_M } from '../../../src/world/bridges';
 import { RoadClass, type WorldData } from '../../../src/world/data';
 import { Heightfield } from '../../../src/world/heightfield';
-import { roadLiftM } from '../../../src/world/roads';
+import { RoadNetwork, roadLiftM } from '../../../src/world/roads';
 import { makeWorld } from './fixture';
 
 // a terrain sloping 2 % to the east, so heights tell the deck from the ground
@@ -118,5 +118,22 @@ describe('the six mapped bridges (data/vrigstad.json)', () => {
       expect((4 * b.riseM) / b.spanM).toBeLessThanOrEqual((b.archetype === 'road-slab' ? 0.05 : 0.08) + 1e-12);
     expect(index.onDeck(-33.9, -8.4)).toBe(true);
     expect(index.deckAt(-33.9, -8.4)).toBeGreaterThan(new Heightfield(D).heightAt(-33.9, -8.4));
+  });
+
+  it('give groundAt no step from the approach onto the deck and off again', () => {
+    const roads = new RoadNetwork(D, new Heightfield(D), index);
+    for (const b of index.bridges) {
+      const [a, z] = [b.p[0], b.p[b.p.length - 1]];
+      const [dx, dz] = [(z[0] - a[0]) / b.spanM, (z[1] - a[1]) / b.spanM];
+      let last = Number.NaN;
+      // along the centre line, from 5 m before the bridge to 5 m past it, every 10 cm
+      for (let s = -5; s <= b.spanM + 5; s += 0.1) {
+        const g = roads.groundAt(a[0] + dx * s, a[1] + dz * s);
+        // at most the 6 cm between two classes' ribbon lifts, which b58102458 has where a driveway meets its footway,
+        // as every driveway-to-footway joint off the bridges already does
+        if (!Number.isNaN(last)) expect(Math.abs(g - last)).toBeLessThan(0.065);
+        last = g;
+      }
+    }
   });
 });
