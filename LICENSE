@@ -18,6 +18,10 @@ Third-party components keep their own licenses:
   ODbL, including its attribution and share-alike terms.
 - Elevation tiles: Mapzen terrarium terrain tiles on AWS Open Data.
   See the dataset's terms before reusing them.
+- Fonts: Barlow and Barlow Condensed © 2017 The Barlow Project Authors,
+  under the SIL Open Font License 1.1 (https://openfontlicense.org), served
+  beside the pages from their npm packages (src/fonts/barlow.ts), whose
+  LICENSE file holds the full text.
 
 ---
 
