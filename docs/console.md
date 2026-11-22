@@ -23,9 +23,14 @@ registers against, what is built, and what comes next. The player-facing story i
   or a server, and it knows nothing about the box you type into.
 - **`DevConsole`** (`src/game/devconsole.ts`) is page code: the DOM box, its keys, history and focus. It sends lines
   to the registry and prints what comes back. Svelte replaces it after #51; the registry doesn't change.
-- **Modules own their commands.** Each module that has some exports a function or a method that takes
-  `Pick<Commands, 'register'>`, and `main.ts` calls it once: `registerWalletCommands` in `src/game/economy.ts`, and
-  `registerCommands` on the pets.
+- **Modules own their commands.** A command is registered in the module that owns the state it changes, next to the
+  rule it calls, and `main.ts` calls the module's register function once. It takes `Pick<Commands, 'register'>`:
+  - a class registers its own with a `registerCommands` method (`Pets`, `Wanted`);
+  - a module of plain data and functions exports `register<Area>Commands` (`registerWalletCommands` in
+    `src/game/economy.ts`, `registerHealthCommands` in `src/game/health.ts`).
+
+  The one exception is an adapter that makes commands for every entry of a registry, such as the tunables' `set` and
+  `get` (#357): it gets a `*-commands.ts` file of its own beside the registry, since no one entry owns those commands.
 
 ## The contract
 
@@ -178,8 +183,9 @@ Each step is a PR of its own, in this order; the first two are what #218 asks fo
 
 1. **Tab and a hint in the box.** Tab completes from `complete()` (twice shows the choices), and the input shows the
    usage line of the command being typed. Page code in `devconsole.ts`; a smoke step types a command and checks it ran.
-2. **The core dev commands**, each in the module that owns the state, with `command()`: `god`, `stars <0-3>` (police),
-   `go <place>` (from #346's spots), `car <model>`, `fps`. Each one's rule gets a unit test in its module.
+2. **The core dev commands** (#356), each in the module that owns the state, with `command()`: `god [mode]`
+   (`health.ts`) and `stars <0-3>` (`police.ts`) are built; `fps` (the frame-time overlay), `go <place>` (from #346's
+   spots) and `car <model>` follow. Each one's rule gets a unit test in its module.
 3. **Tunables** (#217, built in #357). `src/game/sim/tunable-commands.ts` turns the registry's entries into
    `tune set <tunable> <value>`, `tune get <tunable>`, `tune list [prefix]` and `tune reset [tunable]`, with the key as
    a `choice` and the value as a `num` that the registry checks against the entry's range. They sit under `tune`, so

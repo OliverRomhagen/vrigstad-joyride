@@ -57,7 +57,7 @@ function actions(
       calls.push('clear');
     },
   };
-  const health = { hp: 7, calm: 0 },
+  const health = { hp: 7, calm: 0, god: false },
     wallet = { kr: o.kr ?? 0 };
   const g: ActionsDeps = {
     game,
