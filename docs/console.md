@@ -23,8 +23,9 @@ registers against, what is built, and what comes next. The player-facing story i
   or a server, and it knows nothing about the box you type into.
 - **`DevConsole`** (`src/game/devconsole.ts`) is page code: the DOM box, its keys, history and focus. It sends lines
   to the registry and prints what comes back. Svelte replaces it after #51; the registry doesn't change.
-- **Modules own their commands.** Each module that has some exports `registerCommands(commands: Pick<Commands,
-  'register'>)` (or a method of that name), and `main.ts` calls it once, as it does for the wallet and the pets now.
+- **Modules own their commands.** Each module that has some exports a function or a method that takes
+  `Pick<Commands, 'register'>`, and `main.ts` calls it once: `registerWalletCommands` in `src/game/economy.ts`, and
+  `registerCommands` on the pets.
 
 ## The contract
 
@@ -81,6 +82,17 @@ outermost. This is where cross-cutting work goes, so no command has to know abou
 The `source` on the call says where the line came from: `console`, `url`, `script` (binds, `exec`), `panel` or `test`. An unknown command, or
 one that isn't allowed, is answered before the hooks, so a hook never sees it; the Log tab takes those lines from the
 console itself.
+
+What a hook can rely on, and what it can't yet:
+
+- **`next()` runs the command once.** A hook that calls it twice (a retry, a timing hook that measures twice) gets the
+  same line back the second time; the command doesn't run again.
+- **A hook can't tell a failed run from a good one.** A `UsageError` reaches the hooks as a finished "… Usage: …" line,
+  and a command that throws skips the code after `next()` in every hook. The Record hook needs to know which runs
+  changed the sim, so it brings a result that says so (`{ ok, text }` or similar) when it is built.
+- **A command that runs another line** through the registry starts a call of its own, with source `console` unless it
+  passes one. Record and Network would take that line as typed by a person and keep it twice. A command that runs lines
+  passes `call.source` on, and the Record hook keeps only the outermost call; both come with the Record hook.
 
 ### Completion
 
