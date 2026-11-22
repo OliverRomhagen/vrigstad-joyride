@@ -5,7 +5,7 @@ import type * as THREE from 'three';
 import { clamp, wrap } from '../../world/math';
 import type { GameState, ViewState } from '../state';
 import type { Sky } from './sky';
-import { SUN_DIR, SUN_I } from './stage';
+import { SUN_DIR } from './stage';
 
 type Point = { x: number; z: number };
 
@@ -30,6 +30,7 @@ export interface CameraRigDeps {
   heightAt(x: number, z: number): number; // the terrain, which the camera stays above
   rnd(): number; // the shake's own stream, shared with the smoke, since both roll every frame
   calmMotion: { readonly matches: boolean }; // prefers-reduced-motion
+  readonly sunIntensity: number; // the sun's intensity for the time of day under a clear sky (Daylight.sunIntensity)
 }
 
 /** Places the camera every frame; `shake` jolts it after a crash. */
@@ -85,6 +86,6 @@ export class CameraRig {
     sun.target.position.set(T.x, ty, T.z);
     sun.position.copy(sun.target.position).addScaledVector(SUN_DIR, 400);
     skyDome.update(camera.position, now / 1000, dt);
-    sun.intensity = SUN_I * skyDome.sunFactor; // also centres the dome
+    sun.intensity = this.g.sunIntensity * skyDome.sunFactor; // also centres the dome; the time of day sets the base, a cloud in front of the sun takes some away
   }
 }

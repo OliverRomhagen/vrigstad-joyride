@@ -79,6 +79,27 @@ test.describe('game (index.html)', () => {
     expect(errors).toEqual([]);
   });
 
+  test('places street lamps, benches and bins and reports them on the hook, also in the debug view', async ({
+    page,
+  }, testInfo) => {
+    const errors = watchErrors(page);
+    await page.goto('/index.html?debug=furniture&at=-30,48,2.3,0.35');
+    await expectWebGL(page);
+    const { furniture: f } = await state(page);
+    // what is mapped depends on the OSM snapshot; the rules always light the centre and furnish Torget
+    expect(f.byKind['street-lamp']).toBeGreaterThan(0);
+    expect(f.byKind.bench).toBeGreaterThanOrEqual(4);
+    expect(f.byKind['waste-bin']).toBeGreaterThanOrEqual(2);
+    expect(f.bySource.osm + f.bySource.override + f.bySource.procedural).toBe(f.total);
+    expect(f.meshes).toBeGreaterThan(0);
+    expect(f.meshes).toBeLessThanOrEqual(6 * 36); // at most six per 400 m cell, and the 2200 m world spans 6 × 6 cells
+    expect(f.debug).toBe(true);
+    await page.locator('#go').click();
+    await frames(page, 5);
+    await page.screenshot({ path: testInfo.outputPath('game-furniture-debug.png') });
+    expect(errors).toEqual([]);
+  });
+
   // The sky with each kind of query, one page load per test: each load renders in software WebGL, so three in one test
   // ran into the timeout on CI. The sky is a full-screen shader, so the page is kept small. Cloudy skies must drift,
   // and let through at least minSun of the sunlight.
@@ -112,11 +133,11 @@ test.describe('game (index.html)', () => {
 
   test('ragdolls are on for everyone, without a lab flag', async ({ page }) => {
     const errors = watchErrors(page);
-    await page.goto('/index.html');
+    await page.setViewportSize({ width: 640, height: 360 }); // checks only the hook; keep software WebGL affordable
+    // One page load: the old lab flag is ignored, so ragdolls are on without it and the lab list stays empty.
+    await page.goto('/index.html?lab=ragdoll');
     await page.locator('#go').click();
     expect(await state(page)).toMatchObject({ lab: [], ragdolls: 0 }); // nobody knocked over yet
-    await page.goto('/index.html?lab=ragdoll'); // no longer an experiment: the flag is ignored
-    expect((await state(page)).lab).toEqual([]);
     expect(errors).toEqual([]);
   });
 
@@ -438,6 +459,23 @@ test.describe('game (index.html)', () => {
     await expect(page.locator('#kmenu')).toBeHidden();
     await expect(page.locator('#toast')).toContainText('mätt');
     expect(await state(page)).toMatchObject({ hp: 100, kr: 195 }); // and it costs nothing
+    expect(errors).toEqual([]);
+  });
+
+  test('the day ends at 19:00 and blends into the night skip', async ({ page }) => {
+    const errors = watchErrors(page);
+    await page.goto('/index.html?time=18.99');
+    await expectWebGL(page);
+    await frames(page, 5);
+    expect(await state(page)).toMatchObject({ hour: 18.99, night: 0 }); // the clock waits on the title screen
+    await page.locator('#go').click();
+    // 0.01 h of day is well under a second of game time, and the skip lasts NIGHT_S = 10 s: a fast runner can be through
+    // it by the next poll, so either the skip has started or the clock has wrapped to the next morning
+    const begun = s => s.night > 0 || s.hour < 6;
+    await expect.poll(async () => begun(await state(page))).toBe(true);
+    const s = await state(page);
+    if (s.night > 0) expect(s.hour).toBe(19);
+    else expect(s.hour).toBeGreaterThanOrEqual(5);
     expect(errors).toEqual([]);
   });
 

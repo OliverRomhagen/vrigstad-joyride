@@ -23,6 +23,9 @@ import { makeRnd } from '../world/random';
 import { RoadNetwork } from '../world/roads';
 import { buildStreetscape, sidewalkCentreM, StreetscapeIndex } from '../world/streetscape';
 import { STREETSCAPE_OVERRIDES } from '../world/streetscape-overrides';
+import { FURNITURE_OVERRIDES } from '../world/furniture/overrides';
+import { furnitureExclusions, placeFurniture } from '../world/furniture/placement';
+import { StreetFurniture } from '../world/mesh/street-furniture';
 import { classifyStreetscape } from '../world/streetscape-rules';
 import { col } from '../world/three-legacy';
 import { treeSpots } from '../world/trees';
@@ -54,11 +57,13 @@ import { RagdollMeshes } from './render/ragdoll-meshes';
 import { PlaceMeshes } from './render/places';
 import { GroundTexture } from './render/ground-texture';
 import { BAR_BLUE, BAR_RED, barGeo, barMat, blob, blobTex, boxGeo, carGeo, carMat, GLASS, geoCache, PROFILES, paintMat, personParts, TRACTOR_CAB } from './render/models';
-import { buildStage, setUpRenderer } from './render/stage';
+import { buildStage, SUN_DIR, setUpRenderer } from './render/stage';
 import { addBuildings, addRoadRibbons, addStreetscapeMeshes, addTerrain, addTrees } from './render/world-meshes';
 import { type CarType, specFor } from './sim/vehicle-spec';
 import { newGameState, newViewState } from './state';
 import { Trisslott, trisslottSeed } from './trisslott';
+import { makeClock, skyAt, START_H, tickClock } from './day-cycle';
+import { Daylight, type DaylightTargets } from './render/daylight';
 
 (function () {
 'use strict';
@@ -88,7 +93,7 @@ try { renderer = new THREE.WebGLRenderer({ canvas, antialias: true }); }
 catch { $('fail').hidden = false; $('ui').hidden = true; $('intro').hidden = true; return; }
 const coarse = matchMedia('(pointer: coarse)').matches;
 setUpRenderer(renderer, coarse);
-const { scene, camera, sun, skyDome } = buildStage(coarse, location.search);
+const { scene, camera, hemi, sun, skyDome } = buildStage(coarse, location.search);
 const maxAnisotropy = renderer.capabilities.getMaxAnisotropy();
 
 // ---------- lab: opt-in experiments, switched on with ?lab=<id>,<id> (src/lab/flags.ts) ----------
@@ -97,6 +102,16 @@ const maxAnisotropy = renderer.capabilities.getMaxAnisotropy();
 // After the WebGL check, so none starts behind the fail screen; one that fails to load or start should only warn
 const lab = LabFlags.fromSearch(location.search);
 if (lab.on('hello')) console.info('Lab: hello is on.'); // the smallest gate, for trying the flags
+
+// ---------- time of day: 05:00 to 19:00, then a short blend into the next morning (src/game/day-cycle.ts, src/game/render/daylight.ts) ----------
+// ?time=18.5 starts at that hour; ?cycle=off holds it there
+const dayQs = new URLSearchParams(location.search);
+const dayClock = makeClock(dayQs.get('time') ? Number(dayQs.get('time')) : START_H), dayRuns = dayQs.get('cycle') !== 'off';
+const daylight = new Daylight({ sun, hemi, sunDir: SUN_DIR, dome: skyDome.mesh.material.uniforms as DaylightTargets['dome'], fog: (scene.fog as THREE.FogExp2).color, background: scene.background as THREE.Color });
+const sky = skyAt(dayClock, { x: 0, y: 1, z: 0, sun: 1, warm: 0, light: 1 });
+daylight.apply(sky);
+// not on the title screen: Start begins at the start hour
+function updateDaylight(dt: number) { if (dayRuns && game.started) { tickClock(dayClock, dt); daylight.apply(skyAt(dayClock, sky)); } }
 
 // ---------- ground texture (also feeds the minimap: src/game/render/ground-texture.ts) ----------
 const ground = new GroundTexture(D, { coarse, maxTextureSize: renderer.capabilities.maxTextureSize, maxAnisotropy });
@@ -136,7 +151,8 @@ const street = (function () {
 // the pavement's centre line where a side has one, else today's walking line on the shoulder
 const walkOffset = (ri: number, side: number) => { const sp = side < 0 ? street.sides[ri].left : street.sides[ri].right; return sidewalkCentreM(sp, R[ri].c) ?? ROAD_W[R[ri].c] / 2 + 0.8; };
 // the forests' trees and the street trees, with a soft shadow under each baked into the ground texture (the minimap shows them too)
-ground.bakeTreeShadows(addTrees(scene, forestSpots, street.layout.trees, heightfield, HALF), blobTex);
+const allTreeSpots = addTrees(scene, forestSpots, street.layout.trees, heightfield, HALF);   // every tree drawn, [x, z, scale, ...]: the street furniture keeps clear of them too
+ground.bakeTreeShadows(allTreeSpots, blobTex);
 
 // ---------- cars ----------
 // the rules (driving, traffic, the parked cars) are in src/game/cars.ts; the meshes in src/game/render/car-meshes.ts
@@ -171,7 +187,7 @@ for (let i = 0; i < 18; i++) spawnTraffic(null);
 // the getters are read every frame, so they can name things declared further down
 const dmgRnd = makeRnd(808);                   // own stream for the shake and the smoke puffs, which roll every frame
 const cameraRig = new CameraRig({ camera, sun, skyDome, game, view, get dragging() { return input.dragging; }, get inside() { return !!places.inside; },
-  groundAt, heightAt: hAt, rnd: dmgRnd, calmMotion });
+  groundAt, heightAt: hAt, rnd: dmgRnd, calmMotion, get sunIntensity() { return daylight.sunIntensity; } });
 const shake = cameraRig.shake;
 // the ISO 800 grain (src/game/presentation/) runs faster while the camera moves; it compares with the camera last frame
 const grainPos = new THREE.Vector3(), grainQuat = new THREE.Quaternion();
@@ -236,6 +252,15 @@ const wanted = new Wanted({ roads, rnd, pick, removeCar, drive, toast,
 const places = new Places({ footprints: bPolys, roads: R, police: wanted.police, lieLow: secs => wanted.lieLow(secs), toast, get stars() { return wanted.stars; } });
 const placeMeshes = new PlaceMeshes({ scene, places, heightAt: hAt, col, boxGeo, paintMat, glass: GLASS });
 addFootprint([KIOSK.x - KIOSK.w / 2, KIOSK.z - KIOSK.d / 2, KIOSK.x + KIOSK.w / 2, KIOSK.z - KIOSK.d / 2, KIOSK.x + KIOSK.w / 2, KIOSK.z + KIOSK.d / 2, KIOSK.x - KIOSK.w / 2, KIOSK.z + KIOSK.d / 2]);   // the kiosk collides like a building
+// ---------- street furniture: lamps, benches and bins from OSM, rules where OSM says nothing (#144, src/world/furniture/) ----------
+// after the trees, the streetscape and the places, which it keeps clear of; the kiosk is a footprint by now
+const DEBUG_FURNITURE = new URLSearchParams(location.search).get('debug') === 'furniture';   // ?debug=furniture tints by source
+const furniture = (function () {
+  const t0 = performance.now(), exclusions = furnitureExclusions(places.list);
+  const layout = placeFurniture({ data: D, roads, heightfield, buildings, water, trees: allTreeSpots, street: street.layout, exclusions, overrides: FURNITURE_OVERRIDES });
+  const draw = new StreetFurniture(layout.placements, { groundAt, debugSources: DEBUG_FURNITURE }); scene.add(...draw.meshes);
+  return { layout, draw, ms: performance.now() - t0 };
+})();
 // the kiosk's and the cats' menus (src/game/kiosk-cat-menus.ts); trisslott is declared further down
 const kioskCatMenus = new KioskCatMenus({ game, player, colony, health, openMenu, esc, toast, scratch: () => trisslott.scratch(), wallet, nearPlace, showHeart, drawPets, drawTreats, drawHealth });
 const { openKiosk, petCat, openOwnCat } = kioskCatMenus;
@@ -311,13 +336,13 @@ const prompt = new ActionPrompt({ $, game, places, wanted, get menuOpen() { retu
 const loop = new GameLoop({ $, renderer, scene, camera, canvas, coarse, half: HALF, game, view, player, health, input, places, wanted, cars, startCam: START_CAM, barMat, barColours: [BAR_BLUE, BAR_RED], cameraRig: { update: placeCamera },
   get toasting() { return hud.toasting; }, inWater, collide, groundAt, drive, updateTraffic, knockedOut, hurtPlayer, shake, toast, hideTitleCard: () => hud.hideTitleCard(),
   updateTrisslott: dt => trisslott.update(dt), updatePlaces: dt => placeMeshes.update(dt), updateDriftFx, updateVehicles: (T, dt) => vehicleVisuals.update(T, dt), updateSmoke, updateBanknotes: dt => banknotes.update(dt), updateConfetti: dt => confetti.update(dt), updateNpcs: (T, dt) => { updateNpcs(T, dt); ragdolls.update(dt); ragdollMeshes.update(); }, updateCats,
-  updateDrivers: (T, dt) => drivers.update(T, dt), updateBodies: (T, dt) => bodyMotion.update(T, dt), drawHearts, updateHud: dt => hud.update(dt), drawMini,
+  updateDrivers: (T, dt) => drivers.update(T, dt), updateBodies: (T, dt) => bodyMotion.update(T, dt), updateDaylight, drawHearts, updateHud: dt => hud.update(dt), drawMini,
   updateSign, catRideLines: () => crashes.catRideLines(), closeMenuIfLeft: () => menuPlate.closeIfLeft(), updatePrompt: () => prompt.update(), drawHealth });
 $('go').addEventListener('click', loop.startGame);
 loop.start();
 
 // ---------- test hook: read-only state for the smoke tests (src/game/test-hook.ts) ----------
 installTestHook({ game, view, player, health, cars, labs: lab.list(), get ragdolls() { return ragdolls.count; }, get stars() { return wanted.stars; }, get cats() { return cats.length; }, get ownCat() { return !!colony.owned; }, get displayCar() { return displayCar; },
-  vehicleVisuals: { state: c => vehicleVisuals.state(meshed(c)) }, bodyMotion: { state: c => bodyMotion.state(meshed(c)) }, skyDome, street, debugStreetscape: DEBUG_STREETSCAPE, nearestCar,
-  get kr() { return wallet.kr; }, get banknotes() { return banknotes.live; }, get confetti() { return confetti.live; }, get devcon() { return devcon.isOpen; } });
+  vehicleVisuals: { state: c => vehicleVisuals.state(meshed(c)) }, bodyMotion: { state: c => bodyMotion.state(meshed(c)) }, skyDome, street, debugStreetscape: DEBUG_STREETSCAPE, furniture, debugFurniture: DEBUG_FURNITURE, nearestCar,
+  get kr() { return wallet.kr; }, get banknotes() { return banknotes.live; }, get confetti() { return confetti.live; }, get devcon() { return devcon.isOpen; }, day: { get hour() { return dayClock.hour; }, get night() { return dayClock.night; }, get sunLight() { return sky.sun; } } });
 })();

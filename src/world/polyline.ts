@@ -84,3 +84,26 @@ export function polylineLength(q: readonly Point[]) {
   for (let i = 1; i < q.length; i++) length += Math.hypot(q[i][0] - q[i - 1][0], q[i][1] - q[i - 1][1]);
   return length;
 }
+
+/** The arc length (m) at each vertex of a polyline, from 0 at its start. */
+export function arcLengths(q: readonly Point[]) {
+  const s = [0];
+  for (let i = 1; i < q.length; i++) s.push(s[i - 1] + Math.hypot(q[i][0] - q[i - 1][0], q[i][1] - q[i - 1][1]));
+  return s;
+}
+
+/** The point `s` metres along the polyline (clamped to its ends) and the unit tangent there; `arcs` from arcLengths. */
+export function pointAtArc(q: readonly Point[], arcs: readonly number[], s: number) {
+  let lo = 0;
+  let hi = arcs.length - 1;
+  while (hi - lo > 1) {
+    const mid = (lo + hi) >> 1;
+    if (arcs[mid] < s) lo = mid;
+    else hi = mid;
+  }
+  const a = q[lo];
+  const b = q[hi];
+  const len = arcs[hi] - arcs[lo] || 1;
+  const u = Math.max(0, Math.min(1, (s - arcs[lo]) / len));
+  return { x: a[0] + (b[0] - a[0]) * u, z: a[1] + (b[1] - a[1]) * u, tx: (b[0] - a[0]) / len, tz: (b[1] - a[1]) / len };
+}
