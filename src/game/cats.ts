@@ -602,7 +602,16 @@ export class CatColony {
   /** A cat riding on c hops off, as when its ride stops: before c leaves the world (sold at Skroten). */
   hopOffCar(c: CatCar) {
     if (c.cat?.ride === c) this.hopOff(c.cat);
-    for (const k of this.cats) if (k.hop?.onto === c) this.landHop(k); // one on its way up lands on the ground instead
+    for (const k of this.cats) {
+      if (k.hop?.onto === c)
+        this.landHop(k); // one on its way up lands on the ground instead
+      else if (k.epa === c) {
+        // one trotting towards the tailgate sits down where it is
+        k.epa = null;
+        k.state = 'sit';
+        k.t = 3 + this.rnd() * 6;
+      }
+    }
   }
 
   private hopOff(k: Cat) {
