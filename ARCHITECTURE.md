@@ -100,6 +100,28 @@ tests/
 - **The UI only reads a store** so Svelte's reactivity never touches the hot loop. The game writes HUD values when they change (speed throttled to ~10 Hz), not every frame.
 - **Events, not calls, between systems.** The sim says "a star was added"; the UI shows a toast, audio plays a siren, render flashes the lights. New features plug in without editing the sim.
 
+### Commands in, events out
+
+The direction the boundaries above add up to: a small, deterministic sim core with two doors. **Commands** go in, **events** come out, and everything else is a client of those two: input, UI, audio, render, the network, dev tools and tests.
+
+```
+ keys, touch, gamepad ─┐                                  ┌─► audio, HUD, render
+ the console, panels  ─┼─► commands ─► sim.step ─► events ┼─► the Log, achievements, stats
+ links, scripts, tests ┤    (hooks: Log,                  └─► the network (#1)
+ the network (#1)     ─┘     Record for replays)
+```
+
+- **A command is a named thing that can happen**: `enter`, `buy trisslott`, `stars 3`, and later `set vehicle.volvo.grip 0.8` (#357). Players, dev tools and tests all go through the same registry (`docs/console.md`, #354), with access (`player` or `dev`) and the source on each call. A command only calls its module's rule. Player actions move there in #366.
+- **Input still becomes intents** (rule 3): what is held every frame (`throttle`, `steer`, `brake`) stays an intent, and what happens once (pressing E to get into a car) becomes a command. Today a command runs between frames; once the sim steps on a fixed timestep (#49), a command that changes sim state queues an intent for the next step (#361).
+- **An event is a named thing that happened**, in the past tense: `caught`, `starAdded`, `knockedOver`. One typed bus in sim code delivers them after the step that raised them (after the frame, until #49), so a listener never changes that step. A listener gets its own off switch, like the console's hooks. The bus comes in #367.
+- **A feature is a plugin**: its commands, its event listeners, its hooks and its panel, installed and taken out as one. Cats, pets, the trisslott and lab experiments (#323) fit that shape; so would mods, later, without a new design.
+- **Content is a registry**: places, cars and shop items are lists that commands read (a `choice` argument). A new place then completes in the console and works with `go`, without wiring of its own.
+- **Overlays are panels** in one host, the console's (`docs/console.md`, "Panels and plugins"), so the kiosk and cat menus and a future phone ask one owner for the cursor (#335).
+
+Why: once #49 and #361 land, replays and multiplayer need only the commands in, each stamped with its step, and a deterministic step (the seeded `rnd()` of rule 5). Key remapping and accessibility become another mapping. A tutorial waits for a command, and a test runs one. A new reaction to something (a siren, a line, an achievement) is a listener, not an edit to the module where it happens.
+
+This is a direction, not a rewrite: code moves when it is touched for another reason, or in the tickets above.
+
 ## Stack
 
 | Concern | Choice | Notes |
