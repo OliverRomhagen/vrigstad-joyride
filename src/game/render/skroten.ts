@@ -2,8 +2,6 @@
 // the containers, the cars and the scrap heaps, the arrow signs by the road, and Plåt-Pelle, who turns to watch you come.
 // The layout comes from skroten-yard.ts; the static parts are baked into one mesh, so the yard costs a handful of draw calls.
 import * as THREE from 'three';
-import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { makeRnd } from '../../world/random';
 import {
   type Carport,
@@ -77,7 +75,9 @@ export interface SkrotenMeshDeps {
   scene: THREE.Scene;
   heightAt(x: number, z: number): number;
   layout: YardLayout;
-  coarse: boolean; // a phone: the cars keep their simple shapes, the models cost too many triangles
+  coarse: boolean; // a phone: the cars keep their simple shapes, the models cost too many triangles, and nothing casts a shadow
+  /** A car model's loaded scene, shared with the cars on the road (VehicleVisuals.template); read, never changed. */
+  carModel(definition: { id: string; url: string }): Promise<THREE.Object3D>;
 }
 
 /** The yard and Plåt-Pelle; `update` turns him towards you. */
@@ -313,23 +313,20 @@ export class SkrotenMeshes {
       this.farCars = new THREE.Mesh(bake(farPieces), paintMat);
       this.farCars.castShadow = this.farCars.receiveShadow = true;
       yard.add(this.farCars);
-      this.loadNear = () => void this.loadCars(detailed, yard, standY);
+      this.loadNear = () => void this.loadCars(detailed, yard, standY, g.carModel);
     }
-    scene.add(yard);
-    if (layout.workshop) scene.add(hallMeshes(heightAt, layout.workshop));
-    if (layout.carport) scene.add(carportMeshes(heightAt, layout.carport));
+    const built: THREE.Object3D[] = [yard];
+    if (layout.workshop) built.push(hallMeshes(heightAt, layout.workshop));
+    if (layout.carport) built.push(carportMeshes(heightAt, layout.carport));
+    // on a phone nothing here casts a shadow, as the cars on the road don't (VehicleVisuals); the yard's models are skipped there anyway
+    if (g.coarse)
+      for (const b of built)
+        b.traverse(o => {
+          o.castShadow = false;
+        });
+    scene.add(...built);
 
-    // Plåt-Pelle: blue overalls, a red cap with a peak, and a grey beard
-    const owner = personParts('#2f4f7f', '#2f4f7f', '#b8322a');
-    owner.add(
-      new THREE.Mesh(
-        boxGeo([
-          [0.29, 0.04, 0.16, 0, 1.74, -0.21, '#b8322a'],
-          [0.27, 0.12, 0.06, 0, 1.52, -0.15, '#b9b4aa'],
-        ]),
-        paintMat,
-      ),
-    );
+    const owner = platPelle();
     const at = yardToWorld(OWNER_UV.u, OWNER_UV.v);
     owner.position.set(at.x, heightAt(at.x, at.z), at.z);
     const road = yardToWorld(OWNER_UV.u, OWNER_UV.v - 1);
@@ -341,9 +338,13 @@ export class SkrotenMeshes {
 
   // the game's car models for the cars standing alone: one model loaded per kind, its paint and the rest each drawn as one instanced
   // mesh, so the paint takes each wreck's colour. A model that fails to load leaves the simple shapes up.
-  private async loadCars(list: YardCar[], parent: THREE.Group, standY: (u: number, v: number) => number) {
-    const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder),
-      group = new THREE.Group(),
+  private async loadCars(
+    list: YardCar[],
+    parent: THREE.Group,
+    standY: (u: number, v: number) => number,
+    carModel: SkrotenMeshDeps['carModel'],
+  ) {
+    const group = new THREE.Group(),
       byModel = new Map<YardCarModel, YardCar[]>(),
       paint = new THREE.MeshLambertMaterial({ vertexColors: true }),
       colour = new THREE.Color();
@@ -353,7 +354,7 @@ export class SkrotenMeshes {
         [...byModel].map(async ([id, yardCars]) => {
           const def = VEHICLES.find(v => v.id === id);
           if (!def) throw new Error('no model ' + id);
-          const parts = flatten((await loader.loadAsync(def.url)).scene);
+          const parts = flatten((await carModel(def)).clone(true)); // flatten updates its matrices: leave the shared one be
           // the wrecks' paint is patched with rust and dirtier low down; the cars for sale keep theirs clean
           for (const [cars, paintGeo] of [
             [yardCars.filter(w => !w.wrecked), parts.paint],
@@ -366,7 +367,7 @@ export class SkrotenMeshes {
               const m = placing(w.u, standY(w.u, w.v) - (w.wrecked ? WRECK_SINK_M : 0), w.v, w.turn, w.tilt, w.pitch);
               body.setMatrixAt(i, m);
               trim.setMatrixAt(i, m);
-              body.setColorAt(i, colour.set(w.colour));
+              body.setColorAt(i, colour.set(w.colour).convertSRGBToLinear());
             });
             body.castShadow = trim.castShadow = body.receiveShadow = trim.receiveShadow = true;
             group.add(body, trim);
@@ -403,6 +404,21 @@ export class SkrotenMeshes {
     this.ownerH += d * Math.min(1, dt * OWNER_TURN_K);
     n.rotation.y = -this.ownerH;
   }
+}
+
+/** Plåt-Pelle: blue overalls, a red cap with a peak, and a grey beard. Standing at the origin, facing −z. */
+function platPelle(): Person {
+  const owner = personParts('#2f4f7f', '#2f4f7f', '#b8322a');
+  owner.add(
+    new THREE.Mesh(
+      boxGeo([
+        [0.29, 0.04, 0.16, 0, 1.74, -0.21, '#b8322a'],
+        [0.27, 0.12, 0.06, 0, 1.52, -0.15, '#b9b4aa'],
+      ]),
+      paintMat,
+    ),
+  );
+  return owner;
 }
 
 // the matrix that places a model at (x, y, z), turned about y, then tilted about its length
@@ -507,7 +523,7 @@ function container(w: number, d: number, colour: string): BoxPart[] {
     parts: BoxPart[] = [[w - 0.1, h - 0.1, d - 0.1, 0, h / 2, 0, colour]];
   for (let x = -w / 2 + 0.3; x < w / 2 - 0.2; x += 0.28)
     for (const s of [-1, 1]) parts.push([0.13, h - 0.35, 0.05, x, h / 2, s * (d / 2 - 0.03), rib]);
-  for (let y = 0.4; y < h - 0.3; y += 0.3) parts.push([w - 0.35, 0.12, 0.05, 0, y, 0, rib]); // the roof's and the blind end's ribs
+  for (let x = -w / 2 + 0.4; x < w / 2 - 0.3; x += 0.3) parts.push([0.12, 0.05, d - 0.3, x, h - 0.03, 0, rib]); // the roof's ribs, across it
   for (let y = 0.4; y < h - 0.3; y += 0.35) parts.push([0.05, 0.12, d - 0.3, -w / 2 - 0.01, y, 0, rib]);
   for (const sx of [-1, 1])
     for (const sz of [-1, 1]) parts.push([0.16, h, 0.16, sx * (w / 2 - 0.08), h / 2, sz * (d / 2 - 0.08), frame]);
@@ -572,9 +588,10 @@ class Surfaces {
   private readonly col: number[] = [];
   private readonly _a = new THREE.Vector3();
   private readonly _b = new THREE.Vector3();
+  private readonly _k = new THREE.Color();
   /** A triangle, seen from the side its corners run counter-clockwise; `both` adds its back too. */
   tri(a: number[], b: number[], c: number[], hex: string, both = false) {
-    const k = new THREE.Color(hex),
+    const k = this._k.set(hex).convertSRGBToLinear(), // colour management is off (three-legacy), as in mergeGeo
       n = this._a
         .set(b[0]! - a[0]!, b[1]! - a[1]!, b[2]! - a[2]!)
         .cross(this._b.set(c[0]! - a[0]!, c[1]! - a[1]!, c[2]! - a[2]!))
@@ -962,9 +979,13 @@ function board(w: number, h: number, text: string, arrow: 1 | -1 | null) {
   }
   const tex = new THREE.CanvasTexture(cv);
   tex.colorSpace = THREE.SRGBColorSpace;
-  const plain = new THREE.MeshLambertMaterial({ color: new THREE.Color(RUST).convertSRGBToLinear() }),
-    front = new THREE.MeshLambertMaterial({ map: tex }),
-    m = new THREE.Mesh(new THREE.BoxGeometry(w, h, 0.08), [plain, plain, plain, plain, front, plain]);
+  // one material, so one draw call: every face but the front reads the canvas's plain rust corner, outside the frame
+  const geo = new THREE.BoxGeometry(w, h, 0.08),
+    uv = geo.attributes.uv!,
+    FRONT = 4, // BoxGeometry's faces: +x, -x, +y, -y, +z, -z, four corners each
+    corner = 1 / Math.max(W, H);
+  for (let i = 0; i < uv.count; i++) if (Math.floor(i / 4) !== FRONT) uv.setXY(i, corner, corner);
+  const m = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ map: tex }));
   m.castShadow = true;
   return m;
 }
