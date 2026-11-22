@@ -12,11 +12,11 @@ import * as THREE from 'three';
  * faint, so neighbours overlap into one feathered fan instead of a few separate bright columns.
  */
 const RAYS: readonly (readonly [angle: number, length: number, spread: number, opacity: number])[] = [
-  [-0.735, 1.64, 0.2, 0.16],
-  [-0.365, 1.46, 0.16, 0.22],
-  [0.052, 1.47, 0.21, 0.18],
-  [0.496, 1.48, 0.17, 0.17],
-  [0.846, 1.8, 0.15, 0.12],
+  [-0.735, 1.64, 0.2, 0.26],
+  [-0.365, 1.46, 0.16, 0.34],
+  [0.052, 1.47, 0.21, 0.29],
+  [0.496, 1.48, 0.17, 0.28],
+  [0.846, 1.8, 0.15, 0.2],
 ];
 // Below FORWARD_KNEE (about 53° off the view axis, past the corners of a 2.2:1 frame) the projection's divisor eases
 // towards FORWARD_FLOOR instead of passing through 0, so a sun beside or behind the camera stays finite and on its own
@@ -24,11 +24,11 @@ const RAYS: readonly (readonly [angle: number, length: number, spread: number, o
 // leave from the disc.
 const FORWARD_KNEE = 0.6,
   FORWARD_FLOOR = 0.15;
-// The rays are a low-sun effect: full below about 12° (sun y 0.2), a fifth of that above about 53° (y 0.8), so
+// The rays are a low-sun effect: full below about 14° (sun y 0.25), an eighth of that above about 44° (y 0.7), so
 // midday shows only a hint and late afternoon gets the drama. The halo keeps half its strength at midday.
-const LOW_SUN_Y = 0.2,
-  HIGH_SUN_Y = 0.8,
-  HIGH_SUN_RAYS = 0.2,
+const LOW_SUN_Y = 0.25,
+  HIGH_SUN_Y = 0.7,
+  HIGH_SUN_RAYS = 0.12,
   HIGH_SUN_HALO = 0.5;
 const DISC_DIST_M = 2000; // inside the sky dome (3000 m) and the far plane; nearer things hide the disc
 const DISC_SIZE = 0.19; // the disc sprite's width over its distance: the lab's 29 at 150
@@ -91,15 +91,15 @@ void main() {
   float phi = atan(dot(v, vec2(-axis.y, axis.x)), dot(v, axis) + 1e-6); // atan(0, 0) is undefined in GLSL
   // rays carry the sunlight while the sun is out of frame; facing it, the halo takes over and the rays step back,
   // so the image keeps its darks instead of washing out
-  float rayGain = max(presence - 0.6 * glare, 0.0);
+  float rayGain = max(presence - 0.4 * glare, 0.0);
   float keep = 1.0;
   for (int i = 0; i < ${RAYS.length}; i++) {
     vec4 r = rays[i];
     float t = min(d / (r.y * reach), 1.0);
     float a = (phi - r.x) / (r.z * width);
-    keep *= 1.0 - r.w * (1.0 - t) * (1.0 - t) * exp(-a * a) * rayGain;
+    keep *= 1.0 - r.w * pow(1.0 - t, 1.5) * exp(-a * a) * rayGain;
   }
-  float halo = 0.5 * pow(max(1.0 - d / (0.6 * max(aspect, 1.0)), 0.0), 2.6) * (0.3 * presence + 0.7 * glare);
+  float halo = 0.65 * pow(max(1.0 - d / (0.6 * max(aspect, 1.0)), 0.0), 2.6) * (0.3 * presence + 0.7 * glare);
   float local = 0.6 * pow(max(1.0 - d / (0.29 * min(aspect, 1.0)), 0.0), 3.9) * glare;
   float alpha = 1.0 - keep * (1.0 - halo) * (1.0 - local);
   vec3 c = mix(vec3(1.0, 0.99, 0.92), vec3(1.0, 0.86, 0.64), smoothstep(0.0, 1.2, d));
@@ -224,7 +224,7 @@ export class SunStreaks {
       len = Math.hypot(ax, ay) || 1;
     u.axis.value.set(ax / len, ay / len);
     // a source far off screen lengthens the rays (same angles) so they still reach into the frame, but they fade on the way
-    u.reach.value = this.reach * Math.max(1, 0.6 * Math.hypot(s.x, s.y) + 0.8);
+    u.reach.value = this.reach * Math.max(1, 0.6 * Math.hypot(s.x, s.y) + 1);
     this.quad.visible = u.presence.value > 0.002 || u.glare.value > 0.002;
   }
 
