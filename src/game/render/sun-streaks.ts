@@ -11,11 +11,11 @@ import * as THREE from 'three';
  * width as the Gaussian's spread in rad) and opacity. Uneven on purpose: an even fan reads as a starburst.
  */
 const RAYS: readonly (readonly [angle: number, length: number, spread: number, opacity: number])[] = [
-  [-0.735, 1.64, 0.18, 0.34],
-  [-0.365, 1.46, 0.155, 0.43],
-  [0.052, 1.47, 0.19, 0.37],
-  [0.496, 1.48, 0.155, 0.36],
-  [0.846, 1.8, 0.145, 0.27],
+  [-0.735, 1.64, 0.13, 0.34],
+  [-0.365, 1.46, 0.105, 0.43],
+  [0.052, 1.47, 0.13, 0.37],
+  [0.496, 1.48, 0.105, 0.36],
+  [0.846, 1.8, 0.1, 0.27],
 ];
 // Below FORWARD_KNEE (about 53° off the view axis, past the corners of a 2.2:1 frame) the projection's divisor eases
 // towards FORWARD_FLOOR instead of passing through 0, so a sun beside or behind the camera stays finite and on its own
@@ -82,14 +82,17 @@ void main() {
   vec2 v = q - src;
   float d = length(v);
   float phi = atan(dot(v, vec2(-axis.y, axis.x)), dot(v, axis) + 1e-6); // atan(0, 0) is undefined in GLSL
+  // rays carry the sunlight while the sun is out of frame; facing it, the halo takes over and the rays step back,
+  // so the image keeps its darks instead of washing out
+  float rayGain = max(2.0 * presence - 1.3 * glare, 0.0);
   float keep = 1.0;
   for (int i = 0; i < ${RAYS.length}; i++) {
     vec4 r = rays[i];
     float t = min(d / (r.y * reach), 1.0);
     float a = (phi - r.x) / (r.z * width);
-    keep *= 1.0 - r.w * (1.0 - pow(t, 1.6)) * exp(-a * a) * presence;
+    keep *= 1.0 - min(r.w * (1.0 - pow(t, 1.6)) * exp(-a * a) * rayGain, 0.9);
   }
-  float halo = 0.88 * pow(max(1.0 - d / (0.88 * max(aspect, 1.0)), 0.0), 2.6) * (0.55 * presence + 0.45 * glare);
+  float halo = 0.88 * pow(max(1.0 - d / (0.6 * max(aspect, 1.0)), 0.0), 2.6) * (0.4 * presence + 0.6 * glare);
   float local = 0.85 * pow(max(1.0 - d / (0.29 * min(aspect, 1.0)), 0.0), 3.9) * glare;
   float alpha = 1.0 - keep * (1.0 - halo) * (1.0 - local);
   vec3 c = mix(vec3(1.0, 0.99, 0.92), vec3(1.0, 0.86, 0.64), smoothstep(0.0, 1.2, d));
@@ -212,7 +215,7 @@ export class SunStreaks {
       len = Math.hypot(ax, ay) || 1;
     u.axis.value.set(ax / len, ay / len);
     // a source far off screen lengthens the rays (same angles), so they still cross the frame
-    u.reach.value = this.reach * Math.max(1, (Math.hypot(s.x, s.y) + 0.5) / 1.3);
+    u.reach.value = this.reach * Math.max(1, Math.hypot(s.x, s.y) + 1);
     this.quad.visible = u.presence.value > 0.002 || u.glare.value > 0.002;
   }
 
