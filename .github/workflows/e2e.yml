@@ -78,12 +78,15 @@ jobs:
         with:
           name: e2e-screenshots-${{ matrix.shard }}
           path: test-results/
-          retention-days: 1
+          # As long as the merged artifact: when the merge fails, these are the only copy. delete-merged removes them when it works.
+          retention-days: 14
 
-  # One check with a stable name for the whole suite, whatever the number of shards, for anything that waits on it (#173).
+  # One check with a stable name for the whole suite, whatever the number of shards. Before making it a required check, note that
+  # the paths filter above skips the whole workflow, so a PR that changes only docs or .github/ would never report it and couldn't
+  # merge: the filter would have to move into a job first.
   smoke-result:
     name: Smoke tests (Playwright)
-    needs: smoke
+    needs: [playwright, smoke]
     # always(), not !cancelled(): a job its if skips counts as passing a required check, so a cancelled run would let a PR merge untested.
     if: ${{ always() }}
     runs-on: ubuntu-latest
@@ -97,7 +100,11 @@ jobs:
           pattern: e2e-screenshots-*
           delete-merged: true
           retention-days: 14
-      - if: ${{ always() && needs.smoke.result != 'success' }}
+      - if: ${{ always() && needs.playwright.result != 'success' }}
+        run: |
+          echo "::error::Playwright version ${{ needs.playwright.result }}: no shard ran."
+          exit 1
+      - if: ${{ always() && needs.playwright.result == 'success' && needs.smoke.result != 'success' }}
         run: |
           echo "::error::Smoke tests ${{ needs.smoke.result }}: see the failing shard."
           exit 1
