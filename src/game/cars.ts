@@ -237,13 +237,21 @@ export class Fleet {
   }
   // a car for sale of stock's model and price at spot `at`; with no colour it rolls its paint
   private parkOneForSale(at: CarForSale, stock: CarForSale, colour?: string) {
-    const c = this.g.addCar(stock.type, at.x, at.z, at.h, 'parked', stock.model, colour);
+    const c = this.g.addCar(
+      stock.type,
+      at.x,
+      at.z,
+      at.h,
+      'parked',
+      stock.model === stock.type ? undefined : stock.model,
+      colour,
+    ); // the tractor's model is its type
     c.saleKr = stock.kr;
     this.noReplacement.add(c);
     return c;
   }
   /**
-   * Plåt-Pelle restocks his lot out of sight: a spot whose car was sold at least LOT_RESTOCK_S ago gets another of the lot's models,
+   * Plåt-Pelle restocks his lot out of sight: a spot whose car was sold at least LOT_RESTOCK_S ago gets another of the lot's models (a tractor for a tractor),
    * in a paint of its own, once nothing stands on it and you are SPAWN_AWAY_M from it. `nowS` is the game's clock.
    */
   restockLot(farFrom: Point, nowS: number) {
@@ -258,7 +266,9 @@ export class Fleet {
       // the cars on the neighbouring spots stand closer than LOT_CLEAR_M, side by side, and don't count
       if (this.cars.some(c => Math.hypot(c.x - at.x, c.z - at.z) < LOT_CLEAR_M && !this.lot.some(s => s.car === c)))
         continue;
-      spot.car = this.parkOneForSale(at, this.g.pick(this.lot).at);
+      // a tractor's spot gets a tractor and a car's a car: a tractor doesn't fit between the cars side by side
+      const kind = this.lot.filter(s => (s.at.type === 'traktor') === (at.type === 'traktor'));
+      spot.car = this.parkOneForSale(at, this.g.pick(kind).at);
     }
   }
 

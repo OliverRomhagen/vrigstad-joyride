@@ -423,6 +423,26 @@ describe("Skroten's lot", () => {
     expect(cars.cars.length).toBe(2);
   });
 
+  it("restocks a tractor's spot with a tractor, and a car's spot never with one", () => {
+    const { cars } = fleet({ r: [STREET] }),
+      far = { x: -500, z: 0 },
+      lot = [
+        ...LOT,
+        { x: 110, z: 0, h: 0.5, type: 'traktor', model: 'traktor', colour: '#4f7a34', kr: 3000 } as CarForSale,
+      ];
+    cars.parkForSale(lot);
+    for (let round = 0; round < 6; round++) {
+      for (const c of cars.cars) {
+        c.saleKr = 0;
+        c.x += 1000; // bought and driven off
+      }
+      cars.restockLot(far, round * 1000);
+      cars.restockLot(far, round * 1000 + LOT_RESTOCK_S);
+      expect(at(cars, lot[2]!).map(c => c.type)).toEqual(['traktor']);
+      expect([...at(cars, LOT[0]!), ...at(cars, LOT[1]!)].map(c => c.type)).not.toContain('traktor');
+    }
+  });
+
   it('leaves the cars still for sale where they are', () => {
     const { cars } = fleet({ r: [STREET] });
     cars.parkForSale(LOT);

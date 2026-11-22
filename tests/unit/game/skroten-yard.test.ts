@@ -160,8 +160,9 @@ describe('Skroten yard', () => {
         expect(clearanceXZ(y.outlines, x, z), `at ${x.toFixed(1)}, ${z.toFixed(1)}`).toBeGreaterThan(CAR_R_M);
       }
     const inCarport = (w: YardCar) => pointInPolygon(CARPORT, yardToWorld(w.u, w.v).x, yardToWorld(w.u, w.v).z);
-    expect(y.forSale.filter(inCarport)).toHaveLength(4); // cars for sale
-    expect(y.yardCars.filter(inCarport).filter(w => w.model === 'traktor' && !w.wrecked)).toHaveLength(1); // and the green tractor
+    expect(y.forSale.filter(inCarport).filter(w => w.model !== 'traktor')).toHaveLength(4); // cars for sale
+    expect(y.forSale.filter(inCarport).filter(w => w.model === 'traktor' && !w.wrecked)).toHaveLength(1); // and the green tractor
+    expect(y.yardCars.filter(inCarport)).toEqual([]);
   });
 
   it('gives the workshop an even floor clear of bumpy, rising ground, with a ramp from the door down to the yard', () => {
@@ -196,10 +197,10 @@ describe('Skroten yard', () => {
       fresh = y.forSale,
       wrecks = cars.filter(c => c.wrecked);
     expect(fresh.length).toBeGreaterThanOrEqual(8);
+    expect(fresh.filter(c => c.model === 'traktor')).toHaveLength(1); // the green tractor, the one that still runs
     expect(cars.every(c => c.wrecked)).toBe(true); // the yard's own props are all wrecks
     for (const c of fresh) {
       expect(c.wrecked).toBe(false);
-      expect(c.model).not.toBe('traktor');
       expect(c.tilt).toBe(0);
       expect(c.pitch).toBe(0);
       expect(c.stack).toBe(0);

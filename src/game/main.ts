@@ -222,7 +222,7 @@ function carName(c: Car) { return vehicleVisuals.definition(meshed(c))?.name || 
 fleet.parkCars();   // parked cars along streets and driveways
 for (let i = 0; i < 18; i++) spawnTraffic(null);
 // Skroten's cars for sale (src/game/skroten.ts): real cars on its lot, in the paint the yard gave them, so they roll nothing
-fleet.parkForSale(carsForSale(yard.forSale, id => VEHICLES.find(v => v.id === id && !v.police)?.archetype));
+fleet.parkForSale(carsForSale(yard.forSale, id => id === 'traktor' ? 'traktor' : VEHICLES.find(v => v.id === id && !v.police)?.archetype));   // the tractor has no model of its own
 
 // ---------- camera: follows you, shakes on a crash; the sun and sky follow it (src/game/render/camera-rig.ts) ----------
 // the getters are read every frame, so they can name things declared further down
@@ -292,7 +292,7 @@ const wanted = new Wanted({ roads, rnd, pick, removeCar, drive, toast,
 const places = new Places({ footprints: bPolys, roads: R, police: wanted.police, lieLow: secs => wanted.lieLow(secs), toast, get stars() { return wanted.stars; } });
 const placeMeshes = new PlaceMeshes({ scene, places, heightAt: hAt, col, boxGeo, paintMat, glass: GLASS });
 const skrotenMeshes = new SkrotenMeshes({ scene, heightAt: hAt, layout: yard, coarse, carModel: d => vehicleVisuals.template(d) });
-const priceTags = new PriceTags({ doc: document, cars, visibleModel: c => vehicleVisuals.visibleModel(c) });   // Plåt-Pelle's price in the windscreens on his lot
+const priceTags = new PriceTags({ doc: document, cars, visibleModel: c => vehicleVisuals.visibleModel(c) });   // Plåt-Pelle's price in the rear windows on his lot
 addFootprint([KIOSK.x - KIOSK.w / 2, KIOSK.z - KIOSK.d / 2, KIOSK.x + KIOSK.w / 2, KIOSK.z - KIOSK.d / 2, KIOSK.x + KIOSK.w / 2, KIOSK.z + KIOSK.d / 2, KIOSK.x - KIOSK.w / 2, KIOSK.z + KIOSK.d / 2]);   // the kiosk collides like a building
 // ---------- street furniture: lamps, benches and bins from OSM, rules where OSM says nothing (#144, src/world/furniture/) ----------
 // after the trees, the streetscape and the places, which it keeps clear of; the kiosk is a footprint by now

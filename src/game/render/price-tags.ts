@@ -1,16 +1,17 @@
-// Plåt-Pelle's price on a card in the windscreen of each car for sale on Skroten's lot (#76), so you see it before you press E.
-// It reads the cars' saleKr and never changes it. A ray finds the glass, so the card fits every model and the simple shapes alike.
+// Plåt-Pelle's price on a card in the rear window of each car for sale on Skroten's lot (#76), so you see it before you press E: the cars
+// stand noses to the yard, so you come up behind them. It reads the cars' saleKr and never changes it. A ray finds the glass, so the card
+// fits every model and the simple shapes alike.
 import * as THREE from 'three';
 import type { RenderedCar } from './car-meshes';
 
 const CARD_W_M = 0.58,
   CARD_H_M = 0.3;
 const CARD_PX = 256; // the card's width in pixels
-const CARD_SIDE_M = 0.3; // right of the middle, on the passenger's side, clear of the mirror
-const GLASS_BELOW_TOP_M = [0.3, 0.4, 0.22, 0.5]; // tried in turn: how far under the car's top the ray looks for the windscreen
-const GLASS_MIN_UP = 0.2; // a face whose normal points up less than this is a grille or a bumper, not the sloping glass
+const CARD_SIDE_M = 0.3; // right of the middle, on the passenger's side
+const GLASS_BELOW_TOP_M = [0.3, 0.4, 0.22, 0.5]; // tried in turn: how far under the car's top the ray looks for the rear window
+const GLASS_MIN_UP = -0.1; // a face whose normal points further down than this is the underside of a spoiler or a roof's edge, not glass
 const CARD_OFF_M = 0.012; // the card stands this far off the glass, so the two don't flicker into each other
-const LOOK_FROM_M = 6; // the ray starts this far in front of the car's middle
+const LOOK_FROM_M = 6; // the ray starts this far behind the car's middle
 const REFRESH_S = 0.35; // how often the cards check for a sale, a new car or a model swapped in or out
 
 const _o = new THREE.Vector3(),
@@ -66,22 +67,22 @@ export class PriceTags {
     }
   }
 
-  // puts the card on the windscreen of `shape`, in c.mesh's frame; false when no ray finds the glass
+  // puts the card on the rear window of `shape`, in c.mesh's frame; false when no ray finds the glass
   private fit(c: RenderedCar, shape: THREE.Object3D, card: THREE.Mesh) {
     c.mesh.updateMatrixWorld(true);
     _inv.copy(c.mesh.matrixWorld).invert();
     const top = _box.setFromObject(shape).max.y - c.mesh.position.y,
       deep = shape !== c.body; // the procedural body is one mesh; a model is a tree of them
     for (const below of GLASS_BELOW_TOP_M) {
-      // nose at local -z: look from in front of it, backwards along the car
-      _o.set(CARD_SIDE_M, top - below, -LOOK_FROM_M).applyMatrix4(c.mesh.matrixWorld);
-      _d.set(0, 0, 1).transformDirection(c.mesh.matrixWorld);
+      // nose at local -z: look from behind the tail, forwards along the car
+      _o.set(CARD_SIDE_M, top - below, LOOK_FROM_M).applyMatrix4(c.mesh.matrixWorld);
+      _d.set(0, 0, -1).transformDirection(c.mesh.matrixWorld);
       this.ray.set(_o, _d);
       this.ray.far = LOOK_FROM_M * 2;
       const hit = this.ray.intersectObject(shape, deep)[0];
       if (!hit?.face) continue;
       _n.copy(hit.face.normal).transformDirection(hit.object.matrixWorld).transformDirection(_inv);
-      if (_n.z > 0) _n.negate(); // a face wound the other way: the card faces out of the front
+      if (_n.z < 0) _n.negate(); // a face wound the other way: the card faces out of the back
       if (_n.y < GLASS_MIN_UP) continue;
       card.position.copy(hit.point).applyMatrix4(_inv).addScaledVector(_n, CARD_OFF_M);
       card.quaternion.setFromRotationMatrix(_m.lookAt(_n, ZERO, UP));

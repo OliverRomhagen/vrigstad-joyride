@@ -352,8 +352,8 @@ const WRECK_GAP_M = 2.6; // between the middles of neighbours in a row
 const WRECK_HALF_LEN_M = 2.7; // half the longest car's length, for the row's outline
 const WRECK_SPREAD_M = 0.5; // how far a wreck's jitter (±0.4 m, ±0.15 rad) can carry its ends past its row's line
 const TRACTORS = [
-  // two old tractors: a broken red one in the yard, leaning where its wheel came off, and a green one that still runs, in the carport's
-  // last bay (here only when there is no carport)
+  // two old tractors: a broken red one in the yard, leaning where its wheel came off, and a green one that still runs, for sale in the
+  // carport's last bay (here only when there is no carport)
   { u: -27, v: 14, turn: 0.4, colour: '#8a2f2a', broken: true, bay: null },
   { u: -5, v: 22, turn: 0.2, colour: '#4f7a34', broken: false, bay: 5 },
 ];
@@ -565,7 +565,7 @@ export function yardLayout(
   let looseWheel: { u: number; v: number } | null = null;
   for (const { broken, bay, ...spot } of TRACTORS) {
     const t = { ...spot, ...(carport && bay !== null ? inBay(carport, bay) : {}) };
-    yardCars.push({
+    (broken ? yardCars : forSale).push({
       ...t,
       tilt: broken ? 0.16 : 0,
       pitch: broken ? -0.05 : 0,
@@ -573,11 +573,10 @@ export function yardLayout(
       wrecked: broken,
       stack: 0,
     });
+    if (!broken) continue; // the one for sale is a car you can drive away, with no outline of its own, like the others on the lot
     outlines.push(rect(t.u, t.v, 2.3, 3.6, t.turn));
-    if (broken) {
-      looseWheel = { u: t.u + 2.4, v: t.v + 0.6 }; // lying on the ground by its side
-      outlines.push(rect(looseWheel.u, looseWheel.v, 1.6, 1.6));
-    }
+    looseWheel = { u: t.u + 2.4, v: t.v + 0.6 }; // lying on the ground by its side
+    outlines.push(rect(looseWheel.u, looseWheel.v, 1.6, 1.6));
   }
   outlines.push(rect(SALE_SIGN.u, SALE_SIGN.v, SALE_SIGN.w, 0.4)); // its posts and the board between them
 
