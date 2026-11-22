@@ -49,6 +49,15 @@ commands.register('go', command({
   places) completes and parses without registering again.
 - The plain shape still works: `register(name, { usage, help, run(words) })`, throwing `UsageError` for bad
   arguments. The existing commands (`kr`, `mynt`, `adopt`, `clear`) use it, and move over when someone touches them.
+- **Every command explains itself.** `help` is required: one line of up to 80 characters (`HELP_MAX`) saying what it
+  does, and `register` refuses a command without it. Commands register at start-up, so a refused one stops the whole
+  page: a module that registers commands calls its register function in a unit test (`registerWalletCommands` in
+  `tests/unit/game/economy.test.ts`), which catches it in seconds. `details` (a few lines), `examples` (whole lines, each starting
+  with the command's name or an alias) and a line per argument (`described(int('speed'), 'km/h')`) are optional.
+  `help <command>` shows all of it, and so does `<command> --help` or `-h`, which the registry answers for every
+  command before it runs: no command handles `--help` itself. Only `--help` or `-h` on its own after the name counts
+  (`kr 3 --help` runs `kr`), so no command can take `-h` as its only value. Like an unknown command, the answer doesn't
+  pass through the hooks: it changes nothing.
 - **A command is thin.** It reads its arguments and calls the module's own API, and the rule lives in the module,
   where a unit test reaches it without the console. `run` returns one line to show (English: it is UI text), or ''.
 - `register` returns a function that takes the command out again, for a lab experiment that stops or a module that

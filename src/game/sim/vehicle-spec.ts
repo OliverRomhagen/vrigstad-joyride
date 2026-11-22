@@ -37,6 +37,7 @@ export type VehicleSpec = {
 
 // Wheelbase and rear axle are where the procedural model draws its wheels; a GLB model brings its own measured ones.
 // Response times: the civilian cars answer a little late, so they feel some weight; the police stay sharp for the chase.
+// The tunables registry (car-tunables.ts) changes the numbers in each spec while the game runs; a type's spec is never replaced.
 export const VEHICLE_SPECS: Readonly<Record<CarType, VehicleSpec>> = {
   volvo: {
     name: 'Volvo 240',
@@ -138,16 +139,55 @@ export type ModelOverrides = {
   suspension?: Partial<Suspension>;
 };
 
+// one spec per type and model, made the first time it's asked for, so cars that share both share one object, and a
+// tuned number reaches every car of the type (specsOfType, tuneResponse). Models come from the fixed table in
+// render/vehicle-registry.ts, so this holds at most one copy per model, and a lookup walks a handful.
+const copies = new Map<CarType, { spec: VehicleSpec; model: ModelOverrides }[]>();
+
+type Response = Pick<Handling, 'steerResponseS' | 'throttleResponseS'>;
+// response times tuned for a whole type: they win over a model's own, in copies made before the tune and after it
+const tunedResponse: Partial<Record<CarType, Partial<Response>>> = {};
+
 /** The spec for a car of this type wearing this model. Throws on an unknown type, so a typo can't drive like a Volvo. */
 export function specFor(type: CarType, model?: ModelOverrides): VehicleSpec {
   const base = VEHICLE_SPECS[type];
   if (!base) throw new Error(`unknown car type: ${type}`);
   if (!model?.wheelbase && !model?.rearAxle && !model?.handling && !model?.suspension) return base;
+  const ofType = copies.get(type) ?? [];
+  const known = ofType.find(c => c.model === model);
+  if (known) return known.spec;
+  const spec = mergeModel(type, base, model);
+  ofType.push({ spec, model });
+  copies.set(type, ofType);
+  return spec;
+}
+
+/** Every spec of this type in use: the table's own, and the copy made for each model that changes it. */
+export function specsOfType(type: CarType): readonly VehicleSpec[] {
+  return [VEHICLE_SPECS[type], ...(copies.get(type) ?? []).map(c => c.spec)];
+}
+
+/**
+ * Sets a response time for every car of the type, whatever its model, now and for copies made later; undefined takes
+ * the tune away, so each model gets its own back and the table gets `typeDefault`.
+ */
+export function tuneResponse(type: CarType, field: keyof Response, value: number | undefined, typeDefault: number) {
+  const tuned = tunedResponse[type] ?? {};
+  tunedResponse[type] = tuned;
+  if (value === undefined) delete tuned[field];
+  else tuned[field] = value;
+  VEHICLE_SPECS[type].handling[field] = value ?? typeDefault;
+  for (const { spec, model } of copies.get(type) ?? [])
+    spec.handling[field] = value ?? model.handling?.[field] ?? typeDefault;
+}
+
+function mergeModel(type: CarType, base: VehicleSpec, model: ModelOverrides): VehicleSpec {
   return {
     ...base,
     handling: {
       ...base.handling,
       ...model.handling,
+      ...tunedResponse[type],
       wheelbaseM: model.wheelbase ?? base.handling.wheelbaseM,
       rearAxleM: model.rearAxle ?? base.handling.rearAxleM,
     },
