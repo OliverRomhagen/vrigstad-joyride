@@ -18,6 +18,7 @@ const COLOURS = {
   steelDeck: 0x8c8980,
   timber: 0x8a6a4a,
   boards: 0x9c7b57,
+  stone: 0x77736b,
 } as const;
 type Token = keyof typeof COLOURS;
 /** undersides are darkened, so the deck's thickness and its shadow read from the side */
@@ -155,7 +156,14 @@ export interface BridgeMeshOptions {
   materials: { body: THREE.Material; railing: THREE.Material };
   /** draw the driving surface too: the map, which has no road ribbons */
   top: boolean;
+  /** the ground with the channels cut into it: each end then rests on an abutment that reaches down into the bank */
+  groundAt?: (x: number, z: number) => number;
 }
+
+/** how far each archetype's abutment reaches in under the deck from its end, over the ground the channel leaves there
+ * (water-shapes.ts), and how deep below the bank its foot is buried (m) */
+const ABUTMENT_M: Record<Bridge['archetype'], number> = { 'road-slab': 2, 'path-steel': 0.8, 'path-timber': 0.8 };
+const ABUTMENT_FOOT_M = 0.3;
 
 type V3 = [number, number, number];
 
@@ -228,7 +236,7 @@ export class BridgeMesh {
   readonly meshes: THREE.Mesh[] = [];
   readonly triangles: number = 0;
 
-  constructor(index: Pick<BridgeIndex, 'bridges' | 'surfaceAt'>, { materials, top }: BridgeMeshOptions) {
+  constructor(index: Pick<BridgeIndex, 'bridges' | 'surfaceAt'>, { materials, top, groundAt }: BridgeMeshOptions) {
     for (const b of index.bridges) {
       const { parts, railing } = crossSection(b, top);
       const q = resample(b.p, SWEEP_STEP_M);
@@ -244,6 +252,10 @@ export class BridgeMesh {
         const x = f.x + f.nx * o;
         const z = f.z + f.nz * o;
         return [x, index.surfaceAt(b, x, z, f.s) + dy, z];
+      };
+      const frameAt = (sk: number) => {
+        const pt = pointAtArc(b.p, b.arcs, sk);
+        return { x: pt.x, z: pt.z, nx: -pt.tz, nz: pt.tx, s: sk };
       };
 
       const body = new Soup();
@@ -262,6 +274,22 @@ export class BridgeMesh {
           if (i === 1) faces.push(3);
           body.prism(corner(part.y0), corner(part.y1), faces, part.colour);
         }
+
+      // abutments: a block under each end, from the deck's underside down into the bank, so the deck rests on it
+      if (groundAt) {
+        const soffit = Math.min(...parts.map(p => p.y0));
+        const seat = ABUTMENT_M[b.archetype];
+        const h = b.halfWidthM;
+        for (const [s0, s1] of [
+          [0, seat],
+          [b.spanM - seat, b.spanM],
+        ]) {
+          const [f0, f1] = [frameAt(s0), frameAt(s1)];
+          const topC = [at(f0, -h, soffit), at(f1, -h, soffit), at(f1, h, soffit), at(f0, h, soffit)];
+          const bottom = topC.map((p): V3 => [p[0], Math.min(groundAt(p[0], p[2]), p[1]) - ABUTMENT_FOOT_M, p[2]]);
+          body.prism(bottom, topC, [0, 1, 2, 3, 4, 5], b.archetype === 'path-timber' ? 'stone' : 'concrete');
+        }
+      }
 
       const rails = new Soup();
       const r = railing;
@@ -289,10 +317,7 @@ export class BridgeMesh {
         }
         // the top rail and the mid rails, swept between the insets
         const inside = frames.filter(f => f.s > RAILING_INSET_M && f.s < b.spanM - RAILING_INSET_M);
-        const ends = [RAILING_INSET_M, b.spanM - RAILING_INSET_M].map(sk => {
-          const pt = pointAtArc(b.p, b.arcs, sk);
-          return { x: pt.x, z: pt.z, nx: -pt.tz, nz: pt.tx, s: sk };
-        });
+        const ends = [RAILING_INSET_M, b.spanM - RAILING_INSET_M].map(frameAt);
         const path = [ends[0], ...inside, ends[1]];
         for (const level of [...r.mids, 1]) {
           const y1 = r.footM + r.heightM * level;

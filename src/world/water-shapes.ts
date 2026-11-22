@@ -6,6 +6,7 @@ import type { TerrainCut } from './heightfield';
 import { clamp } from './math';
 import { pointInPolygon, segmentParam } from './polygon';
 import { fnv1a } from './random';
+import { nodeKey } from './roads';
 
 // ---------- rivers and streams ----------
 /** half the width of a river's water (m), as the surface, the paint and the game's water test all take it */
@@ -86,6 +87,15 @@ const PATH_EASE_M = 2.5;
 /** and for buildings, from their walls */
 const BUILDING_KEEP_M = 1.5;
 const BUILDING_EASE_M = 3.5;
+
+/** numbers per keep entry, and the flags for a segment end that meets a bridge */
+const KEEP_STRIDE = 7;
+const OPEN_A = 1;
+const OPEN_B = 2;
+/** under a bridge's end the ground stays as it is this far, where the abutment sits, so the cut grid's sub-samples
+ * keep the approach itself at its height: streets, and the paths' shorter footbridges (m) */
+const BRIDGE_SEAT_STREET_M = 2;
+const BRIDGE_SEAT_PATH_M = 0.8;
 
 export interface Course {
   /** stable name, for seeds and debugging */
@@ -198,7 +208,7 @@ export class WaterBodies implements TerrainCut {
   /** lookup cells: course runs as [course, first sample, last sample], lake shore segments as [lake, ring, vertex] */
   private readonly courseCells = new Map<string, number[]>();
   private readonly shoreCells = new Map<string, number[]>();
-  /** segments the channel keeps away from, five numbers each: ax, az, bx, bz, then keep and ease distances packed */
+  /** what the channel keeps away from, KEEP_STRIDE numbers each: ax, az, bx, bz, keep and ease distances, open ends */
   private readonly keepCells = new Map<string, number[]>();
   private readonly buildings: { p: number[]; x0: number; x1: number; z0: number; z1: number }[];
 
@@ -430,11 +440,21 @@ export class WaterBodies implements TerrainCut {
   }
 
   private fileKeeps(data: WorldData) {
+    // a bridge keeps nothing, so the channel runs on under its deck (#238); a road ending at a bridge keeps its ground
+    // only up to its end there, so the bank meets the abutment instead of filling the span round that end
+    const bridgeEnds = new Set<string>();
+    for (const r of data.r)
+      if (r.br && r.p.length >= 4) for (const k of [0, r.p.length - 2]) bridgeEnds.add(nodeKey([r.p[k], r.p[k + 1]]));
     data.r.forEach(r => {
+      if (r.br) return;
       const street = r.c <= RoadClass.SERVICE;
       const keep = ROAD_WIDTH_M[r.c] / 2 + (street ? STREET_KEEP_M : PATH_KEEP_M);
       const ease = street ? STREET_EASE_M : PATH_EASE_M;
-      for (let i = 2; i < r.p.length; i += 2)
+      const last = r.p.length - 2;
+      for (let i = 2; i < r.p.length; i += 2) {
+        const open =
+          (i === 2 && bridgeEnds.has(nodeKey([r.p[0], r.p[1]])) ? OPEN_A : 0) |
+          (i === last && bridgeEnds.has(nodeKey([r.p[last], r.p[last + 1]])) ? OPEN_B : 0);
         this.file(this.keepCells, r.p[i - 2], r.p[i - 1], r.p[i], r.p[i + 1], keep + ease, [
           r.p[i - 2],
           r.p[i - 1],
@@ -442,7 +462,9 @@ export class WaterBodies implements TerrainCut {
           r.p[i + 1],
           keep,
           ease,
+          open,
         ]);
+      }
     });
     this.buildings.forEach((b, bi) => {
       const reach = BUILDING_KEEP_M + BUILDING_EASE_M;
@@ -453,6 +475,7 @@ export class WaterBodies implements TerrainCut {
         0,
         BUILDING_KEEP_M,
         BUILDING_EASE_M,
+        0,
       ]);
     });
   }
@@ -597,14 +620,34 @@ export class WaterBodies implements TerrainCut {
     const list = this.keepCells.get(Math.floor(x / CELL_M) + ',' + Math.floor(z / CELL_M));
     if (!list) return 1;
     let w = 1;
-    for (let i = 0; i < list.length && w > 0; i += 6) {
+    for (let i = 0; i < list.length && w > 0; i += KEEP_STRIDE) {
       let d: number;
       if (Number.isNaN(list[i])) {
         const b = this.buildings[list[i + 1]];
         d = pointInPolygon(b.p, x, z) ? 0 : polygonDistance(b.p, x, z);
       } else {
-        const t = segmentParam(x, z, list[i], list[i + 1], list[i + 2], list[i + 3]);
-        d = Math.hypot(x - list[i] - (list[i + 2] - list[i]) * t, z - list[i + 1] - (list[i + 3] - list[i + 1]) * t);
+        const [ax, az, bx, bz] = [list[i], list[i + 1], list[i + 2], list[i + 3]];
+        const len = Math.hypot(bx - ax, bz - az) || 1;
+        // how far past the end that meets a bridge, along the road (m); 0 short of it, or at an ordinary end
+        const along = list[i + 6]
+          ? Math.max(
+              list[i + 6] & OPEN_A ? ((ax - x) * (bx - ax) + (az - z) * (bz - az)) / len : 0,
+              list[i + 6] & OPEN_B ? ((x - bx) * (bx - ax) + (z - bz) * (bz - az)) / len : 0,
+            )
+          : 0;
+        if (along > 0) {
+          // past it the ground is the bridge's channel: the road's keep runs on square under the abutment's seat,
+          // then eases out into the span over its ease distance, so the bank meets the abutment
+          const across = Math.abs((x - ax) * (bz - az) - (z - az) * (bx - ax)) / len;
+          d = Math.max(
+            across,
+            list[i + 4] +
+              Math.max(0, along - (list[i + 5] === STREET_EASE_M ? BRIDGE_SEAT_STREET_M : BRIDGE_SEAT_PATH_M)),
+          );
+        } else {
+          const t = segmentParam(x, z, ax, az, bx, bz);
+          d = Math.hypot(x - ax - (bx - ax) * t, z - az - (bz - az) * t);
+        }
       }
       w = Math.min(w, smoothstep(list[i + 4], list[i + 4] + list[i + 5], d));
     }

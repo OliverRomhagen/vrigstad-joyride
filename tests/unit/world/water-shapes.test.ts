@@ -107,6 +107,28 @@ describe('WaterBodies: what the channel keeps away from', () => {
   });
 });
 
+describe('WaterBodies: a bridge over the river (#238)', () => {
+  // a street along x = 20 that crosses the river on a 30 m bridge from z = -15 to 15
+  const roads = [
+    { c: RoadClass.STREET, n: '', p: [20, -60, 20, -15], i: 1 },
+    { c: RoadClass.STREET, n: '', p: [20, -15, 20, 15], i: 2, br: { l: 1 } },
+    { c: RoadClass.STREET, n: '', p: [20, 15, 20, 60], i: 3 },
+  ];
+  const { base, bodies } = build(makeValley({ ww: [RIVER], r: roads }));
+  const cut = (x: number, z: number) => bodies.cutAt(x, z, base.heightAt(x, z));
+
+  it('cuts the channel on under the deck, and keeps the approaches to their ends', () => {
+    expect(cut(20, 0)).toBeLessThan(base.heightAt(20, 0) - 1);
+    for (const z of [-15, -20, 15, 20])
+      for (const x of [20 - 3.75, 20, 20 + 3.75]) expect(cut(x, z)).toBe(base.heightAt(x, z));
+  });
+
+  it('leaves the ground under the abutment seats, then eases into the bank, rather than rounding the road ends', () => {
+    expect(cut(20, -14)).toBe(base.heightAt(20, -14));
+    expect(cut(20, -5)).toBeLessThan(base.heightAt(20, -5) - 0.01);
+  });
+});
+
 describe('WaterBodies: flow direction', () => {
   it('turns a waterway drawn uphill to run downhill', () => {
     const { base, bodies } = build(makeValley({ ww: [{ k: WaterwayKind.RIVER, p: [180, 0, -180, 0] }] }));
