@@ -13,7 +13,6 @@ const COLOURS = {
   concrete: 0xa9a398,
   edgeBeam: 0xbdb7aa,
   walkway: 0xb3ada1,
-  asphalt: 0x4c4f52,
   steelDark: 0x6e7471,
   steelGreen: 0x4f5e4e,
   steelDeck: 0x8c8980,
@@ -79,8 +78,8 @@ function crossSection(b: Bridge, top: boolean): { parts: Part[]; railing: Railin
       { o0: -h, o1: -w, y0: -UNDER_RIBBON_M, y1: beamTop, colour: 'edgeBeam' },
       { o0: w, o1: h, y0: -UNDER_RIBBON_M, y1: beamTop, colour: 'edgeBeam' },
     ];
-    // the map has no ribbons: its deck draws the carriageway itself
-    if (top) parts.push({ o0: -c, o1: c, y0: -UNDER_RIBBON_M, y1: 0, colour: 'asphalt' });
+    // the map has no ribbons: its deck draws the carriageway itself, in concrete, so it reads as a structure there
+    if (top) parts.push({ o0: -c, o1: c, y0: -UNDER_RIBBON_M, y1: 0, colour: 'walkway' });
     return {
       parts,
       railing: {
@@ -123,8 +122,20 @@ function crossSection(b: Bridge, top: boolean): { parts: Part[]; railing: Railin
   return {
     parts: [
       { o0: -h, o1: h, y0: -TIMBER_BOARDS_M, y1: surface, colour: 'boards' },
-      { o0: -beam - TIMBER_BEAM_W_M / 2, o1: -beam + TIMBER_BEAM_W_M / 2, y0: -TIMBER_BEAM_M, y1: -TIMBER_BOARDS_M, colour: 'timber' },
-      { o0: beam - TIMBER_BEAM_W_M / 2, o1: beam + TIMBER_BEAM_W_M / 2, y0: -TIMBER_BEAM_M, y1: -TIMBER_BOARDS_M, colour: 'timber' },
+      {
+        o0: -beam - TIMBER_BEAM_W_M / 2,
+        o1: -beam + TIMBER_BEAM_W_M / 2,
+        y0: -TIMBER_BEAM_M,
+        y1: -TIMBER_BOARDS_M,
+        colour: 'timber',
+      },
+      {
+        o0: beam - TIMBER_BEAM_W_M / 2,
+        o1: beam + TIMBER_BEAM_W_M / 2,
+        y0: -TIMBER_BEAM_M,
+        y1: -TIMBER_BOARDS_M,
+        colour: 'timber',
+      },
     ],
     railing: {
       offsetM: h - 0.05,

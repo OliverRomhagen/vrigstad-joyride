@@ -5,10 +5,12 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import D from '../../data/vrigstad.json';
 import { BuildingIndex } from '../world/buildings';
 import { ROAD_WIDTH_M as ROAD_W } from '../world/data';
+import { BridgeIndex } from '../world/bridges';
 import { Heightfield } from '../world/heightfield';
 import { BuildingShellsByMaterial } from '../world/mesh/building-shells';
 import { TerrainMesh } from '../world/mesh/terrain';
 import { makeRnd } from '../world/random';
+import { BridgeMesh } from '../world/mesh/bridge-mesh';
 import { RoadNetwork } from '../world/roads';
 import { buildStreetscape } from '../world/streetscape';
 import { STREETSCAPE_OVERRIDES } from '../world/streetscape-overrides';
@@ -29,12 +31,12 @@ const PAL = {
     water: '#9fcdea', waterLine: '#6fb0dc', contour: 'rgba(150,95,50,.42)',
     road: [['#f0a03c', '#8a5a1e'], ['#f7d774', '#9a8440'], ['#ffffff', '#9a9a8e'], ['#ffffff', '#b0b0a4']], track: '#9c7a52', path: '#6b5a48',
     text: '#2b2b26', halo: 'rgba(255,255,255,.85)', tree: '#5f9150', earth: '#b79f7c',
-    wall: '#e9e2d3', roof: '#7b6a5e', lmWall: '#a8392a', lmRoof: '#5b2a22' },
+    wall: '#e9e2d3', roof: '#7b6a5e', lmWall: '#a8392a', lmRoof: '#5b2a22', bridge: '#ffffff' },
   dark: { streetSw: '#5b6660', sidewalk: '#3f4842', parking: '#343b37', crossing: '#9aa39c', sky: '#0e1513', ground: '#232d27', land: ['#2b2f2b', '#353522', '#2e2c2f', '#26372a', '#26352b', '#1c3a26', '#2c4a2c'],
     water: '#163d57', waterLine: '#2a6289', contour: 'rgba(200,150,100,.26)',
     road: [['#c98a3a', '#3a2a12'], ['#a8914a', '#332d16'], ['#5b6660', '#151a17'], ['#4b5550', '#151a17']], track: '#7a6548', path: '#8a7b68',
     text: '#dfe5dd', halo: 'rgba(10,14,12,.85)', tree: '#2f5a3a', earth: '#3a3229',
-    wall: '#a9a497', roof: '#5f5a55', lmWall: '#c5543f', lmRoof: '#6b3028' }
+    wall: '#a9a497', roof: '#5f5a55', lmWall: '#c5543f', lmRoof: '#6b3028', bridge: '#8f938e' }
 };
 const isDark = () => { const t = document.documentElement.dataset.theme;
   return t ? t === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches; };
@@ -194,6 +196,11 @@ const BASE_DEPTH_M = 45;   // how far the solid base reaches below the lowest gr
 const terrain = new TerrainMesh(heightfield, { skirtDepthM: BASE_DEPTH_M, material: terrainMat, skirtMaterial: earthMat });
 scene.add(terrain.surface, terrain.skirt);
 
+// ---- bridges (#238): the game's structures, drawing their own deck, since the map has no road ribbons ----
+const bridgeMat = new THREE.MeshLambertMaterial({ vertexColors: true });
+const bridges = new BridgeMesh(new BridgeIndex(D, heightfield), { materials: { body: bridgeMat, railing: bridgeMat }, top: true });
+scene.add(...bridges.meshes);
+
 // ---- buildings ----
 // one mesh per material, so a theme change only recolours them
 const mats = { wall: new THREE.MeshLambertMaterial({ side: THREE.DoubleSide }), roof: new THREE.MeshLambertMaterial({ side: THREE.DoubleSide }),
@@ -259,7 +266,7 @@ function render() {
 function applyTheme() {
   const pal = PAL[isDark() ? 'dark' : 'light'];
   scene.background = new THREE.Color(pal.sky);
-  earthMat.color.set(pal.earth); treeMat.color.set(pal.tree);
+  earthMat.color.set(pal.earth); treeMat.color.set(pal.tree); bridgeMat.color.set(pal.bridge);
   for (const k in mats) mats[k].color.set(pal[k]);
   paint(pal); legend(pal); requestRender();
 }

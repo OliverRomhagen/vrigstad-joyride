@@ -41,7 +41,7 @@ const RISE_M: Record<BridgeArchetype, number> = { 'road-slab': 0.3, 'path-steel'
 const MAX_GRADE_ROAD = 0.05;
 const MAX_GRADE_PATH = 0.08;
 /** a road bridge's walkway each side: the centre profile's 2 m pavement plus its 0.15 m curb top, so it continues it (m) */
-export const WALKWAY_M = 2.15;
+const WALKWAY_M = 2.15;
 /** a road bridge's raised edge beam, outside the walkway (m) */
 export const EDGE_BEAM_M = 0.4;
 /** the walkway's curb above the carriageway: the centre profile's, as on the approach pavements (m) */
@@ -119,7 +119,11 @@ export class BridgeIndex {
       const c = r.c;
       const arcs = arcLengths(p);
       const spanM = arcs[arcs.length - 1];
-      const archetype = archetypeOf(c, roads.some(ri => data.r[ri].br?.cy), spanM);
+      const archetype = archetypeOf(
+        c,
+        roads.some(ri => data.r[ri].br?.cy),
+        spanM,
+      );
       const carriageM = r.w ?? ROAD_WIDTH_M[c];
       const walkwayM = archetype === 'road-slab' ? WALKWAY_M : 0;
       const deckM =

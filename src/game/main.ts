@@ -15,6 +15,7 @@ import { CameraRig } from './render/camera-rig';
 import { ShoutingDrivers } from './render/shouting-drivers';
 import data from '../../data/vrigstad.json';
 import { LabFlags } from '../lab/flags';
+import { BridgeIndex } from '../world/bridges';
 import { BuildingIndex } from '../world/buildings';
 import { ROAD_WIDTH_M as ROAD_W, type WorldData } from '../world/data';
 import { Heightfield } from '../world/heightfield';
@@ -58,7 +59,7 @@ import { PlaceMeshes } from './render/places';
 import { GroundTexture } from './render/ground-texture';
 import { BAR_BLUE, BAR_RED, barGeo, barMat, blob, blobTex, boxGeo, carGeo, carMat, GLASS, geoCache, PROFILES, paintMat, personParts, TRACTOR_CAB } from './render/models';
 import { buildStage, SUN_DIR, setUpRenderer } from './render/stage';
-import { addBuildings, addRoadRibbons, addStreetscapeMeshes, addTerrain, addTrees } from './render/world-meshes';
+import { addBridges, addBuildings, addRoadRibbons, addStreetscapeMeshes, addTerrain, addTrees } from './render/world-meshes';
 import { type CarType, specFor } from './sim/vehicle-spec';
 import { newGameState, newViewState } from './state';
 import { Trisslott, trisslottSeed } from './trisslott';
@@ -120,11 +121,14 @@ const { canvas: tex2d, texture, K, P } = ground;
 addTerrain(scene, heightfield, texture);
 
 // ---------- roads: crisp ribbons on the terrain + lookup grid + junction graph ----------
-const roads = new RoadNetwork(D, heightfield), { lines: R } = roads;
+// the mapped bridges (#238): their decks are the ground within their footprints, and carry the road ribbons
+const bridges = new BridgeIndex(D, heightfield);
+const roads = new RoadNetwork(D, heightfield, bridges), { lines: R } = roads;
 let streetIndex: StreetscapeIndex | null = null;   // the streetscape's walkable height, built further down once the buildings and trees are known
 // what people, cats and cars stand on: the road, or the curb, pavement or parking area above it
 const groundAt = (x: number, z: number) => { const g = roads.groundAt(x, z), s = streetIndex && streetIndex.surfaceAt(x, z); return s !== null && s > g ? s : g; };
-const roadRibbons = addRoadRibbons(scene, roads, heightfield, maxAnisotropy);
+const roadRibbons = addRoadRibbons(scene, roads, heightfield, maxAnisotropy, bridges);
+const bridgeMeshes = addBridges(scene, bridges);
 
 // ---------- water ----------
 const water = new Water(D, roads), inWater = water.inWater.bind(water);
@@ -147,8 +151,8 @@ const street = (function () {
   const { meshes, tris } = addStreetscapeMeshes(scene, layout, D, heightfield, roadRibbons.materials, DEBUG_STREETSCAPE);
   return { layout, sides, meshes, tris, ms: performance.now() - t0 };
 })();
-// the pavement's centre line where a side has one, else today's walking line on the shoulder
-const walkOffset = (ri: number, side: number) => { const sp = side < 0 ? street.sides[ri].left : street.sides[ri].right; return sidewalkCentreM(sp, R[ri].c) ?? ROAD_W[R[ri].c] / 2 + 0.8; };
+// on a bridge its walkway or inside its railings; else the pavement's centre line where a side has one, else today's walking line on the shoulder
+const walkOffset = (ri: number, side: number) => { const onBridge = bridges.walkOffsetM(ri); if (onBridge !== undefined) return onBridge; const sp = side < 0 ? street.sides[ri].left : street.sides[ri].right; return sidewalkCentreM(sp, R[ri].c) ?? ROAD_W[R[ri].c] / 2 + 0.8; };
 // the forests' trees and the street trees, with a soft shadow under each baked into the ground texture (the minimap shows them too)
 const allTreeSpots = addTrees(scene, forestSpots, street.layout.trees, heightfield, HALF);   // every tree drawn, [x, z, scale, ...]: the street furniture keeps clear of them too
 ground.bakeTreeShadows(allTreeSpots, blobTex);
@@ -342,6 +346,6 @@ loop.start();
 
 // ---------- test hook: read-only state for the smoke tests (src/game/test-hook.ts) ----------
 installTestHook({ game, view, player, health, cars, labs: lab.list(), get ragdolls() { return ragdolls.count; }, get stars() { return wanted.stars; }, get cats() { return cats.length; }, get ownCat() { return !!colony.owned; }, get displayCar() { return displayCar; },
-  vehicleVisuals: { state: c => vehicleVisuals.state(meshed(c)) }, bodyMotion: { state: c => bodyMotion.state(meshed(c)) }, skyDome, street, debugStreetscape: DEBUG_STREETSCAPE, furniture, debugFurniture: DEBUG_FURNITURE, nearestCar,
+  vehicleVisuals: { state: c => vehicleVisuals.state(meshed(c)) }, bodyMotion: { state: c => bodyMotion.state(meshed(c)) }, skyDome, street, debugStreetscape: DEBUG_STREETSCAPE, bridges: { index: bridges, draw: bridgeMeshes, groundAt }, furniture, debugFurniture: DEBUG_FURNITURE, nearestCar,
   get kr() { return wallet.kr; }, get banknotes() { return banknotes.live; }, get confetti() { return confetti.live; }, get devcon() { return devcon.isOpen; }, day: { get hour() { return dayClock.hour; }, get night() { return dayClock.night; }, get sunLight() { return sky.sun; } } });
 })();

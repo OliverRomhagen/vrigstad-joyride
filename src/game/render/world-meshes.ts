@@ -2,9 +2,11 @@
 // the streetscape's pavements and parking, and the trees. The world's data and queries come from src/world/.
 // Moved from src/game/main.ts (#177); main.ts calls these in the same order as before, since the house colours roll rnd().
 import * as THREE from 'three';
+import type { BridgeIndex } from '../../world/bridges';
 import { type BuildingShape, HOUSE_MAX_M2, HOUSE_MIN_M2 } from '../../world/buildings';
 import type { WorldData } from '../../world/data';
 import type { Heightfield } from '../../world/heightfield';
+import { BridgeMesh } from '../../world/mesh/bridge-mesh';
 import { PaintedBuildingShells } from '../../world/mesh/building-shells';
 import { ParkingMesh } from '../../world/mesh/parking-mesh';
 import { RoadRibbons } from '../../world/mesh/road-ribbons';
@@ -43,6 +45,7 @@ export function addRoadRibbons(
   roads: RoadNetwork,
   heightfield: Heightfield,
   maxAnisotropy: number,
+  bridges: BridgeIndex,
 ) {
   const asphalt = (() => {
     // a light, speckled tile that the road colours tint, so asphalt and gravel aren't flat
@@ -72,9 +75,20 @@ export function addRoadRibbons(
     asphalt,
     roadColours: ROAD_COLOURS,
     centreLineColour: CENTRE_LINE_COLOUR,
+    heightOf: bridges.ribbonHeight.bind(bridges),
   });
   scene.add(...roadRibbons.meshes);
   return roadRibbons;
+}
+
+// ---------- bridges: decks, edge beams, walkways and railings over the ribbons (#238) ----------
+/** The bridges' structure, timed for the test hook; the ribbons draw their driving surface. */
+export function addBridges(scene: THREE.Scene, bridges: BridgeIndex) {
+  const t0 = performance.now();
+  const material = new THREE.MeshLambertMaterial({ vertexColors: true });
+  const draw = new BridgeMesh(bridges, { materials: { body: material, railing: material }, top: false });
+  scene.add(...draw.meshes);
+  return { draw, ms: performance.now() - t0 };
 }
 
 // ---------- buildings (painted in Swedish house colours) ----------
