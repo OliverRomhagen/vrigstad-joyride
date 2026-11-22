@@ -107,14 +107,24 @@ export class Commands {
     if (!cmd || name === undefined) return `Unknown command: ${typed}. Type help for the list.`;
     if (!this.canRun(cmd)) return `${name} works in dev mode only (?dev).`;
     const call: Call = { name, args, source };
-    let answer: string | undefined;
-    // runs the command once, however many times the hooks call next(): a second call gets the same line back
+    let ran = false,
+      answer = '',
+      failure: { err: unknown } | undefined;
+    // runs the command once, however many times the hooks call next(): a second call gets the same line back, or the
+    // same error, so a hook that retries can't run a command that threw halfway a second time
     const inner = () => {
-      if (answer !== undefined) return answer;
+      if (ran) {
+        if (failure) throw failure.err;
+        return answer;
+      }
+      ran = true;
       try {
         answer = cmd.run(args, call);
       } catch (err) {
-        if (!(err instanceof UsageError)) throw err;
+        if (!(err instanceof UsageError)) {
+          failure = { err };
+          throw err;
+        }
         answer = `${err.message ? err.message + ' ' : ''}Usage: ${this.usage(name, cmd)}`;
       }
       return answer;

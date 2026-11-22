@@ -86,7 +86,7 @@ console itself.
 What a hook can rely on, and what it can't yet:
 
 - **`next()` runs the command once.** A hook that calls it twice (a retry, a timing hook that measures twice) gets the
-  same line back the second time; the command doesn't run again.
+  same line back the second time, or the same error if the command threw; the command doesn't run again.
 - **A hook can't tell a failed run from a good one.** A `UsageError` reaches the hooks as a finished "… Usage: …" line,
   and a command that throws skips the code after `next()` in every hook. The Record hook needs to know which runs
   changed the sim, so it brings a result that says so (`{ ok, text }` or similar) when it is built.

@@ -117,6 +117,27 @@ describe('commands', () => {
       expect(runs).toBe(1);
     });
 
+    it('run a command that throws once too, when a hook catches the error and calls next again', () => {
+      const c = new Commands();
+      let runs = 0;
+      c.register('boom', {
+        help: 'boom',
+        run: () => {
+          runs++;
+          throw new Error('half done');
+        },
+      });
+      c.use((_call, next) => {
+        try {
+          return next();
+        } catch {
+          return next(); // a retry: gets the same error, not a second run
+        }
+      });
+      expect(() => c.run('boom')).toThrow('half done');
+      expect(runs).toBe(1);
+    });
+
     it('can stop a command by not calling next, and see its usage line', () => {
       const c = echo();
       let ran = false;
