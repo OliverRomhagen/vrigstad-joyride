@@ -291,14 +291,21 @@ export class SkrotenMeshes {
     baked.castShadow = baked.receiveShadow = true;
     yard.add(baked, ground(YARD.uMin, uEast, -5.5, vBack));
 
-    // the boards: SKROTEN over the gate, BILAR KÖPES on the fence, and an arrow sign either way along the road
+    // the boards: SKROTEN over the gate, BILAR KÖPES on the fence west of it and SÄLJER BILAR east of it, and an arrow sign either way
+    // along the road
     const gate = board(2 * GATE_POST_U_M + 0.7, 1.5, 'SKROTEN', null); // across both posts, fixed to their road side
     gate.position.set(0, groundY(0, 0) + GATE_SIGN_Y_M, -0.2);
     const buys = board(4, 1, 'BILAR KÖPES', null);
     buys.position.set(-22, groundY(-22, 0) + 1.3, -0.08);
-    gate.rotation.y = buys.rotation.y = Math.PI; // their fronts face the road
-    yard.add(gate, buys);
-    // TILL SALU on two posts in front of the cars for sale, facing the yard, taped over with SNART until they can be bought
+    // the fence east of the gate runs to the workshop, as long as the hall leaves it: the board sits in its middle, and fits it
+    const eastRun = layout.fence.find(f => f.v0 === 0 && f.v1 === 0 && f.u0 === YARD.gateHalf),
+      eastEnd = eastRun?.u1 ?? YARD.uMax,
+      sells = board(Math.min(4, eastEnd - YARD.gateHalf - 1), 1, 'SÄLJER BILAR', null),
+      sellsU = (YARD.gateHalf + eastEnd) / 2;
+    sells.position.set(sellsU, groundY(sellsU, 0) + 1.3, -0.08);
+    gate.rotation.y = buys.rotation.y = sells.rotation.y = Math.PI; // their fronts face the road
+    yard.add(gate, buys, sells);
+    // TILL SALU on two posts in front of the cars for sale, facing the yard
     const sale = saleSign();
     sale.position.set(SALE_SIGN.u, groundY(SALE_SIGN.u, SALE_SIGN.v), SALE_SIGN.v);
     sale.rotation.y = Math.PI;
@@ -899,7 +906,7 @@ function bake(pieces: THREE.BufferGeometry[]) {
   return out;
 }
 
-// the TILL SALU sign standing on y = 0, its front to +z: a big board on two posts, and a strip of yellow tape across it saying SNART
+// the TILL SALU sign standing on y = 0, its front to +z: a big board on two posts
 function saleSign() {
   const g = new THREE.Group(),
     { h, y } = SALE_BOARD,
@@ -913,26 +920,8 @@ function saleSign() {
       paintMat,
     );
   sign.position.y = y;
-  const cv = document.createElement('canvas');
-  cv.width = 512;
-  cv.height = 96;
-  const c = cv.getContext('2d')!;
-  c.fillStyle = '#f2c230';
-  c.fillRect(0, 0, 512, 96);
-  c.fillStyle = 'rgba(0,0,0,0.12)'; // the tape's torn ends
-  for (const x of [0, 500]) for (let k = 0; k < 96; k += 12) c.fillRect(x + ((k / 12) % 2) * 6, k, 6, 12);
-  c.fillStyle = '#1c1c1c';
-  c.font = 'bold 70px sans-serif';
-  c.textAlign = 'center';
-  c.textBaseline = 'middle';
-  c.fillText('SNART', 256, 52);
-  const map = new THREE.CanvasTexture(cv);
-  map.colorSpace = THREE.SRGBColorSpace;
-  const tape = new THREE.Mesh(new THREE.PlaneGeometry(w * 0.62, h * 0.3), new THREE.MeshLambertMaterial({ map }));
-  tape.position.set(w * 0.12, y - h * 0.45, 0.06); // across the bottom edge, under the lettering
-  tape.rotation.z = 0.1; // slapped on at a slant
-  posts.castShadow = tape.castShadow = true;
-  g.add(posts, sign, tape);
+  posts.castShadow = true;
+  g.add(posts, sign);
   return g;
 }
 
