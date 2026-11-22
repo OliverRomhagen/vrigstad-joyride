@@ -73,6 +73,7 @@ export function registerWalletCommands(commands: Pick<Commands, 'register'>, w: 
   commands.register('kr', {
     usage: '<amount>',
     help: 'add riksdaler to your wallet; a negative amount takes them',
+    examples: ['kr 500', 'kr -200'],
     run: a => addKr(parseKr(a[0])),
   });
   commands.register('mynt', { help: 'add ' + fmtKr(MYNT_KR) + ' to your wallet', run: () => addKr(MYNT_KR) });

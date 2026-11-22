@@ -133,11 +133,11 @@ test.describe('game (index.html)', () => {
 
   test('ragdolls are on for everyone, without a lab flag', async ({ page }) => {
     const errors = watchErrors(page);
-    await page.goto('/index.html');
+    await page.setViewportSize({ width: 640, height: 360 }); // checks only the hook; keep software WebGL affordable
+    // One page load: the old lab flag is ignored, so ragdolls are on without it and the lab list stays empty.
+    await page.goto('/index.html?lab=ragdoll');
     await page.locator('#go').click();
     expect(await state(page)).toMatchObject({ lab: [], ragdolls: 0 }); // nobody knocked over yet
-    await page.goto('/index.html?lab=ragdoll'); // no longer an experiment: the flag is ignored
-    expect((await state(page)).lab).toEqual([]);
     expect(errors).toEqual([]);
   });
 
@@ -479,7 +479,7 @@ test.describe('game (index.html)', () => {
     expect(errors).toEqual([]);
   });
 
-  test('with ?dev, the console opens with §, its keys never move the player, kr and mynt add money, adopt cat gives you a cat (and L makes it rain)', async ({
+  test('with ?dev, the console opens with §, its keys never move the player, Tab completes, kr and mynt add money, adopt cat gives you a cat (and L makes it rain)', async ({
     page,
   }) => {
     await page.goto('/index.html');
@@ -515,9 +515,41 @@ test.describe('game (index.html)', () => {
     };
     await expect(await run('adopt dog')).toHaveText('No pet called dog. Usage: adopt <cat>');
     await expect(await run('adopt cat')).toHaveText('Adopted a cat.');
+    await expect(await run('adopt --help')).toHaveText(
+      'adopt <cat>: adopt a new random pet of that kind\nExamples:\n  adopt cat',
+    ); // every command answers --help
     expect(await state(page)).toMatchObject({ ownCat: true });
     await expect(page.locator('#pets')).toBeVisible();
     await expect(await run('adopt cat')).toHaveText('You already have a cat, Kisse. Set it free first (P).');
+    const line = page.locator('#devcon input');
+    await page.keyboard.type('ado');
+    await page.keyboard.press('Tab'); // completes the name, keeps focus, and shows how to use the command
+    await expect(line).toHaveValue('adopt ');
+    await expect(line).toBeFocused();
+    await expect(page.locator('#devcon .hint')).toHaveText('adopt <cat>');
+    await line.fill('ado cat');
+    await line.evaluate(el => el.setSelectionRange(3, 3)); // the caret after "ado": Tab completes there, keeping the rest
+    await page.keyboard.press('Tab');
+    await expect(line).toHaveValue('adopt cat'); // the space already there, not a second one
+    expect(await line.evaluate(el => el.selectionStart)).toBe(6);
+    await line.fill('help ');
+    const lines = page.locator('#devcon li');
+    const before = await lines.count();
+    await page.keyboard.press('Tab'); // nothing shared to fill in: the first Tab lists nothing yet
+    await expect(lines).toHaveCount(before);
+    await page.keyboard.press('Tab'); // the second lists what could follow
+    await expect(lines.last()).toHaveText(/^adopt {2}.*help {2}kr {2}mynt/);
+    await page.keyboard.press('Tab'); // and a third doesn't list it again
+    await expect(lines).toHaveCount(before + 1);
+    await expect(line).toHaveValue('help ');
+    await line.fill('');
+    await page.keyboard.press('Tab');
+    await page.keyboard.type('x');
+    await page.keyboard.press('Backspace'); // typing away and back starts over: the next Tab is a first one again
+    await page.keyboard.press('Tab');
+    await expect(lines).toHaveCount(before + 1);
+    await page.keyboard.press('Tab');
+    await expect(lines).toHaveCount(before + 2);
     await page.keyboard.press('Escape');
     expect(await state(page)).toMatchObject({ devcon: false });
     await page.keyboard.press('KeyL'); // låt det regna: 1 000 kr in the air

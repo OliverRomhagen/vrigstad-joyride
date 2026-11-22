@@ -16,11 +16,23 @@ export interface Call {
   readonly source: CallSource;
 }
 
+/** One argument as help shows it: `<place>`, and what it is. */
+export interface ParamHelp {
+  readonly shown: string;
+  readonly help: string;
+}
+
 export interface Command {
   /** the arguments, for help: `<amount>` */
   usage?: string;
-  /** one line for help */
+  /** one line for help, what the command does: required, at most HELP_MAX characters */
   help: string;
+  /** more about it, a few lines, for `help <command>` and `<command> --help` */
+  details?: string;
+  /** whole lines that show it in use (`go torget 40`), each starting with its name or an alias */
+  examples?: readonly string[];
+  /** what each argument is; command() fills it from the arguments' own help */
+  params?: readonly ParamHelp[];
   /** who may run it; `dev` when left out */
   access?: Access;
   /** other names that run it: `tp` for `teleport` */
@@ -45,7 +57,10 @@ export interface CommandsOptions {
   allowed?(access: Access): boolean;
 }
 
-const NAME = /^[a-z][a-z0-9-]*$/;
+const NAME = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/; // kebab-case, as every name people type is (AGENTS.md, Naming)
+/** The longest a command's one line of help can be, so `help` stays a list you can read. */
+export const HELP_MAX = 80;
+const HELP_FLAGS = ['--help', '-h'];
 
 /** Commands by name. `help` is built in and lists the rest. */
 export class Commands {
@@ -59,6 +74,8 @@ export class Commands {
     this.register('help', {
       usage: '[command]',
       help: 'list the commands, or show how to use one',
+      details: 'Every command also answers --help, as in kr --help.',
+      examples: ['help', 'help kr'],
       access: 'player',
       complete: index => (index === 0 ? this.names() : []),
       run: a => this.help(a[0]),
@@ -69,8 +86,13 @@ export class Commands {
   register(name: string, cmd: Command): () => void {
     const names = [name, ...(cmd.aliases ?? [])];
     if (new Set(names).size < names.length) throw new Error('command names repeat: ' + names.join(', '));
+    const help = cmd.help.trim();
+    if (!help || help.includes('\n') || help.length > HELP_MAX)
+      throw new Error(`${name}: help is one line of up to ${HELP_MAX} characters`);
+    for (const e of cmd.examples ?? [])
+      if (!names.includes(e.trim().split(/\s+/)[0])) throw new Error(`${name}: the example "${e}" doesn't run it`);
     for (const n of names) {
-      if (!NAME.test(n)) throw new Error('command names are lower-case words: ' + n);
+      if (!NAME.test(n)) throw new Error('command names are kebab-case: ' + n);
       if (this.byName.has(n) || this.aliases.has(n)) throw new Error('command already registered: ' + n);
     }
     this.byName.set(name, cmd);
@@ -106,6 +128,8 @@ export class Commands {
     const cmd = name === undefined ? undefined : this.byName.get(name);
     if (!cmd || name === undefined) return `Unknown command: ${typed}. Type help for the list.`;
     if (!this.canRun(cmd)) return `${name} works in dev mode only (?dev).`;
+    // every command answers --help the same way, before it runs, so none can forget to
+    if (args.length === 1 && HELP_FLAGS.includes(args[0])) return this.help(name);
     const call: Call = { name, args, source };
     let ran = false,
       answer = '',
@@ -150,6 +174,16 @@ export class Commands {
     return fits(cmd.complete(before.length, before)).sort();
   }
 
+  /** The usage line of the command a line starts with (`go <place> [speed]`), for the hint under the input. */
+  usageFor(line: string): string | undefined {
+    const typed = line.trimStart().split(/\s+/)[0];
+    const name = typed ? this.resolve(typed.toLowerCase()) : undefined;
+    if (name === undefined) return undefined;
+    const cmd = this.byName.get(name);
+    if (!cmd || !this.canRun(cmd)) return undefined;
+    return this.usage(name, cmd);
+  }
+
   private resolve(typed: string): string | undefined {
     return this.byName.has(typed) ? typed : this.aliases.get(typed);
   }
@@ -168,7 +202,12 @@ export class Commands {
       const cmd = name === undefined ? undefined : this.byName.get(name);
       if (!cmd || name === undefined || !this.canRun(cmd)) throw new UsageError('No command called ' + about + '.');
       const aka = cmd.aliases?.length ? ` (also ${cmd.aliases.join(', ')})` : '';
-      return `${this.usage(name, cmd)}: ${cmd.help}${aka}`;
+      return [
+        `${this.usage(name, cmd)}: ${cmd.help}${aka}`,
+        ...(cmd.params ?? []).map(p => `  ${p.shown}: ${p.help}`),
+        ...(cmd.details ? [cmd.details] : []),
+        ...(cmd.examples?.length ? ['Examples:', ...cmd.examples.map(e => `  ${e}`)] : []), // one a line: an example may hold a comma
+      ].join('\n');
     }
     return this.names()
       .map(n => {
