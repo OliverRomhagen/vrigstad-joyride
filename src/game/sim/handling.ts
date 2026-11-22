@@ -12,10 +12,11 @@ export type Handling = {
   throttleResponseS: number;
 };
 
-// in one object so the tunables registry (car-tunables.ts) can change them while the game runs
+// in one object so the tunables registry can change them while the game runs; each one's unit, range and meaning are
+// in car-tunables.ts, and only there
 export const STEERING = {
-  MAX_LOCK_RAD: 0.6, // front-wheel angle at full stick, standing still
-  LOCK_FADE_MS: 13, // m/s at which the lock has halved; it fades with speed squared, so a fast car's small correction stays small
+  MAX_LOCK_RAD: 0.6,
+  LOCK_FADE_MS: 13, // the lock fades with speed squared, so a fast car's small correction stays small
 };
 
 /** Yaw rate in rad/s of a car at speed v (m/s) with the stick at steer (−1..1), from the bicycle model. */

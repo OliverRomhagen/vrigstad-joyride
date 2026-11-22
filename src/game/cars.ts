@@ -12,28 +12,29 @@ import type { CarType, VehicleSpec } from './sim/vehicle-spec';
 
 // Drifting (player only): brake plus steering at speed breaks the rear loose. The car keeps sliding along its line of
 // travel (c.vh) while the nose (c.h) swings into the turn. Holding a slide charges a mini-turbo, fired when the brake is let go.
-// The driving model's numbers, in one object so the tunables registry (sim/car-tunables.ts) can change them while the
-// game runs; drive() reads them every frame as plain properties.
+// The driving model's numbers, in one object so the tunables registry can change them while the game runs; drive()
+// reads them every frame as plain properties. Each one's unit, range and meaning are in sim/car-tunables.ts, and only
+// there, so they can't drift apart; the comments here keep the reasons.
 export const DRIVING = {
   DRIFT_MIN_V: 7.5,
-  DRIFT_KEEP_V: 4, // m/s to start a drift, and below which it fizzles out
+  DRIFT_KEEP_V: 4,
   GRIP: 12,
-  DRIFT_GRIP: 1.6, // 1/s: how fast the line of travel swings round to where the nose points
+  DRIFT_GRIP: 1.6,
   DRIFT_YAW: 1.7,
-  DRIFT_MAX_SLIP: 1.0, // yaw rate multiplier in a drift; rad, the most the nose can point off the line (no spin-outs)
+  DRIFT_MAX_SLIP: 1.0, // low enough that a drift never becomes a spin-out
   DRIFT_DRAG: 2.5,
-  DRIFT_THR: 0.35, // m/s² lost to sideways scrub; share of normal acceleration the throttle still gives
-  BRAKE_MS2: 21,
-  COUNTER_MS2: 17, // m/s² of braking, and of reverse or throttle against the roll: firm, but a car still carries its weight
+  DRIFT_THR: 0.35,
+  BRAKE_MS2: 21, // firm, but a car still carries its weight
+  COUNTER_MS2: 17,
   RECOVER_S: 0.9,
-  SPIN_DECAY: 2.5, // s for grip to come back after a drift; 1/s fade of the yaw the nose carries out of it (counter-steer to catch it)
-  FLICK_LOOSE: 0.5,
-  FLICK_S: 0.6, // s of looseness each quick left-right reversal adds (up to RECOVER_S); s apart that still counts as quick
-  FLICK_LOAD_S: 0.3, // s the first direction must be held to load the car up: shorter taps are corrections, not a flick
-  FLICK_SPIN: 1.5, // rad/s the rear's swing adds to the new direction at full looseness, on top of the steering
-  CATCH: 0.8, // share of the grip that swings the nose back to the path, not the path to the nose, at full opposite lock
+  SPIN_DECAY: 2.5, // slow enough to counter-steer and catch the carried yaw
+  FLICK_LOOSE: 0.5, // added up to RECOVER_S at most
+  FLICK_S: 0.6,
+  FLICK_LOAD_S: 0.3, // shorter taps are corrections, not a flick
+  FLICK_SPIN: 1.5, // on top of the steering
+  CATCH: 0.8,
   TURBO_ACC: 14,
-  TURBO_TOP: 1.2, // m/s² of boost; top speed multiplier while boosting
+  TURBO_TOP: 1.2,
 };
 export const TURBO_AT = [1, 2.2] as const; // s of sliding for a blue / an orange spark
 const TURBO_S = [0.7, 1.3]; // s each of those boosts lasts

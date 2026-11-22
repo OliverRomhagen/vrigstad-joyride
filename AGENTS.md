@@ -99,7 +99,7 @@ An experiment is work that ships switched off for everyone, until a player opts 
   A method passed around as a function loses `this`: call it on its object, `bind` it once, or make it an arrow field (`toggle = () => { … }`) when it's meant to be handed out.
 - Comments explain *why* and non-obvious units or conventions, not what the next line does.
 - No new runtime dependency without saying why in the PR. Dev dependencies (tooling, tests) are fine.
-- Gameplay numbers (speeds, radii, timers) go in named constants near the top of their module, with units in the name or a comment (`EVADE_DIST_M = 170`). The cars' numbers have moved into the tunables registry (#217): a number in the driving model, the steering or a car type's speed and response goes in its object (`DRIVING`, `STEERING`, `VEHICLE_SPECS`) and in `src/game/sim/car-tunables.ts`, with a unit, a range and a line of help, so `?tune=` and the console can change it. Other areas follow.
+- Gameplay numbers (speeds, radii, timers) go in named constants near the top of their module, with units in the name or a comment (`EVADE_DIST_M = 170`). The cars' numbers have moved into the tunables registry (#217): a number in the driving model, the steering or a car type's speed and response goes in its object (`DRIVING`, `STEERING`, `VEHICLE_SPECS`) and in `src/game/sim/car-tunables.ts`, with a unit, a range and a line of help, so `?tune=` and the console can change it. The unit and help live only in the registry; a comment beside the value says why it is what it is. Other areas follow.
 - Avoid per-frame allocations in the game loop: reuse vectors (`const _v = new THREE.Vector3()` at module level) as the existing code does.
 
 ### Naming
