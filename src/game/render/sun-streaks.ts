@@ -24,10 +24,12 @@ const RAYS: readonly (readonly [angle: number, length: number, spread: number, o
 // leave from the disc.
 const FORWARD_KNEE = 0.6,
   FORWARD_FLOOR = 0.15;
-// The rays are a low-sun effect: full below about 14° (sun y 0.25), an eighth of that above about 44° (y 0.7), so
-// midday shows only a hint and late afternoon gets the drama. The halo keeps half its strength at midday.
-const LOW_SUN_Y = 0.25,
-  HIGH_SUN_Y = 0.7,
+// The rays are a low-sun effect: full below about 20° (sun y 0.35), an eighth of that above about 53° (y 0.8), so
+// midday shows only a hint and late afternoon gets the drama. Tuned to the game's day (day-cycle.ts): its sun stands at
+// y 0.79 at noon, 0.58 at 17:00 and 0.33 at 19:00, so it never sinks lower in the evening. The halo keeps half its
+// strength at midday.
+const LOW_SUN_Y = 0.35,
+  HIGH_SUN_Y = 0.8,
   HIGH_SUN_RAYS = 0.12,
   HIGH_SUN_HALO = 0.5;
 const DISC_DIST_M = 2000; // inside the sky dome (3000 m) and the far plane; nearer things hide the disc
@@ -210,11 +212,13 @@ export class SunStreaks {
       forward = -_axis.set(0, 0, 1).applyQuaternion(q).dot(d);
     sunSource(right, up, forward, Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2), s);
     const u = this.quad.material.uniforms,
-      k = this.light * this.strength * (1 - cloudCover),
+      shade = 1 - cloudCover,
+      k = this.light * this.strength * shade,
       low = 1 - smoothstep(LOW_SUN_Y, HIGH_SUN_Y, d.y);
     u.src.value.set(s.x, s.y);
     u.aspect.value = camera.aspect;
-    u.presence.value = s.presence * k * (1 - cloudCover) * (HIGH_SUN_RAYS + (1 - HIGH_SUN_RAYS) * low);
+    // the rays take the shade twice, the glare once: a half-covered sun keeps a halo but casts few streaks
+    u.presence.value = s.presence * k * shade * (HIGH_SUN_RAYS + (1 - HIGH_SUN_RAYS) * low);
     u.glare.value = s.glare * k * (HIGH_SUN_HALO + (1 - HIGH_SUN_HALO) * low);
     // the fan opens towards a point half a frame below the bottom edge: straight down for a sun above the frame, as in
     // the lab, and across the frame for one beside it. The sun is never that low in view (it stays above the horizon,

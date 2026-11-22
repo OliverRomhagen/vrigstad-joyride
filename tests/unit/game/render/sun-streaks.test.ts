@@ -158,6 +158,8 @@ describe('SunStreaks', () => {
     expect(midday).toBeLessThan(evening * 0.35);
     expect(afternoon).toBeGreaterThan(midday);
     expect(evening).toBeGreaterThan(afternoon);
+    // the game's own late afternoon (day-cycle.ts: 17:00 is about 35°) already shows them at half strength or more
+    expect(presence(35)).toBeGreaterThan(evening * 0.45);
   });
 
   it('follows the camera’s aspect after a resize, with no resize call, and frees its GPU resources', () => {
