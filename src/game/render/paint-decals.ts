@@ -12,6 +12,7 @@ export interface Panel {
   toFrame: THREE.Matrix4;
 }
 
+const stand = new THREE.Mesh(); // a stand-in for each panel: DecalGeometry reads only a mesh's geometry and matrixWorld
 const FACING = 0.45; // a decal shows fully where its panel faces the projector at least this much (the cosine of the angle)
 const FADE = 0.25; // and fades out over this much less
 // the bonnet's flames take panels facing up and a little forward, so they follow its curve down to the nose but stay off the
@@ -51,8 +52,7 @@ export function decalMeshes(
     box.union(part.copy(p.geometry.boundingBox!).applyMatrix4(p.toFrame));
   }
   if (box.isEmpty()) return [];
-  const out: THREE.Mesh[] = [],
-    stand = new THREE.Mesh(); // DecalGeometry reads only the mesh's geometry and matrixWorld
+  const out: THREE.Mesh[] = [];
   for (const pr of projectors(decal, paint, box)) {
     const pieces: THREE.BufferGeometry[] = [];
     for (const p of panels) {
@@ -68,7 +68,6 @@ export function decalMeshes(
     if (!geo) continue;
     const m = new THREE.Mesh(geo, material(pr.tex));
     m.receiveShadow = true;
-    m.renderOrder = 1; // over the paint it lies on
     out.push(m);
   }
   return out;
@@ -146,8 +145,14 @@ function facingOnly(
     g.dispose();
     return null; // DecalGeometry gives normals for every panel with them, and a panel without would take the decal flat-on anyway
   }
-  const alphaAt = (i: number) =>
-    Math.min(1, Math.max(0, (nor.getX(i) * dir.x + nor.getY(i) * dir.y + nor.getZ(i) * dir.z - (min - FADE)) / FADE));
+  // DecalGeometry's clipped corners carry blended normals, a little short of unit length
+  const alphaAt = (i: number) => {
+    const x = nor.getX(i),
+      y = nor.getY(i),
+      z = nor.getZ(i),
+      facing = (x * dir.x + y * dir.y + z * dir.z) / (Math.hypot(x, y, z) || 1);
+    return Math.min(1, Math.max(0, (facing - (min - FADE)) / FADE));
+  };
   const keep: number[] = [];
   for (let i = 0; i + 2 < pos.count; i += 3)
     if (Math.max(alphaAt(i), alphaAt(i + 1), alphaAt(i + 2)) > 0 && !(glass && underGlass(pos, i, glass)))

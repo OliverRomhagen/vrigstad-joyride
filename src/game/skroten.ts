@@ -21,7 +21,7 @@ import { tooFastToGetOut } from './player';
 import { DECAL_NAMES, DECAL_ORDER, type Decal, isDecal, WORKSHOP_PAINTS } from './sim/paint-jobs';
 import { UPGRADE_ORDER, UPGRADES, type Upgrade } from './sim/upgrades';
 import type { CarType } from './sim/vehicle-spec';
-import { OWNER_UV, type YardCar, yardHeading, yardToWorld } from './skroten-yard';
+import { LIFT_RING_M, OWNER_UV, type YardCar, yardHeading, yardToWorld } from './skroten-yard';
 import type { GameState } from './state';
 
 const OWNER_SAYS = 'Plåt-Pelle: ';
@@ -29,7 +29,6 @@ const OWNER_AT = yardToWorld(OWNER_UV.u, OWNER_UV.v);
 const TALK_M = 3; // how close you stand to talk to him
 const SALE_REACH_M = 5; // his price stays on the plate while you stand this close to the car; a little over the reach to get in
 const LOT_WRECK = OWNER_SAYS + '”Den där ä ju kaputt! Den får ja laga först. Kom tebaks sen.”';
-const LIFT_REACH_M = 2.5; // a car this close to the middle of the lift's bay stands on the lift
 const NO_POLICE = OWNER_SAYS + '”En polisbil? Ä du inte klok? Den rör ja inte.”';
 const CHASED = OWNER_SAYS + '”Inte mä snuten i hälarna! Kom tebaks när du ä av mä dom.”';
 const UPGRADE_NAMES: Readonly<Record<Upgrade, string>> = {
@@ -116,7 +115,7 @@ export class Skroten {
       c &&
       c === game.pcar &&
       liftAt &&
-      Math.hypot(c.x - liftAt.x, c.z - liftAt.z) < LIFT_REACH_M
+      Math.hypot(c.x - liftAt.x, c.z - liftAt.z) < LIFT_RING_M // on the ring that is drawn
     );
   }
 
@@ -194,7 +193,7 @@ export class Skroten {
         if (k === 'paint') this.openPaint(c);
         else if (k === 'special') this.openSpecialPaint(c);
         else if (k === 'decal') this.openDecal(c);
-        else if (k === 'fix' ? this.repair(c) : isUpgrade(k) && this.upgrade(c, k)) this.openLift(c);
+        else if (k === 'fix' ? this.repair(c, fix) : isUpgrade(k) && this.upgrade(c, k)) this.openLift(c);
       },
       () => this.onLift(c) && !tooFastToGetOut(c),
     );
@@ -291,8 +290,13 @@ export class Skroten {
     return false;
   }
 
-  private repair(c: Car) {
+  // `shown` is the price on the menu: if the car took more damage while it was open, he names the new price instead of taking it
+  private repair(c: Car, shown: number) {
     const kr = this.repairKr(c);
+    if (kr !== shown) {
+      if (this.onLift(c)) this.openLift(c);
+      return false;
+    }
     return (
       !!kr &&
       this.work(c, kr, () => {
@@ -340,7 +344,7 @@ export class Skroten {
 
   /** E by a car on his lot: his price on the menu plate, or a word about the police. */
   offerCar = (c: Car) => {
-    const { game, player, stars, openMenu, toast, carName } = this.g;
+    const { stars, openMenu, toast, carName } = this.g;
     if (stars) {
       toast(CHASED, 3.5);
       return;
@@ -360,14 +364,21 @@ export class Skroten {
       k => {
         if (k === 'buy') this.buy(c);
       },
-      () => !game.inCar && c.saleKr > 0 && Math.hypot(player.x - c.x, player.z - c.z) < SALE_REACH_M,
+      () => this.byForSale(c),
     );
   };
 
-  // stars can come while the menu is open
+  // you stand on foot by the car for sale, with no police after you: what keeps his menu open
+  private byForSale(c: Car) {
+    const { game, player, stars } = this.g;
+    return !game.inCar && !stars && c.saleKr > 0 && Math.hypot(player.x - c.x, player.z - c.z) < SALE_REACH_M;
+  }
+
+  // all asked again at the moment of paying, as for a sale: stars can come while the menu is open, and you can walk off before it closes
   private buy(c: Car) {
     const { stars, toast, wallet } = this.g;
     if (!c.saleKr) return;
+    if (!stars && !this.byForSale(c)) return; // walked off or got in: no sale, and no word
     const kr = lotPrice(c.saleKr, c.dmg); // a crash can come while the menu is open
     if (stars) toast(CHASED, 3.5);
     else if (kr === null) toast(LOT_WRECK, 3.5);

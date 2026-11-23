@@ -148,25 +148,36 @@ export class VehicleVisuals {
       frame = root?.parent,
       body = root?.getObjectByName(BODY_NODE);
     if (!view.decal || !frame || !body) return;
-    frame.updateMatrixWorld(true);
-    const toFrame = frame.matrixWorld.clone().invert(),
-      panels: Panel[] = [];
-    body.traverse(node => {
-      if (!(node instanceof THREE.Mesh) || (node !== body && !node.name.startsWith(BODY_NODE + '_'))) return;
-      panels.push({ geometry: node.geometry, toFrame: toFrame.clone().multiply(node.matrixWorld) });
-    });
-    const glass = new THREE.Box3(),
-      part = new THREE.Box3();
-    root.traverse(node => {
-      if (!(node instanceof THREE.Mesh) || !node.name.startsWith(GLASS_NODE)) return;
-      node.geometry.boundingBox ?? node.geometry.computeBoundingBox();
-      glass.union(part.copy(node.geometry.boundingBox!).applyMatrix4(toFrame.clone().multiply(node.matrixWorld)));
-    });
-    const toBody = toFrame.clone().multiply(body.matrixWorld).invert();
-    view.decals = decalMeshes(view.decal, view.color ?? '#ffffff', panels, glass.isEmpty() ? null : glass);
-    for (const m of view.decals) {
-      m.applyMatrix4(toBody);
-      body.add(m);
+    // measured with the springs at rest: projected while the body rolls or pitches, the decal would stay skewed on it for good
+    const sprung = body.parent!,
+      rest = { y: sprung.position.y, x: sprung.rotation.x, z: sprung.rotation.z };
+    sprung.position.y = sprung.rotation.x = sprung.rotation.z = 0;
+    try {
+      frame.updateMatrixWorld(true);
+      const toFrame = frame.matrixWorld.clone().invert(),
+        panels: Panel[] = [];
+      body.traverse(node => {
+        if (!(node instanceof THREE.Mesh) || (node !== body && !node.name.startsWith(BODY_NODE + '_'))) return;
+        panels.push({ geometry: node.geometry, toFrame: toFrame.clone().multiply(node.matrixWorld) });
+      });
+      const glass = new THREE.Box3(),
+        part = new THREE.Box3();
+      root.traverse(node => {
+        if (!(node instanceof THREE.Mesh) || !node.name.startsWith(GLASS_NODE)) return;
+        node.geometry.boundingBox ?? node.geometry.computeBoundingBox();
+        glass.union(part.copy(node.geometry.boundingBox!).applyMatrix4(toFrame.clone().multiply(node.matrixWorld)));
+      });
+      const toBody = toFrame.clone().multiply(body.matrixWorld).invert();
+      view.decals = decalMeshes(view.decal, view.color ?? '#ffffff', panels, glass.isEmpty() ? null : glass);
+      for (const m of view.decals) {
+        m.geometry.applyMatrix4(toBody); // into the geometry, not the mesh's transform, which can't hold a shear
+        body.add(m);
+      }
+    } finally {
+      sprung.position.y = rest.y;
+      sprung.rotation.x = rest.x;
+      sprung.rotation.z = rest.z;
+      frame.updateMatrixWorld(true);
     }
   }
   attach(car: Car, id: VehicleId, fallback: THREE.Mesh, color?: string) {
