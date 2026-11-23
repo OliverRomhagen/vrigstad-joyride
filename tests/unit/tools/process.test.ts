@@ -198,19 +198,26 @@ describe('tools/process.py buildings', () => {
     expect(out.b.map(b => b.p)).toContainEqual([-81.9, -29.1, -71.9, -29.1, -71.9, -19.1, -81.9, -19.1]);
   });
 
-  it('fails the build when a listed outline was re-traced', () => {
-    const moved = mkdtempSync(join(tmpdir(), 'process-'));
+  // runs process.py on the fixture with the bank museum's way replaced (or left out, for undefined)
+  const processWithMuseum = (museum: ReturnType<typeof way> | undefined) => {
+    const alt = mkdtempSync(join(tmpdir(), 'process-'));
     try {
-      copyFileSync('data/raw/tile.png', join(moved, 'tile.png'));
-      const retraced = way(48807861, ring(-79.4, -24.1, 10, 10), { building: 'yes' }); // 1 m east
-      const els = elements.map(e => (e.type === 'way' && e.id === 48807861 ? retraced : e));
-      writeFileSync(join(moved, 'osm.json'), JSON.stringify({ elements: els }));
-      expect(() =>
-        execFileSync('python3', ['tools/process.py', moved, join(moved, 'out.json')], { stdio: 'pipe' }),
-      ).toThrow(/way 48807861 was re-traced/);
+      copyFileSync('data/raw/tile.png', join(alt, 'tile.png'));
+      const els = elements.flatMap(e => (e.type === 'way' && e.id === 48807861 ? (museum ? [museum] : []) : [e]));
+      writeFileSync(join(alt, 'osm.json'), JSON.stringify({ elements: els }));
+      execFileSync('python3', ['tools/process.py', alt, join(alt, 'out.json')], { stdio: 'pipe' });
     } finally {
-      rmSync(moved, { recursive: true, force: true });
+      rmSync(alt, { recursive: true, force: true });
     }
+  };
+
+  it('fails the build when a listed outline was re-traced', () => {
+    const retraced = way(48807861, ring(-79.4, -24.1, 10, 10), { building: 'yes' }); // 1 m east
+    expect(() => processWithMuseum(retraced)).toThrow(/way 48807861 was re-traced/);
+  });
+
+  it('fails the build when a listed way is missing from osm.json', () => {
+    expect(() => processWithMuseum(undefined)).toThrow(/BUILDING_SHIFT ways missing from osm.json: \{48807861\}/);
   });
 });
 
