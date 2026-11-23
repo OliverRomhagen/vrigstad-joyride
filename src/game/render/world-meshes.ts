@@ -101,14 +101,17 @@ export interface BuildingMeshOptions {
   rnd(): number;
   pick<T>(a: readonly T[]): T;
   maxAnisotropy: number;
+  /** A point inside each building to leave out, because the game draws it itself: Skroten's workshop and carport (render/skroten.ts). */
+  skip?: readonly { x: number; z: number }[];
 }
 /** The house shells in their colours, and one mesh of windows and trim. Rolls rnd() once or twice per house, in data order. */
 export function addBuildings(
   scene: THREE.Scene,
   D: WorldData,
   heightfield: Heightfield,
-  { rnd, pick, maxAnisotropy }: BuildingMeshOptions,
+  { rnd, pick, maxAnisotropy, skip = [] }: BuildingMeshOptions,
 ) {
+  const isSkipped = (p: readonly number[]) => skip.some(s => inPoly(p as number[], s.x, s.z));
   const hAt = (x: number, z: number) => heightfield.heightAt(x, z);
   const winTex = (() => {
     const cv = document.createElement('canvas');
@@ -201,6 +204,7 @@ export function addBuildings(
     const colours = ({ building: b, area }: BuildingShape) => {
       c.set(b.k === 2 ? '#9c3a2c' : b.k ? '#efece3' : area > 450 ? pick(big) : pick(house)).convertSRGBToLinear();
       c2.set(b.k === 2 ? '#a8573f' : b.k ? '#3f4447' : rnd() < 0.35 ? '#4d4a48' : '#a8573f').convertSRGBToLinear();
+      if (isSkipped(b.p)) return null; // after the rolls above, so the houses after it keep their colours
       c3.copy(c).multiplyScalar(0.62); // walls darken towards the ground
       return paint;
     };
@@ -208,7 +212,7 @@ export function addBuildings(
       { building: b, ring, yAt, base, top, hi, area, winding: wind }: BuildingShape,
       emit: (x: number, y: number, z: number, k: THREE.Color) => void,
     ) => {
-      if (b.k === 1 || area < HOUSE_MIN_M2 || area > HOUSE_MAX_M2) return; // not the church and its tower, not sheds or barns
+      if (b.k === 1 || area < HOUSE_MIN_M2 || area > HOUSE_MAX_M2 || isSkipped(b.p)) return; // not the church and its tower, not sheds or barns, not one drawn elsewhere
       const m = ring.length,
         yb = hi + 0.2,
         yt = top - 0.25,

@@ -41,6 +41,9 @@ export interface ActionsDeps {
   openOwnCat(k: Cat): void;
   petCat(k: Cat): void;
   openKiosk(): void;
+  openSkroten(): boolean; // Skroten's offer for the car you drive on its ring; false when it makes none, so E gets you out
+  nearOwner(): boolean; // you stand on foot next to Plåt-Pelle
+  talkToOwner(): void;
   collide(o: Point, r: number): unknown;
   placeCar(c: Car): void;
   rnd(): number;
@@ -49,7 +52,7 @@ export interface ActionsDeps {
   carName(c: Car): string;
   spokenName(c: Car): string | undefined; // the car's name as its driver says it, if its model has one
   driverOut(c: Car): void; // the driver of a car you steal gets out: a person mesh, so render/shouting-drivers.ts draws it
-  spawnTraffic(p: Point): void;
+  replaceTaken(taken: Car, p: Point): void; // a traffic car you take: a new one drives in out of sight of p
   drawStolen(): void;
   drawHealth(): void;
   titleCard(title: string, msg: string): void;
@@ -80,6 +83,16 @@ export class Actions {
     game.inCar = false;
     showPlayer(true);
   };
+  // out of the car you drive and onto your feet beside it, looking where you looked
+  getOut = () => {
+    const { game, view, player, collide } = this.g;
+    stepOut(player, game.pcar!);
+    collide(player, 0.5);
+    this.leaveCar();
+    game.jumpQ = false;
+    view.camYaw = wrap(view.camYaw + view.lookOff);
+    view.lookOff = 0;
+  };
   action = () => {
     const {
       game,
@@ -98,14 +111,16 @@ export class Actions {
       openOwnCat,
       petCat,
       openKiosk,
-      collide,
+      openSkroten,
+      nearOwner,
+      talkToOwner,
       rnd,
       pick,
       toast,
       carName,
       spokenName,
       driverOut,
-      spawnTraffic,
+      replaceTaken,
       drawStolen,
       pickLine,
     } = this.g;
@@ -130,17 +145,16 @@ export class Actions {
       else openKiosk();
       return;
     }
+    if (nearOwner()) {
+      talkToOwner();
+      return;
+    }
     if (game.inCar) {
       if (tooFastToGetOut(game.pcar!)) {
         toast('Slow down before you get out.', 2);
         return;
       }
-      stepOut(player, game.pcar!);
-      collide(player, 0.5);
-      this.leaveCar();
-      game.jumpQ = false;
-      view.camYaw = wrap(view.camYaw + view.lookOff);
-      view.lookOff = 0;
+      if (!openSkroten()) this.getOut();
       return;
     }
     const c = this.nearestCar();
@@ -156,7 +170,7 @@ export class Actions {
         ]) + ' The driver calls the police.',
       );
       wanted.addStar();
-      spawnTraffic(player);
+      replaceTaken(c, player);
     } else if (!c.owned) {
       if (wanted.police.length || rnd() < 0.35)
         wanted.addStar(

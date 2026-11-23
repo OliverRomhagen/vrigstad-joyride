@@ -89,8 +89,11 @@ export type EmitVertex = (x: number, y: number, z: number, colour: THREE.Color) 
 export interface PaintedShellOptions {
   /** a material with `vertexColors` on */
   material: THREE.Material;
-  /** called once per building, in `data.b` order, before its shell is built; the colours are read before the next call, so it may reuse them */
-  colours: (shape: BuildingShape) => ShellColours;
+  /**
+   * called once per building, in `data.b` order, before its shell is built; the colours are read before the next call, so it may reuse
+   * them. null leaves that building's shell out, for a caller that draws it itself.
+   */
+  colours: (shape: BuildingShape) => ShellColours | null;
   /** called after each building's shell, to add triangles to the same mesh (a chimney) or build details of its own */
   extra?: (shape: BuildingShape, emit: EmitVertex) => void;
 }
@@ -115,6 +118,7 @@ export class PaintedBuildingShells {
     };
     forEachBuilding(data, heightfield, shape => {
       const paint = colours(shape);
+      if (!paint) return;
       eachShellVertex(shape, (x, y, z, surface) => {
         emit(x, y, z, surface === 'roof' ? paint.roof : surface === 'wallTop' ? paint.wall : paint.wallFoot);
       });
