@@ -15,6 +15,7 @@ import { CarMeshes, type RenderedCar } from './render/car-meshes';
 import { CameraRig } from './render/camera-rig';
 import { ShoutingDrivers } from './render/shouting-drivers';
 import data from '../../data/vrigstad.json';
+import '../fonts/barlow';
 import { LabFlags } from '../lab/flags';
 import { BuildingIndex } from '../world/buildings';
 import { ROAD_WIDTH_M as ROAD_W, type WorldData } from '../world/data';
@@ -50,7 +51,7 @@ import { Confetti } from './confetti';
 import { DevConsole } from './devconsole';
 import { newWallet, registerWalletCommands } from './economy';
 import { KIOSK, type Place, Places } from './places';
-import { CAT_SCRATCH_HP, LOW_HP, hurt, newHealth } from './health';
+import { CAT_SCRATCH_HP, canHurt, LOW_HP, hurt, newHealth, registerHealthCommands } from './health';
 import { HOME } from './player';
 import { Wanted } from './police';
 import { Ragdolls } from './ragdolls';
@@ -63,6 +64,7 @@ import { addBuildings, addRoadRibbons, addStreetscapeMeshes, addTerrain, addTree
 import { type CarType, specFor } from './sim/vehicle-spec';
 import { Tunables } from './sim/tunables';
 import { registerCarTunables } from './sim/car-tunables';
+import { registerTunableCommands } from './sim/tunable-commands';
 import { newGameState, newViewState } from './state';
 import { Trisslott, trisslottSeed } from './trisslott';
 import { makeClock, skyAt, START_H, tickClock } from './day-cycle';
@@ -183,10 +185,13 @@ const DEV = import.meta.env.DEV || new URLSearchParams(location.search).has('dev
 // in dev mode, uncaught errors show over the game (a phone has no devtools), and the console's fps shows frame times (src/game/presentation/debug-overlay.ts)
 const debugOverlay = DEV ? new DebugOverlay($('stage'), __BUILD__) : null;
 const calmMotion = matchMedia('(prefers-reduced-motion: reduce)');
-// gameplay numbers (#217): the cars' are in the registry so far. ?tune=driving.grip:8,vehicle.volvo.top-speed:45 overrides them
+// gameplay numbers (#217): the cars' are in the registry so far. In dev mode, ?tune=driving.grip:8,vehicle.volvo.top-speed:45
+// overrides them at load, and the console's tune set, get, list and reset change them while you play (#357)
 const tunables = new Tunables();
 registerCarTunables(tunables);
-for (const err of tunables.override(new URLSearchParams(location.search).get('tune') ?? '')) console.warn('?tune=', err);
+const tuneParam = new URLSearchParams(location.search).get('tune');
+if (tuneParam && !DEV) console.warn('?tune= works in dev mode only: add ?dev');
+else for (const err of tunables.override(tuneParam ?? '')) console.warn('?tune=', err);
 let displayCar: RenderedCar | null = null;
 function carName(c: Car) { return vehicleVisuals.definition(meshed(c))?.name || c.T.name; }
 fleet.parkCars();   // parked cars along streets and driveways
@@ -226,7 +231,7 @@ const colony = new CatColony({ scene, buildings, inWater, groundAt, half: HALF, 
 const { cats } = colony, updateCats = colony.update.bind(colony), catFirst = colony.catFirst.bind(colony), nearCat = colony.nearest.bind(colony);
 
 // ---------- crashes: what you say and feel when you hit something, and what you say to your cat riding along (src/game/crashes.ts) ----------
-const crashes = new Crashes({ game, colony, get viewer() { return camera.position; }, toast, hurtPlayer, shake });
+const crashes = new Crashes({ game, colony, get viewer() { return camera.position; }, toast, hurtPlayer, get god() { return health.god; }, shake });
 const { pickLine } = crashes;
 
 // ---------- your pets: P (or the Pets button) calls them, sends them home or sets them free (src/game/pets.ts) ----------
@@ -254,7 +259,7 @@ const wallet = newWallet();
 const wanted = new Wanted({ roads, rnd, pick, removeCar, drive, toast,
   spawnCar: (x, z, h) => addCar('polis', x, z, h, 'police'),
   drawStars: () => drawStars(), showEvading: on => $('stars').classList.toggle('evading', on), caught: n => busted(n),
-  get lyingLow() { return !!places.inside; } });
+  get lyingLow() { return !!places.inside; }, get god() { return health.god; } });
 
 // ---------- places: safehouses (lie low to lose your stars) and the trisslott kiosk ----------
 // the getter is read when a place uses it, so it follows the stars
@@ -302,6 +307,9 @@ const commands = new Commands();
 const devcon = new DevConsole({ root: $('devcon'), commands, canvas, doc: document, get input() { return input; }, get enabled() { return DEV; }, get menuOpen() { return !kmenu.hidden; } });
 registerWalletCommands(commands, wallet);
 pets.registerCommands(commands);
+wanted.registerCommands(commands);
+registerHealthCommands(commands, health, drawHealth);
+registerTunableCommands(commands, tunables);
 debugOverlay?.registerCommands(commands);
 
 // ---------- input: keys, mouse look and the touch controls (src/game/input.ts) ----------
@@ -335,7 +343,7 @@ const drivers = new ShoutingDrivers({ scene, groundAt, personParts, pick }), dri
 const actions = new Actions({ game, view, player, cars, places, wanted, health, wallet, menuOpen: () => !kmenu.hidden, closeMenu, showPlayer: v => { player.mesh.visible = v; }, nearPlace, enterHouse, leaveHouse, nearCat, catFirst, openOwnCat, petCat, openKiosk, collide, placeCar, rnd, pick, toast, carName,
   spokenName: c => vehicleVisuals.definition(meshed(c))?.spokenName, driverOut, spawnTraffic, drawStolen: () => { $('count').textContent = 'Cars stolen: ' + game.stolen; }, drawHealth, titleCard, sayLater: line => loop.sayLater(line), pickLine });
 const { nearestCar, action, respawn, busted, knockedOut } = actions;
-function hurtPlayer(n: number) { if (n <= 0) return; const was = health.hp;
+function hurtPlayer(n: number) { if (!canHurt(health, n)) return; const was = health.hp;
   hud.flashHurt(n); hurt(health, n); drawHealth();
   if (was >= LOW_HP && health.hp < LOW_HP && health.hp > 0) loop.sayLater('”Ja behöver nog en korv me brö.”'); }   // a hint at the kiosk
 

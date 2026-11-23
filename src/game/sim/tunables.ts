@@ -33,6 +33,8 @@ export type TunableInfo = Omit<Tunable, 'get' | 'set' | 'reset'>;
 /** The registry; the game makes one and every area adds its numbers to it. */
 export class Tunables {
   private readonly byKey = new Map<string, Tunable>();
+  /** keys set since their last reset: a number with its own reset differs from its default even at the same value */
+  private readonly setKeys = new Set<string>();
 
   /** Adds a number reached through get and set; its current value becomes its default. */
   add(key: string, spec: TunableSpec, get: () => number, set: (value: number) => void, reset?: () => void): void {
@@ -91,13 +93,25 @@ export class Tunables {
     if (!Number.isFinite(value)) throw new RangeError(`${key} must be a number`);
     if (value < t.min || value > t.max) throw new RangeError(`${key} is from ${t.min} to ${t.max} ${t.unit}`);
     t.set(value);
+    this.setKeys.add(key);
+  }
+
+  /**
+   * Whether a number differs from its default: its value does, or, for one with its own reset (a car type's response
+   * times, which a set value overrides on every model), it was set since its last reset.
+   */
+  isChanged(key: string): boolean {
+    const t = this.need(key);
+    return t.get() !== t.defaultValue || (t.reset !== undefined && this.setKeys.has(key));
   }
 
   /** Puts one number back to its default, or every number when no key is given. */
   reset(key?: string): void {
-    for (const t of key === undefined ? this.byKey.values() : [this.need(key)])
+    for (const t of key === undefined ? this.byKey.values() : [this.need(key)]) {
       if (t.reset) t.reset();
       else t.set(t.defaultValue);
+      this.setKeys.delete(t.key);
+    }
   }
 
   /**
