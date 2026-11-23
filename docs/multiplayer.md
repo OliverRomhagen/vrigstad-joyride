@@ -296,6 +296,20 @@ and areas to hold give them reasons to cross paths. The comparisons are DayZ and
   `persistence`. Rivals who gain by cheating need `authority`. A secret safehouse needs the session to send a
   player only what they could see, so interest management becomes a secrecy feature, not only a saving.
 
+### An idea: match settings from the tunables
+
+The dev console stays off in a match, but the numbers in the tunables registry (#217) could be a match's settings:
+top speed, grip, later gravity. Whoever makes the room picks them, and they travel in the hello as a list of
+`key: value`.
+
+- Every client applies them through the registry, which knows each key and its range. An unknown key is dropped
+  and a value is clamped to its range, so a peer can't send `999999999`, `NaN` or code.
+- Settings are fixed when the room is made and are part of the room key, like the build hash: nobody changes
+  them mid-match, and a joiner sees them first.
+- With ownership, each client simulates its own car, so a client that ignores the settings cheats, but breaks
+  nothing for the others.
+- A backend with `authority` simulates on our machine: it sets its own, tighter ranges.
+
 ## Trying the two-tab prototype
 
 A throwaway on the branch `multiplayer-two-tab-prototype`, behind the lab flag. Open the game in **two windows side
