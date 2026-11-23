@@ -42,8 +42,10 @@ Removed cars ignore pending asynchronous work.
 Wheel travel derives from rendered movement, using -Z forward and metre units;
 front steering derives from heading/distance and verified wheelbase. Teleports
 larger than 20 m do not spin wheels. Police beacons use existing emissive meshes;
-no point lights/shadows are added for them. Coarse detailed meshes do not cast
-additional shadows. The read-only game hook exposes the selected car's actual
+no point lights/shadows are added for them. On desktop, only a model's body, its
+tyres and parts with at least 1 m² of surface cast shadows (#405): the merged
+bumpers and trim do, lamps, grilles, rims, beacons and glass don't. Coarse detailed
+meshes do not cast additional shadows. The read-only game hook exposes the selected car's actual
 loading/fallback/detail and wheel state for tests.
 
 ## Sources and regeneration

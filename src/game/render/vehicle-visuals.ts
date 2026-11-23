@@ -28,7 +28,37 @@ const DETAIL_RANGE_M = 120,
   DETAIL_KEEP_M = 15, // a detailed car keeps its model until it is this much further away than the next candidate, so it doesn't pop back and forth
   DETAIL_CAP_COARSE = 3,
   DETAIL_CAP_DESKTOP = 8,
-  REFRESH_SECONDS = 0.35;
+  REFRESH_SECONDS = 0.35,
+  // a part casts a shadow only if it has this much surface (m²): the body, the bumpers, the trim; not lamps, grilles,
+  // rims or beacons, whose shadows are a texel or two at the game's shadow resolution (about 0.1 m) but cost a draw call
+  // each. Area, not size: a part merged per material (tools/vehicle-parts.ts) spans the whole car however small it is.
+  SHADOW_MIN_AREA_M2 = 1;
+const areas = new WeakMap<THREE.BufferGeometry, number>(),
+  _a = new THREE.Vector3(),
+  _b = new THREE.Vector3(),
+  _c = new THREE.Vector3();
+/** A geometry's surface area in its own units, once per geometry: the models' clones share theirs. */
+function surfaceArea(geometry: THREE.BufferGeometry) {
+  let area = areas.get(geometry);
+  if (area !== undefined) return area;
+  const position = geometry.attributes.position!,
+    index = geometry.index,
+    count = index ? index.count : position.count;
+  area = 0;
+  for (let i = 0; i + 2 < count; i += 3) {
+    _a.fromBufferAttribute(position, index ? index.getX(i) : i);
+    _b.fromBufferAttribute(position, index ? index.getX(i + 1) : i + 1).sub(_a);
+    _c.fromBufferAttribute(position, index ? index.getX(i + 2) : i + 2).sub(_a);
+    area += _b.cross(_c).length() / 2;
+  }
+  areas.set(geometry, area);
+  return area;
+}
+/** The body and the tyres always cast; glass never does (a car's shadow is its shell); other parts by their area. */
+function castsShadow(node: THREE.Mesh) {
+  if (node.name === BODY_NODE || (WHEEL_NODES as readonly string[]).includes(node.name)) return true;
+  return !node.name.startsWith('glass_') && surfaceArea(node.geometry) >= SHADOW_MIN_AREA_M2;
+}
 // Rendering owns resource lifetime; no simulation or gameplay rules are mutated.
 export class VehicleVisuals {
   private readonly loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
@@ -81,7 +111,7 @@ export class VehicleVisuals {
         root.add(sprung);
         root.traverse(node => {
           if (!(node instanceof THREE.Mesh)) return;
-          node.castShadow = !this.coarse;
+          node.castShadow = !this.coarse && castsShadow(node);
           node.receiveShadow = true;
           if (view.definition.police && BEACON_PARTS.test(node.name)) {
             node.material = node.material.clone();
