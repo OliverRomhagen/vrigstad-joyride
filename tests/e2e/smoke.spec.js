@@ -259,7 +259,10 @@ test.describe('game (index.html)', () => {
 
     // Held straight on, the Volvo soon hits something hard enough to dent it: traffic crossing Torget, or the house past it.
     await page.keyboard.down('KeyW');
-    await expect.poll(async () => (await state(page)).carDmg, { intervals: [100], timeout: 90_000 }).toBeGreaterThan(0); // inside the test's 240 s, so a miss fails here
+    // At least 0.5, so the bar, which shows the damage rounded, reads 1 or more: a glancing hit can dent it by less.
+    await expect
+      .poll(async () => (await state(page)).carDmg, { intervals: [100], timeout: 90_000 }) // inside the test's 240 s, so a miss fails here
+      .toBeGreaterThanOrEqual(0.5);
     await page.keyboard.up('KeyW');
     await expect(page.locator('#dmg')).not.toHaveAttribute('aria-valuenow', '0');
     await page.screenshot({ path: testInfo.outputPath('game-crash.png') });
