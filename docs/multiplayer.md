@@ -312,9 +312,10 @@ top speed, grip, later gravity. Whoever makes the room picks them, and they trav
 
 ## Trying the two-tab prototype
 
-A throwaway on the branch `multiplayer-two-tab-prototype`, behind the lab flag. Open the game in **two windows side
+A prototype behind the lab flag, to be thrown away or grown once the direction is agreed. Open the game in **two windows side
 by side** (a tab in the background stops its frames) with `?lab=multiplayer`; add `&room=<name>` for a room of your
-own. Each window shows the other's player in a blue shirt on foot, and the car they drive.
+own. Each window shows the other's player in a blue shirt on foot, and the car they drive. Each build has rooms of
+its own, so a PR preview never meets the live game.
 
 ![The second window shows the first window's player walking past](multiplayer-two-tabs.png)
 
@@ -334,8 +335,10 @@ What it is, in `src/game/net/`, in the layers described above:
 The message hooks (`net.use`) and the capabilities are not built yet.
 
 **The room's clock.** Two computers' clocks can be seconds apart. Every player asks the others the time once a
-second and follows the clock of the player who joined first; when that player leaves, the next one carries the
-room's time on as it was. Every time in a message is on that clock.
+second and follows the clock of the player who has been in the room longest. Each says how long that is, not when
+they joined by their own clock, which could put a latecomer first. When that player leaves, the next one carries
+the room's time on as it was. Every time in a message is on that clock; when a player's reading of it jumps (two
+rooms meet), the times they kept move with it.
 
 ### Across two computers: the `webrtc` connector
 
@@ -355,8 +358,12 @@ The browsers then talk straight to each other. There is no server of ours, and n
   (`stun.cloudflare.com:3478`), which its docs say anyone may use; `&stun=off` asks none (same network only) and
   `&stun=host:port` asks another. The panel names the server before a player makes a code. A server of our own
   would be the only fully private one, and belongs with the opt-in backend.
-- **Who is who** comes from the code a player sent, never from a message, so nobody can speak as someone else.
-  Codes and messages are size-limited and checked before use.
+- **Who is who** comes from the code a player sent, never from a message, and an id already in the room is
+  refused, so a code can't take a connected player's place. Codes and messages are size-limited and checked
+  before use, and a code from another build is refused.
+- **A code is only as trusted as the chat it came through.** Whoever swaps a code in the chat becomes the friend.
+  A crafted code can also make the browser try to reach addresses it names, as WebRTC always does: send codes over
+  a chat you trust.
 - **Two players for now.** Every pair needs its own swap of codes; a third player has to swap with both.
   Passing the codes on through a player already connected would make that one swap.
 - **No TURN.** Two players who are both behind strict networks (some mobile and company networks) won't connect.
@@ -375,7 +382,10 @@ Cars are the same car in every window:
 - **Getting out.** The driver's window says once where it left the car, or that the car is gone (sold at Skroten).
   Every window keeps the newest word on each car and passes it all on when someone joins.
 - **Two players, one car.** The one who got in first keeps it (the player id settles a tie); the other is put back
-  on their feet with "Someone else got in first."
+  on their feet with "Someone else got in first." A player back from a background tab claims their car anew, so
+  one who got into it meanwhile keeps it.
+- **A limit.** A window makes at most 200 cars for the others' ids, so a peer that sends new ones without end
+  can't fill the village.
 
 What it leaves out, on purpose:
 
@@ -384,8 +394,11 @@ What it leaves out, on purpose:
 - Traffic and the police stay each window's own, so a friend can be chased by police you can't see.
 - The loser of a car still gets the star and the "cars stolen" count for it.
 - No name tags and no shared time of day.
-- Messages are checked for shape, real numbers and known car types, not for sense: a peer can still say it is
-  anywhere, in any car.
+- Messages are checked for shape, numbers in range (inside the map, real speeds, damage, times near the room's
+  now), colours and known car types, not for sense: a peer can still say it is anywhere, in any car.
+- Remote cars don't knock down your pedestrians, and a teleport (to a safehouse, or the console's) is blended
+  across the village between two snapshots.
+- Snapshots go out before Start is pressed: the others see you standing at Torget on the title screen.
 
 ## Where the code goes, and tests
 
@@ -395,8 +408,8 @@ What it leaves out, on purpose:
 - Drawing remote players and cars: `src/game/render/`.
 - Gated by `lab.on('multiplayer')`, loaded with `import()`.
 - **Unit tests** with the `loopback` connector: two sessions in one process, with lag, loss and reordering.
-- **A smoke test** with the `tabs` connector: two pages in one browser see each other move. The test hook gets a
-  read-only list of remote players.
+- **A smoke test** with the `tabs` connector: two pages in one browser see each other move. The test hook gets
+  `remotePlayers`, the count of players shown, with `remoteCars` and `carCount`.
 
 ## Stages
 
@@ -420,9 +433,13 @@ What it leaves out, on purpose:
 
 - With local traffic, a friend swerves around cars you can't see, and can be stopped by one you can't see.
 - Crashes look different on each side.
-- A peer in a background tab stops stepping: its car freezes for the others. Anything that peer owns for everyone
-  (a host with `authority` or `world`) needs handing over when the tab hides.
+- A peer in a background tab stops stepping: after 3 s the others take them away and let go of their car where it
+  stands. Anything that peer owns for everyone (a host with `authority` or `world`) needs handing over when the
+  tab hides.
+- Two remote players in one car flicker between them, and the first to get out leaves it standing for the other.
 - A build mismatch splits friends until both reload.
+- The Volvo by Torget is whatever `?vehicle=` says, but has the same id in every window: two players with different
+  `?vehicle=` see each other drive a different car there.
 
 ## Open questions
 
