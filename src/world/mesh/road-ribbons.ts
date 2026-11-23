@@ -14,6 +14,8 @@ export interface RoadRibbonOptions {
   centreLineColour: number;
   /** the deck height of a ribbon vertex on a bridge road, undefined elsewhere (BridgeIndex.ribbonHeight) */
   heightOf?: (ri: number, x: number, z: number, lift: number) => number | undefined;
+  /** roads that draw their own surface and get no ribbon: the footbridges, whose decks are the walking surface */
+  skip?: (ri: number) => boolean;
 }
 
 /** bridge roads are cut every metre, so the ribbon follows the deck's crest (m) */
@@ -39,7 +41,7 @@ export class RoadRibbons {
   constructor(
     roads: Pick<RoadNetwork, 'lines'>,
     heightfield: Pick<Heightfield, 'heightAt'>,
-    { asphalt, roadColours, centreLineColour, heightOf }: RoadRibbonOptions,
+    { asphalt, roadColours, centreLineColour, heightOf, skip }: RoadRibbonOptions,
   ) {
     const positions: number[][] = Array.from({ length: CENTRE_LINE + 1 }, () => []);
     const uvs: number[][] = Array.from({ length: CENTRE_LINE + 1 }, () => []);
@@ -87,6 +89,7 @@ export class RoadRibbons {
       }
     };
     roads.lines.forEach((r, ri) => {
+      if (skip?.(ri)) return;
       ribbon(ri, positions[r.c], uvs[r.c], r.p, ROAD_WIDTH_M[r.c], roadLiftM(r.c));
       if (r.c < 2) ribbon(ri, positions[CENTRE_LINE], uvs[CENTRE_LINE], r.p, CENTRE_LINE_WIDTH_M, CENTRE_LINE_LIFT_M);
     });

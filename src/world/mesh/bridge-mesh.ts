@@ -95,7 +95,8 @@ function crossSection(b: Bridge, top: boolean): { parts: Part[]; railing: Railin
       },
     };
   }
-  const surface = top ? 0 : -0.03;
+  // a footbridge gets no ribbon (RoadRibbons' skip): its deck is the walking surface, at deckAt's height, in game and map
+  const surface = 0;
   if (kind === 'path-steel') {
     const g = h - STEEL_GIRDER_W_M;
     // the only cosmetic choice: which of the two steel paints, from the bridge's key
@@ -154,7 +155,7 @@ function crossSection(b: Bridge, top: boolean): { parts: Part[]; railing: Railin
 export interface BridgeMeshOptions {
   /** vertex-coloured materials, the page's: it styles and frees them */
   materials: { body: THREE.Material; railing: THREE.Material };
-  /** draw the driving surface too: the map, which has no road ribbons */
+  /** draw the road bridge's carriageway too: the map, which has no road ribbons (footbridges always draw their deck) */
   top: boolean;
 }
 
@@ -262,10 +263,10 @@ export class BridgeMesh {
           if (i === frames.length - 1) faces.push(1);
           if (i === 1) faces.push(3);
           const side = part.walkway;
-          const top = side ? (f: typeof f0) => index.curbAt(b, f.s, side) : () => part.y1;
+          const topOf = side ? (f: typeof f0) => index.curbAt(b, f.s, side) : () => part.y1;
           body.prism(
             corner(() => part.y0),
-            corner(top),
+            corner(topOf),
             faces,
             part.colour,
           );

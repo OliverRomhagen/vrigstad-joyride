@@ -76,6 +76,7 @@ export function addRoadRibbons(
     roadColours: ROAD_COLOURS,
     centreLineColour: CENTRE_LINE_COLOUR,
     heightOf: bridges.ribbonHeight.bind(bridges),
+    skip: ri => (bridges.bridgeOf(ri)?.archetype ?? 'road-slab') !== 'road-slab',
   });
   scene.add(...roadRibbons.meshes);
   return roadRibbons;
@@ -88,7 +89,7 @@ export function addBridges(scene: THREE.Scene, bridges: BridgeIndex) {
   const material = new THREE.MeshLambertMaterial({ vertexColors: true });
   const draw = new BridgeMesh(bridges, { materials: { body: material, railing: material }, top: false });
   scene.add(...draw.meshes);
-  return { draw, ms: performance.now() - t0 };
+  return { meshes: draw.meshes, triangles: draw.triangles, ms: performance.now() - t0 };
 }
 
 // ---------- buildings (painted in Swedish house colours) ----------
