@@ -48,7 +48,8 @@ type Tag = { cards: THREE.Mesh[]; on: THREE.Object3D; kr: number; fits: Map<THRE
 export class PriceTags {
   private readonly g: PriceTagsDeps;
   private readonly tags = new Map<RenderedCar, Tag>();
-  private readonly materials = new Map<number, THREE.Material>(); // by price: the lot has few
+  // by price, kept for good: the lot's prices, and a dented car's at most a few dozen more, each a small canvas
+  private readonly materials = new Map<number, THREE.Material>();
   private readonly geo = new THREE.PlaneGeometry(CARD_W_M, CARD_H_M);
   private readonly ray = new THREE.Raycaster();
   private wait = 0;

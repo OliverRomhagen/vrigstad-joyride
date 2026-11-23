@@ -63,13 +63,18 @@ const LOT_SEED = 390; // the lot's own random stream
 export const LOT_RESTOCK_S = 120; // a spot on Skroten's lot stands empty at least this long after its car is sold
 const LOT_CLEAR_M = 3; // the spot is free when no car stands this close to it
 const LOT_ON_SPOT_M = 0.5; // a car for sale further than this from its spot has been shoved off it
-const onSpot = (c: Point, at: Point) => Math.hypot(c.x - at.x, c.z - at.z) < LOT_ON_SPOT_M;
+const LOT_ON_SPOT_RAD = 0.2; // or turned further than this from the way it stood
+// the car stands on the spot `at`, as it was parked there
+const onSpot = (c: Point & { h: number }, at: Point & { h: number }) =>
+  Math.hypot(c.x - at.x, c.z - at.z) < LOT_ON_SPOT_M && Math.abs(wrap(c.h - at.h)) < LOT_ON_SPOT_RAD;
 const PARKED_CARS = 58; // parked when the village is built
 const SPAWN_CLEAR_M = 7; // a new car, parked or in traffic, appears at least this far from every other car (#409)
 const PARK_AWAY_TRIES = 300; // tries at a far kerbside spot before giving up
 
 type Point = { x: number; z: number };
-type LotSpot = { at: CarForSale; car: Car | null; soldAt: number }; // a spot on Skroten's lot, the car for sale on it, and when it was sold (s)
+// a spot on Skroten's lot: the car it was laid out with (its place, model, paint and price), the car for sale on it now, and when that
+// was sold (s)
+type LotSpot = { stock: CarForSale; car: Car | null; soldAt: number };
 /** Who drives a car: nobody yet (`parked`), nobody since you got out (`idle`), traffic (`ai`), the police, or you. */
 export type CarMode = 'parked' | 'idle' | 'ai' | 'police' | 'player';
 /** A car. `h` is where its nose points and `vh` its line of travel (rad, 0 is north; they differ in a slide), `v` its speed along `vh` (m/s). */
@@ -249,20 +254,20 @@ export class Fleet {
 
   /** Parks Skroten's cars for sale on its lot, at their asking price. Selling one back to Skroten parks no new car in the village. */
   parkForSale(lot: readonly CarForSale[]) {
-    for (const s of lot) this.lot.push({ at: s, car: this.parkOneForSale(s, s, s.colour), soldAt: 0 });
+    for (const s of lot) this.lot.push({ stock: s, car: this.parkOneForSale(s, s, s.colour), soldAt: 0 });
   }
-  // a car for sale of stock's model and price at spot `at`, in `colour`
-  private parkOneForSale(at: CarForSale, stock: CarForSale, colour: string) {
+  // a car for sale of `model`'s model and price on the spot laid out for `spot`, in `colour`
+  private parkOneForSale(spot: Point & { h: number }, model: CarForSale, colour: string) {
     const c = this.g.addCar(
-      stock.type,
-      at.x,
-      at.z,
-      at.h,
+      model.type,
+      spot.x,
+      spot.z,
+      spot.h,
       'parked',
-      stock.model === stock.type ? null : stock.model,
+      model.model === model.type ? null : model.model,
       colour,
     ); // the tractor's model is its type: it has none of its own
-    c.saleKr = stock.kr;
+    c.saleKr = model.kr;
     this.noReplacement.add(c);
     return c;
   }
@@ -273,7 +278,7 @@ export class Fleet {
    */
   restockLot(farFrom: Point, nowS: number) {
     for (const spot of this.lot) {
-      const { at, car } = spot,
+      const { stock: at, car } = spot, // `at`: where its car stands
         outOfSight = Math.hypot(at.x - farFrom.x, at.z - farFrom.z) >= SPAWN_AWAY_M;
       if (car?.saleKr) {
         if (outOfSight && car.dmg > 0) car.dmg = 0; // he mends what got knocked about, so he never sells a wreck at full price
@@ -293,10 +298,10 @@ export class Fleet {
       }
       if (nowS - spot.soldAt < LOT_RESTOCK_S || !outOfSight || !this.spotClear(at)) continue;
       // a tractor's spot gets a tractor and a car's a car: a tractor doesn't fit between the cars side by side
-      const kind = this.lot.filter(s => (s.at.type === 'traktor') === (at.type === 'traktor')),
+      const kind = this.lot.filter(s => (s.stock.type === 'traktor') === (at.type === 'traktor')),
         pickKind = <T>(a: readonly T[]) => a[Math.floor(this.lotRnd() * a.length)]!;
       // in one of the paints the lot's cars of that kind came in; rolled from the lot's own stream, as both rolls are
-      spot.car = this.parkOneForSale(at, pickKind(kind).at, pickKind(kind).at.colour);
+      spot.car = this.parkOneForSale(at, pickKind(kind).stock, pickKind(kind).stock.colour);
     }
   }
   // nothing but `except` stands within LOT_CLEAR_M of the spot; the cars on the spots beside it stand closer, and count only when shoved off
@@ -305,7 +310,7 @@ export class Fleet {
       c =>
         c !== except &&
         Math.hypot(c.x - at.x, c.z - at.z) < LOT_CLEAR_M &&
-        !this.lot.some(s => s.car === c && onSpot(c, s.at)),
+        !this.lot.some(s => s.car === c && onSpot(c, s.stock)),
     );
   }
 

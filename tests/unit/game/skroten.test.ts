@@ -167,13 +167,27 @@ describe('Skroten sells the cars on its lot', () => {
     dented.car.dmg = 30;
     dented.s.offerCar(dented.car);
     dented.choose('buy');
-    expect(dented.wallet.kr).toBe(5000 - 1400);
+    expect(dented.wallet.kr).toBe(5000 - 1500);
     const wreck = lot();
     wreck.car.dmg = 100;
     wreck.s.offerCar(wreck.car);
     expect(wreck.menu()).toBeNull();
     expect(wreck.calls.at(-1)).toContain('kaputt');
     expect(wreck.car.owned).toBe(false);
+  });
+
+  it('sells nothing to someone who walked off, and closes the menu once the police are after you', () => {
+    const away = lot();
+    away.s.offerCar(away.car);
+    Object.assign(away.g.player, { x: 50 }); // walked off before choosing
+    away.choose('buy');
+    expect(away.wallet.kr).toBe(5000);
+    expect(away.car.owned).toBe(false);
+    const chased = lot();
+    chased.s.offerCar(chased.car);
+    expect(chased.menu()!.stay!()).toBe(true);
+    (chased.g as { stars: number }).stars = 1;
+    expect(chased.menu()!.stay!()).toBe(false);
   });
 
   it('names its price, and the car is yours once you pay it', () => {

@@ -121,7 +121,7 @@ export class Skroten {
 
   /** E by a car on his lot: his price on the menu plate, or a word about the police. */
   offerCar = (c: Car) => {
-    const { game, player, stars, openMenu, toast, carName } = this.g;
+    const { stars, openMenu, toast, carName } = this.g;
     if (stars) {
       toast(CHASED, 3.5);
       return;
@@ -141,14 +141,21 @@ export class Skroten {
       k => {
         if (k === 'buy') this.buy(c);
       },
-      () => !game.inCar && c.saleKr > 0 && Math.hypot(player.x - c.x, player.z - c.z) < SALE_REACH_M,
+      () => this.byForSale(c),
     );
   };
 
-  // stars can come while the menu is open
+  // you stand on foot by the car for sale, with no police after you: what keeps his menu open
+  private byForSale(c: Car) {
+    const { game, player, stars } = this.g;
+    return !game.inCar && !stars && c.saleKr > 0 && Math.hypot(player.x - c.x, player.z - c.z) < SALE_REACH_M;
+  }
+
+  // all asked again at the moment of paying, as for a sale: stars can come while the menu is open, and you can walk off before it closes
   private buy(c: Car) {
     const { stars, toast, wallet } = this.g;
     if (!c.saleKr) return;
+    if (!stars && !this.byForSale(c)) return; // walked off or got in: no sale, and no word
     const kr = lotPrice(c.saleKr, c.dmg); // a crash can come while the menu is open
     if (stars) toast(CHASED, 3.5);
     else if (kr === null) toast(LOT_WRECK, 3.5);

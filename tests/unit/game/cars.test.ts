@@ -474,6 +474,15 @@ describe("Skroten's lot", () => {
     expect(rammed).toMatchObject({ dmg: 0, saleKr: 2000 });
   });
 
+  it('turns a car for sale spun round on its spot back the way it stood', () => {
+    const { cars } = fleet({ r: [STREET] });
+    cars.parkForSale(LOT);
+    const spun = cars.cars[0]!;
+    spun.h = spun.vh = 2; // shoved round, but still on its spot
+    cars.restockLot({ x: -500, z: 0 }, 0);
+    expect(spun).toMatchObject({ x: 100, z: 0, h: 0.5 });
+  });
+
   it('puts a car for sale shoved off its spot back on it, out of your sight', () => {
     const { cars, log } = fleet({ r: [STREET] });
     cars.parkForSale(LOT);

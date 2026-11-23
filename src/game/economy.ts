@@ -86,12 +86,15 @@ export function salePrice(type: string, model: string | undefined): number | nul
   return base ? Math.round((base * SALE_MARKUP) / 100) * 100 : null;
 }
 
-/** What Plåt-Pelle asks for a car on his lot that has been knocked about, in round hundreds: its price, less a share by its damage; null for
- * a wreck, which he won't sell until he has mended it. */
+/**
+ * What Plåt-Pelle asks for a car on his lot that has been knocked about: scrap, plus the rest of its price by how whole it is, the way
+ * carPrice pays, rounded up to hundreds. He asks more than Skroten pays at every damage, so a dented car is never bought and sold back
+ * at a profit. Null for a wreck, which he won't sell until he has mended it.
+ */
 export function lotPrice(saleKr: number, dmg: number): number | null {
   if (dmg >= DMG_MAX) return null;
   if (dmg <= 0) return saleKr;
-  return Math.max(SCRAP_KR, Math.round((saleKr * (1 - dmg / DMG_MAX)) / 100) * 100);
+  return Math.ceil((SCRAP_KR + (saleKr - SCRAP_KR) * (1 - dmg / DMG_MAX)) / 100) * 100;
 }
 
 // what Skroten pays for an undamaged car: by its model, else by its type; undefined for a police car

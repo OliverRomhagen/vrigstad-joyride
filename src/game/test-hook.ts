@@ -192,7 +192,7 @@ export function installTestHook(g: TestHookDeps) {
         body: game.pcar ? bodyMotion.state(game.pcar) : null,
         wheelbase: (game.pcar || displayCar)?.T.handling.wheelbaseM ?? 0,
         startGapM,
-        forSale: cars.filter(c => c.saleKr).map(c => ({ x: c.x, z: c.z, h: c.h, kr: c.saleKr, owned: c.owned })), // Skroten's lot
+        forSale: cars.filter(c => c.saleKr).map(c => ({ x: c.x, z: c.z, h: c.h, kr: c.saleKr })), // Skroten's lot
         traffic: cars.filter(c => c.mode === 'ai').map(c => ({ type: c.type, vehicle: vehicleVisuals.state(c) })),
         clouds: skyDome.state(),
         hour: g.day.hour,
