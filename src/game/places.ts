@@ -112,12 +112,17 @@ export class Places {
   }
 
   /**
-   * go <place> (also tp): takes you to Torget or to a place's ring (the kiosk, Skroten, a safehouse by its street), in the car if you
-   * are in one. `goTo` moves you, and says where you are.
+   * go <place> (also tp): takes you to Torget, to a place's ring (the kiosk, Skroten, a safehouse by its street) or to one of `more`
+   * (Skroten's workshop lift), in the car if you are in one. `goTo` moves you, and says where you are.
    */
-  registerCommands(commands: Pick<Commands, 'register'>, goTo: (x: number, z: number, name: string) => string) {
+  registerCommands(
+    commands: Pick<Commands, 'register'>,
+    goTo: (x: number, z: number, name: string) => string,
+    more: Readonly<Record<string, { x: number; z: number; name: string }>> = {},
+  ) {
     const spots = new Map<string, { x: number; z: number; name: string }>([['torget', { ...HOME, name: 'Torget' }]]);
     for (const p of this.list) spots.set(p.kind === 'kiosk' ? 'kiosk' : p.name.toLowerCase(), p);
+    for (const [key, spot] of Object.entries(more)) spots.set(key, spot);
     const names = [...spots.keys()];
     commands.register(
       'go',
@@ -125,7 +130,9 @@ export class Places {
         help: 'go to a place, in the car if you are in one',
         examples: ['go skroten', 'go torget'],
         aliases: ['tp'],
-        args: [described(choice('place', names), 'Torget, the kiosk, Skroten or a safehouse by its street')],
+        args: [
+          described(choice('place', names), 'Torget, the kiosk, Skroten, its workshop or a safehouse by its street'),
+        ],
         run: ({ place }) => {
           const spot = spots.get(place)!; // choice() only gives back a name from the list
           return goTo(spot.x, spot.z, spot.name);

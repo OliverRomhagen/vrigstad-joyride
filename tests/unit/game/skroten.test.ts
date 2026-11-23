@@ -189,9 +189,41 @@ describe('Plåt-Pelle mends the car on the lift', () => {
     expect(broke.calls.at(-1)).toContain('Kom tebaks när du har pengarna');
   });
 
-  it('has nothing to mend on a whole car, and mends nothing for the police or with them after you', () => {
+  it('opens nothing and says nothing for a whole car, so E gets you out', () => {
+    const t = skroten({ car: { dmg: 0 }, kr: 1000 });
+    t.driveOntoLift();
+    expect(t.s.repairs()).toBeNull();
+    expect(t.s.open()).toBe(false);
+    expect(t.menu()).toBeNull();
+    expect(t.calls).toEqual([]);
+  });
+
+  it('names the new price instead of taking it when the car took more damage with the menu open', () => {
+    const t = skroten({ model: 'volvo240', car: { dmg: 50 }, kr: 1000 });
+    t.driveOntoLift();
+    t.s.open();
+    t.g.game.pcar!.dmg = 80; // rammed while you read the menu
+    t.choose('fix');
+    expect(t.wallet.kr).toBe(1000);
+    expect(t.g.game.pcar!.dmg).toBe(80);
+    expect(t.menu()!.title).toContain(fmtKr(320));
+    t.choose('fix');
+    expect(t.wallet.kr).toBe(1000 - 320);
+    expect(t.g.game.pcar!.dmg).toBe(0);
+  });
+
+  it('closes the menu once the car rolls off faster than you can get out', () => {
+    const t = skroten({ car: { dmg: 50 }, kr: 1000 });
+    t.driveOntoLift();
+    t.s.open();
+    t.g.game.pcar!.v = 5;
+    expect(t.menu()!.stay!()).toBe(false);
+    t.choose('fix');
+    expect(t.g.game.pcar!.dmg).toBe(50);
+  });
+
+  it('mends nothing for the police or with them after you', () => {
     for (const [o, says] of [
-      [{ car: { dmg: 0 } }, 'Den ä ju hel!'],
       [{ car: { dmg: 50, type: 'polis' } }, 'En polisbil?'],
       [{ car: { dmg: 50 }, stars: 1 }, 'Inte mä snuten i hälarna!'],
     ] as const) {

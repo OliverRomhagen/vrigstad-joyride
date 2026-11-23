@@ -69,10 +69,14 @@ describe('Places', () => {
     const { places: p } = places(),
       c = new Commands(),
       went: [number, number][] = [];
-    p.registerCommands(c, (x, z, name) => {
-      went.push([x, z]);
-      return 'You are at ' + name + '.';
-    });
+    p.registerCommands(
+      c,
+      (x, z, name) => {
+        went.push([x, z]);
+        return 'You are at ' + name + '.';
+      },
+      { verkstan: { x: 50, z: 60, name: "Plåt-Pelle's lift" } },
+    );
     expect(c.run('go Skroten')).toBe('You are at Skroten.');
     expect(went.at(-1)).toEqual([SKROTEN.x, SKROTEN.z]);
     expect(c.run('go torget')).toBe('You are at Torget.');
@@ -80,10 +84,12 @@ describe('Places', () => {
     expect(c.run('go kiosk')).toBe('You are at Kiosken.');
     expect(c.run('go gästgivaregatan')).toBe('You are at Gästgivaregatan.');
     expect(c.run('go mars')).toBe(
-      'No place called mars. Pick one of: gästgivaregatan, kiosk, skroten, torget. Usage: go <place>',
+      'No place called mars. Pick one of: gästgivaregatan, kiosk, skroten, torget, verkstan. Usage: go <place>',
     );
     expect(c.run('tp kiosk')).toBe('You are at Kiosken.');
-    expect(c.complete('go ')).toEqual(['gästgivaregatan', 'kiosk', 'skroten', 'torget']);
+    expect(c.complete('go ')).toEqual(['gästgivaregatan', 'kiosk', 'skroten', 'torget', 'verkstan']);
+    expect(c.run('go verkstan')).toBe("You are at Plåt-Pelle's lift.");
+    expect(went.at(-1)).toEqual([50, 60]);
   });
 
   it('finds Skroten for a car within 4 m of its ring, never for you on foot', () => {
