@@ -83,7 +83,35 @@ describe('AdoptHearts', () => {
     expect(fill(s)).toBe(0);
     hearts.update(0.05);
     expect(s.material.rotation).not.toBe(0);
-    hearts.update(HEART_BROKE_S);
+    hearts.update(HEART_BROKE_S - 0.1);
+    expect(scene.children).toHaveLength(1);
+    hearts.update(0.1);
+    expect(scene.children).toHaveLength(0);
+  });
+
+  it('fills the heart again on a good pet after a broken streak', () => {
+    const { scene, hearts } = make(),
+      k = cat(2);
+    hearts.show(k);
+    k.pets = 0;
+    hearts.show(k);
+    const broke = sprites(scene)[0].material,
+      dispose = vi.spyOn(broke, 'dispose');
+    k.pets = 1;
+    hearts.show(k);
+    hearts.update(10); // a streak again: no timer
+    expect(sprites(scene)).toHaveLength(1);
+    expect(sprites(scene)[0].material).not.toBe(broke);
+    expect(fill(sprites(scene)[0])).toBe(1);
+    expect(dispose).toHaveBeenCalled();
+  });
+
+  it('drops the heart when the player says no to adopting', () => {
+    const { scene, hearts } = make(),
+      k = cat(CAT_ADOPT_PETS);
+    hearts.show(k);
+    k.pets = 0; // what colony.decline does, with no showHeart after it
+    hearts.update(0.1);
     expect(scene.children).toHaveLength(0);
   });
 
@@ -126,7 +154,24 @@ describe('AdoptHearts', () => {
     expect(fill(sprites(scene)[0])).toBe(CAT_ADOPT_PETS);
     hearts.show(cat(1)); // while you own a cat, petting a stray shows nothing
     expect(sprites(scene)).toHaveLength(1);
-    hearts.update(HEART_ADOPT_S);
+    hearts.update(HEART_ADOPT_S - 0.3);
+    expect(sprites(scene)).toHaveLength(1);
+    hearts.update(0.3);
+    expect(scene.children).toHaveLength(0);
+  });
+
+  it('pops a full heart over your own cat each pet, and starts its time over', () => {
+    const { scene, colony, hearts } = make(),
+      k = cat(0);
+    colony.owned = k;
+    hearts.show(k); // no heart yet, and pets don't count: it shows full anyway
+    expect(sprites(scene)).toHaveLength(1);
+    expect(fill(sprites(scene)[0])).toBe(CAT_ADOPT_PETS);
+    hearts.update(HEART_ADOPT_S - 0.5);
+    hearts.show(k);
+    hearts.update(HEART_ADOPT_S - 0.5); // past the first pet's time, not the second's
+    expect(sprites(scene)).toHaveLength(1);
+    hearts.update(0.5);
     expect(scene.children).toHaveLength(0);
   });
 
