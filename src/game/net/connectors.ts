@@ -5,10 +5,10 @@ import type { Transport } from './transport';
 
 const CONNECTORS: Readonly<Record<string, (room: string) => Promise<Transport>>> = {
   tabs: async room => (await import('./tabs-transport')).tabsTransport(room),
+  webrtc: async () => (await import('./webrtc-transport')).webrtcTransport(), // its room is whoever swapped invites
 };
 
-/** The connectors a player can pick. */
-export const connectorNames = () => Object.keys(CONNECTORS);
+const connectorNames = () => Object.keys(CONNECTORS);
 
 /** Joins `room` over the connector of that name. */
 export function connect(name: string, room: string): Promise<Transport> {

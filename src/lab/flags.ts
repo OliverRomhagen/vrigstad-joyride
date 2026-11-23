@@ -18,7 +18,7 @@ export const LAB_EXPERIMENTS = [
   {
     id: 'multiplayer',
     name: 'Two-tab multiplayer',
-    cost: 'Nothing to download: shows the players of other tabs of this browser (?room= names the room)',
+    cost: 'Nothing to download: shows the players of other tabs of this browser (?room= names the room), or with &net=webrtc a friend you swap invite codes with',
   },
 ] as const satisfies readonly LabExperiment[];
 

@@ -323,13 +323,43 @@ What it is, in `src/game/net/`, in the layers described above:
 - `transport.ts`: what a connector gives the session, a `Transport` that only moves messages in a room.
 - `tabs-transport.ts`: the `tabs` connector, over a `BroadcastChannel`. `connectors.ts` holds the connectors by
   name and loads the one picked with `import()`.
+- `webrtc-transport.ts`: the `webrtc` connector (see below), and `invite-panel.ts`, the panel for its codes.
 - `loopback.ts`: the `loopback` connector, a room in memory with lag, jitter and loss on a clock the test moves.
-- `session.ts`: sends this player's snapshots, checks and draws the others', keeps the shared cars. It never
+- `session.ts`: sends this player's snapshots, checks and draws the others', keeps the shared cars and the
+  room's clock. It never
   touches the page, so the unit tests run two or three sessions over a bad loopback room.
 - `snapshots.ts` (drawing in the past), `shared-cars.ts`, and the other players' meshes in
   `src/game/render/remote-players.ts`.
 
 The message hooks (`net.use`) and the capabilities are not built yet.
+
+**The room's clock.** Two computers' clocks can be seconds apart. Every player asks the others the time once a
+second and follows the clock of the player who joined first; when that player leaves, the next one carries the
+room's time on as it was. Every time in a message is on that clock.
+
+### Across two computers: the `webrtc` connector
+
+Add `&net=webrtc`: `?lab=multiplayer&net=webrtc`. A panel in the corner swaps two codes by hand, over any chat:
+
+1. You press **Invite a friend** and send them the invite code.
+2. They press **I have an invite**, paste it, and send back the reply code they get.
+3. You paste the reply and press **Connect**.
+
+![The panel with a reply code to send back](multiplayer-invite-panel.png)
+
+The browsers then talk straight to each other. There is no server of ours, and nothing to run or pay for.
+
+- **What a player gives away.** The codes hold the player's network addresses, and the friend sees the address
+  they connect from. To be reached from outside their home network, the browser asks a STUN server for its public
+  address: that server sees the address and nothing of the game. The default is Google's public one
+  (`stun.l.google.com:19302`); `&stun=off` asks none (same network only) and `&stun=host:port` asks another.
+- **Who is who** comes from the code a player sent, never from a message, so nobody can speak as someone else.
+  Codes and messages are size-limited and checked before use.
+- **Two players for now.** Every pair needs its own swap of codes; a third player has to swap with both.
+  Passing the codes on through a player already connected would make that one swap.
+- **No TURN.** Two players who are both behind strict networks (some mobile and company networks) won't connect.
+- **Not tested end to end.** The smoke test swaps the codes through the panel; the computer the tests ran on
+  could not reach itself over WebRTC, so a live connection is untried.
 
 Cars are the same car in every window:
 
@@ -351,8 +381,7 @@ What it leaves out, on purpose:
   until someone drives it.
 - Traffic and the police stay each window's own, so a friend can be chased by police you can't see.
 - The loser of a car still gets the star and the "cars stolen" count for it.
-- No name tags, no shared time of day, and no clock sync (one computer has one clock): "who got in first" and
-  "the newest word" compare clocks, so they need it before two computers play.
+- No name tags and no shared time of day.
 - Messages are checked for shape, real numbers and known car types, not for sense: a peer can still say it is
   anywhere, in any car.
 
