@@ -7,7 +7,12 @@ import { makeWorld, square } from './fixture';
 // a wood that is the triangle filling half of a 40 m square, and a field beside it
 const WOOD = [-40, -20, 0, -20, -40, 20];
 const inWood = (x: number, z: number) => x >= -40 && z >= -20 && x + z <= -20;
-const WORLD = makeWorld({ l: [{ k: LandUse.FOREST, p: WOOD }, { k: LandUse.FARMLAND, p: square(0, -20, 40) }] });
+const WORLD = makeWorld({
+  l: [
+    { k: LandUse.FOREST, p: WOOD },
+    { k: LandUse.FARMLAND, p: square(0, -20, 40) },
+  ],
+});
 /** how many numbers a run with `kept` spots drew: two per try, 100 tries, and one per kept spot */
 const drawn = (kept: number) => 200 + kept;
 const OPTIONS = { squareMetresPerTry: 16, minScale: 0.7, scaleSpread: 0.8 };

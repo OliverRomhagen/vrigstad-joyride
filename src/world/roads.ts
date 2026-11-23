@@ -1,4 +1,4 @@
-import { RoadClass, ROAD_WIDTH_M, type WorldData } from './data';
+import { ROAD_WIDTH_M, RoadClass, type WorldData } from './data';
 import type { Heightfield } from './heightfield';
 import { segmentDistance } from './polygon';
 
@@ -46,10 +46,17 @@ export class RoadNetwork {
   readonly driveable: number[] = [];
   private readonly heightfield: Pick<Heightfield, 'heightAt'>;
   private readonly near: NearestRoad = { d: 1e9, ri: -1 };
+  private readonly bridges: { deckAt(x: number, z: number): number | null } | null;
 
-  constructor(data: WorldData, heightfield: Pick<Heightfield, 'heightAt'>) {
+  /** with `bridges`, a deck is the ground within its footprint (#238): there is nothing under a bridge to stand on */
+  constructor(
+    data: WorldData,
+    heightfield: Pick<Heightfield, 'heightAt'>,
+    bridges: { deckAt(x: number, z: number): number | null } | null = null,
+  ) {
     this.heightfield = heightfield;
-    this.lines = data.r.map((r) => {
+    this.bridges = bridges;
+    this.lines = data.r.map(r => {
       const p: Point[] = [];
       for (let i = 0; i < r.p.length; i += 2) p.push([r.p[i], r.p[i + 1]]);
       return { p, c: r.c, n: r.n };
@@ -67,7 +74,10 @@ export class RoadNetwork {
           for (let z = z0; z <= z1; z++) {
             const k = x + ',' + z;
             let list = this.grid.get(k);
-            if (!list) this.grid.set(k, (list = []));
+            if (!list) {
+              list = [];
+              this.grid.set(k, list);
+            }
             list.push(a[0], a[1], b[0], b[1], ri);
           }
         }
@@ -80,7 +90,10 @@ export class RoadNetwork {
       r.p.forEach((p, vi) => {
         const k = nodeKey(p);
         let list = this.junctions.get(k);
-        if (!list) this.junctions.set(k, (list = []));
+        if (!list) {
+          list = [];
+          this.junctions.set(k, list);
+        }
         list.push(ri, vi);
       });
     });
@@ -96,7 +109,9 @@ export class RoadNetwork {
     const list = this.grid.get(cellKey(x, z));
     if (list) {
       for (let i = 0; i < list.length; i += 5) {
-        const d = segmentDistance(x, z, list[i], list[i + 1], list[i + 2], list[i + 3]) - ROAD_WIDTH_M[this.lines[list[i + 4]].c] / 2;
+        const d =
+          segmentDistance(x, z, list[i], list[i + 1], list[i + 2], list[i + 3]) -
+          ROAD_WIDTH_M[this.lines[list[i + 4]].c] / 2;
         if (d < near.d) {
           near.d = d;
           near.ri = list[i + 4];
@@ -106,8 +121,28 @@ export class RoadNetwork {
     return near;
   }
 
-  /** Terrain plus the highest road ribbon at (x, z), eased out over the metre past its edge so nothing snaps at the kerb. */
+  /**
+   * Calls `visit` with every road segment filed in a lookup cell within `reachM` of (x, z): the segment's ends and its
+   * road. A segment filed in several cells can come more than once; fine for nearest and minimum-distance queries.
+   */
+  forEachSegmentNear(
+    x: number,
+    z: number,
+    reachM: number,
+    visit: (ax: number, az: number, bx: number, bz: number, ri: number) => void,
+  ) {
+    for (let gx = Math.floor((x - reachM) / ROAD_CELL_M); gx <= Math.floor((x + reachM) / ROAD_CELL_M); gx++)
+      for (let gz = Math.floor((z - reachM) / ROAD_CELL_M); gz <= Math.floor((z + reachM) / ROAD_CELL_M); gz++) {
+        const list = this.grid.get(gx + ',' + gz);
+        if (list)
+          for (let i = 0; i < list.length; i += 5) visit(list[i], list[i + 1], list[i + 2], list[i + 3], list[i + 4]);
+      }
+  }
+
+  /** A bridge deck, or terrain plus the highest road ribbon at (x, z), eased out over the metre past its edge so nothing snaps at the kerb. */
   groundAt(x: number, z: number) {
+    const deck = this.bridges?.deckAt(x, z) ?? null;
+    if (deck !== null) return deck;
     let lift = 0;
     const list = this.grid.get(cellKey(x, z));
     if (list) {

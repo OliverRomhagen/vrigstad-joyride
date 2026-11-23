@@ -6,7 +6,7 @@ argument-hint: "[system, file, or PR number]"
 
 # Balance check
 
-Gameplay numbers are named constants near the top of their module (`AGENTS.md`, Code style): `src/game/*.ts`, and `src/game/main.ts` until it's split. For a PR, read its diff (`gh pr diff <n>`) and the description's stated intent.
+Gameplay numbers are named constants near the top of their module (`AGENTS.md`, Code style). The car numbers are in the tunables registry: `VEHICLE_SPECS` in `src/game/sim/vehicle-spec.ts`, `DRIVING` in `src/game/cars.ts` and `STEERING` in `src/game/sim/handling.ts`, all registered in `src/game/sim/car-tunables.ts`. For a PR, read its diff (`gh pr diff <n>`) and the description's stated intent.
 
 ## 1. Collect the numbers and the intent
 
@@ -40,6 +40,6 @@ Findings, worst first: the problem, the numbers that show it, a fix as a constan
 Not judged: values with no stated intent.
 ```
 
-**CRITICAL** is a dominant strategy, an unreachable outcome the design relies on, or a runaway loop. **NOT ASSESSED** is the honest verdict when the numbers or the intent are missing: say what's missing instead of filling it in. For deeper design questions, hand over to the `systems-designer` or `economy-designer` agent.
+**CRITICAL** is a dominant strategy, an unreachable outcome the design relies on, or a runaway loop. **NOT ASSESSED** is the honest verdict when the numbers or the intent are missing: say what's missing instead of filling it in. For a proposed value that is a tunable, give the link to try it in the game: `?dev&tune=<key>:<value>` (keys from `car-tunables.ts`).
 
 Adapted from Claude Code Game Studios (MIT); see `LICENSE`.

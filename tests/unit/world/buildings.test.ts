@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { BuildingKind } from '../../../src/world/data';
 import { BuildingIndex, forEachBuilding, roofParts } from '../../../src/world/buildings';
+import { BuildingKind } from '../../../src/world/data';
 import { pointInPolygon } from '../../../src/world/polygon';
 import { makeWorld, square } from './fixture';
 
@@ -18,6 +18,24 @@ describe('collide', () => {
     const o = { x: 11, z: 11 };
     expect(indexWithHouse().collide(o, 1.2)).toBe(false);
     expect(o).toEqual({ x: 11, z: 11 });
+  });
+
+  it('lets a circle through a footprint that stopped colliding, which stays in the list', () => {
+    const index = indexWithHouse(),
+      o = { x: 5, z: 5 };
+    index.stopColliding(0);
+    expect(index.collide(o, 1)).toBe(false);
+    expect(index.footprints).toHaveLength(1);
+    expect([...index.grid.values()].every(list => list.length > 0)).toBe(true);
+  });
+
+  it('collides with a solid too, which is no building and stays out of the footprints', () => {
+    const index = indexWithHouse(),
+      o = { x: 50.5, z: 5 };
+    index.addSolid(square(40, 0, 10));
+    expect(index.collide(o, 1)).toBe(true);
+    expect(o.x).toBeCloseTo(51);
+    expect(index.footprints).toHaveLength(1);
   });
 
   it('pushes a circle that overlaps a wall out to touch it', () => {
@@ -45,9 +63,15 @@ describe('addFootprint', () => {
 
   it('files an outline in every cell its bounds touch', () => {
     const index = new BuildingIndex(makeWorld());
-    index.addFootprint(square(38, 38, 4));   // straddles the cell corner at (40, 40)
+    index.addFootprint(square(38, 38, 4)); // straddles the cell corner at (40, 40)
     // each circle overlaps one corner of the outline and stays inside a single 40 m cell, so it only finds it through that cell
-    for (const [x, z] of [[37.5, 37.5], [42.5, 37.5], [37.5, 42.5], [42.5, 42.5]]) expect(index.collide({ x, z }, 1)).toBe(true);
+    for (const [x, z] of [
+      [37.5, 37.5],
+      [42.5, 37.5],
+      [37.5, 42.5],
+      [42.5, 42.5],
+    ])
+      expect(index.collide({ x, z }, 1)).toBe(true);
   });
 });
 
@@ -79,7 +103,7 @@ describe('roofParts', () => {
   });
 
   it('caps how high a wide roof rises', () => {
-    const wide = outline.map((v) => ({ x: v.x * 4, z: v.z * 4 }));
+    const wide = outline.map(v => ({ x: v.x * 4, z: v.z * 4 }));
     expect(roofParts(wide, [0, 12, 40, 12, 12], 0).yAt({ x: 20, z: 12 })).toBeCloseTo(5);
   });
 });
@@ -96,7 +120,9 @@ describe('forEachBuilding', () => {
       ],
     });
     const seen: { kind: number; lo: number; hi: number; base: number; top: number; area: number }[] = [];
-    forEachBuilding(world, slope, ({ building, lo, hi, base, top, area }) => seen.push({ kind: building.k, lo, hi, base, top, area }));
+    forEachBuilding(world, slope, ({ building, lo, hi, base, top, area }) =>
+      seen.push({ kind: building.k, lo, hi, base, top, area }),
+    );
     expect(seen).toHaveLength(2);
     expect(seen[0]).toMatchObject({ kind: BuildingKind.OTHER, area: 100 });
     expect(seen[0].lo).toBeCloseTo(1);
@@ -111,9 +137,34 @@ describe('forEachBuilding', () => {
     const reversed: number[] = [];
     for (let i = p.length - 2; i >= 0; i -= 2) reversed.push(p[i], p[i + 1]);
     const windings: number[] = [];
-    forEachBuilding(makeWorld({ b: [{ p, h: 3, k: BuildingKind.OTHER }, { p: reversed, h: 3, k: BuildingKind.OTHER }] }), slope, (s) =>
-      windings.push(s.winding),
+    forEachBuilding(
+      makeWorld({
+        b: [
+          { p, h: 3, k: BuildingKind.OTHER },
+          { p: reversed, h: 3, k: BuildingKind.OTHER },
+        ],
+      }),
+      slope,
+      s => windings.push(s.winding),
     );
     expect(windings).toEqual([1, -1]);
+  });
+});
+
+describe('BuildingIndex barriers', () => {
+  it('pushes out from a barrier as from a wall, and reports the hit', () => {
+    const index = new BuildingIndex(makeWorld());
+    const fence = {
+      collide(o: { x: number; z: number }, r: number) {
+        if (o.z >= r) return false;
+        o.z = r;
+        return true;
+      },
+    };
+    index.addBarrier(fence);
+    const o = { x: 0, z: 0.2 };
+    expect(index.collide(o, 1)).toBe(true);
+    expect(o.z).toBe(1);
+    expect(index.collide({ x: 0, z: 5 }, 1)).toBe(false);
   });
 });

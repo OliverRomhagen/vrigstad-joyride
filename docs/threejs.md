@@ -30,7 +30,7 @@ Adapted from `docs/engine-reference/web/threejs.md` in [Claude Code Game Studios
 
 ## In practice
 
-- `renderer.shadowMap.type = PCFSoftShadowMap` logs a warning and uses `PCFShadowMap`. Write `PCFShadowMap` (as `src/game/main.ts` does) or `VSMShadowMap`. **[S]**
+- `renderer.shadowMap.type = PCFSoftShadowMap` logs a warning and uses `PCFShadowMap`. Write `PCFShadowMap` (as `src/game/render/stage.ts` does) or `VSMShadowMap`. **[S]**
 - `new THREE.Clock()` logs a deprecation warning. `Timer` is driven by hand: call `timer.update(timestamp)` once a frame (milliseconds, e.g. the animation-loop time), then `getDelta()` / `getElapsed()`, which return **seconds**. `timer.connect(document)` makes it skip the time the tab was hidden. **[S]** The game loop here computes its own clamped `dt` from `requestAnimationFrame` and uses neither.
 
 ```ts

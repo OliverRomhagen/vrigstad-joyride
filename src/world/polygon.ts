@@ -5,7 +5,8 @@ import { clamp } from './math';
 export function pointInPolygon(p: number[], x: number, z: number) {
   let inside = false;
   for (let i = 0, j = p.length - 2; i < p.length; j = i, i += 2) {
-    if (p[i + 1] > z !== p[j + 1] > z && x < ((p[j] - p[i]) * (z - p[i + 1])) / (p[j + 1] - p[i + 1]) + p[i]) inside = !inside;
+    if (p[i + 1] > z !== p[j + 1] > z && x < ((p[j] - p[i]) * (z - p[i + 1])) / (p[j + 1] - p[i + 1]) + p[i])
+      inside = !inside;
   }
   return inside;
 }
@@ -17,8 +18,23 @@ export interface Bounds {
   z1: number;
 }
 
+/** The middle of a polygon's vertices (not its area's centroid), flat [x, z, ...]. */
+export function vertexCentre(p: readonly number[]) {
+  let x = 0;
+  let z = 0;
+  for (let i = 0; i < p.length; i += 2) {
+    x += p[i];
+    z += p[i + 1];
+  }
+  const n = p.length / 2;
+  return { x: x / n, z: z / n };
+}
+
 /** Grows `into` to cover the polygon, and returns it; with no `into`, the polygon's own bounding box. */
-export function polygonBounds(p: number[], into: Bounds = { x0: Infinity, x1: -Infinity, z0: Infinity, z1: -Infinity }) {
+export function polygonBounds(
+  p: number[],
+  into: Bounds = { x0: Infinity, x1: -Infinity, z0: Infinity, z1: -Infinity },
+) {
   for (let i = 0; i < p.length; i += 2) {
     into.x0 = Math.min(into.x0, p[i]);
     into.x1 = Math.max(into.x1, p[i]);

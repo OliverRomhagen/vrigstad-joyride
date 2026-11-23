@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { WaterwayKind } from '../../../src/world/data';
+import { Heightfield } from '../../../src/world/heightfield';
 import { Water } from '../../../src/world/water';
+import { WaterBodies } from '../../../src/world/water-shapes';
 import { makeWorld, square } from './fixture';
 
 const LAKE_WITH_ISLAND = [square(-20, -20, 40), square(-5, -5, 10)];
@@ -26,7 +28,7 @@ describe('inWater', () => {
     expect(water.inWater(-12, 15 + 2.75 + 1.1)).toBe(true);
   });
 
-  it('counts a river by its width, and not a stream', () => {
+  it('counts a river by its width, and a stream by its own', () => {
     const rivers = new Water(
       makeWorld({
         ww: [
@@ -38,6 +40,17 @@ describe('inWater', () => {
     );
     expect(rivers.inWater(0, 32)).toBe(true);
     expect(rivers.inWater(0, 33)).toBe(false);
-    expect(rivers.inWater(0, -30)).toBe(false);
+    expect(rivers.inWater(0, -30.5)).toBe(true);
+    expect(rivers.inWater(0, -32)).toBe(false);
+  });
+
+  it('is dry where the ground stands above the water, as you see it', () => {
+    const world = makeWorld({ w: [LAKE_WITH_ISLAND] });
+    const bodies = new WaterBodies(world, new Heightfield(world));
+    const level = bodies.lakes[0].level;
+    const ground = { heightAt: (x: number) => (x > 10 ? level + 0.2 : level - 0.5) };
+    const seen = new Water(world, NO_ROADS, { bodies, ground });
+    expect(seen.inWater(-12, -12)).toBe(true);
+    expect(seen.inWater(15, -12)).toBe(false);
   });
 });

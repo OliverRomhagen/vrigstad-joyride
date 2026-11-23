@@ -1,3 +1,7 @@
+# Store text files with LF line endings whatever the contributor's OS or core.autocrlf, matching .editorconfig.
+# Git detects binary files (models, images) itself and leaves them alone.
+* text=auto eol=lf
+
 # Generated files: GitHub collapses them in review diffs and leaves them out of language stats.
 # data/vrigstad.json is built by tools/process.py.
 data/vrigstad.json linguist-generated=true
