@@ -72,6 +72,7 @@ export interface GameLoopDeps {
   closeMenuIfLeft(): void;
   updatePrompt(): void;
   drawHealth(): void;
+  timeFrame(workStart: number): void; // after drawing: the frame's work began at workStart (ms, performance.now)
 }
 
 /** Runs the game: `start` begins the frames, `startGame` is the Start button. */
@@ -135,6 +136,7 @@ export class GameLoop {
         input: { keys, joy },
       } = g;
     requestAnimationFrame(this.frame);
+    const workStart = performance.now();
     const dt = clamp((now - this.last) / 1000, 0, 0.05);
     this.last = now;
     const mx = game.started ? clamp((keys.right ? 1 : 0) - (keys.left ? 1 : 0) + joy.x, -1, 1) : 0,
@@ -245,5 +247,6 @@ export class GameLoop {
     }
     g.drawMini(T);
     g.renderer.render(g.scene, g.camera);
+    g.timeFrame(workStart);
   };
 }

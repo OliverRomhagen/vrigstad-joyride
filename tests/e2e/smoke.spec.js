@@ -479,13 +479,14 @@ test.describe('game (index.html)', () => {
     expect(errors).toEqual([]);
   });
 
-  test('with ?dev, the console opens with §, its keys never move the player, Tab completes, kr and mynt add money, tune set changes a tunable, stars and god work, adopt cat gives you a cat (and L makes it rain)', async ({
+  test('with ?dev, the console opens with §, its keys never move the player, Tab completes, kr and mynt add money, tune set changes a tunable, stars and god work, adopt cat gives you a cat, fps shows frame times and errors, errors clear empties them (and L makes it rain)', async ({
     page,
   }) => {
     await page.goto('/index.html');
     await page.locator('#go').click();
     await page.keyboard.press('Backquote'); // no dev mode: no console
     expect(await state(page)).toMatchObject({ devcon: false });
+    await expect(page.locator('#debug')).toHaveCount(0); // nor the errors box
     await page.goto('/index.html?dev');
     await page.locator('#go').click();
     const { x, z } = await state(page);
@@ -558,6 +559,27 @@ test.describe('game (index.html)', () => {
     await expect(lines).toHaveCount(before + 1);
     await page.keyboard.press('Tab');
     await expect(lines).toHaveCount(before + 2);
+    await line.fill('');
+    await expect(page.locator('#debug-stats')).toBeHidden();
+    await expect(await run('fps')).toHaveText('Frame times on.'); // #356, from #257
+    const { build } = await state(page);
+    expect(build).toMatch(/^([0-9a-f]{7,}|unknown)$/);
+    await expect(page.locator('#debug-stats')).toContainText(/\d+ fps · worst [\d.]+ ms/);
+    await expect(page.locator('#debug-stats')).toContainText(/\d+ calls · \d+k tris/);
+    await expect(page.locator('#debug-stats')).toContainText('build ' + build);
+    await expect(page.locator('#debug-errors')).toBeEmpty();
+    // an error thrown outside the game shows in the red box in dev mode; twice counts up
+    await page.evaluate(() => {
+      for (let i = 0; i < 2; i++)
+        setTimeout(() => {
+          throw new Error('smoke test boom');
+        });
+    });
+    await expect(page.locator('#debug-errors')).toContainText(/^2× .*smoke test boom/);
+    await expect(await run('errors clear')).toHaveText('Errors cleared.');
+    await expect(page.locator('#debug-errors')).toBeEmpty();
+    await expect(await run('fps')).toHaveText('Frame times off.');
+    expect(await state(page)).toMatchObject({ fps: false });
     await page.keyboard.press('Escape');
     expect(await state(page)).toMatchObject({ devcon: false });
     await page.keyboard.press('KeyL'); // låt det regna: 1 000 kr in the air
