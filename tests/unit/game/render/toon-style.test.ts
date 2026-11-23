@@ -136,7 +136,7 @@ test('inked objects get crease lines on opaque meshes, once, sharing edges per g
   const ink = (mesh: THREE.Mesh) => mesh.children.filter(o => o instanceof THREE.LineSegments) as THREE.LineSegments[];
   expect(ink(body)).toHaveLength(1);
   expect(ink(door)[0].geometry).toBe(ink(body)[0].geometry);
-  expect(ink(body)[0].geometry).toBeInstanceOf(THREE.EdgesGeometry);
+  expect(ink(body)[0].geometry.getAttribute('position').count).toBe(24); // a box's twelve edges (ink-edges.test.ts)
   expect(ink(glass)).toHaveLength(0);
   expect(ink(house)).toHaveLength(0);
 });
