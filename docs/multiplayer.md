@@ -318,9 +318,18 @@ own. Each window shows the other's player in a blue shirt on foot, and the car t
 
 ![The second window shows the first window's player walking past](multiplayer-two-tabs.png)
 
-What it is: the `tabs` connector and a session in one file (`src/game/net/two-tabs.ts`), snapshots and the drawing
-in the past (`src/game/net/snapshots.ts`), the shared cars (`src/game/net/shared-cars.ts`) and the other players'
-meshes (`src/game/render/remote-players.ts`).
+What it is, in `src/game/net/`, in the layers described above:
+
+- `transport.ts`: what a connector gives the session, a `Transport` that only moves messages in a room.
+- `tabs-transport.ts`: the `tabs` connector, over a `BroadcastChannel`. `connectors.ts` holds the connectors by
+  name and loads the one picked with `import()`.
+- `loopback.ts`: the `loopback` connector, a room in memory with lag, jitter and loss on a clock the test moves.
+- `session.ts`: sends this player's snapshots, checks and draws the others', keeps the shared cars. It never
+  touches the page, so the unit tests run two or three sessions over a bad loopback room.
+- `snapshots.ts` (drawing in the past), `shared-cars.ts`, and the other players' meshes in
+  `src/game/render/remote-players.ts`.
+
+The message hooks (`net.use`) and the capabilities are not built yet.
 
 Cars are the same car in every window:
 

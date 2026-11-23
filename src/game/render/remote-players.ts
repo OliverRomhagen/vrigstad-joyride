@@ -1,5 +1,6 @@
 // Multiplayer prototype (lab: multiplayer, docs/multiplayer.md): the other players on foot, drawn where their
 // snapshots say. The car a player drives is a car of the village, moved by net/shared-cars.ts.
+import type { RemoteView } from '../net/session';
 import type { Snapshot } from '../net/snapshots';
 import type { Person } from './models';
 
@@ -11,7 +12,7 @@ export interface RemotePlayersDeps {
 }
 
 /** Owns the mesh of every remote player. */
-export class RemotePlayers {
+export class RemotePlayers implements RemoteView {
   private readonly g: RemotePlayersDeps;
   private readonly remotes = new Map<string, Person>();
 
