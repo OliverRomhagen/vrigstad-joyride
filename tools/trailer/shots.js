@@ -20,7 +20,7 @@ module.exports = [
     const mx = (car.x + G.player.x) / 2, mz = (car.z + G.player.z) / 2, a0 = Math.atan2(G.player.x - car.x, G.player.z - car.z) + 1.9;
     X.setCam(cam => { const a = a0 + 0.42 * X.k, r = 15 - 3.5 * X.k, x = mx + Math.sin(a) * r, z = mz + Math.cos(a) * r; cam.position.set(x, G.hAt(x, z) + 2.1, z); cam.lookAt(mx, G.hAt(mx, mz) + 1.3, mz); });
     __step(10);
-    window.__frame = (i, n) => { X.k = i / (n - 1); G.camYaw = Math.atan2(car.x - G.player.x, -(car.z - G.player.z)); G.joy.y = i > 24 ? 0.55 : 0;
+    window.__frame = (i, n) => { X.k = i / (n - 1); G.view.camYaw = Math.atan2(car.x - G.player.x, -(car.z - G.player.z)); G.joy.y = i > 24 ? 0.55 : 0;
       X.caps(i, [[12, 98, 'Until someone borrows a Volvo 240']]); }; } },
 
   // real gameplay: take an occupied car on a main road; the driver's line and the wanted star are the game's own
@@ -28,9 +28,9 @@ module.exports = [
     let c = null, bd = 1e9; for (const o of G.cars) { const d = Math.hypot(o.x + 20, o.z - 10); if (o.mode === 'ai' && G.R[o.ri].c <= 1 && d < bd) { bd = d; c = o; } }
     c = X.recolor(c, 'volvo', '#7a2530'); c.v = 0; let held = true; X.pre.push(() => { if (held) c.v = 0; });
     __step(2); G.player.x = c.x - Math.cos(c.h) * 2.3; G.player.z = c.z - Math.sin(c.h) * 2.3; G.player.h = c.h + Math.PI / 2;
-    G.camYaw = Math.atan2(Math.cos(c.h), -Math.sin(c.h)) - 0.55; G.camPitch = 0.3; __step(12);
+    G.view.camYaw = Math.atan2(Math.cos(c.h), -Math.sin(c.h)) - 0.55; G.view.camPitch = 0.3; __step(12);
     window.__frame = (i, n) => { if (i === 22) { held = false; G.action(); }
-      if (i === 34) X.autopilot(X.route(G.pcar.x, G.pcar.z, G.pcar.h, 900, 1)); }; } },
+      if (i === 34) X.autopilot(X.route(G.game.pcar.x, G.game.pcar.z, G.game.pcar.h, 900, 1)); }; } },
 
   { name: '05_chase_front', n: 60, setup: new Function(`const X = __X; X.chase(${HERO}, 230, [9, 15, 22], 33); X.mode('cine'); X.fov(60); X.setCam(X.rigFront(6.5, 1.9, 0.8, 8, 0.9));
     window.__frame = (i, n) => { X.k = i / (n - 1); };`) },
@@ -39,7 +39,7 @@ module.exports = [
 
   // the game's own camera and HUD, with the view dragged round to look back at the police
   { name: '07_chase_hud', n: 75, setup: new Function(`const X = __X; X.chase(${HERO}, 330, [9, 15, 22], 33);
-    window.__frame = (i, n) => { X.k = i / (n - 1); __G.lookOff = 2.62 - 0.25 * X.k; };`) },
+    window.__frame = (i, n) => { X.k = i / (n - 1); __G.view.lookOff = 2.62 - 0.25 * X.k; __G.view.lookIdle = 0; };`) },
 
   { name: '08_card', n: 30, setup: card('<h2>Every real street</h2>') },
 
@@ -55,27 +55,27 @@ module.exports = [
     window.__frame = (i, n) => { X.k = i / (n - 1); X.caps(i, [[14, 108, '<small>Getaway car: EPA-traktor</small>Top speed 30 km/h']]); }; } },
 
   // eight losing tickets off camera, so the ninth gets the worst of the kiosk's lines
-  { name: '13_triss', n: 135, setup: () => { const G = __G, X = __X; X.start(); const k = G.places.find(p => p.kind === 'kiosk');
-    G.player.x = k.x + 0.2; G.player.z = k.z + 0.5; G.player.h = 0; G.camYaw = 0.5; G.camPitch = 0.27; X.capLeft(); __step(4);
+  { name: '13_triss', n: 135, setup: () => { const G = __G, X = __X; X.start(); const k = G.places.list.find(p => p.kind === 'kiosk');
+    G.player.x = k.x + 0.2; G.player.z = k.z + 0.5; G.player.h = 0; G.view.camYaw = 0.5; G.view.camPitch = 0.27; X.capLeft(); __step(4);
     for (let j = 0; j < 8; j++) { X.buyTriss(); __step(30); } __step(110); X.hideToast();
     window.__frame = (i, n) => { if (i === 10) X.buyTriss(); X.caps(i, [[52, 128, '<small>Odds of winning on a trisslott</small>0.1 %']]); }; } },
 
   // the one-minute wait is cut down to a few seconds for the trailer
-  { name: '14_safe', n: 150, setup: () => { const G = __G, X = __X; X.start(); const p = G.places.find(o => o.kind === 'safe' && o.name === 'Gästgivaregatan');
+  { name: '14_safe', n: 150, setup: () => { const G = __G, X = __X; X.start(); const p = G.places.list.find(o => o.kind === 'safe' && o.name === 'Gästgivaregatan');
     // the marker sits 1.4 m outside the door: the nearest wall point gives the outward direction, then start further out
     let qx = 0, qz = 0, bd = 1e9; for (const b of G.D.b) for (let i = 0, j = b.p.length - 2; i < b.p.length; j = i, i += 2) { const dx = b.p[i] - b.p[j], dz = b.p[i + 1] - b.p[j + 1], L = dx * dx + dz * dz;
       const t = L ? Math.min(1, Math.max(0, ((p.x - b.p[j]) * dx + (p.z - b.p[j + 1]) * dz) / L)) : 0, cx = b.p[j] + dx * t, cz = b.p[j + 1] + dz * t, d = Math.hypot(p.x - cx, p.z - cz); if (d < bd) { bd = d; qx = cx; qz = cz; } }
-    const nx = (p.x - qx) / bd, nz = (p.z - qz) / bd; G.player.x = p.x + nx * 6 + nz * 1.5; G.player.z = p.z + nz * 6 - nx * 1.5; G.camPitch = 0.3;
-    G.addStar(); G.addStar(); __step(2); X.hideToast();
-    G.police.forEach((c, i) => { c.x = p.x + 430 + i * 20; c.z = p.z + 300; c.v = 0; });
+    const nx = (p.x - qx) / bd, nz = (p.z - qz) / bd; G.player.x = p.x + nx * 6 + nz * 1.5; G.player.z = p.z + nz * 6 - nx * 1.5; G.view.camPitch = 0.3;
+    G.wanted.addStar(); G.wanted.addStar(); __step(2); X.hideToast();
+    G.wanted.police.forEach((c, i) => { c.x = p.x + 430 + i * 20; c.z = p.z + 300; c.v = 0; });
     let arrived = -1, inAt = -1;
     window.__frame = (i, n) => { const d = Math.hypot(p.x - G.player.x, p.z - G.player.z);
-      if (inAt < 0) { if (d > 1.2) { G.camYaw = Math.atan2(p.x - G.player.x, -(p.z - G.player.z)); G.joy.y = 1; } else { G.joy.y = 0; if (arrived < 0) arrived = i; if (i - arrived >= 14) { G.action(); G.hideT = 2.4; inAt = i; } } }
+      if (inAt < 0) { if (d > 1.2) { G.view.camYaw = Math.atan2(p.x - G.player.x, -(p.z - G.player.z)); G.joy.y = 1; } else { G.joy.y = 0; if (arrived < 0) arrived = i; if (i - arrived >= 14) { G.action(); G.wanted.hideLeft = 2.4; inAt = i; } } }
       X.caps(i, inAt >= 0 ? [[inAt + 8, inAt + 62, 'Lie low']] : []); }; } },
 
   // stop the car and let the police box it in; the bust is the game's own
   { name: '15_gripen', n: 105, setup: new Function(`const G = __G, X = __X; X.chase(${HERO}, 180, [16, 24, 32]); X.autopilot(null); G.keys.brake = true;
-    for (let j = 0; j < 400; j++) { __step(1); const c = G.pcar; if (Math.abs(c.v) < 0.5 && G.police.some(p => Math.hypot(p.x - c.x, p.z - c.z) < 8.5)) break; }
+    for (let j = 0; j < 400; j++) { __step(1); const c = G.game.pcar; if (Math.abs(c.v) < 0.5 && G.wanted.police.some(p => Math.hypot(p.x - c.x, p.z - c.z) < 8.5)) break; }
     G.keys.brake = false; X.hideToast();
     window.__frame = (i, n) => {};`) },
 

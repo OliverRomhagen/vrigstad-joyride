@@ -23,7 +23,7 @@ import { ROAD_WIDTH_M as ROAD_W, type WorldData } from '../world/data';
 import { Heightfield } from '../world/heightfield';
 import { clamp, wrap } from '../world/math';
 import { makeRnd } from '../world/random';
-import { RoadNetwork } from '../world/roads';
+import { nodeKey, RoadNetwork } from '../world/roads';
 import { buildStreetscape, sidewalkCentreM, StreetscapeIndex } from '../world/streetscape';
 import { STREETSCAPE_OVERRIDES } from '../world/streetscape-overrides';
 import { FURNITURE_OVERRIDES } from '../world/furniture/overrides';
@@ -44,6 +44,7 @@ import { Crowd } from './pedestrians';
 import { ActionPrompt } from './prompt';
 import { Crashes } from './crashes';
 import { GameLoop } from './loop';
+import { installCaptureHook } from './capture-hook';
 import { installTestHook } from './test-hook';
 import { esc, MenuPlate } from './menu';
 import { KioskCatMenus } from './kiosk-cat-menus';
@@ -52,7 +53,7 @@ import { Commands } from './commands';
 import { CashRain } from './cash-rain';
 import { Confetti } from './confetti';
 import { DevConsole } from './devconsole';
-import { newWallet, registerWalletCommands } from './economy';
+import { newWallet, registerWalletCommands, TRISS_KR } from './economy';
 import { Skroten } from './skroten';
 import { SKROT_CARPORT, SKROT_HALL, yardFloorAt, yardLayout } from './skroten-yard';
 import { SkrotenMeshes } from './render/skroten';
@@ -391,6 +392,10 @@ const loop = new GameLoop({ $, renderer, scene, camera, canvas, coarse, half: HA
   updateSign, catRideLines: () => crashes.catRideLines(), closeMenuIfLeft: () => menuPlate.closeIfLeft(), updatePrompt: () => prompt.update(), drawHealth,
   timeFrame: workStart => { if (!debugOverlay) return; const t = performance.now(); debugOverlay.frame(t, t - workStart, renderer.info); } });
 $('go').addEventListener('click', loop.startGame);
+// ---------- capture hook: with ?capture, the game's internals for the teaser and poster rig (src/game/capture-hook.ts, tools/trailer) ----------
+// before the first frame, so the rig's camera is in place for it
+installCaptureHook({ THREE, renderer, camera, game, view, player, cars, keys: input.keys, joy: input.joy, D, R, nodes: roads.junctions, nodeKey, driveable: roads.driveable, hAt,
+  action, addCar, removeCar, placeCar, carGeo, sun, SUN_DIR, wanted, places, wallet, TRISS_KR, vehicleVisuals: { state: (c: Car) => vehicleVisuals.state(meshed(c)) } }, location.search);
 loop.start();
 
 // ---------- test hook: read-only state for the smoke tests (src/game/test-hook.ts) ----------

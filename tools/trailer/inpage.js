@@ -3,7 +3,8 @@
   const G = window.__G;
   const wrap = a => { while (a > Math.PI) a -= 2 * Math.PI; while (a < -Math.PI) a += 2 * Math.PI; return a; };
   const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
-  const X = window.__X = {};
+  // k: a shot's progress, 0 to 1; its camera already runs while the setup steps frames, before __frame sets it
+  const X = window.__X = { k: 0 };
 
   // ----- overlay layer: letterbox bars, fades, captions, title cards -----
   const css = document.createElement('style');
@@ -50,8 +51,9 @@
 
   X.start = () => { document.getElementById('go').click(); document.getElementById('toast').hidden = true; };
   X.hideToast = () => { document.getElementById('toast').hidden = true; };
-  // at the kiosk: E buys a trisslott; since the kiosk got a menu, E opens it and Trisslott is picked from it
-  X.buyTriss = () => { G.action(); const b = document.querySelector('#kmenu [data-k="triss"]'); if (b) b.click(); };
+  // at the kiosk: E buys a trisslott; since the kiosk got a menu, E opens it and Trisslott is picked from it.
+  // The shot buys more tickets than the starting money pays for, so each one is paid for first.
+  X.buyTriss = () => { if (G.wallet.kr < G.TRISS_KR) G.wallet.kr += G.TRISS_KR; G.action(); const b = document.querySelector('#kmenu [data-k="triss"]'); if (b) b.click(); };
 
   // ----- route along the street network, always taking the straightest continuation -----
   X.route = (x, z, heading, length, maxClass = 2) => {
@@ -86,7 +88,7 @@
     return best; }
   X.pre = [];
   window.__pre = dt => {
-    if (auto && G.inCar) { const c = G.pcar; auto.s = nearestS(auto.pts, c.x, c.z, auto.s);
+    if (auto && G.game.inCar) { const c = G.game.pcar; auto.s = nearestS(auto.pts, c.x, c.z, auto.s);
       const look = auto.look + Math.abs(c.v) * 0.35, t = X.along(auto.pts, auto.s + look), far = X.along(auto.pts, auto.s + look * 2.6);
       const diff = wrap(Math.atan2(t.x - c.x, -(t.z - c.z)) - c.h), bend = Math.abs(wrap(far.h - c.h));
       G.joy.x = clamp(diff * 2.4, -1, 1);
@@ -99,10 +101,11 @@
   // a car of a given type and paint colour (the game picks colours at random, so keep trying)
   // hex must be one of the type's colours (T.cols in src/game/sim/vehicle-spec.ts). Every version caches car geometry per type and colour (carGeo),
   // so the car's own box mesh tells its colour: the car's mesh, or the fallback inside its group once cars got models.
-  X.makeCar = (type, hex, x, z, h) => { const want = G.carGeo(type, hex);
+  // A Volvo's model is picked at random (one in five is an Impala), so the hero asks for the 240 the captions name.
+  X.makeCar = (type, hex, x, z, h) => { const want = G.carGeo(type, hex), model = type === 'volvo' ? 'volvo240' : undefined;
     const box = c => c.body || (c.mesh.geometry ? c.mesh : c.mesh.children.find(o => o.geometry));
-    for (let t = 0; t < 80; t++) { const c = G.addCar(type, x, z, h, 'parked'); if (box(c).geometry === want) return c; G.removeCar(c); }
-    return G.addCar(type, x, z, h, 'parked'); };
+    for (let t = 0; t < 80; t++) { const c = G.addCar(type, x, z, h, 'parked', model); if (box(c).geometry === want) return c; G.removeCar(c); }
+    return G.addCar(type, x, z, h, 'parked', model); };
   // a car's model is attached in its colour, so swap the car for a new one in the same place, keeping its place in traffic
   X.recolor = (c, type, hex) => { const n = X.makeCar(type, hex, c.x, c.z, c.h);
     for (const k of ['mode', 'ri', 'a', 'dir', 't', 'v', 'first']) if (k in c) n[k] = c[k];
@@ -111,7 +114,7 @@
   X.clearTraffic = pts => { for (const c of G.cars.slice()) { if (c.mode !== 'ai' && c.mode !== 'parked') continue;
     let near = false; for (let i = 1; i < pts.length && !near; i++) { const a = pts[i - 1], b = pts[i], dx = b[0] - a[0], dz = b[1] - a[1], L = dx * dx + dz * dz, t = L ? clamp(((c.x - a[0]) * dx + (c.z - a[1]) * dz) / L, 0, 1) : 0; if (Math.hypot(c.x - a[0] - dx * t, c.z - a[1] - dz * t) < (c.mode === 'ai' ? 30 : 4.5)) near = true; }
     if (near) G.removeCar(c); } };
-  X.stagePolice = (pts, dists) => { const c = G.pcar; G.police.forEach((p, i) => { const o = X.along(pts, Math.max(0, X.autoS() - dists[i])), side = (i % 2 ? -1 : 1) * 1.5;
+  X.stagePolice = (pts, dists) => { const c = G.game.pcar; G.wanted.police.forEach((p, i) => { const o = X.along(pts, Math.max(0, X.autoS() - dists[i])), side = (i % 2 ? -1 : 1) * 1.5;
     p.x = o.x + Math.cos(o.h) * side; p.z = o.z + Math.sin(o.h) * side; p.h = o.h; p.v = Math.min(c.v, p.T.max); G.placeCar(p); }); };
   // full chase: hero car on a main-road route out of Torget with three police cars on its tail
   X.chase = (type, hex, warm, dists, vmax = 0) => {
@@ -120,7 +123,7 @@
     const car = X.makeCar(type, hex, pts[0][0], pts[0][1], h0); X.getIn(car, true); X.autopilot(pts, vmax ? { max: vmax } : {}); X.pts = pts;
     // oncoming traffic would end the take in a pile-up, so clear what is directly ahead
     X.pre.push(() => { for (const c of G.cars.slice()) if (c.mode === 'ai') { const d = Math.hypot(c.x - car.x, c.z - car.z); if (d < 70 && (d < 12 || Math.abs(wrap(Math.atan2(c.x - car.x, -(c.z - car.z)) - car.h)) < 0.5)) G.removeCar(c); } });
-    __step(warm); G.addStar(); G.addStar(); G.addStar(); __step(2); X.hideToast(); X.stagePolice(pts, dists); __step(10); X.hideToast();
+    __step(warm); G.wanted.addStar(); G.wanted.addStar(); G.wanted.addStar(); __step(2); X.hideToast(); X.stagePolice(pts, dists); __step(10); X.hideToast();
     return car; };
 
   // ----- cameras -----
