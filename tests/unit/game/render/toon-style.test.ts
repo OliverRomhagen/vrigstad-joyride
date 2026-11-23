@@ -5,6 +5,7 @@ import {
   FINISH_LEVELS,
   finishOf,
   INK_FLAG,
+  INK_PULL,
   TOON_FILL_SCALE,
   TOON_LEVELS,
   TOON_SUN_SCALE,
@@ -102,6 +103,27 @@ test('inked objects get crease lines on opaque meshes, once, sharing edges per g
   expect(ink(body)[0].geometry).toBeInstanceOf(THREE.EdgesGeometry);
   expect(ink(glass)).toHaveLength(0);
   expect(ink(house)).toHaveLength(0);
+});
+
+test('ink lines stay on far-off parts of a mesh, and are pulled towards the camera to show over the corner boards', () => {
+  // the village shells are one mesh at the origin with world-coordinate vertices: scaling lines about it moved them
+  const scene = new THREE.Scene(),
+    shells = new THREE.Mesh(box.clone().translate(900, 0, 0), new THREE.MeshLambertMaterial());
+  shells.userData[INK_FLAG] = true;
+  scene.add(shells);
+  new ToonStyle({ render: () => {} }).render(scene, camera);
+  const [lines] = shells.children as THREE.LineSegments[];
+  expect(lines.scale.equals(new THREE.Vector3(1, 1, 1))).toBe(true);
+  const shader = { vertexShader: 'void main() {\n#include <project_vertex>\n}' };
+  (lines.material as THREE.Material).onBeforeCompile(
+    shader as THREE.WebGLProgramParametersWithUniforms,
+    {} as THREE.WebGLRenderer,
+  );
+  // along the line of sight, about the camera: the same place on screen, only nearer
+  expect(shader.vertexShader).toContain(`mvPosition.xyz *= ${(1 - INK_PULL).toFixed(6)};`);
+  expect(shader.vertexShader.indexOf('mvPosition.xyz *=')).toBeGreaterThan(
+    shader.vertexShader.indexOf('<project_vertex>'),
+  );
 });
 
 test('lit materials draw as toon copies and are put back after the frame', () => {

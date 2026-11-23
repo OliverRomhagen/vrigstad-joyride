@@ -23,7 +23,11 @@ export const TOON_FILL_SCALE = 0.52;
 const INK_CREASE_DEG = 34;
 const INK_COLOR = 0x10151c;
 const INK_OPACITY = 0.67;
-const INK_INFLATE = 1.002; // lines sit just outside the surface, so they don't z-fight with it
+// Lines are drawn this fraction of their distance closer to the camera, along the line of sight: the same place on
+// screen, but in front of the surface they sit on and of the houses' corner boards, which are pulled forward with
+// polygonOffset. Scaling the lines about the mesh's origin instead moved them off meshes whose origin is far away, such
+// as the village's shells (one mesh at Torget).
+export const INK_PULL = 0.001;
 /** Set on an object's userData to give every opaque mesh under it ink lines in the toon style. */
 export const INK_FLAG = 'toonInk';
 
@@ -79,6 +83,12 @@ export class ToonStyle {
     opacity: INK_OPACITY,
     depthWrite: false,
   });
+  private readonly pullInk = (shader: THREE.WebGLProgramParametersWithUniforms) => {
+    shader.vertexShader = shader.vertexShader.replace(
+      '#include <project_vertex>',
+      `#include <project_vertex>\nmvPosition.xyz *= ${(1 - INK_PULL).toFixed(6)};\ngl_Position = projectionMatrix * mvPosition;`,
+    );
+  };
   private readonly swapped: THREE.Mesh[] = [];
   private readonly originals: MeshMaterial[] = [];
   private readonly lights: THREE.Light[] = [];
@@ -93,7 +103,6 @@ export class ToonStyle {
       this.inkGeometries.set(object.geometry, edges);
     }
     const lines = new THREE.LineSegments(edges, this.inkMaterial);
-    lines.scale.setScalar(INK_INFLATE);
     lines.renderOrder = 10;
     lines.raycast = () => {};
     object.add(lines);
@@ -111,7 +120,9 @@ export class ToonStyle {
     object.material = toon;
   };
 
-  constructor(private readonly renderer: Renderer) {}
+  constructor(private readonly renderer: Renderer) {
+    this.inkMaterial.onBeforeCompile = this.pullInk;
+  }
 
   render(scene: THREE.Scene, camera: THREE.Camera) {
     scene.traverse(this.swapIn);
