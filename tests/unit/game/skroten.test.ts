@@ -318,16 +318,6 @@ describe('Plåt-Pelle upgrades the car on the lift', () => {
     expect(t.menu()).toBe(before);
   });
 
-  it('goes back to the lift menu when you say no to a respray', () => {
-    const t = skroten({ kr: 500 });
-    t.driveOntoLift();
-    t.s.open();
-    t.choose('paint');
-    t.choose('no');
-    expect(t.menu()!.kind).toBe('skrot-lift');
-    expect(t.wallet.kr).toBe(500);
-  });
-
   it('has a word for tuning an EPA-traktor', () => {
     const t = skroten({ car: { type: 'epa', T: specFor('epa'), color: specFor('epa').cols[0]! }, kr: 2000 });
     t.driveOntoLift();
@@ -407,6 +397,7 @@ describe("Plåt-Pelle's limited paint jobs", () => {
     t.choose('decal');
     t.choose('off');
     expect(t.g.game.pcar!.decal).toBeNull();
+    expect(t.calls.at(-1)).not.toContain('riksdaler'); // free: no −0 riksdaler
     expect(t.wallet.kr).toBe(2000 - 2 * DECAL_KR);
   });
 
@@ -419,6 +410,16 @@ describe("Plåt-Pelle's limited paint jobs", () => {
     t.s.open();
     expect(t.menu()!.items.map(([k]) => k)).not.toContain('decal');
     expect(t.menu()!.items.map(([k]) => k)).toContain('special');
+  });
+
+  it('goes back to the lift menu when you say no in a paint menu', () => {
+    for (const sub of ['paint', 'special', 'decal']) {
+      const t = onLift(1000);
+      t.choose(sub);
+      t.choose('no');
+      expect(t.menu()!.kind).toBe('skrot-lift');
+      expect(t.wallet.kr).toBe(1000);
+    }
   });
 
   it('paints nothing you cannot pay for', () => {

@@ -195,7 +195,7 @@ export class Skroten {
         else if (k === 'decal') this.openDecal(c);
         else if (k === 'out') {
           if (this.onLift(c) && !tooFastToGetOut(c)) this.g.getOut(); // as E asks: the menu's stay() runs only now and then
-        } else if (k === 'fix' ? this.repair(c) : isUpgrade(k) && this.upgrade(c, k)) this.openLift(c);
+        } else if (k === 'fix' ? this.repair(c, fix) : isUpgrade(k) && this.upgrade(c, k)) this.openLift(c);
       },
       () => this.onLift(c) && !tooFastToGetOut(c),
     );
@@ -292,8 +292,13 @@ export class Skroten {
     return false;
   }
 
-  private repair(c: Car) {
+  // `shown` is the price on the menu: if the car took more damage while it was open, he names the new price instead of taking it
+  private repair(c: Car, shown: number) {
     const kr = this.repairKr(c);
+    if (kr !== shown) {
+      if (this.onLift(c)) this.openLift(c);
+      return false;
+    }
     return (
       !!kr &&
       this.work(c, kr, () => {
@@ -341,7 +346,7 @@ export class Skroten {
 
   /** E by a car on his lot: his price on the menu plate, or a word about the police. */
   offerCar = (c: Car) => {
-    const { game, player, stars, openMenu, toast, carName } = this.g;
+    const { stars, openMenu, toast, carName } = this.g;
     if (stars) {
       toast(CHASED, 3.5);
       return;
