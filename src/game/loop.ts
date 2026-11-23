@@ -23,7 +23,7 @@ const START_LINE = 'Find a car and press E to take it. Occupied cars always get 
 export interface GameLoopDeps {
   $(id: string): HTMLElement;
   renderer: THREE.WebGLRenderer;
-  toon: Pick<ToonStyle, 'render'> | null; // ?style=toon draws through the toon style (#206)
+  toon: Pick<ToonStyle, 'render'> | null; // ?lab=toon draws through the toon style (#206)
   scene: THREE.Scene;
   camera: THREE.PerspectiveCamera;
   canvas: HTMLCanvasElement;

@@ -112,10 +112,6 @@ try { renderer = new THREE.WebGLRenderer({ canvas, antialias: true }); }
 catch { $('fail').hidden = false; $('ui').hidden = true; $('intro').hidden = true; return; }
 const coarse = matchMedia('(pointer: coarse)').matches;
 setUpRenderer(renderer, coarse);
-// ?style=toon draws the world cel-shaded (#206), with its own, softer shadows
-const toon = new URLSearchParams(location.search).get('style') === 'toon' ? createToonStyle(renderer) : null;
-const { scene, camera, hemi, sun, skyDome } = buildStage(coarse, location.search);
-const maxAnisotropy = renderer.capabilities.getMaxAnisotropy();
 
 // ---------- lab: opt-in experiments, switched on with ?lab=<id>,<id> (src/lab/flags.ts) ----------
 // an experiment's code lives where it belongs, and lab.on('<id>') gates it here or where it's wired in below (#323);
@@ -123,6 +119,12 @@ const maxAnisotropy = renderer.capabilities.getMaxAnisotropy();
 // After the WebGL check, so none starts behind the fail screen; one that fails to load or start should only warn
 const lab = LabFlags.fromSearch(location.search);
 if (lab.on('hello')) console.info('Lab: hello is on.'); // the smallest gate, for trying the flags
+// ?lab=toon draws the world cel-shaded (#206), with its own, softer shadows. Imported statically, not with import():
+// it sets the shadow map type, which has to happen before buildStage's materials compile, and it only pulls in three
+const toon = lab.on('toon') ? createToonStyle(renderer) : null;
+
+const { scene, camera, hemi, sun, skyDome } = buildStage(coarse, location.search);
+const maxAnisotropy = renderer.capabilities.getMaxAnisotropy();
 
 // ---------- time of day: 05:00 to 19:00, then a short blend into the next morning (src/game/day-cycle.ts, src/game/render/daylight.ts) ----------
 // ?time=18.5 starts at that hour; ?cycle=off holds it there
@@ -396,7 +398,7 @@ $('go').addEventListener('click', loop.startGame);
 loop.start();
 
 // ---------- test hook: read-only state for the smoke tests (src/game/test-hook.ts) ----------
-installTestHook({ game, view, player, health, cars, labs: lab.list(), style: toon ? 'toon' : 'default', get ragdolls() { return ragdolls.count; }, get stars() { return wanted.stars; }, get cats() { return cats.length; }, get ownCat() { return !!colony.owned; }, get displayCar() { return displayCar; },
+installTestHook({ game, view, player, health, cars, labs: lab.list(), get ragdolls() { return ragdolls.count; }, get stars() { return wanted.stars; }, get cats() { return cats.length; }, get ownCat() { return !!colony.owned; }, get displayCar() { return displayCar; },
   vehicleVisuals: { state: c => vehicleVisuals.state(meshed(c)) }, bodyMotion: { state: c => bodyMotion.state(meshed(c)) }, skyDome, street, debugStreetscape: DEBUG_STREETSCAPE, bridges: { index: bridges, draw: bridgeMeshes, groundAt }, furniture, water: { bodies: waterBodies, surface: waterLook.surface, props: waterLook.props, shore, terrainTriangles: terrainMesh.triangles, refinedCells: heightfield.refinedCells, buildMs: waterCutMs + waterMeshMs, inWater, hAt }, debugFurniture: DEBUG_FURNITURE, nearestCar,
   get kr() { return wallet.kr; }, get banknotes() { return banknotes.live; }, get confetti() { return confetti.live; }, get devcon() { return devcon.isOpen; }, build: __BUILD__, get fps() { return !!debugOverlay?.shown; }, day: { get hour() { return dayClock.hour; }, get night() { return dayClock.night; }, get sunLight() { return sky.sun; } } });
 })();
