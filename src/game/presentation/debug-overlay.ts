@@ -11,10 +11,8 @@ const GRAPH_MAX_MS = 50; // a frame this long fills the graph's height
 const BUDGET_60_MS = 1000 / 60,
   BUDGET_30_MS = 1000 / 30;
 const ERRORS_KEPT = 5;
-// the graph's bars, by the budget a frame kept, and its budget lines; a canvas can't read the page's CSS tokens
+// the graph's bars, by the budget a frame kept, and its budget lines; the page has no tokens for the green or the lines
 const BAR_60_FPS = '#7fc97f',
-  BAR_30_FPS = '#f0c050',
-  BAR_SLOWER = '#f05a4a',
   BUDGET_LINE = 'rgba(255, 255, 255, .45)';
 
 /** The part of three's `renderer.info` the overlay reads. */
@@ -71,6 +69,8 @@ export class DebugOverlay {
   private readonly graph: CanvasRenderingContext2D | null;
   private readonly errors: { line: string; n: number }[] = [];
   private readonly build: string;
+  private readonly bar30Fps: string;
+  private readonly barSlower: string;
   private last = -1; // when the previous frame ended (ms); -1 while the stats are hidden
   private textAt = 0; // when the numbers were last written (ms)
 
@@ -79,6 +79,10 @@ export class DebugOverlay {
     const doc = parent.ownerDocument,
       style = doc.createElement('style'),
       root = doc.createElement('div');
+    // a canvas can't use var(--…), so the slower bars read the page's --gold and --alarm (src/index.html) once
+    const tokens = (doc.defaultView ?? target).getComputedStyle(doc.documentElement);
+    this.bar30Fps = tokens.getPropertyValue('--gold').trim();
+    this.barSlower = tokens.getPropertyValue('--alarm').trim();
     style.textContent = CSS;
     root.id = 'debug';
     this.statsEl = doc.createElement('div');
@@ -189,7 +193,7 @@ export class DebugOverlay {
     for (let k = 0; k < GRAPH_FRAMES; k++) {
       const ms = this.stats.frameMs(k);
       if (!ms) break;
-      g.fillStyle = ms <= BUDGET_60_MS + 1 ? BAR_60_FPS : ms <= BUDGET_30_MS + 1 ? BAR_30_FPS : BAR_SLOWER;
+      g.fillStyle = ms <= BUDGET_60_MS + 1 ? BAR_60_FPS : ms <= BUDGET_30_MS + 1 ? this.bar30Fps : this.barSlower;
       g.fillRect(w - (k + 1) * bw, y(ms), bw, h - y(ms));
     }
     g.fillStyle = BUDGET_LINE;
