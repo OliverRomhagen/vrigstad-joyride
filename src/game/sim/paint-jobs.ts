@@ -10,7 +10,7 @@ export const DECAL_ORDER: readonly Decal[] = [DECALS.FLAMES, DECALS.STRIPES, DEC
 export const DECAL_NAMES: Readonly<Record<Decal, string>> = {
   flames: 'Flammor',
   stripes: 'Rallyränder',
-  'rally-number': 'Startnummer 76',
+  'rally-number': 'Startnummer 69',
 };
 
 /** His special paints, with the names he gives them. None is in any car type's colours. */
