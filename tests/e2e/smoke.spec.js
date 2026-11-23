@@ -668,6 +668,7 @@ test.describe('game (index.html)', () => {
 
   test('Plåt-Pelle sells you a car from his lot, and it is yours to drive', async ({ page }, testInfo) => {
     const errors = watchErrors(page);
+    await page.setViewportSize({ width: 640, height: 360 });
     await page.goto('/index.html?dev');
     const lot = (await state(page)).forSale;
     expect(lot.length).toBeGreaterThanOrEqual(8);
