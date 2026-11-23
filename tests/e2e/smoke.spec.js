@@ -668,6 +668,7 @@ test.describe('game (index.html)', () => {
 
   test('Plåt-Pelle mends a damaged car on the lift in his workshop', async ({ page }, testInfo) => {
     const errors = watchErrors(page);
+    await page.setViewportSize({ width: 640, height: 360 });
     await page.goto('/index.html?dev');
     const { lift } = await state(page);
     expect(lift).not.toBeNull();
