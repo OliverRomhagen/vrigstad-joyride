@@ -1,1 +1,0 @@
-import{t as e}from"./DDIAi52C.js";import"./YDCeGquL.js";var t=e(`/`).replace(/wiki\/$/,``),n=`${t}map.html`;export{n,t};
