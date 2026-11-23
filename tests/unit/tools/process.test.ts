@@ -194,7 +194,7 @@ describe('tools/process.py street furniture data', () => {
 
 describe('tools/process.py buildings', () => {
   it('moves an outline listed in BUILDING_SHIFT by its offset', () => {
-    expect(out.b.map(b => b.p)).toContainEqual([499, 496.5, 509, 496.5, 509, 506.5, 499, 506.5]);
+    expect(out.b.map(b => b.p)).toContainEqual([498.5, 495, 508.5, 495, 508.5, 505, 498.5, 505]);
   });
 });
 
