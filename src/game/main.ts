@@ -367,10 +367,22 @@ function hurtPlayer(n: number) { if (!canHurt(health, n)) return; const was = he
 // ---------- the E prompt and the speed plate (src/game/prompt.ts) ----------
 const prompt = new ActionPrompt({ $, game, places, wanted, get menuOpen() { return !kmenu.hidden; }, coarse, nearPlace, skrotenBuys: () => skroten.buys(), nearOwner: () => skroten.nearOwner(nearestCar()), nearCat, nearestCar, catFirst, carName, esc });
 
+// ---------- multiplayer prototype: ?lab=multiplayer shows the players of this browser's other tabs (docs/multiplayer.md) ----------
+// each tab sends its own player and draws the others' (src/game/net/two-tabs.ts, src/game/render/remote-players.ts); ?room= names the room
+let net: { update(dt: number): void; readonly peers: number } | null = null;
+if (lab.on('multiplayer')) Promise.all([import('./net/two-tabs'), import('./render/remote-players')]).then(([tabs, rp]) => {
+  const remotes = new rp.RemotePlayers({ scene, groundAt, makePerson: () => personParts('#58c4dd', '#3a3f45'), placeCar, disposeCar: c => carMeshes.detach(c),
+    makeCar: look => { const model = look.model as VehicleId | null; return carMeshes.attach(newCar(look.type, 0, 0, 0, 'idle', specFor(look.type, vehicleDefinition(model)), look.color), model ?? undefined); } });
+  net = tabs.startTwoTabs({ room: new URLSearchParams(location.search).get('room') || 'torget', remotes,
+    local: () => { const c = game.inCar ? game.pcar : null;
+      return c ? { x: c.x, z: c.z, h: c.h, vh: c.vh, v: c.v, y: 0, phase: 0, hidden: false, car: { type: c.type, model: vehicleVisuals.definition(meshed(c))?.id ?? null, color: c.color } }
+        : { x: player.x, z: player.z, h: player.h, vh: player.h, v: player.speed, y: player.y, phase: player.phase, hidden: !!places.inside, car: null }; } });
+}).catch(err => console.warn('Lab: multiplayer failed', err));
+
 // ---------- main loop (src/game/loop.ts) ----------
 const loop = new GameLoop({ $, renderer, scene, camera, canvas, coarse, half: HALF, game, view, player, health, input, places, wanted, cars, startCam: START_CAM, barMat, barColours: [BAR_BLUE, BAR_RED], cameraRig: { update: placeCamera },
   get toasting() { return hud.toasting; }, inWater, collide, groundAt, drive, updateTraffic, knockedOut, hurtPlayer, shake, toast, hideTitleCard: () => hud.hideTitleCard(),
-  updateTrisslott: dt => trisslott.update(dt), updatePlaces: dt => { placeMeshes.update(dt); skrotenMeshes.update(dt, player); }, updateDriftFx, updateVehicles: (T, dt) => vehicleVisuals.update(T, dt), updateSmoke, updateBanknotes: dt => banknotes.update(dt), updateConfetti: dt => confetti.update(dt), updateNpcs: (T, dt) => { updateNpcs(T, dt); ragdolls.update(dt); ragdollMeshes.update(); }, updateCats,
+  updateTrisslott: dt => trisslott.update(dt), updatePlaces: dt => { placeMeshes.update(dt); skrotenMeshes.update(dt, player); }, updateDriftFx, updateVehicles: (T, dt) => vehicleVisuals.update(T, dt), updateSmoke, updateBanknotes: dt => banknotes.update(dt), updateConfetti: dt => confetti.update(dt), updateNpcs: (T, dt) => { updateNpcs(T, dt); ragdolls.update(dt); ragdollMeshes.update(); net?.update(dt); }, updateCats,
   updateDrivers: (T, dt) => drivers.update(T, dt), updateBodies: (T, dt) => bodyMotion.update(T, dt), updateDaylight, drawHearts, updateHud: dt => hud.update(dt), drawMini,
   updateSign, catRideLines: () => crashes.catRideLines(), closeMenuIfLeft: () => menuPlate.closeIfLeft(), updatePrompt: () => prompt.update(), drawHealth,
   timeFrame: workStart => { if (!debugOverlay) return; const t = performance.now(); debugOverlay.frame(t, t - workStart, renderer.info); } });
@@ -378,7 +390,7 @@ $('go').addEventListener('click', loop.startGame);
 loop.start();
 
 // ---------- test hook: read-only state for the smoke tests (src/game/test-hook.ts) ----------
-installTestHook({ game, view, player, health, cars, labs: lab.list(), get ragdolls() { return ragdolls.count; }, get stars() { return wanted.stars; }, get cats() { return cats.length; }, get ownCat() { return !!colony.owned; }, get displayCar() { return displayCar; },
+installTestHook({ game, view, player, health, cars, labs: lab.list(), get remotePlayers() { return net?.peers ?? 0; }, get ragdolls() { return ragdolls.count; }, get stars() { return wanted.stars; }, get cats() { return cats.length; }, get ownCat() { return !!colony.owned; }, get displayCar() { return displayCar; },
   vehicleVisuals: { state: c => vehicleVisuals.state(meshed(c)) }, bodyMotion: { state: c => bodyMotion.state(meshed(c)) }, skyDome, street, debugStreetscape: DEBUG_STREETSCAPE, furniture, debugFurniture: DEBUG_FURNITURE, nearestCar,
   get kr() { return wallet.kr; }, get banknotes() { return banknotes.live; }, get confetti() { return confetti.live; }, get devcon() { return devcon.isOpen; }, build: __BUILD__, get fps() { return !!debugOverlay?.shown; }, day: { get hour() { return dayClock.hour; }, get night() { return dayClock.night; }, get sunLight() { return sky.sun; } } });
 })();

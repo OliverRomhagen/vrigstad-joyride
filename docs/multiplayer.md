@@ -279,6 +279,42 @@ A first list, for whoever takes this part:
 - **Stars**: your own at first. Whether a crew shares a wanted level is a design question for co-op.
 - **Talking**: Discord and emotes (#296) before any chat of our own.
 
+### A mode idea: teams and safehouses
+
+From the first discussion; a direction to play with, not a plan. Teams of friends each find a safehouse and try to
+keep it secret. Others can find it, raid it or sabotage it; a team that is found digs in (traps, barricades) or
+flees to a new one. Teams go out to rob and raid for resources: a better base, cars, tools, hired locals. Missions
+and areas to hold give them reasons to cross paths. The comparisons are DayZ and Rust.
+
+- **It builds on what exists**: safehouses, stars and the police, stealing cars, Skroten buying them, the kiosk,
+  riksdaler.
+- **A one-evening version first**: two teams, twenty minutes. Each picks a safehouse in secret, earns money by
+  selling stolen cars at Skroten, and wins by finding and emptying the other's stash.
+- **The police as a third force**: tip them off about a rival, and the rival gets the stars.
+- **Tone**: tools that fit the village (a spikmatta, a potato gun, snowballs, hired raggare) keep it affectionate.
+- **What it needs technically**: the far end of the stages below. A base that outlives a session needs
+  `persistence`. Rivals who gain by cheating need `authority`. A secret safehouse needs the session to send a
+  player only what they could see, so interest management becomes a secrecy feature, not only a saving.
+
+## Trying the two-tab prototype
+
+A throwaway on the branch `multiplayer-two-tab-prototype`, behind the lab flag. Open the game in **two windows side
+by side** (a tab in the background stops its frames) with `?lab=multiplayer`; add `&room=<name>` for a room of your
+own. Each window shows the other's player in a blue shirt, on foot or in the car they drive.
+
+![The second window shows the first window's player walking past](multiplayer-two-tabs.png)
+
+What it is: the `tabs` connector and a session in one file (`src/game/net/two-tabs.ts`), snapshots and the drawing
+in the past (`src/game/net/snapshots.ts`), and the meshes (`src/game/render/remote-players.ts`).
+
+What it leaves out, on purpose:
+
+- Remote cars are meshes only: nothing collides with them, nobody can get in, and they aren't on the minimap.
+- Cars have no shared identity yet. When a friend takes the parked Volvo, your Volvo stays parked and a second one
+  drives off.
+- No name tags, no shared police, traffic or time of day, and no clock sync (one computer has one clock).
+- What a peer sends is barely checked.
+
 ## Where the code goes, and tests
 
 - `src/game/net/`: the session, encoding, the registry and hooks, as sim code (plain data, no DOM), so the
