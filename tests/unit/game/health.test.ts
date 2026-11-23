@@ -25,6 +25,7 @@ import {
   wakeSpot,
   wrecked,
 } from '../../../src/game/health';
+import { UPGRADES } from '../../../src/game/sim/upgrades';
 
 describe('player health', () => {
   it('starts full', () => {
@@ -148,6 +149,14 @@ describe('crashes', () => {
       other = car();
     expect(crashCars(0, HARD_MS, spared, other, k => k === spared).map(h => h.wrecked)).toEqual([false, false]);
     expect([spared.dmg, other.dmg]).toEqual([0, crashDamage(HARD_MS)]); // god mode spares the car you drive
+  });
+
+  it('takes half the damage with a reinforced body', () => {
+    const plain = car(),
+      welded = { ...car(), mods: { engine: false, springs: false, body: true } };
+    crashCars(0, HARD_MS, plain, welded);
+    expect(plain.dmg).toBe(45);
+    expect(welded.dmg).toBe(45 * UPGRADES.BODY_DAMAGE);
   });
 
   it('ignores a slow bump, which also leaves the cooldown alone', () => {
