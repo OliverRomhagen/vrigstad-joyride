@@ -74,6 +74,7 @@ GitHub issues are the backlog: every bug, idea and piece of work is one issue.
 
 - One branch (and worktree) per agent and task. Bring your branch up to date with `main` before opening a PR and again before merging.
 - Most features still add a line or two to `src/game/main.ts`, where the modules are connected, so expect small conflicts there. Keep changes in their own section of the file where you can.
+- To see whether a branch conflicts with `main`, or with an open PR that may merge first, without touching a worktree: after `git fetch origin`, `git merge-tree --write-tree --name-only --no-messages origin/main <branch>` merges the two in memory. It prints a tree id, then the files that conflict, if any, and exits with 1 when there is a conflict. To compare with an open PR instead, fetch it as a ref (`git fetch origin pull/<n>/head:refs/review/pr-<n>`) and pass `refs/review/pr-<n>` in place of `origin/main`.
 - Say how you tested in the PR, and be honest about what wasn't tested ("not played by hand on a phone").
 
 ### Lab experiments
