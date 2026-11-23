@@ -471,7 +471,7 @@ export class CatColony {
     const { paintMat, blob, scene } = this.g,
       rnd = this.rnd;
     const mesh = new THREE.Mesh(this.geo(this.pick(CAT_COLS)), paintMat);
-    mesh.castShadow = true;
+    // no real shadow: the blob below grounds it, and a caster per cat costs a shadow draw call (#239)
     mesh.rotation.order = 'YXZ';
     mesh.scale.setScalar(1.1 + rnd() * 0.25);
     blob(mesh, 0.32, 0.55);

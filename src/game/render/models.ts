@@ -300,7 +300,8 @@ export function personParts(shirt: string, pants: string, hair?: string | null, 
     r = new THREE.Mesh(leg, paintMat);
   l.position.set(-0.13, 0.8, 0);
   r.position.set(0.13, 0.8, 0);
-  b.castShadow = l.castShadow = r.castShadow = true;
+  // only the player (the one with arms) casts a real shadow; everyone has the blob, and NPC casters were a third of the shadow pass (#239)
+  b.castShadow = l.castShadow = r.castShadow = !!arms;
   g.add(b, l, r);
   g.legs = [l, r];
   g.blob = blob(g, 0.9, 0.9);
