@@ -59,8 +59,8 @@ Immutable sources in `https://github.com/AxelTidehorn/vrigstad-joyride/tree/<SHA
 
 | Models | Source revision | Editable master | Generator |
 | --- | --- | --- | --- |
-| Volvo 240 | ff6a0f187add7bd9b7ba052f28bd0d67e534c33a | experiments/volvo240/refinement/model.blend | experiments/volvo240/model.py, refine_forms.py, round2.py |
-| Saab 900 | same Round 2 revision | experiments/saab900/build/model.blend | experiments/saab900/model.py, round2.py |
+| Volvo 240 | 79779a5f4b9a17d29ede88df67d2205d7b8366b2 | experiments/volvo240/refinement/model.blend | experiments/volvo240/model.py, refine_forms.py, round2.py, round3.py |
+| Saab 900 | ff6a0f187add7bd9b7ba052f28bd0d67e534c33a (Round 2) | experiments/saab900/build/model.blend | experiments/saab900/model.py, round2.py |
 | Both XC70s | same Round 2 revision | experiments/xc70p2/build/model.blend | experiments/xc70p2/model.py, round2.py, variants.py |
 | Impala | 46fa31e9094ab6e1e30f2b542de83383f85fb7c7 | experiments/impala1970/build/model.blend | experiments/impala1970/model.py |
 | Micra | 5c84a173f3bbd8206f067ec18594cecdaf5476b5 | experiments/micra1995/build/model.blend | experiments/micra1995/model.py |
@@ -73,8 +73,9 @@ GLB exporter: metres, Y-up, apply modifiers, visible objects only, preserve node
 names and wheel hub pivots. XC70 variants share one master; `variants.py` changes
 paint/equipment visibility rather than authoring a second body. Source geometry
 must pass the original experiment's topology/pose gates before replacing an export.
-Blender 4.3.2 authored the original exports. Delivered GLBs are meshopt-compressed
-derivatives, not byte-identical copies. Re-export bytes can vary by version.
+Blender 4.3.2 authored the original exports; the Volvo 240's round 3 was edited
+and exported with Blender 5.3 (`experiments/volvo240/refinement/round3/README.md`).
+Delivered GLBs are meshopt-compressed derivatives, not byte-identical copies. Re-export bytes can vary by version.
 
 Measured full-model bounds (including trim), metres, X width × Y height × Z length:
 240 1.830×1.433×4.820; Saab 1.750×1.420×4.680; XC70 2.020×1.563×4.743;
@@ -104,8 +105,9 @@ they are: the body (painted), `glass_*` (cracked), `body_*` (painted with the bo
 the police beacons `lamp_blue_module*` and `lamp_police_grille*` (flashing), the
 wheels and everything under them (spinning), and any part with attributes other than
 position and normal. Merged parts are named `parts_<material>`. A model with nothing
-left to merge passes through unchanged. A Vitest asset test fails if a delivered
-model's body carries two static parts of one material.
+left to merge, such as the Volvo 240 (merged in its master), passes through
+unchanged. A Vitest asset test fails if a delivered model's body carries two static
+parts of one material.
 
 Then it runs `gltfpack -c -kn -km -noq` for each public GLB: meshopt compression,
 retained named nodes/materials, no mesh simplification or vertex quantization.
@@ -115,7 +117,7 @@ Normal startup keeps the procedural fallback if decoding fails.
 
 | Delivery file | Original export in pinned source tree | Original bytes | Compressed bytes | Draw calls |
 | --- | --- | ---: | ---: | ---: |
-| volvo240.glb | experiments/volvo240/refinement/review-only.glb | 266208 | 136140 | 14 |
+| volvo240.glb | experiments/volvo240/refinement/review-only.glb | 372772 | 183840 | 17 |
 | saab900-t16.glb | experiments/saab900/build/saab900-t16.glb | 345828 | 154152 | 20 |
 | xc70-civilian.glb | experiments/xc70p2/build/xc70-civilian.glb | 534248 | 214612 | 19 |
 | xc70-police.glb | experiments/xc70p2/build/xc70-police.glb | 557692 | 224672 | 24 |
@@ -123,9 +125,10 @@ Normal startup keeps the procedural fallback if decoding fails.
 | micra-k11.glb | media/vehicles/micra-k11.glb | 369336 | 218028 | 15 |
 | duett-p210-epa.glb | media/vehicles/duett-p210-epa.glb | 270612 | 148424 | 19 |
 
-Total: 3,059,188 to 1,470,400 bytes (51.9% smaller). Draw calls per model are
+Total: 3,165,752 to 1,518,100 bytes (52.0% smaller). Draw calls per model are
 its meshes as three.js draws them, wheels included. Before the merge they were
-31, 39, 57, 65, 27, 24 and 25, in the table's order: 132 fewer for all seven.
+31 (the 240's round 2), 39, 57, 65, 27, 24 and 25, in the table's order: 129
+fewer for all seven.
 
 Local original-vs-decoded comparisons verified all named model nodes, triangle
 positions to 0.01 mm, material colours/emissive/roughness/metalness/opacity within
