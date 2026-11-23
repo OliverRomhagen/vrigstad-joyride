@@ -147,10 +147,13 @@ test('material arrays, instanced trees and custom materials', () => {
     walls = new THREE.MeshLambertMaterial(),
     glass = new THREE.MeshLambertMaterial({ transparent: true, opacity: 0.4 }),
     sky = new THREE.ShaderMaterial(),
+    water = new THREE.MeshLambertMaterial(),
     building = new THREE.Mesh(box, [walls, glass]),
     trees = new THREE.InstancedMesh(box, walls, 4),
-    dome = new THREE.Mesh(box, sky);
-  scene.add(building, trees, dome);
+    dome = new THREE.Mesh(box, sky),
+    lake = new THREE.Mesh(box, water);
+  water.onBeforeCompile = () => {}; // its colour comes from the patched shader, which a toon copy would lose
+  scene.add(building, trees, dome, lake);
   const renderer = recordingRenderer(scene);
   new ToonStyle(renderer).render(scene, camera);
   const [toonWalls, toonGlass] = renderer.seen.get(building) as THREE.MeshToonMaterial[];
@@ -159,6 +162,7 @@ test('material arrays, instanced trees and custom materials', () => {
   expect(renderer.seen.get(trees)).toBe(toonWalls); // trees get the bands, and no lines: they aren't flagged
   expect(trees.children).toHaveLength(0);
   expect(renderer.seen.get(dome)).toBe(sky);
+  expect(renderer.seen.get(lake)).toBe(water);
   expect(building.material).toEqual([walls, glass]);
   expect(trees.material).toBe(walls);
 });

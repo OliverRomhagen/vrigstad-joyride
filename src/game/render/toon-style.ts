@@ -31,10 +31,12 @@ type LitMaterial = THREE.MeshLambertMaterial | THREE.MeshPhongMaterial | THREE.M
 type MeshMaterial = THREE.Material | THREE.Material[];
 type Renderer = Pick<THREE.WebGLRenderer, 'render'>;
 
+// a material with its own shader patch (the water) keeps it: a toon copy would draw it in its plain, often white, colour
 const isLit = (material: THREE.Material): material is LitMaterial =>
-  material instanceof THREE.MeshLambertMaterial ||
-  material instanceof THREE.MeshPhongMaterial ||
-  material instanceof THREE.MeshStandardMaterial;
+  (material instanceof THREE.MeshLambertMaterial ||
+    material instanceof THREE.MeshPhongMaterial ||
+    material instanceof THREE.MeshStandardMaterial) &&
+  material.onBeforeCompile === THREE.Material.prototype.onBeforeCompile;
 const isOpaque = (material: MeshMaterial) =>
   Array.isArray(material) ? material.every(m => !m.transparent) : !material.transparent;
 
