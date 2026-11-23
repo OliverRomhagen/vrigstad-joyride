@@ -79,6 +79,55 @@ test.describe('game (index.html)', () => {
     expect(errors).toEqual([]);
   });
 
+  // In Vrigstadsån's channel west of the bridge: the player starts in the water, below the bank either side (#263).
+  test('builds the lakes, the rivers in their channels and the shore, and starts you wet in the river', async ({
+    page,
+  }, testInfo) => {
+    const errors = watchErrors(page);
+    await page.goto('/index.html?at=-60,-518,1.6,0.3');
+    await page.setViewportSize({ width: 640, height: 360 }); // keep software WebGL affordable
+    await expectWebGL(page);
+    const { water: w } = await state(page);
+    expect(w.lakes).toBe(4);
+    expect(w.courses).toBeGreaterThan(0);
+    expect(w.meshes).toBeGreaterThan(0);
+    expect(w.triangles).toBeGreaterThan(0);
+    expect(w.refinedCells).toBeGreaterThan(0);
+    expect(w.reeds).toBeGreaterThan(0);
+    expect(w.stones).toBeGreaterThan(0);
+    expect(w.shore.stony + w.shore.reedy + w.shore.sandy + w.shore.grassy).toBeGreaterThan(0);
+    // the ground under the player is under the river's level, and the game calls it water
+    expect(w.level).not.toBeNull();
+    expect(w.ground).toBeLessThan(w.level);
+    expect(w.wet).toBe(true);
+    await page.locator('#go').click();
+    await frames(page, 5);
+    await page.screenshot({ path: testInfo.outputPath('game-river-channel.png') });
+    expect(errors).toEqual([]);
+  });
+
+  test('builds the six mapped bridges and starts you on the Jönköpingsvägen deck', async ({ page }, testInfo) => {
+    const errors = watchErrors(page);
+    await page.goto('/index.html?at=-33.9,-8.4,1.6,0.3');
+    await page.setViewportSize({ width: 640, height: 360 }); // keep software WebGL affordable
+    await expectWebGL(page);
+    const { bridges: b, water: w } = await state(page);
+    expect(b.count).toBe(6);
+    // over Vrigstadsån's channel, but on the deck: dry (#263)
+    expect(w.level).not.toBeNull();
+    expect(w.wet).toBe(false);
+    expect(b.byArchetype).toEqual({ 'road-slab': 1, 'path-steel': 4, 'path-timber': 1 });
+    expect(b.onDeck).toBe(true);
+    // the player stands on groundAt, so on the deck's surface rather than the terrain under it
+    expect(b.groundY).toBeCloseTo(b.deckY, 5);
+    expect(b.meshes).toBe(12);
+    expect(b.triangles).toBeLessThan(15000);
+    await page.locator('#go').click();
+    await frames(page, 5);
+    await page.screenshot({ path: testInfo.outputPath('game-bridge.png') });
+    expect(errors).toEqual([]);
+  });
+
   test('places street lamps, benches and bins and reports them on the hook, also in the debug view', async ({
     page,
   }, testInfo) => {

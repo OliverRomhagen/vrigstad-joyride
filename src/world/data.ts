@@ -39,6 +39,15 @@ export interface Road {
   po?: [ParkingOrientation, ParkingOrientation];
   /** lit=yes (1) or lit=no (2); absent when not mapped */
   lt?: 1 | 2;
+  /** bridge=* other than no: the road crosses on a bridge (#238) */
+  br?: BridgeTags;
+}
+
+export interface BridgeTags {
+  /** layer=*: confirms grade separation, never an elevation */
+  l?: number;
+  /** bicycle=designated: a cycle bridge, with a wider deck and a higher railing */
+  cy?: 1;
 }
 
 /** amenity=parking on the ground; underground, multi-storey and rooftop parking are dropped by tools/process.py */
