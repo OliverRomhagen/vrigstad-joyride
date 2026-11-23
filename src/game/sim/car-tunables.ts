@@ -99,6 +99,7 @@ export function registerCarTunables(t: Tunables): void {
       max: 1,
       help: 'of the steering response time on sport springs',
     },
+    EPA_TOP_MS: { name: 'epa-top-speed', unit: 'm/s', min: 8.33, max: 40, help: "a tuned EPA-traktor's top speed" },
     BODY_DAMAGE: {
       name: 'body-damage',
       unit: 'share',

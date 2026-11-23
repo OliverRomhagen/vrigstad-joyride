@@ -28,7 +28,8 @@ const UPGRADE_DONE: Readonly<Record<Upgrade, string>> = {
   springs: '”Nu ligger ho som klistrad på vägen.”',
   body: '”Ja har svetsat in lite extra plåt. Nu tål ho en smäll.”',
 };
-const EPA_TUNED = '”En trimmad EPA? Dä har ja aldrig gjort förut. Aldrig nånsin.”';
+const EPA_TUNED =
+  '”En trimmad EPA? Dä har ja aldrig gjort förut. Aldrig nånsin. Å knappen under ratten har du inte fått av mej.” Press T (or Limiter) to flip it.';
 /** What he says when you talk to him on foot, one after the other. */
 export const OWNER_LINES = [
   '”Tjena! Har du nån bil du vill bli av mä? Kör in den på ringen.”',

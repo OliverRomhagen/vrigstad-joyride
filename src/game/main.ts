@@ -57,6 +57,7 @@ import { SKROT_CARPORT, SKROT_HALL, yardFloorAt, yardLayout } from './skroten-ya
 import { SkrotenMeshes } from './render/skroten';
 import { PriceTags } from './render/price-tags';
 import { KIOSK, type Place, Places } from './places';
+import { flipLimiter } from './sim/upgrades';
 import { CAT_SCRATCH_HP, canHurt, LOW_HP, hurt, newHealth, registerCarDamageCommand, registerHealthCommands } from './health';
 import { HOME } from './player';
 import { Wanted } from './police';
@@ -355,7 +356,7 @@ debugOverlay?.registerCommands(commands);
 // the dev console sees each key first, then the menus (src/game/menu.ts)
 const input = new Input({ win: window, doc: document, canvas, $, coarse, menuKey: e => devcon.takeKey(e) || menuKey(e),
   get started() { return game.started; }, get menuOpen() { return !kmenu.hidden; },
-  action: () => action(), respawn: () => respawn(), rain: () => cashRain.makeItRain(),
+  action: () => action(), respawn: () => respawn(), rain: () => cashRain.makeItRain(), limiter: () => { const said = flipLimiter(game.inCar ? game.pcar : null); if (said) toast(said, 2.5); },
   jump: () => { if (jumpOk()) game.jumpQ = true; },   // queue only where a jump can start (see jumpOk)
   look: (dx, dy) => { if (game.inCar) { view.lookOff = wrap(view.lookOff + dx * 0.006); view.lookIdle = 0; } else view.camYaw = wrap(view.camYaw + dx * 0.006);
     view.camPitch = clamp(view.camPitch + dy * 0.004, 0.06, 1.25); },

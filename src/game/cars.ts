@@ -99,6 +99,7 @@ export interface Car extends Point {
   hitAt: number;
   color: string; // the paint (sRGB), one of T.cols
   mods: CarMods; // Plåt-Pelle's upgrades (sim/upgrades.ts)
+  limiterOff: boolean; // a tuned EPA-traktor's switch under the wheel is on: it drives as fast as a car
 }
 
 /** A new car standing still at (x, z), nose towards h. `color` is the caller's roll from T.cols, so the world's rolls stay in their order. */
@@ -145,6 +146,7 @@ export function newCar(
     hitAt: -9,
     color,
     mods: noMods(),
+    limiterOff: false,
   };
 }
 /** Where a car or a walker is on the street network: road ri, from vertex a towards a + dir. */
