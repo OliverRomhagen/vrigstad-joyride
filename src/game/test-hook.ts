@@ -34,7 +34,7 @@ export interface TestHookDeps {
   debugStreetscape: boolean;
   bridges: {
     index: Pick<BridgeIndex, 'bridges' | 'deckAt'>;
-    draw: { draw: { meshes: readonly unknown[]; triangles: number }; ms: number };
+    draw: { meshes: readonly unknown[]; triangles: number; ms: number };
     groundAt(x: number, z: number): number;
   };
   furniture: { layout: FurnitureLayout; draw: { meshes: readonly unknown[]; triangles: number }; ms: number };
@@ -137,8 +137,8 @@ export function installTestHook(g: TestHookDeps) {
       onDeck: deck !== null,
       deckY: deck,
       groundY: groundAt(player.x, player.z),
-      meshes: draw.draw.meshes.length,
-      triangles: draw.draw.triangles,
+      meshes: draw.meshes.length,
+      triangles: draw.triangles,
       buildMs: Math.round(draw.ms),
     };
   }

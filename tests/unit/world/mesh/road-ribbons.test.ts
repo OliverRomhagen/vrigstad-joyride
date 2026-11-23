@@ -197,3 +197,20 @@ describe('RoadRibbons on a bridge (#238)', () => {
       if (Math.abs(pos.getX(i)) < 1e-6) expect(pos.getY(i)).toBeCloseTo(5 + roadLiftM(RoadClass.PRIMARY) + 0.25, 5);
   });
 });
+
+describe('RoadRibbons skipping a road (#238)', () => {
+  it('draws no ribbon for a road it is told to skip, and every other road as before', () => {
+    const asphalt = new THREE.Texture();
+    const roads = new RoadNetwork(
+      makeWorld({ r: [MAIN_ROAD, { c: RoadClass.PATH, n: '', p: [0, -40, 0, 40] }] }),
+      terrainAt(0),
+    );
+    const options = { asphalt, roadColours: ROAD_COLOURS, centreLineColour: 0xffffff };
+    const all = new RoadRibbons(roads, terrainAt(0), options);
+    const skipped = new RoadRibbons(roads, terrainAt(0), { ...options, skip: ri => ri === 1 });
+    // the path's mesh is gone; the primary road's and its centre line's are the same
+    expect(skipped.meshes).toHaveLength(all.meshes.length - 1);
+    const position = (r: RoadRibbons, i: number) => Array.from(r.meshes[i].geometry.getAttribute('position').array);
+    expect(position(skipped, 0)).toEqual(position(all, 0));
+  });
+});

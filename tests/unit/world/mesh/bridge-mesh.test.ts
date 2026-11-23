@@ -129,6 +129,22 @@ describe('BridgeMesh', () => {
     map.dispose();
   });
 
+  it('draws a footbridge deck top at the height people walk on, since it gets no ribbon', () => {
+    for (const b of index.bridges.slice(1)) {
+      const body = mesh.meshes[index.bridges.indexOf(b) * 2];
+      const pos = body.geometry.getAttribute('position');
+      // the plate's or boards' top corners sit exactly on deckAt; with a ribbon over them they sat 3 cm under it
+      let onDeck = 0;
+      for (let i = 0; i < pos.count; i++) {
+        const x = pos.getX(i) + body.position.x;
+        const z = pos.getZ(i) + body.position.z;
+        const deck = index.deckAt(x, z);
+        if (deck !== null && Math.abs(pos.getY(i) + body.position.y - deck) < 1e-3) onDeck++;
+      }
+      expect(onDeck, b.key).toBeGreaterThan(10);
+    }
+  });
+
   it('frees its geometry on dispose and leaves the materials to the page', () => {
     let geometries = 0;
     let freedMaterials = 0;
