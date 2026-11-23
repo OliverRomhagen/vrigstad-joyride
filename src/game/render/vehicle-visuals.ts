@@ -197,6 +197,11 @@ export class VehicleVisuals {
   loaded(car: Car) {
     return this.records.get(car)?.status === 'loaded';
   }
+  /** The car's detailed model while it shows, else null: then its procedural body shows. */
+  visibleModel(car: Car) {
+    const root = this.records.get(car)?.root;
+    return root?.visible ? root : null;
+  }
   definition(car: Car) {
     return this.records.get(car)?.definition;
   }

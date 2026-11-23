@@ -15,6 +15,8 @@ const ALONG = { x: 0.9944, z: 0.1059 }, // the road's direction along the yard, 
   INTO = { x: -0.1059, z: 0.9944 }; // and the way into the yard, at right angles to it
 /** The yard frame's turn about y, for three.js: local x is u, local z is v. */
 export const YARD_TURN = -Math.atan2(ALONG.z, ALONG.x);
+/** The heading (Car.h: rad, 0 is north) of a car standing in the yard at `turn`: a model's nose, local -z, turned by YARD_TURN + turn. */
+export const yardHeading = (turn: number) => -(YARD_TURN + turn);
 /** A point inside the hall that becomes Skroten's workshop, to find its outline among the buildings. */
 export const SKROT_HALL = { x: 945, z: 88 } as const;
 /** A point inside the long open carport behind the yard. */
@@ -141,6 +143,8 @@ export interface Carport extends FloorArea {
 export interface YardLayout {
   fence: FenceRun[];
   yardCars: YardCar[];
+  /** The cars for sale: real cars that main.ts parks in the fleet, so they are neither drawn nor solid here. */
+  forSale: YardCar[];
   /** The wheel off the broken tractor, lying beside it. */
   looseWheel: { u: number; v: number } | null;
   heaps: Heap[];
@@ -345,11 +349,12 @@ const FRESH_COLOURS = ['#b9bab4', '#1f3b6a', '#8c1c1c', '#e8e4d8', '#2b2b2b', '#
 /** The TILL SALU sign, in front of the row of cars for sale, facing the yard. */
 export const SALE_SIGN = { u: 21, v: 25.2, w: 5 } as const; // w: the TILL SALU board's width (m), its posts inside it
 const WRECK_GAP_M = 2.6; // between the middles of neighbours in a row
+const FRESH_GAP_M = 2.9; // the same for the cars for sale: wider than two cars' collision reach (2.7 m), so none nudges its neighbours
 const WRECK_HALF_LEN_M = 2.7; // half the longest car's length, for the row's outline
 const WRECK_SPREAD_M = 0.5; // how far a wreck's jitter (±0.4 m, ±0.15 rad) can carry its ends past its row's line
 const TRACTORS = [
-  // two old tractors: a broken red one in the yard, leaning where its wheel came off, and a green one that still runs, in the carport's
-  // last bay (here only when there is no carport)
+  // two old tractors: a broken red one in the yard, leaning where its wheel came off, and a green one that still runs, for sale in the
+  // carport's last bay (here only when there is no carport)
   { u: -27, v: 14, turn: 0.4, colour: '#8a2f2a', broken: true, bay: null },
   { u: -5, v: 22, turn: 0.2, colour: '#4f7a34', broken: false, bay: 5 },
 ];
@@ -513,9 +518,10 @@ export function yardLayout(
   outlines.push(rect(CONTAINERS.u, CONTAINERS.v, CONTAINERS.w, CONTAINERS.d * 2));
   outlines.push(rect(OWNER_UV.u, OWNER_UV.v, 0.7, 0.7)); // Plåt-Pelle stands his ground
 
-  const yardCars: YardCar[] = [];
+  const yardCars: YardCar[] = [],
+    forSale: YardCar[] = [];
   for (const row of WRECK_ROWS) {
-    for (let u = row.u0; u <= row.u1 + 0.01; u += WRECK_GAP_M) {
+    for (let u = row.u0; u <= row.u1 + 0.01; u += row.fresh ? FRESH_GAP_M : WRECK_GAP_M) {
       if (!row.fresh && rnd() < 0.12) continue; // a gap where one has gone to the crusher
       const below: YardCar = row.fresh
         ? {
@@ -540,7 +546,7 @@ export function yardLayout(
             wrecked: true,
             stack: 0,
           };
-      yardCars.push(below);
+      (row.fresh ? forSale : yardCars).push(below);
       if (row.stacks && rnd() < 0.45) {
         below.stack = 1;
         yardCars.push({
@@ -554,19 +560,13 @@ export function yardLayout(
         });
       }
     }
-    outlines.push(
-      rect(
-        (row.u0 + row.u1) / 2,
-        row.v,
-        row.u1 - row.u0 + 2.2,
-        (WRECK_HALF_LEN_M + (row.fresh ? 0 : WRECK_SPREAD_M)) * 2,
-      ),
-    );
+    if (!row.fresh)
+      outlines.push(rect((row.u0 + row.u1) / 2, row.v, row.u1 - row.u0 + 2.2, (WRECK_HALF_LEN_M + WRECK_SPREAD_M) * 2));
   }
   let looseWheel: { u: number; v: number } | null = null;
   for (const { broken, bay, ...spot } of TRACTORS) {
     const t = { ...spot, ...(carport && bay !== null ? inBay(carport, bay) : {}) };
-    yardCars.push({
+    (broken ? yardCars : forSale).push({
       ...t,
       tilt: broken ? 0.16 : 0,
       pitch: broken ? -0.05 : 0,
@@ -574,11 +574,10 @@ export function yardLayout(
       wrecked: broken,
       stack: 0,
     });
+    if (!broken) continue; // the one for sale is a car you can drive away, with no outline of its own, like the others on the lot
     outlines.push(rect(t.u, t.v, 2.3, 3.6, t.turn));
-    if (broken) {
-      looseWheel = { u: t.u + 2.4, v: t.v + 0.6 }; // lying on the ground by its side
-      outlines.push(rect(looseWheel.u, looseWheel.v, 1.6, 1.6));
-    }
+    looseWheel = { u: t.u + 2.4, v: t.v + 0.6 }; // lying on the ground by its side
+    outlines.push(rect(looseWheel.u, looseWheel.v, 1.6, 1.6));
   }
   outlines.push(rect(SALE_SIGN.u, SALE_SIGN.v, SALE_SIGN.w, 0.4)); // its posts and the board between them
 
@@ -587,7 +586,7 @@ export function yardLayout(
     for (const k of [0, 1, 3, 4]) {
       const { turn, ...p } = inBay(carport, k),
         t = turn + (rnd() - 0.5) * 0.15;
-      yardCars.push({
+      forSale.push({
         ...p,
         turn: t,
         tilt: 0,
@@ -597,7 +596,6 @@ export function yardLayout(
         wrecked: false,
         stack: 0,
       });
-      outlines.push(rect(p.u, p.v, 2.1, 5, t));
     }
   }
 
@@ -620,6 +618,7 @@ export function yardLayout(
   return {
     fence,
     yardCars,
+    forSale,
     looseWheel,
     heaps,
     tyres,

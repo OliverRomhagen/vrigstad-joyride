@@ -24,6 +24,7 @@ const CAR_KR_BY_MODEL: Readonly<Record<string, number>> = {
   'micra-k11': 400,
   'duett-epa': 600,
 };
+const SALE_MARKUP = 2.5; // Plåt-Pelle sells a car on his lot for this many times what he pays for one whole
 
 // The trisslott vinstplan: of every TRISS_TICKETS tickets, how many win each prize, as [kr, tickets]; the rest lose.
 // One ticket in ten wins, most of them a ticket back, and about a fifth of the money comes back.
@@ -73,11 +74,32 @@ export function trissPrize(r: number): number {
 
 /** What Skroten pays for a car of this type and model at this much damage, in round tens; null when it won't buy it. */
 export function carPrice(type: string, model: string | undefined, dmg: number): number | null {
-  const base = (model && CAR_KR_BY_MODEL[model]) || CAR_KR_BY_TYPE[type];
+  const base = wholeKr(type, model);
   if (!base) return null;
   const whole = 1 - Math.min(Math.max(dmg, 0), DMG_MAX) / DMG_MAX;
   return Math.round((SCRAP_KR + (base - SCRAP_KR) * whole) / 10) * 10;
 }
+
+/** What Plåt-Pelle asks for a car of this type and model on Skroten's lot, in round hundreds; null for one he would never buy. */
+export function salePrice(type: string, model: string | undefined): number | null {
+  const base = wholeKr(type, model);
+  return base ? Math.round((base * SALE_MARKUP) / 100) * 100 : null;
+}
+
+/**
+ * What Plåt-Pelle asks for a car on his lot that has been knocked about: scrap, plus the rest of its price by how whole it is, the way
+ * carPrice pays, rounded up to hundreds. He asks more than Skroten pays at every damage, so a dented car is never bought and sold back
+ * at a profit. Null for a wreck, which he won't sell until he has mended it.
+ */
+export function lotPrice(saleKr: number, dmg: number): number | null {
+  if (dmg >= DMG_MAX) return null;
+  if (dmg <= 0) return saleKr;
+  return Math.ceil((SCRAP_KR + (saleKr - SCRAP_KR) * (1 - dmg / DMG_MAX)) / 100) * 100;
+}
+
+// what Skroten pays for an undamaged car: by its model, else by its type; undefined for a police car
+const wholeKr = (type: string, model: string | undefined): number | undefined =>
+  (model && CAR_KR_BY_MODEL[model]) || CAR_KR_BY_TYPE[type];
 
 /** The fine for Gripen! with this many stars; never more than the wallet holds. */
 export function fine(kr: number, stars: number): number {

@@ -665,6 +665,33 @@ test.describe('game (index.html)', () => {
     expect(await state(page)).toMatchObject({ inCar: false, car: null });
     expect(errors).toEqual([]);
   });
+
+  test('Plåt-Pelle sells you a car from his lot, and it is yours to drive', async ({ page }, testInfo) => {
+    const errors = watchErrors(page);
+    await page.setViewportSize({ width: 640, height: 360 });
+    await page.goto('/index.html?dev');
+    const lot = (await state(page)).forSale;
+    expect(lot.length).toBeGreaterThanOrEqual(8);
+    // stand 3.5 m behind the first car (its nose points along (sin h, -cos h)): the cars stand side by side, noses to the yard
+    const c = lot[0];
+    await page.goto(`/index.html?dev&at=${c.x - Math.sin(c.h) * 3.5},${c.z + Math.cos(c.h) * 3.5},0`);
+    await page.locator('#go').click();
+    await page.keyboard.press('Backquote');
+    await page.keyboard.type('kr 5000');
+    await page.keyboard.press('Enter');
+    await page.keyboard.press('Escape');
+    const { kr } = await state(page);
+    await expect(page.locator('#prompt')).toContainText('Buy the ');
+    await page.keyboard.press('KeyE');
+    await expect(page.locator('#kmenu')).toContainText('å den ä din');
+    await page.screenshot({ path: testInfo.outputPath('game-skroten-buy.png') });
+    await page.keyboard.press('Digit1');
+    expect(await state(page)).toMatchObject({ kr: kr - c.kr, inCar: false, stars: 0 });
+    await expect(page.locator('#prompt')).toContainText('Get in the ');
+    await page.keyboard.press('KeyE');
+    expect(await state(page)).toMatchObject({ inCar: true, stars: 0 });
+    expect(errors).toEqual([]);
+  });
 });
 
 // The real pointer lock is unreliable headless, so these fake it: requestPointerLock / exitPointerLock set a fake

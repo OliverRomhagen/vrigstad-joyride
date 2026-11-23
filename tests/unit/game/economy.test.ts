@@ -5,11 +5,13 @@ import {
   earn,
   FINE_PER_STAR_KR,
   fine,
+  lotPrice,
   newWallet,
   pay,
   registerWalletCommands,
   SCRAP_KR,
   START_KR,
+  salePrice,
   TRISS_KR,
   TRISS_PLAN,
   TRISS_TICKETS,
@@ -119,5 +121,37 @@ describe('what Skroten pays for a car', () => {
   it('never buys a police car', () => {
     expect(carPrice('polis', 'xc70-police', 0)).toBeNull();
     expect(carPrice('polis', undefined, 0)).toBeNull();
+  });
+});
+
+describe('what Plåt-Pelle asks for a car on his lot', () => {
+  it('asks two and a half times what Skroten pays for one whole, in round hundreds, and never sells a police car', () => {
+    expect(salePrice('volvo', 'volvo240')).toBe(2000);
+    expect(salePrice('saab', 'saab900')).toBe(2500);
+    expect(salePrice('volvo', 'impala1970')).toBe(4000);
+    expect(salePrice('epa', 'duett-epa')).toBe(1500);
+    expect(salePrice('saab', undefined)).toBe(2500); // by type when the model has no price
+    expect(salePrice('polis', undefined)).toBeNull();
+  });
+
+  it('asks less for one that got knocked about, rounded up to hundreds, and sells no wreck', () => {
+    expect(lotPrice(2000, 0)).toBe(2000);
+    expect(lotPrice(2000, 30)).toBe(1500); // 100 + 1 900 × 0.7 = 1 430
+    expect(lotPrice(2000, 99)).toBe(2 * SCRAP_KR); // 119
+    expect(lotPrice(2000, DMG_MAX)).toBeNull();
+  });
+
+  it('always asks more than Skroten pays for the same car, so nothing is bought and sold back at a profit', () => {
+    for (const [type, model] of [
+      ['volvo', 'volvo240'],
+      ['saab', 'saab900'],
+      ['volvo', 'xc70'],
+      ['volvo', 'impala1970'],
+      ['saab', 'micra-k11'],
+      ['epa', 'duett-epa'],
+      ['traktor', undefined],
+    ] as const)
+      for (let dmg = 0; dmg < DMG_MAX; dmg++)
+        expect(lotPrice(salePrice(type, model)!, dmg)!).toBeGreaterThan(carPrice(type, model, dmg)!);
   });
 });

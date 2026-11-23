@@ -90,6 +90,7 @@ function actions(
     },
     nearOwner: () => !!o.owner,
     talkToOwner: () => void calls.push('owner'),
+    offerCar: c => void calls.push('offer ' + c.saleKr),
     collide: () => {},
     placeCar: () => {},
     rnd: () => o.roll ?? 0.9,
@@ -175,6 +176,15 @@ describe('Actions.action', () => {
     t.a.action();
     expect(t.game.inCar).toBe(false);
     expect(t.calls).toEqual(['owner']);
+  });
+
+  it("asks Plåt-Pelle his price for a car on Skroten's lot instead of stealing it", () => {
+    const c = parked({ saleKr: 2000 }),
+      t = actions({ cars: [c] });
+    t.a.action();
+    expect(t.calls).toEqual(['offer 2000']);
+    expect(t.game.inCar).toBe(false);
+    expect(c.owned).toBe(false);
   });
 
   it('gets you out when Skroten makes no offer: off its ring, or refused', () => {
