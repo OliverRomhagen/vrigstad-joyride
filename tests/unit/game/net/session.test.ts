@@ -172,6 +172,43 @@ describe('Session over the loopback connector', () => {
     expect(b.seen.get('a')!.x).toBeGreaterThan(6);
   });
 
+  it('settles on one clock when two who joined about a second apart each count themselves the oldest', () => {
+    const { join, run } = room({ lagMs: 80 }),
+      z = join('z');
+    run(1000);
+    const a = join('a', -10_000); // a lower id, a clock 10 s behind, and z a network delay late by a's reckoning
+    run(6000);
+    expect(Math.abs(a.session.now - z.session.now)).toBeLessThan(60);
+  });
+
+  it('keeps showing a player who has driven one car for longer than ten minutes', () => {
+    const { join, run } = room(),
+      a = join('a'),
+      b = join('b');
+    run(500);
+    a.p.driven = a.cars[0];
+    a.cars[0].mode = 'player';
+    run(11 * 60_000);
+    expect(b.session.peers).toBe(1);
+    expect(b.cars[0].mode).toBe('remote');
+  });
+
+  it('lets go of the cars the others drove when it leaves', () => {
+    const { join, run } = room(),
+      a = join('a'),
+      b = join('b');
+    run(500);
+    a.p.driven = a.cars[0];
+    a.cars[0].mode = 'player';
+    run(1000);
+    expect(b.cars[0].mode).toBe('remote');
+    b.session.leave();
+    expect(b.cars[0].mode).toBe('idle');
+    expect(b.seen.size).toBe(0);
+    run(1000);
+    expect(b.seen.size).toBe(0);
+  });
+
   it('lets a player back from the background lose the car another took meanwhile', () => {
     const { join, run } = room(),
       a = join('a'),
@@ -265,7 +302,7 @@ describe('Session over the loopback connector', () => {
       { snap: { ...snap, x: 1e308 } },
       { snap: { ...snap, v: 9000 } },
       { snap: { ...snap, t: 1e15 } },
-      { snap: { ...snap, car: { ...car, look, since: -1e300 } } },
+      { snap: { ...snap, car: { ...car, look, since: 1e15 } } },
       { snap: { ...snap, car: { ...car, look, dmg: -50 } } },
       // a look that would make a new car geometry for every message, or a type that only looks like one
       { snap: { ...snap, car: { ...car, look: { ...look, color: 'rgb(1,2,3)' } } } },

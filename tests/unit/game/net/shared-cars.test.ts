@@ -153,4 +153,13 @@ describe('SharedCars', () => {
     a.shared.hear([{ ...a.told[0], t: -3000, x: 77 }]);
     expect(a.cars[0].x).toBe(77);
   });
+
+  it("leaves what it heard where it is when the room's clock jumps: that was on the room's clock already", () => {
+    const b = client('b'),
+      left: RestingCar = { id: 'p1', t: 1000, x: 40, z: 0, h: 0, dmg: 0, look, gone: false };
+    b.shared.hear([left]);
+    b.shared.shift(5000);
+    b.shared.hear([{ ...left, t: 2000, x: 60 }]);
+    expect(b.cars[1].x).toBe(60);
+  });
 });

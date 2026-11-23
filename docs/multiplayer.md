@@ -335,8 +335,9 @@ What it is, in `src/game/net/`, in the layers described above:
 The message hooks (`net.use`) and the capabilities are not built yet.
 
 **The room's clock.** Two computers' clocks can be seconds apart. Every player asks the others the time once a
-second and follows the clock of the player who has been in the room longest. Each says how long that is, not when
-they joined by their own clock, which could put a latecomer first. When that player leaves, the next one carries
+second and follows the clock of the player who has had the game open longest. Each says how long that is, not
+when they started by their own clock, which could put a latecomer first; two who started about together, and could
+each count themselves first, say whose clock they follow, and the higher id gives way. When that player leaves, the next one carries
 the room's time on as it was. Every time in a message is on that clock; when a player's reading of it jumps (two
 rooms meet), the times they kept move with it.
 

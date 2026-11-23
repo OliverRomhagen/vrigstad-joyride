@@ -9,8 +9,9 @@ import type { Transport } from './transport';
 
 export const SILENT_MS = 3000; // a player not heard from this long has gone (closed, or in the background, where frames stop)
 const MAX_CARS = 500; // more resting cars than this in one message is not a village
-// What a peer may say: a little past the playable square (±1100 m), past any car's top speed, and times within this
-// long of the room's now, so a number can't overflow the blending, freeze a car's state or win every tie
+// What a peer may say: a little past the playable square (±1100 m), past any car's top speed, and times no further
+// ahead of the room's now than this (a snapshot's own time no further either way), so a number can't overflow the
+// blending or freeze a car's state. When a player got in, or left a car, can be long ago
 const MAX_POS_M = 1500,
   MAX_SPEED_MS = 150,
   MAX_HEIGHT_M = 500,
@@ -26,13 +27,16 @@ const PING_S = 1, // how often a player asks the others what time it is
   RESTART_MS = 1000, // a snapshot this much older than a player's newest is from a new clock too
   // two who joined this close together are told apart by id: each works out the other's join time a network
   // delay late, so a closer call could come out differently on the two computers
-  JOIN_TIE_MS = 1000;
+  JOIN_TIE_MS = 1000,
+  // a player this long in the room has heard everyone's ping, so whose clock they follow is worth saying
+  SETTLED_MS = 2500;
 
 /**
- * Asks what the room's time is. `age` is how long the asker has been in the room (ms): unlike a time by their clock,
- * it means the same on every computer. The oldest player's clock is the room's.
+ * Asks what the room's time is. `age` is how long the asker has had the game open (ms): unlike a time by their
+ * clock, it means the same on every computer. The oldest player's clock is the room's. `keeper` is whose clock the
+ * asker follows, once they are settled: two who each count themselves the oldest find out that way.
  */
-type Ping = { t: number; age: number };
+type Ping = { t: number; age: number; keeper?: string };
 /** The answer to the ping `to` sent at their `t`: the room's time was `at`, as far as the one answering knows. */
 type Pong = { to: string; t: number; at: number };
 // snapshots are sent again 15 times a second, so one may be lost; where a car was left is said once, so it may not
@@ -70,27 +74,34 @@ const isLook = (l: CarLook) =>
 const isDmg = (v: unknown) => isNum(v) && (v as number) >= 0 && (v as number) <= DMG_MAX;
 const isPose = (p: { x: number; z: number; h: number }) =>
   !!p && within(p.x, MAX_POS_M) && within(p.z, MAX_POS_M) && within(p.h, MAX_ANGLE_RAD);
-const isSnap = (s: Snapshot, isTime: (t: unknown) => boolean) =>
+type IsTime = (t: unknown) => boolean;
+const isSnap = (s: Snapshot, isTime: IsTime, isPast: IsTime) =>
   isPose(s) &&
   isTime(s.t) &&
   within(s.vh, MAX_ANGLE_RAD) &&
   within(s.v, MAX_SPEED_MS) &&
   within(s.y, MAX_HEIGHT_M) &&
   within(s.phase, 1e9) &&
-  (s.car === null || (!!s.car && isStr(s.car.id) && isTime(s.car.since) && isDmg(s.car.dmg) && isLook(s.car.look)));
-const isResting = (r: RestingCar, isTime: (t: unknown) => boolean) =>
-  isPose(r) && isStr(r.id) && isTime(r.t) && isDmg(r.dmg) && isLook(r.look);
+  (s.car === null || (!!s.car && isStr(s.car.id) && isPast(s.car.since) && isDmg(s.car.dmg) && isLook(s.car.look)));
+const isResting = (r: RestingCar, isPast: IsTime) =>
+  isPose(r) && isStr(r.id) && isPast(r.t) && isDmg(r.dmg) && isLook(r.look);
 // What a peer sends is input from outside: only whole messages with numbers in range and known car types get in.
 // Times are checked against the room's now as this player knows it: a player still finding the room's clock may
 // drop a moment of snapshots from a computer whose clock is far off, which the next ones make up for.
 const valid = (m: Message, now: number) => {
-  const isTime = (t: unknown) => isNum(t) && Math.abs((t as number) - now) <= MAX_TIME_OFF_MS;
+  const isTime = (t: unknown) => isNum(t) && Math.abs((t as number) - now) <= MAX_TIME_OFF_MS,
+    isPast = (t: unknown) => isNum(t) && (t as number) - now <= MAX_TIME_OFF_MS;
   return (
     !!m &&
-    (m.snap === undefined || isSnap(m.snap, isTime)) &&
+    (m.snap === undefined || isSnap(m.snap, isTime, isPast)) &&
     (m.cars === undefined ||
-      (Array.isArray(m.cars) && m.cars.length <= MAX_CARS && m.cars.every(r => isResting(r, isTime)))) &&
-    (m.ping === undefined || (!!m.ping && isNum(m.ping.t) && isNum(m.ping.age) && m.ping.age >= 0)) &&
+      (Array.isArray(m.cars) && m.cars.length <= MAX_CARS && m.cars.every(r => isResting(r, isPast)))) &&
+    (m.ping === undefined ||
+      (!!m.ping &&
+        isNum(m.ping.t) &&
+        isNum(m.ping.age) &&
+        m.ping.age >= 0 &&
+        (m.ping.keeper === undefined || isStr(m.ping.keeper)))) &&
     (m.pong === undefined || (!!m.pong && isStr(m.pong.to) && isNum(m.pong.t) && isNum(m.pong.at)))
   );
 };
@@ -110,6 +121,7 @@ export class Session {
   // the room's clock
   private readonly born: number;
   private readonly borns = new Map<string, number>(); // when each other player joined, by this clock
+  private readonly claims = new Map<string, string>(); // whose clock each settled player follows
   private keeper: string; // whose clock is the room's
   private offset = 0; // the room's time minus this clock's (ms)
   private sure = true; // false between hearing of a new keeper and their first answer
@@ -149,6 +161,8 @@ export class Session {
     this.heard.set(from, clock);
     if (m.ping) {
       this.borns.set(from, clock - m.ping.age);
+      if (m.ping.keeper === undefined) this.claims.delete(from);
+      else this.claims.set(from, m.ping.keeper);
       this.pickKeeper();
       if (this.sure) this.send({ pong: { to: from, t: m.ping.t, at: this.now } }, false);
     }
@@ -178,6 +192,11 @@ export class Session {
         keeper = id;
         born = b;
       }
+    // Near the edge of a tie, two players can each count themselves the oldest: each sees the other a network delay
+    // late. Both say so in their pings, and the one with the higher id follows the other.
+    if (keeper === me)
+      for (const [id, claim] of this.claims)
+        if (claim === id && id < keeper && Math.abs(this.borns.get(id)! - this.born) <= 2 * JOIN_TIE_MS) keeper = id;
     if (keeper === this.keeper) return;
     this.keeper = keeper;
     this.readings = [];
@@ -207,6 +226,7 @@ export class Session {
   private drop = (peer: string) => {
     this.heard.delete(peer);
     this.borns.delete(peer);
+    this.claims.delete(peer);
     this.pickKeeper();
     this.hide(peer);
   };
@@ -216,6 +236,16 @@ export class Session {
     if (!this.shown.delete(peer)) return;
     this.g.remotes.remove(peer);
     this.cars.remove(peer, this.now);
+  }
+
+  /** Leaves the room: hears nothing more, and takes the others away, letting go of the cars they drove. */
+  // fallow-ignore-next-line unused-class-member -- main.ts calls it through a type of its own, as it loads the session behind the flag
+  leave() {
+    const { transport } = this.g;
+    transport.receive = () => {};
+    transport.left = () => {};
+    transport.close();
+    for (const id of [...this.shown.keys()]) this.hide(id);
   }
 
   /** One frame of `dt` s: sends when it is time, and shows the others. */
@@ -229,7 +259,8 @@ export class Session {
     this.pingIn -= dt;
     if (this.pingIn <= 0) {
       this.pingIn = this.sure ? PING_S : PING_UNSURE_S;
-      this.send({ ping: { t: clock, age: clock - this.born } }, false);
+      const age = clock - this.born;
+      this.send({ ping: { t: clock, age, keeper: age > SETTLED_MS ? this.keeper : undefined } }, false);
     }
     this.sendIn -= dt;
     // a time on the wrong clock would be worse than a short silence

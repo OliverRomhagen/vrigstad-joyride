@@ -49,6 +49,7 @@ export class SharedCars {
   private readonly byId = new Map<string, Car>();
   private readonly ids = new Map<Car, string>();
   private readonly resting = new Map<string, RestingCar>();
+  private readonly stamped = new Set<string>(); // the cars whose word in `resting` this player gave, on this player's room time
   private readonly drivers = new Map<string, Drive>(); // by the other player's id
   private mine: Car | null = null; // the car this player drove at the last look
   private since = 0;
@@ -82,11 +83,13 @@ export class SharedCars {
     return c;
   }
 
-  /** The room's clock moved by `ms`: the times kept so far move with it, so they still compare with new ones. */
+  /**
+   * This player's reading of the room's clock moved by `ms`: the times they stamped themselves move with it, so they
+   * still compare with new ones. What they heard from the others was on the room's clock already.
+   */
   shift(ms: number) {
     this.since += ms;
-    for (const r of this.resting.values()) r.t += ms;
-    for (const d of this.drivers.values()) d.since += ms;
+    for (const id of this.stamped) this.resting.get(id)!.t += ms;
   }
 
   /**
@@ -128,6 +131,7 @@ export class SharedCars {
     if (gone) this.forget(c, id);
     const r = { id, t: now, x: c.x, z: c.z, h: c.h, dmg: c.dmg, look: this.g.look(c), gone };
     this.resting.set(id, r);
+    this.stamped.add(id);
     if (tell) this.g.tell([r]);
   }
 
@@ -190,6 +194,7 @@ export class SharedCars {
       const known = this.resting.get(r.id);
       if (known && known.t >= r.t) continue;
       this.resting.set(r.id, r);
+      this.stamped.delete(r.id);
       const c = this.byId.get(r.id);
       if (!c || !isDriven(c)) this.put(r); // a driven car is where its driver's snapshots say, until they let go
     }

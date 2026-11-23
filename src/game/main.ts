@@ -369,9 +369,9 @@ const prompt = new ActionPrompt({ $, game, places, wanted, get menuOpen() { retu
 
 // ---------- multiplayer prototype: ?lab=multiplayer shows the players of this browser's other tabs; with &net=webrtc, a friend's on another computer (docs/multiplayer.md) ----------
 // each tab sends its own player and draws the others' (the session in src/game/net/session.ts, over the tabs connector; src/game/render/remote-players.ts); ?room= names the room
-let net: { update(dt: number): void; readonly peers: number } | null = null;
-// a throw in it turns multiplayer off with a warning: thrown every frame, it would stop the frame before the drawing
-function updateNet(dt: number) { try { net?.update(dt); } catch (err) { net = null; console.warn('Lab: multiplayer stopped', err); } }
+let net: { update(dt: number): void; leave(): void; readonly peers: number } | null = null;
+// a throw in it turns multiplayer off with a warning: thrown every frame, it would stop the frame before the drawing. Leaving lets go of the cars the others drove
+function updateNet(dt: number) { try { net?.update(dt); } catch (err) { const left = net; net = null; console.warn('Lab: multiplayer stopped', err); try { left?.leave(); } catch (e) { console.warn('Lab: multiplayer could not leave', e); } } }
 if (lab.on('multiplayer')) { const seeded = cars.filter(c => c.mode === 'parked');   // now, before anyone takes one: the import below comes back later
   Promise.all([import('./net/connectors'), import('./net/session'), import('./render/remote-players')]).then(async ([con, ses, rp]) => {
   const query = new URLSearchParams(location.search), transport = await con.connect(query.get('net') || 'tabs', query.get('room') || 'torget');

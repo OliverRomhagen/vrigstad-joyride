@@ -70,7 +70,8 @@ export function showInvitePanel(g: InvitePanelDeps) {
   for (const type of ['keydown', 'keyup', 'keypress'] as const) root.addEventListener(type, e => e.stopPropagation());
 
   let step: Step = 'idle',
-    replied = false; // joining: the reply code is made
+    replied = false, // joining: the reply code is made
+    waiting = false; // this swap is done, and waits for the friend to connect
   const say = (text: string, isError = false) => {
     status.textContent = text;
     status.className = isError ? 'mp-error' : '';
@@ -91,7 +92,7 @@ export function showInvitePanel(g: InvitePanelDeps) {
   }
   function reset() {
     step = 'idle';
-    replied = false;
+    replied = waiting = false;
     out.value = input.value = '';
     draw();
   }
@@ -114,6 +115,7 @@ export function showInvitePanel(g: InvitePanelDeps) {
   inviteBtn.addEventListener('click', () =>
     run(async () => {
       say('Making an invite…');
+      waiting = false;
       out.value = await g.invites.invite();
       step = 'inviting';
       say('');
@@ -121,10 +123,12 @@ export function showInvitePanel(g: InvitePanelDeps) {
   );
   joinBtn.addEventListener('click', () => {
     step = 'joining';
+    waiting = false;
     say('');
     draw();
   });
   back.addEventListener('click', () => {
+    g.invites.cancel();
     reset();
     say('');
   });
@@ -139,22 +143,24 @@ export function showInvitePanel(g: InvitePanelDeps) {
     run(async () => {
       if (step === 'joining') {
         out.value = await g.invites.accept(input.value);
-        replied = true;
+        replied = waiting = true;
         say('Waiting for your friend to paste the reply…');
       } else {
         await g.invites.finish(input.value);
+        waiting = true;
         say('Connecting…');
       }
     }),
   );
 
-  // a friend connecting ends the swap; one shown again after a while in the background doesn't
+  // a friend connecting ends the swap that waits for them, and not one started since; one shown again after a
+  // while in the background is no new connection
   let shown = -1,
     linked = 0;
   setInterval(() => {
     const { links } = g.invites;
     if (links > linked) {
-      reset();
+      if (waiting) reset();
       say('Connected.');
     }
     linked = links;

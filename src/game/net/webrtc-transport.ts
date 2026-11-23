@@ -17,7 +17,7 @@ const MAX_CODE_CHARS = 20_000,
   MAX_MESSAGE_CHARS = 256_000;
 const GATHER_MS = 4000; // wait this long for the browser to find its addresses, then go with what it has
 const FAST_BACKLOG_BYTES = 64_000; // with this much unsent, a snapshot is skipped: a newer one follows
-const MAX_PENDING = 4; // invites out at once; a fifth closes the oldest, which nobody answered
+const MAX_PENDING = 4; // invites out, or replies sent, at once; a fifth closes the oldest, which nobody finished
 
 /**
  * What a code holds. `invite` ties a reply to its invite, so a host can have several out at once. `build` is the
@@ -118,6 +118,7 @@ export function webrtcTransport(): Transport & { invites: Invites } {
   const me = crypto.randomUUID(),
     links = new Map<string, Link>(), // the players connected, by id
     pending = new Map<string, Link>(), // invites out, by invite id, waiting for their reply
+    answered = new Map<string, Link>(), // replies sent, by invite id, waiting for the friend to paste them
     every = new Set<Link>(); // every link not closed yet, connected or not, for `close`
 
   // both ends make the same two channels, so neither waits for the other to open them
@@ -135,6 +136,16 @@ export function webrtcTransport(): Transport & { invites: Invites } {
   function shut(link: Link) {
     every.delete(link);
     link.pc.close();
+  }
+
+  // adds a link waiting on the friend, closing the oldest past MAX_PENDING
+  function keep(waiting: Map<string, Link>, id: string, link: Link) {
+    waiting.set(id, link);
+    for (const [old, l] of waiting) {
+      if (waiting.size <= MAX_PENDING) break;
+      waiting.delete(old);
+      shut(l);
+    }
   }
 
   // an id that is this player's or already in the room is refused: a code could otherwise take a player's place
@@ -165,6 +176,7 @@ export function webrtcTransport(): Transport & { invites: Invites } {
     };
     reliable.onmessage = fast.onmessage = hear;
     reliable.onopen = () => {
+      for (const [id, l] of answered) if (l === link) answered.delete(id);
       // two codes with one id, both pasted before either connected: the first to connect keeps it
       if (links.has(peer)) shut(link);
       else links.set(peer, link);
@@ -183,16 +195,17 @@ export function webrtcTransport(): Transport & { invites: Invites } {
     get links() {
       return links.size;
     },
+    cancel() {
+      for (const waiting of [pending, answered]) {
+        for (const l of waiting.values()) shut(l);
+        waiting.clear();
+      }
+    },
     async invite() {
       const link = makeLink(),
         invite = crypto.randomUUID();
       await link.pc.setLocalDescription(await link.pc.createOffer());
-      pending.set(invite, link);
-      for (const [id, old] of pending) {
-        if (pending.size <= MAX_PENDING) break;
-        pending.delete(id);
-        shut(old);
-      }
+      keep(pending, invite, link);
       return pack({ from: me, invite, type: 'offer', sdp: await described(link.pc), build: __BUILD__ });
     },
     async accept(code) {
@@ -207,13 +220,20 @@ export function webrtcTransport(): Transport & { invites: Invites } {
         throw new Error('That invite code is damaged. Ask for a new one.');
       }
       connect(link, offer.from);
+      keep(answered, offer.invite, link);
       return pack({ from: me, invite: offer.invite, type: 'answer', sdp: await described(link.pc), build: __BUILD__ });
     },
     async finish(code) {
       const answer = await unpack(code, 'answer'),
         link = pending.get(answer.invite);
       if (!link) throw new Error('That reply is to another invite. Make a new invite and try again.');
-      refuse(answer.from);
+      try {
+        refuse(answer.from);
+      } catch (err) {
+        pending.delete(answer.invite);
+        shut(link);
+        throw err;
+      }
       try {
         await link.pc.setRemoteDescription({ type: 'answer', sdp: answer.sdp });
       } catch {
