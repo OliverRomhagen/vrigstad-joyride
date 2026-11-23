@@ -18,7 +18,7 @@ export interface ActionPromptDeps {
   coarse: boolean; // a touch screen: no "Get out" prompt, the E button says it
   nearPlace(): Place | null;
   skrotenBuys(): boolean; // the car you drive stands on Skroten's ring, and Skroten would buy it
-  skrotenRepairs(): number | null; // what Plåt-Pelle asks to mend the car you drive on the workshop's lift; null when he wouldn't
+  skrotenLift(): number | null; // the car you drive stands on the workshop's lift: what Plåt-Pelle asks to mend it (0 for a whole car); null when he wouldn't work on it
   nearOwner(): boolean; // you stand on foot next to Plåt-Pelle
   nearCat(): Cat | null;
   nearestCar(): Car | null;
@@ -44,7 +44,7 @@ export class ActionPrompt {
       coarse,
       nearPlace,
       skrotenBuys,
-      skrotenRepairs,
+      skrotenLift,
       nearOwner,
       nearCat,
       nearestCar,
@@ -56,7 +56,7 @@ export class ActionPrompt {
       pl = game.started && !places.inside ? nearPlace() : null,
       kt = game.started ? nearCat() : null,
       c = game.started && !game.inCar && !places.inside ? nearestCar() : null,
-      repairKr = game.inCar ? skrotenRepairs() : null;
+      liftKr = game.inCar ? skrotenLift() : null;
     $('hide').hidden = !places.inside;
     if (places.inside) {
       $('hide').innerHTML = wanted.stars
@@ -82,9 +82,11 @@ export class ActionPrompt {
     } else if (game.inCar && game.pcar && skrotenBuys()) {
       pr.hidden = this.g.menuOpen || tooFastToGetOut(game.pcar);
       pr.innerHTML = '<kbd>E</kbd>Sell the ' + carName(game.pcar) + ' at Skroten';
-    } else if (game.inCar && game.pcar && repairKr !== null) {
+    } else if (game.inCar && game.pcar && liftKr !== null) {
       pr.hidden = this.g.menuOpen || tooFastToGetOut(game.pcar);
-      pr.innerHTML = '<kbd>E</kbd>Repair the ' + carName(game.pcar) + ' · ' + fmtKr(repairKr);
+      pr.innerHTML = liftKr
+        ? '<kbd>E</kbd>Repair the ' + carName(game.pcar) + ' · ' + fmtKr(liftKr)
+        : '<kbd>E</kbd>Upgrade the ' + carName(game.pcar);
     } else if (game.inCar && game.pcar && !coarse) {
       pr.hidden = tooFastToGetOut(game.pcar);
       pr.innerHTML = '<kbd>E</kbd>Get out';

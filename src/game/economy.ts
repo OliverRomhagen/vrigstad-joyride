@@ -2,6 +2,7 @@
 // Selling cars, repairs and paying off a star build on pay / earn. Nothing here draws: the HUD shows whatever the wallet holds.
 import { type Commands, parseKr } from './commands';
 import { DMG_MAX } from './health';
+import type { Upgrade } from './sim/upgrades';
 
 export const START_KR = 200; // what you have in your pocket at the start
 export const TRISS_KR = 30,
@@ -28,6 +29,9 @@ const SALE_MARKUP = 2.5; // Plåt-Pelle sells a car on his lot for this many tim
 // Plåt-Pelle mends a car on the workshop's lift for a share of what he pays for one whole, by how damaged it is
 const REPAIR_SHARE = 0.5; // what mending a wreck costs, as a share of the car's whole price
 export const REPAIR_MIN_KR = 50; // he picks up a spanner for no less
+// His upgrades on the lift, the same price for every car: cheaper than a car, dearer than a few trisslotter
+export const UPGRADE_KR: Readonly<Record<Upgrade, number>> = { engine: 600, springs: 400, body: 500 };
+export const RESPRAY_KR = 150;
 
 // The trisslott vinstplan: of every TRISS_TICKETS tickets, how many win each prize, as [kr, tickets]; the rest lose.
 // One ticket in ten wins, most of them a ticket back, and about a fifth of the money comes back.

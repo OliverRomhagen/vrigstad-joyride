@@ -12,6 +12,7 @@ import type { Commands } from './commands';
 import { impactSpeed, topSpeedShare, wrecked } from './health';
 import { bodyRadius, nearestBetweenSpines, pushBodyOut } from './sim/car-body';
 import { approach, rearPivotShift, yawRate } from './sim/handling';
+import { accelOf, type CarMods, gripShare, noMods, steerResponseOf, topSpeedOf } from './sim/upgrades';
 import type { CarType, VehicleSpec } from './sim/vehicle-spec';
 
 // Drifting (player only): brake plus steering at speed breaks the rear loose. The car keeps sliding along its line of
@@ -109,6 +110,7 @@ export interface Car extends Point {
   dmg: number; // damage, and the clock (s) of the last hit (health.ts)
   hitAt: number;
   color: string; // the paint (sRGB), one of T.cols
+  mods: CarMods; // Plåt-Pelle's upgrades (sim/upgrades.ts)
 }
 
 /** A new car standing still at (x, z), nose towards h. `color` is the caller's roll from T.cols, so the world's rolls stay in their order. */
@@ -154,6 +156,7 @@ export function newCar(
     dmg: 0,
     hitAt: -9,
     color,
+    mods: noMods(),
   };
 }
 /** Where a car or a walker is on the street network: road ri, from vertex a towards a + dir. */
@@ -493,11 +496,13 @@ export class Fleet {
     const { roads, water, half: HALF, crash, rammed, placeCar } = this.g,
       cars = this.cars;
     c.thr = thr = Math.abs(thr - c.thr) < 0.02 ? thr : approach(c.thr, thr, c.T.handling.throttleResponseS, dt);
-    c.st = approach(c.st, steer, c.T.handling.steerResponseS, dt); // weight: speed and heading answer a little late
+    c.st = approach(c.st, steer, steerResponseOf(c), dt); // weight: speed and heading answer a little late
     if (wrecked(c)) {
       thr = c.thr = 0;
       c.boost = 0;
     } // the engine is dead: it only rolls to a stop
+    const acc = accelOf(c),
+      top = topSpeedOf(c); // with Plåt-Pelle's engine tune
     const road = roads.nearestRoad(c.x, c.z).d < 0.6;
     c.wet = water.inWater(c.x, c.z);
     if (c.drift) {
@@ -533,21 +538,20 @@ export class Fleet {
       }
     }
     if (c.drift) {
-      c.v += ((thr > 0 ? c.T.acc * DRIVING.DRIFT_THR * thr : 0) - DRIVING.DRIFT_DRAG) * dt;
+      c.v += ((thr > 0 ? acc * DRIVING.DRIFT_THR * thr : 0) - DRIVING.DRIFT_DRAG) * dt;
       if (Math.abs(c.slip) > 0.25) c.charge += dt;
     } else if (brake) c.v -= Math.sign(c.v) * Math.min(Math.abs(c.v), DRIVING.BRAKE_MS2 * dt);
     else if (c.loose > 0 && Math.abs(c.slip) > 0.1 && c.v > DRIVING.DRIFT_KEEP_V)
-      c.v += ((thr > 0 ? c.T.acc * DRIVING.DRIFT_THR * thr : 0) - DRIVING.DRIFT_DRAG) * dt; // still scrubbing sideways, or tapping Space would beat holding it
-    else if (thr > 0)
-      c.v += (c.v < 0 ? DRIVING.COUNTER_MS2 : c.T.acc * (1 - (0.6 * Math.max(0, c.v)) / c.T.max)) * thr * dt;
-    else if (thr < 0) c.v += (c.v > 0.5 ? DRIVING.COUNTER_MS2 : c.T.acc * 0.6) * thr * dt;
+      c.v += ((thr > 0 ? acc * DRIVING.DRIFT_THR * thr : 0) - DRIVING.DRIFT_DRAG) * dt; // still scrubbing sideways, or tapping Space would beat holding it
+    else if (thr > 0) c.v += (c.v < 0 ? DRIVING.COUNTER_MS2 : acc * (1 - (0.6 * Math.max(0, c.v)) / top)) * thr * dt;
+    else if (thr < 0) c.v += (c.v > 0.5 ? DRIVING.COUNTER_MS2 : acc * 0.6) * thr * dt;
     else c.v -= Math.sign(c.v) * Math.min(Math.abs(c.v), (road ? 2 : 5) * dt);
     if (c.boost > 0) {
       c.boost -= dt;
       if (c.wet) c.boost = 0;
     } // water puts the turbo out
     const max =
-      (c.wet ? 2.5 : c.T.max * (road ? 1 : c.T.off)) * (c.boost > 0 ? DRIVING.TURBO_TOP : 1) * topSpeedShare(c.dmg);
+      (c.wet ? 2.5 : top * (road ? 1 : c.T.off)) * (c.boost > 0 ? DRIVING.TURBO_TOP : 1) * topSpeedShare(c.dmg);
     if (c.boost > 0 && c.v < max) c.v = Math.min(max, c.v + DRIVING.TURBO_ACC * dt); // only up to the limit, so it never cancels the overspeed braking below
     if (c.v > max) c.v = Math.max(max, c.v - 14 * dt);
     if (c.v < -7) c.v = -7;
@@ -559,11 +563,12 @@ export class Fleet {
       c.spin *= Math.exp(-DRIVING.SPIN_DECAY * dt);
     } else c.spin = 0;
     c.h = wrap(c.h + (c.yr * c.spin > 0 ? (Math.abs(c.yr) > Math.abs(c.spin) ? c.yr : c.spin) : c.yr + c.spin) * dt); // steering into the slide doesn't stack on the carried yaw; counter-steer cancels it
-    const grip = c.drift
-      ? DRIVING.DRIFT_GRIP
-      : c.loose > 0
-        ? DRIVING.DRIFT_GRIP + (DRIVING.GRIP - DRIVING.DRIFT_GRIP) * (1 - c.loose / DRIVING.RECOVER_S) ** 2
-        : DRIVING.GRIP; // rear grip comes back slowly, so the slide carries on
+    const full = DRIVING.GRIP * gripShare(c.mods), // sport springs grip harder
+      grip = c.drift
+        ? DRIVING.DRIFT_GRIP
+        : c.loose > 0
+          ? DRIVING.DRIFT_GRIP + (full - DRIVING.DRIFT_GRIP) * (1 - c.loose / DRIVING.RECOVER_S) ** 2
+          : full; // rear grip comes back slowly, so the slide carries on
     if (canDrift) {
       const fix = wrap(c.h - c.vh) * Math.min(1, grip * dt),
         k = c.loose > 0 ? DRIVING.CATCH * Math.max(0, -steer * Math.sign(c.slip)) : 0;
