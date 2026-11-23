@@ -3,18 +3,21 @@ import { expect, test } from '@playwright/test';
 import { watchErrors } from './render-helpers.js';
 
 const state = page => page.evaluate(() => window.__joyride.state());
+// both pages load at once: one loaded after the other waits for the first, whose title screen already draws every frame
+// in software WebGL, and took 56 s instead of 11 s here, past the test's timeout in CI
+const load = async (page, url) => {
+  await page.setViewportSize({ width: 640, height: 360 });
+  await page.goto(url);
+  await page.waitForFunction(() => window.__joyride);
+};
 
 test('two tabs in one room show each other, on foot and in a car', async ({ context }, info) => {
   test.setTimeout(120_000);
   const room = 'test-' + info.workerIndex + '-' + Date.now();
   const pages = [await context.newPage(), await context.newPage()];
   const errors = pages.map(watchErrors);
-  for (const page of pages) {
-    await page.setViewportSize({ width: 640, height: 360 });
-    await page.goto('/index.html?lab=multiplayer&room=' + room);
-    await page.waitForFunction(() => window.__joyride);
-    await page.locator('#go').click();
-  }
+  await Promise.all(pages.map(page => load(page, '/index.html?lab=multiplayer&room=' + room)));
+  for (const page of pages) await page.locator('#go').click();
   const [a, b] = pages;
   const carCount = (await state(b)).carCount;
   for (const page of pages) await expect.poll(async () => (await state(page)).remotePlayers).toBe(1);
@@ -59,10 +62,8 @@ test('two pages swap WebRTC invite and reply codes through the panel', async ({ 
   test.setTimeout(120_000);
   const pages = [await context.newPage(), await context.newPage()];
   const errors = pages.map(watchErrors);
+  await Promise.all(pages.map(page => load(page, '/index.html?lab=multiplayer&net=webrtc&stun=off')));
   for (const page of pages) {
-    await page.setViewportSize({ width: 640, height: 360 });
-    await page.goto('/index.html?lab=multiplayer&net=webrtc&stun=off');
-    await page.waitForFunction(() => window.__joyride);
     await page.locator('#go').click();
     await page.locator('#mp button', { hasText: 'Invite' }).first().click();
   }
