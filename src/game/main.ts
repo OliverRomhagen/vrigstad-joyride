@@ -7,7 +7,7 @@ import { cameraMoved } from './presentation/iso800-grain';
 import { AdoptHearts } from './render/adopt-heart';
 import { Banknotes } from './render/banknotes';
 import { DriftFx } from './render/drift-fx';
-import { VEHICLES, type VehicleId, vehicleDefinition } from './render/vehicle-registry';
+import { CIVILIAN_CAR_TYPES, type VehicleId, vehicleDefinition } from './render/vehicle-registry';
 import { VehicleVisuals } from './render/vehicle-visuals';
 import { BodyMotion } from './render/body-motion';
 import { CarDamageFx } from './render/car-damage';
@@ -223,7 +223,7 @@ function carName(c: Car) { return vehicleVisuals.definition(meshed(c))?.name || 
 fleet.parkCars();   // parked cars along streets and driveways
 for (let i = 0; i < 18; i++) spawnTraffic(null);
 // Skroten's cars for sale (src/game/skroten.ts): real cars on its lot, in the paint the yard gave them, so they roll nothing
-fleet.parkForSale(carsForSale(yard.forSale, id => id === 'traktor' ? 'traktor' : VEHICLES.find(v => v.id === id && !v.police)?.archetype));   // the tractor has no model of its own
+fleet.parkForSale(carsForSale(yard.forSale, id => CIVILIAN_CAR_TYPES.get(id)));
 
 // ---------- camera: follows you, shakes on a crash; the sun and sky follow it (src/game/render/camera-rig.ts) ----------
 // the getters are read every frame, so they can name things declared further down
@@ -347,7 +347,7 @@ registerTunableCommands(commands, tunables);
 // go <place>: you, or the car you drive, straight there, out of any safehouse first
 places.registerCommands(commands, (x, z, name) => { leaveHouse(); const c = game.inCar ? game.pcar : null;
   if (c) { c.x = x; c.z = z; c.v = c.slip = c.drift = c.boost = 0; c.vh = c.h; placeCar(meshed(c)); } else { player.x = x; player.z = z; player.speed = 0; } return 'You are at ' + name + '.'; });
-fleet.registerCommands(commands, new Map<string, CarType>([...VEHICLES.filter(v => !v.police).map(v => [v.id, v.archetype] as const), ['traktor', 'traktor']]), () => view.camYaw, c => carName(c));   // car <model>
+fleet.registerCommands(commands, CIVILIAN_CAR_TYPES, () => view.camYaw, c => carName(c));   // car <model>
 debugOverlay?.registerCommands(commands);
 
 // ---------- input: keys, mouse look and the touch controls (src/game/input.ts) ----------

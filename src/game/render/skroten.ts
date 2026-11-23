@@ -25,7 +25,7 @@ import {
   yardToWorld,
 } from '../skroten-yard';
 import { boxGeo, carGeo, mergeGeo, type Person, paintMat, personParts } from './models';
-import { BODY_NODE, VEHICLES } from './vehicle-registry';
+import { BODY_NODE, CIVILIAN_CAR_TYPES, VEHICLES } from './vehicle-registry';
 
 /** One box: size, position and colour, as boxGeo takes it. */
 type BoxPart = [sx: number, sy: number, sz: number, x: number, y: number, z: number, colour: string];
@@ -442,7 +442,7 @@ function placing(x: number, y: number, z: number, turn = 0, tilt = 0, pitch = 0,
 
 // the simple shape a wreck's model falls back to: its kind of car in models.ts
 function simpleType(m: YardCarModel) {
-  return m === 'traktor' ? 'traktor' : (VEHICLES.find(v => v.id === m)?.archetype ?? 'volvo');
+  return CIVILIAN_CAR_TYPES.get(m) ?? 'volvo';
 }
 
 // a model's paint (white, for the instance colour) with patches of rust and a dirty lower body: rust is the colour the paint is multiplied
