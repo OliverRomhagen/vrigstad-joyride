@@ -16,7 +16,7 @@ List every constant the system uses, with its unit, and where the **intended** b
 
 Compute, don't estimate. Run the formulas for every case that differs, with a table per case:
 
-- **Per vehicle type** (Volvo, Saab, EPA-traktor, traktor, polis): top speeds differ threefold, so a fixed threshold can make a rule impossible for slow vehicles.
+- **Per vehicle type** (Volvo, Saab, EPA-traktor, traktor, polis): top speeds differ up to fivefold (EPA 8.33 m/s, Saab 42 m/s), so a fixed threshold can make a rule impossible for slow vehicles.
 - **At both ends** of each range the system allows, not only the typical case.
 - **Over a session** for anything that accumulates: money, stars, health, damage.
 

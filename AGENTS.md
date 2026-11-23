@@ -98,7 +98,7 @@ Claude Code's built-in `/code-review` checks a change against this file, so thes
 
 ### Claude Code in this repo
 
-Shared agents (`.claude/agents/`) and skills (`.claude/skills/`) come with the repo, so every collaborator's Claude Code has them. Agents advise; none of them edits the game's code. Some are adapted from [Claude Code Game Studios](https://github.com/donchitos/claude-code-game-studios) (MIT, see `LICENSE`). Each holds only its own expertise and points here for the rules, so add a new one when work needs it, not ahead of it (#255 lists the candidates). Claude can start any of them on its own when a request matches its description.
+Shared agents (`.claude/agents/`) and skills (`.claude/skills/`) come with the repo, so every collaborator's Claude Code has them. Agents advise; none edits tracked files, and `performance-analyst` runs commands to build and measure, in a scratch worktree. Some are adapted from [Claude Code Game Studios](https://github.com/donchitos/claude-code-game-studios) (MIT, see `LICENSE`). Each holds only its own expertise and points here for the rules, so add a new one when work needs it, not ahead of it (#255 lists the candidates). Claude can start any of them on its own when a request matches its description.
 
 | Reach for | When |
 |---|---|

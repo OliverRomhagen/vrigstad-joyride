@@ -18,7 +18,8 @@ Third-party components keep their own licenses:
   ODbL, including its attribution and share-alike terms.
 - Elevation tiles: Mapzen terrarium terrain tiles on AWS Open Data.
   See the dataset's terms before reusing them.
-- Claude Code agents and skills in .claude/ and docs/threejs.md, adapted
+- Most Claude Code agents and skills in .claude/ (each adapted file says so
+  in its last line) and docs/threejs.md, adapted
   from Claude Code Game Studios (MIT License, full text below).
 - Fonts: Barlow and Barlow Condensed © 2017 The Barlow Project Authors,
   under the SIL Open Font License 1.1 (full text below), served beside the
@@ -146,6 +147,7 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
 Barlow and Barlow Condensed (fonts)
 -----------------------------------
 Source: https://github.com/jpt/barlow

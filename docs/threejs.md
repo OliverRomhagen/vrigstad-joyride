@@ -27,10 +27,12 @@ Adapted from `docs/engine-reference/web/threejs.md` in [Claude Code Game Studios
 | r186 | `Object3D.dispose()` exists: a custom class with its own `dispose()` calls `super.dispose()` | **[S]** |
 | r186 | `Source` → `TextureSource` | **[S]** |
 | r186 | `Sky`'s `up` uniform removed (always +Y up) | **[S]** |
+| r186 | `PCFSoftShadowMap` removed: setting it warns and falls back to `PCFShadowMap` | **[S]** |
 
 ## In practice
 
 - `renderer.shadowMap.type = PCFSoftShadowMap` logs a warning and uses `PCFShadowMap`. Write `PCFShadowMap` (as `src/game/render/stage.ts` does) or `VSMShadowMap`. **[S]**
+- Colour management is off here (`THREE.ColorManagement.enabled = false` in `src/world/three-legacy.ts`), to keep r128's colour maths. Every light's intensity is multiplied by `LEGACY_LIGHT` (π), or it comes out about π times too dim. The game page writes colours in sRGB and converts them with `col()`, with sRGB output and ACES tone mapping (`src/game/render/stage.ts`); its fog, clear and sky colours stay in sRGB. The map page has linear output and no tone mapping (`src/map/main.ts`) and doesn't use `col()`. **[S]**
 - `new THREE.Clock()` logs a deprecation warning. `Timer` is driven by hand: call `timer.update(timestamp)` once a frame (milliseconds, e.g. the animation-loop time), then `getDelta()` / `getElapsed()`, which return **seconds**. `timer.connect(document)` makes it skip the time the tab was hidden. **[S]** The game loop here computes its own clamped `dt` from `requestAnimationFrame` and uses neither.
 
 ```ts
