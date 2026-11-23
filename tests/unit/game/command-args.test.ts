@@ -1,5 +1,16 @@
 import { describe, expect, expectTypeOf, it } from 'vitest';
-import { choice, command, described, int, num, optional, rest, toggle, word } from '../../../src/game/command-args';
+import {
+  choice,
+  command,
+  described,
+  group,
+  int,
+  num,
+  optional,
+  rest,
+  toggle,
+  word,
+} from '../../../src/game/command-args';
 import { Commands } from '../../../src/game/commands';
 
 const PLACES = ['torget', 'Slättsjön', 'skroten'] as const;
@@ -146,5 +157,72 @@ describe('argument types', () => {
     for (const w of ['on', 'TRUE', '1', 'ja']) expect(read(t, w)).toBe(true);
     for (const w of ['off', 'false', '0', 'nej']) expect(read(t, w)).toBe(false);
     expect(() => read(t, 'kanske')).toThrow('god is on or off.');
+  });
+});
+
+describe('group', () => {
+  const tune = () => {
+    const c = new Commands();
+    const calls: string[] = [];
+    c.use((call, next) => {
+      calls.push(`${call.name} ${call.args.join(' ')}`);
+      return next();
+    });
+    const set = command({
+      help: 'change a number',
+      examples: ['tune set grip 8'],
+      args: [choice('key', ['grip', 'speed']), num('value')],
+      run: ({ key, value }) => `${key} = ${value}`,
+    });
+    const get = command({ help: 'show a number', args: [choice('key', ['grip', 'speed'])], run: ({ key }) => key });
+    c.register('tune', group({ help: 'gameplay numbers', subcommands: { set, get } }));
+    return { c, calls };
+  };
+
+  it('runs the subcommand the next word names, and the hooks see the whole line under the group', () => {
+    const { c, calls } = tune();
+    expect(c.run('tune SET grip 8')).toBe('grip = 8');
+    expect(calls).toEqual(['tune SET grip 8']);
+  });
+
+  it('shows the usage line of the subcommand, or of the group for a word that names none', () => {
+    const { c } = tune();
+    expect(c.run('tune set grip')).toBe('Usage: tune set <key> <value>');
+    expect(c.run('tune')).toBe('Usage: tune <get|set> …');
+    expect(c.run('tune fly')).toBe('No subcommand called fly. Usage: tune <get|set> …');
+    expect(c.usageFor('tune se')).toBe('tune <get|set> …');
+    expect(c.usageFor('tune set g')).toBe('tune set <key> <value>');
+  });
+
+  it('answers help and --help for the group and for each subcommand', () => {
+    const { c } = tune();
+    const groupHelp =
+      'tune <get|set> …: gameplay numbers\n  tune get <key>: show a number\n  tune set <key> <value>: change a number';
+    expect(c.run('tune --help')).toBe(groupHelp);
+    expect(c.run('help tune')).toBe(groupHelp);
+    const setHelp = 'tune set <key> <value>: change a number\nExamples:\n  tune set grip 8';
+    expect(c.run('tune set --help')).toBe(setHelp);
+    expect(c.run('help tune set')).toBe(setHelp);
+    expect(c.run('help tune fly')).toBe('No command called tune fly. Usage: help [command]');
+  });
+
+  it('completes the subcommands, then their arguments', () => {
+    const { c } = tune();
+    expect(c.complete('tune ')).toEqual(['get', 'set']);
+    expect(c.complete('tune s')).toEqual(['set']);
+    expect(c.complete('tune set ')).toEqual(['grip', 'speed']);
+    expect(c.complete('tune fly ')).toEqual([]);
+  });
+
+  it('refuses a subcommand without help, or an example that does not run it', () => {
+    const c = new Commands();
+    const bare = { help: '', run: () => '' };
+    expect(() => c.register('tune', group({ help: 'numbers', subcommands: { set: bare } }))).toThrow(
+      'tune set: help is one line',
+    );
+    const set = { help: 'change', examples: ['set grip 8'], run: () => '' };
+    expect(() => c.register('tune', group({ help: 'numbers', subcommands: { set } }))).toThrow(
+      'tune set: the example "set grip 8" doesn\'t run it',
+    );
   });
 });

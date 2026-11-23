@@ -1,18 +1,21 @@
 import { describe, expect, it } from 'vitest';
 import { Commands } from '../../../src/game/commands';
 import {
+  carPrice,
   earn,
   FINE_PER_STAR_KR,
   fine,
   newWallet,
   pay,
   registerWalletCommands,
+  SCRAP_KR,
   START_KR,
   TRISS_KR,
   TRISS_PLAN,
   TRISS_TICKETS,
   trissPrize,
 } from '../../../src/game/economy';
+import { DMG_MAX } from '../../../src/game/health';
 
 describe('wallet', () => {
   it('starts with some money', () => {
@@ -97,5 +100,24 @@ describe('wallet commands', () => {
     expect(c.run('mynt')).toBe('Wallet: 1\u00a0150 riksdaler.');
     c.run('kr -5000');
     expect(w.kr).toBe(0);
+  });
+});
+
+describe('what Skroten pays for a car', () => {
+  it('pays by the model a car wears, else by its type', () => {
+    expect(carPrice('saab', 'xc70', 0)).toBe(1400);
+    expect(carPrice('saab', undefined, 0)).toBe(1000);
+    expect(carPrice('traktor', undefined, 0)).toBe(1200);
+  });
+
+  it('takes damage off, down to the scrap price for a wreck, in round tens', () => {
+    expect(carPrice('volvo', 'volvo240', DMG_MAX / 2)).toBe(450);
+    expect(carPrice('volvo', 'volvo240', 33)).toBe(570);
+    expect(carPrice('volvo', 'volvo240', DMG_MAX)).toBe(SCRAP_KR);
+  });
+
+  it('never buys a police car', () => {
+    expect(carPrice('polis', 'xc70-police', 0)).toBeNull();
+    expect(carPrice('polis', undefined, 0)).toBeNull();
   });
 });

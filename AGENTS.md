@@ -138,7 +138,8 @@ Until the migration reaches a given rule, don't make the existing code worse in 
 - **Unit tests** (Vitest, [#52](https://github.com/OliverRomhagen/vrigstad-joyride/issues/52)): game rules and pure helpers such as height lookup, driving model, wanted level, police AI and spatial queries. Write them for new gameplay rules; use the seeded RNG for deterministic scenarios. They live in `tests/unit/`, mirroring `src/`, and run in CI on every PR that changes more than docs, labels, issue forms, agent files or other workflows (`.github/workflows/unit.yml`). Build test worlds small and by hand (`tests/unit/world/fixture.ts`), not from `data/vrigstad.json`, so each expected value can be worked out.
 - **No pixel-diff tests.** Headless WebGL output varies. Assert on state exposed through the test hook instead, and attach screenshots to the PR when visuals change.
 - For review screenshots, `?at=x,z,yaw,pitch` starts the player at (x, z) looking that way, `?debug=streetscape` tints the streetscape by its evidence (mapped, derived, inferred), and `?debug=furniture` tints street furniture by its source (OSM, override, procedural).
-- The numbers in the tunables registry take `?tune=driving.grip:8,vehicle.volvo.top-speed:45` (keys in `src/game/sim/car-tunables.ts`); a key or value it can't use is a warning in the browser's console, and the rest still apply.
+- In dev mode (`?dev`), uncaught errors show in a red box over the game (a tap or `errors clear` empties it), and the console's `fps` shows frame times, what the renderer draws and the build's commit, which is also `build` in the test hook (`src/game/presentation/debug-overlay.ts`). A screenshot of it makes a good bug report from a phone.
+- The numbers in the tunables registry take `?dev&tune=driving.grip:8,vehicle.volvo.top-speed:45` (keys in `src/game/sim/car-tunables.ts`), in dev mode only; a key or value it can't use is a warning in the browser's console, and the rest still apply. In the console, `tune set`, `tune get`, `tune list` and `tune reset` change them while you play.
 - The sky's clouds take URL parameters for visual testing: `?clouds=clear|scattered|partly|mostly|off`, `cloudSeed=7`, `wind=250,7` (from degrees, m/s), `cloudSoft=1.3` and `cloudQuality=low|high` (`src/world/clouds.ts`).
 - The smoke tests live in `tests/e2e/` and run in CI on every PR that changes more than docs, labels, issue forms, agent files or other workflows (`.github/workflows/e2e.yml`), split across three runners with Playwright's `--shard` and reported as one `Smoke tests (Playwright)` check. The workflow also fails if the committed `data/vrigstad.json` is stale, and uploads screenshots of both pages as the `e2e-screenshots` artifact. They read game state from `window.__joyride.state()` (defined in `src/game/test-hook.ts`); add a field there when a new smoke step needs one, and keep the hook read-only.
 - **Static analysis** ([Fallow](https://github.com/fallow-rs/fallow), [#107](https://github.com/OliverRomhagen/vrigstad-joyride/issues/107)), configured in `fallow.toml`, is the last step of `npm run check`, so it runs before every commit and in CI (`.github/workflows/check.yml`), and takes well under a second:
@@ -175,5 +176,17 @@ Until the migration reaches a given rule, don't make the existing code worse in 
 | Polis | Police car |
 | Trisslott | Swedish scratch lottery ticket (kiosk minigame) |
 | Safehouse | A house where you can lie low to clear stars |
+
+Code terms, so docs, issues and PRs use one word for one thing:
+
+| Term | Meaning |
+|---|---|
+| ECS | Entity–component–system: entities are plain data, made of components, and systems are functions over every entity with a given set of components. Not adopted yet (#55). Say ECS, not "component pattern" or "entity system" |
+| Entity | One thing in the sim: a car, a cat, a pedestrian. Plain data, no methods |
+| ECS component | One named piece of data on an entity (`position`, `police`). Write "ECS component" where "component" could mean a Svelte component |
+| System | A function the sim runs every step over the entities it handles (traffic, the chase). With an ECS, the entities that have a given set of components |
+| Sim | Gameplay state and rules: plain data and functions, no three.js or DOM (Architecture rules, rule 2) |
+| Render | The code that reads sim state each frame and draws it; it never writes to the sim |
+| Intent | What held input becomes: `throttle / steer / brake`. Gameplay reads intents, never keys or touches; a one-off action, such as pressing E, is a command (`docs/console.md`) |
 
 Update this file when a convention changes. If you notice the instructions are wrong or out of date, fix them in your PR.
