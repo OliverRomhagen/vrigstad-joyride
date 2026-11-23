@@ -85,6 +85,7 @@ test.describe('game (index.html)', () => {
   }, testInfo) => {
     const errors = watchErrors(page);
     await page.goto('/index.html?at=-60,-518,1.6,0.3');
+    await page.setViewportSize({ width: 640, height: 360 }); // keep software WebGL affordable
     await expectWebGL(page);
     const { water: w } = await state(page);
     expect(w.lakes).toBe(4);
