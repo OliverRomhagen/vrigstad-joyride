@@ -60,8 +60,16 @@ describe('command', () => {
   it('shows the usage line for a missing argument, a bad word and extra words', () => {
     const c = withCommand(command({ help: 'x', args: [choice('place', PLACES)], run: ({ place }) => place }));
     expect(c.run('t')).toBe('Usage: t <place>');
-    expect(c.run('t gnosjö')).toBe('No place called gnosjö. Usage: t <place>');
+    expect(c.run('t gnosjö')).toBe('No place called gnosjö. Pick one of: skroten, Slättsjön, torget. Usage: t <place>');
     expect(c.run('t torget skroten')).toBe('Too many words. Usage: t <place>');
+  });
+
+  it('lists a choice of up to 8 words when a word matches none, so the console works without Tab', () => {
+    const nine = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i'];
+    const c = withCommand(command({ help: 'x', args: [choice('letter', () => nine)], run: ({ letter }) => letter }));
+    expect(c.run('t z')).toBe('No letter called z. Usage: t <letter>');
+    nine.pop();
+    expect(c.run('t z')).toBe('No letter called z. Pick one of: a, b, c, d, e, f, g, h. Usage: t <letter>');
   });
 
   it('gives a rest argument the rest of the line', () => {
@@ -89,7 +97,7 @@ describe('command', () => {
   it('reads a choice list on each use, so it can change while the game runs', () => {
     const models = ['volvo'];
     const c = withCommand(command({ help: 'x', args: [choice('car', () => models)], run: ({ car }) => car }));
-    expect(c.run('t saab')).toBe('No car called saab. Usage: t <car>');
+    expect(c.run('t saab')).toBe('No car called saab. Pick one of: volvo. Usage: t <car>');
     models.push('saab');
     expect(c.run('t saab')).toBe('saab');
     expect(c.complete('t s')).toEqual(['saab']);
