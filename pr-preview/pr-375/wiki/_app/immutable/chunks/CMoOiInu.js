@@ -1,0 +1,1 @@
+import{H as e,I as t,Q as n,V as r,gt as i}from"./Ccnjgfip.js";function a(a,o){var s=e(),c=n(s);t(c,()=>o.children??i),r(a,s)}export{a as t};
