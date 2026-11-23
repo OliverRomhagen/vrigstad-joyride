@@ -1,5 +1,18 @@
+import { execSync } from 'node:child_process';
 import { defineConfig, type Plugin } from 'vite';
 import { viteSingleFile } from 'vite-plugin-singlefile';
+
+// The commit a page is built from, shown by the console's fps and in the test hook, so a bug report or a preview
+// screenshot says which build it was. A PR's preview builds GitHub's temporary merge commit, which no one can look
+// up, so its workflow passes the PR's head commit as BUILD_SHA.
+function buildStamp(): string {
+  if (process.env.BUILD_SHA) return process.env.BUILD_SHA.slice(0, 7);
+  try {
+    return execSync('git rev-parse --short HEAD', { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+  } catch {
+    return 'unknown';
+  }
+}
 
 // The fonts (src/fonts/barlow.ts) stay files beside the page instead of being inlined like every other asset: a browser
 // downloads only the weights a page draws with, while inlined it would download every weight, in both formats.
@@ -19,6 +32,7 @@ function fontsAsFiles(): Plugin {
 // everything but the fonts inlined, which CI deploys to GitHub Pages (.github/workflows/pages.yml).
 export default defineConfig({
   root: 'src',
+  define: { __BUILD__: JSON.stringify(buildStamp()) },
   // keep @license comments, so the bundled three.js keeps the MIT notice its licence asks for
   build: { outDir: '../dist', rolldownOptions: { output: { comments: { legal: true } } } },
   plugins: [viteSingleFile(), fontsAsFiles()],

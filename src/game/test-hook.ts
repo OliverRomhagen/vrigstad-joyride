@@ -35,6 +35,8 @@ export interface TestHookDeps {
   readonly banknotes: number; // in the air or on the ground
   readonly confetti: number; // confetti pieces still falling
   readonly devcon: boolean; // the dev console is open
+  build: string; // the commit the page was built from (vite.config.ts)
+  readonly fps: boolean; // the console's frame times show
   readonly day: { readonly hour: number; readonly night: number; readonly sunLight: number }; // the clock (src/game/day-cycle.ts) and the sun's share of its light
 }
 
@@ -106,6 +108,8 @@ export function installTestHook(g: TestHookDeps) {
         banknotes: g.banknotes,
         confetti: g.confetti,
         devcon: g.devcon,
+        build: g.build,
+        fps: g.fps,
         hp: health.hp,
         carDmg: game.pcar ? game.pcar.dmg : null,
         ownCat: g.ownCat,

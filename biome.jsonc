@@ -9,7 +9,8 @@
   },
   // Indent style and width come from .editorconfig, so editors and Biome can't disagree.
   "formatter": { "useEditorconfig": true, "lineWidth": 120 },
-  "javascript": { "formatter": { "quoteStyle": "single", "arrowParentheses": "asNeeded" } },
+  // __BUILD__ is the commit sha that vite.config.ts writes into the pages (src/build.d.ts).
+  "javascript": { "formatter": { "quoteStyle": "single", "arrowParentheses": "asNeeded" }, "globals": ["__BUILD__"] },
   "linter": {
     "rules": {
       // Recommended only warns on these; `biome check --error-on-warnings` (package.json) fails on the rest too.
