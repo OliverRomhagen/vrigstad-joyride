@@ -11,7 +11,7 @@ function menus(o: { hp?: number; treats?: number; kr?: number } = {}) {
   const calls: string[] = [];
   let open: { kind: string; items: MenuItem[]; pick: (k: string) => void; stay?: (() => boolean) | null } | null = null;
   const game = { ...newGameState(), treats: o.treats ?? 0 },
-    health = { hp: o.hp ?? 50, calm: 0 },
+    health = { hp: o.hp ?? 50, calm: 0, god: false },
     player = { x: 0, z: 0 },
     wallet = { kr: o.kr ?? 1000 };
   const colony = {

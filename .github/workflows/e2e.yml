@@ -16,6 +16,13 @@ on:
 permissions:
   contents: read
 
+# A new push to a PR cancels its run still going: the suite takes three runners for minutes, and only the newest commit's
+# result counts. Runs on main each get their own group, so every merge is tested. smoke-result still runs on a cancelled
+# run (always()) and reports it as cancelled, never as passing.
+concurrency:
+  group: e2e-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   # The smoke tests run in Playwright's image, which has the browser and its system packages, instead of installing them on
   # every run (that took from half a minute to eight). Its tag must match the locked Playwright, so read it from the lock file.
