@@ -90,8 +90,8 @@ const PATH_EASE_M = 2.5;
 const BUILDING_KEEP_M = 1.5;
 const BUILDING_EASE_M = 3.5;
 
-/** numbers per keep entry, and the flags for a segment end that meets a bridge */
-const KEEP_STRIDE = 7;
+/** numbers per keep entry, and the flags for a segment end that meets a bridge (its eighth number is the seat there) */
+const KEEP_STRIDE = 8;
 const OPEN_A = 1;
 const OPEN_B = 2;
 /** under a bridge's end the ground stays as it is this far, where the abutment sits, so the cut grid's sub-samples
@@ -210,7 +210,7 @@ export class WaterBodies implements TerrainCut {
   /** lookup cells: course runs as [course, first sample, last sample], lake shore segments as [lake, ring, vertex] */
   private readonly courseCells = new Map<number, number[]>();
   private readonly shoreCells = new Map<number, number[]>();
-  /** what the channel keeps away from, KEEP_STRIDE numbers each: ax, az, bx, bz, keep and ease distances, open ends */
+  /** what the channel keeps away from, KEEP_STRIDE numbers each: ax, az, bx, bz, keep and ease distances, open ends, seat */
   private readonly keepCells = new Map<number, number[]>();
   private readonly buildings: { p: number[]; x0: number; x1: number; z0: number; z1: number }[];
 
@@ -452,6 +452,7 @@ export class WaterBodies implements TerrainCut {
       const street = r.c <= RoadClass.SERVICE;
       const keep = ROAD_WIDTH_M[r.c] / 2 + (street ? STREET_KEEP_M : PATH_KEEP_M);
       const ease = street ? STREET_EASE_M : PATH_EASE_M;
+      const seat = street ? BRIDGE_SEAT_STREET_M : BRIDGE_SEAT_PATH_M;
       const last = r.p.length - 2;
       for (let i = 2; i < r.p.length; i += 2) {
         const open =
@@ -465,6 +466,7 @@ export class WaterBodies implements TerrainCut {
           keep,
           ease,
           open,
+          seat,
         ]);
       }
     });
@@ -477,6 +479,7 @@ export class WaterBodies implements TerrainCut {
         0,
         BUILDING_KEEP_M,
         BUILDING_EASE_M,
+        0,
         0,
       ]);
     });
@@ -641,11 +644,7 @@ export class WaterBodies implements TerrainCut {
           // past it the ground is the bridge's channel: the road's keep runs on square under the abutment's seat,
           // then eases out into the span over its ease distance, so the bank meets the abutment
           const across = Math.abs((x - ax) * (bz - az) - (z - az) * (bx - ax)) / len;
-          d = Math.max(
-            across,
-            list[i + 4] +
-              Math.max(0, along - (list[i + 5] === STREET_EASE_M ? BRIDGE_SEAT_STREET_M : BRIDGE_SEAT_PATH_M)),
-          );
+          d = Math.max(across, list[i + 4] + Math.max(0, along - list[i + 7]));
         } else {
           const t = segmentParam(x, z, ax, az, bx, bz);
           d = Math.hypot(x - ax - (bx - ax) * t, z - az - (bz - az) * t);
