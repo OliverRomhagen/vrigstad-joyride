@@ -1,52 +1,40 @@
-import { type Waterway, WaterwayKind, type WorldData } from './data';
-import { type Bounds, pointInPolygon, polygonBounds, segmentDistance } from './polygon';
+import type { WorldData } from './data';
+import { Heightfield } from './heightfield';
 import type { NearestRoad, RoadNetwork } from './roads';
+import { WaterBodies } from './water-shapes';
 
-/** half the width of a river, as the game treats it (m) */
-const RIVER_HALF_WIDTH_M = 2.6;
 /** a road within this distance of its edge is a bridge over the water (m) */
 const BRIDGE_REACH_M = 1;
 
-interface Lake extends Bounds {
-  rings: number[][];
+export interface WaterOptions {
+  /** the bodies the page built its terrain from; built here from the data when left out */
+  bodies?: WaterBodies;
+  /**
+   * The cut ground, not exaggerated (the game's): where given, a point is wet only where the ground is under the
+   * water's level, as you see it. Left out (tools, tests, the map's streetscape), the water's outline alone decides.
+   */
+  ground?: Pick<Heightfield, 'heightAt'>;
 }
 
-/** Lakes and rivers, for asking whether a point is in water. */
+/** Lakes, rivers and streams, for asking whether a point is in water. */
 export class Water {
-  private readonly lakes: Lake[];
-  private readonly rivers: Waterway[];
+  readonly bodies: WaterBodies;
   private readonly roads: Pick<RoadNetwork, 'nearestRoad'>;
+  private readonly ground: Pick<Heightfield, 'heightAt'> | null;
   private readonly near: NearestRoad = { d: 1e9, ri: -1 };
 
-  constructor(data: WorldData, roads: Pick<RoadNetwork, 'nearestRoad'>) {
+  constructor(data: WorldData, roads: Pick<RoadNetwork, 'nearestRoad'>, { bodies, ground }: WaterOptions = {}) {
     this.roads = roads;
-    this.rivers = data.ww.filter(w => w.k === WaterwayKind.RIVER);
-    this.lakes = data.w.map(rings => {
-      const bounds: Bounds = { x0: Infinity, x1: -Infinity, z0: Infinity, z1: -Infinity };
-      for (const r of rings) polygonBounds(r, bounds);
-      return { rings, ...bounds };
-    });
+    this.bodies = bodies ?? new WaterBodies(data, new Heightfield(data));
+    this.ground = ground ?? null;
   }
 
-  /** True over a lake or a river, unless a road crosses there as a bridge. */
+  /** True over a lake, a river or a stream, unless a road crosses there as a bridge. */
   inWater(x: number, z: number) {
-    // the road lookup is one grid cell, the water scan every lake and river segment: most callers are cars on roads
-    return this.roads.nearestRoad(x, z, this.near).d >= BRIDGE_REACH_M && this.overWater(x, z);
-  }
-
-  private overWater(x: number, z: number) {
-    for (const l of this.lakes) {
-      if (x < l.x0 || x > l.x1 || z < l.z0 || z > l.z1) continue;
-      // islands are rings too: inside an odd number of rings is water
-      let inside = false;
-      for (const r of l.rings) if (pointInPolygon(r, x, z)) inside = !inside;
-      if (inside) return true;
-    }
-    for (const w of this.rivers) {
-      for (let i = 2; i < w.p.length; i += 2) {
-        if (segmentDistance(x, z, w.p[i - 2], w.p[i - 1], w.p[i], w.p[i + 1]) < RIVER_HALF_WIDTH_M) return true;
-      }
-    }
-    return false;
+    // the road lookup is one grid cell: most callers are cars on roads
+    if (this.roads.nearestRoad(x, z, this.near).d < BRIDGE_REACH_M) return false;
+    const level = this.bodies.levelAt(x, z);
+    if (Number.isNaN(level)) return false;
+    return !this.ground || this.ground.heightAt(x, z) < level;
   }
 }

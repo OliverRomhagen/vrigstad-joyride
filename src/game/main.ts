@@ -31,7 +31,9 @@ import { StreetFurniture } from '../world/mesh/street-furniture';
 import { classifyStreetscape } from '../world/streetscape-rules';
 import { col } from '../world/three-legacy';
 import { treeSpots } from '../world/trees';
+import { layoutShore } from '../world/shore';
 import { Water } from '../world/water';
+import { WaterBodies } from '../world/water-shapes';
 import { type Car, type CarMode, Fleet, newCar, TURBO_AT } from './cars';
 import { CatColony } from './cats';
 import { Hud } from './hud';
@@ -63,7 +65,7 @@ import { PlaceMeshes } from './render/places';
 import { GroundTexture } from './render/ground-texture';
 import { BAR_BLUE, BAR_RED, barGeo, barMat, blob, blobTex, boxGeo, carGeo, carMat, GLASS, geoCache, PROFILES, paintMat, personParts, TRACTOR_CAB } from './render/models';
 import { buildStage, SUN_DIR, setUpRenderer } from './render/stage';
-import { addBuildings, addRoadRibbons, addStreetscapeMeshes, addTerrain, addTrees } from './render/world-meshes';
+import { addBuildings, addRoadRibbons, addStreetscapeMeshes, addTerrain, addTrees, addWater } from './render/world-meshes';
 import { type CarType, specFor } from './sim/vehicle-spec';
 import { Tunables } from './sim/tunables';
 import { registerCarTunables } from './sim/car-tunables';
@@ -88,9 +90,12 @@ const game = newGameState();
 const START_CAM: [yaw: number, pitch: number] = [0.6, 0.34];   // camera yaw and pitch at Start
 const view = newViewState(START_CAM[0], START_CAM[1]);
 
-// ---------- terrain height (matches the mesh triangles exactly) ----------
+// ---------- terrain height (matches the mesh triangles exactly), with the rivers' channels and the lakes' shores cut in ----------
+// the water bodies read the uncut ground for their levels; everything else stands on the cut one (src/world/water-shapes.ts)
 // the world's queries are bound once, so the code below calls them as plain functions
-const heightfield = new Heightfield(D), hAt = heightfield.heightAt.bind(heightfield);
+const waterT0 = performance.now(), baseGround = new Heightfield(D), waterBodies = new WaterBodies(D, baseGround);
+const heightfield = new Heightfield(D, { cut: waterBodies }), hAt = heightfield.heightAt.bind(heightfield);
+const shore = layoutShore(waterBodies, baseGround), waterCutMs = performance.now() - waterT0;
 const _n = new THREE.Vector3();
 const normalAt = (x: number, z: number) => heightfield.normalAt(x, z, _n);
 
@@ -119,14 +124,14 @@ const daylight = new Daylight({ sun, hemi, sunDir: SUN_DIR, dome: skyDome.mesh.m
 const sky = skyAt(dayClock, { x: 0, y: 1, z: 0, sun: 1, warm: 0, light: 1 });
 daylight.apply(sky);
 // not on the title screen: Start begins at the start hour
-function updateDaylight(dt: number) { if (dayRuns && game.started) { tickClock(dayClock, dt); daylight.apply(skyAt(dayClock, sky)); } }
+function updateDaylight(dt: number) { if (dayRuns && game.started) { tickClock(dayClock, dt); daylight.apply(skyAt(dayClock, sky)); } waterLook.tick(dt, daylight.sunIntensity > 0 ? sun.intensity / daylight.sunIntensity : 0); }   // no direct sun midway through the night skip: 0, not 0/0
 
 // ---------- ground texture (also feeds the minimap: src/game/render/ground-texture.ts) ----------
-const ground = new GroundTexture(D, { coarse, maxTextureSize: renderer.capabilities.maxTextureSize, maxAnisotropy });
+const ground = new GroundTexture(D, { coarse, maxTextureSize: renderer.capabilities.maxTextureSize, maxAnisotropy, shore });
 const { canvas: tex2d, texture, K, P } = ground;
 
 // ---------- terrain (its mesh, and the roads', buildings', streetscape's and trees': src/game/render/world-meshes.ts) ----------
-addTerrain(scene, heightfield, texture);
+const terrainMesh = addTerrain(scene, heightfield, texture);
 
 // ---------- roads: crisp ribbons on the terrain + lookup grid + junction graph ----------
 const roads = new RoadNetwork(D, heightfield), { lines: R } = roads;
@@ -136,8 +141,9 @@ let floorAt: (x: number, z: number) => number | null = () => null;   // Skroten'
 const groundAt = (x: number, z: number) => { const f = floorAt(x, z); if (f !== null) return f; const g = roads.groundAt(x, z), s = streetIndex && streetIndex.surfaceAt(x, z); return s !== null && s > g ? s : g; };
 const roadRibbons = addRoadRibbons(scene, roads, heightfield, maxAnisotropy);
 
-// ---------- water ----------
-const water = new Water(D, roads), inWater = water.inWater.bind(water);
+// ---------- water: wet where the cut ground is under a lake's or river's level; surfaces, reeds and stones ----------
+const water = new Water(D, roads, { bodies: waterBodies, ground: heightfield }), inWater = water.inWater.bind(water);
+const waterT1 = performance.now(), waterLook = addWater(scene, waterBodies, shore, heightfield, { sunDir: SUN_DIR, horizon: (scene.fog as THREE.FogExp2).color, coarse }), waterMeshMs = performance.now() - waterT1;
 
 // ---------- buildings (painted in Swedish house colours) + collision grid ----------
 const buildings = new BuildingIndex(D), { footprints: bPolys } = buildings;
@@ -379,6 +385,6 @@ loop.start();
 
 // ---------- test hook: read-only state for the smoke tests (src/game/test-hook.ts) ----------
 installTestHook({ game, view, player, health, cars, labs: lab.list(), get ragdolls() { return ragdolls.count; }, get stars() { return wanted.stars; }, get cats() { return cats.length; }, get ownCat() { return !!colony.owned; }, get displayCar() { return displayCar; },
-  vehicleVisuals: { state: c => vehicleVisuals.state(meshed(c)) }, bodyMotion: { state: c => bodyMotion.state(meshed(c)) }, skyDome, street, debugStreetscape: DEBUG_STREETSCAPE, furniture, debugFurniture: DEBUG_FURNITURE, nearestCar,
+  vehicleVisuals: { state: c => vehicleVisuals.state(meshed(c)) }, bodyMotion: { state: c => bodyMotion.state(meshed(c)) }, skyDome, street, debugStreetscape: DEBUG_STREETSCAPE, furniture, water: { bodies: waterBodies, surface: waterLook.surface, props: waterLook.props, shore, terrainTriangles: terrainMesh.triangles, refinedCells: heightfield.refinedCells, buildMs: waterCutMs + waterMeshMs, inWater, hAt }, debugFurniture: DEBUG_FURNITURE, nearestCar,
   get kr() { return wallet.kr; }, get banknotes() { return banknotes.live; }, get confetti() { return confetti.live; }, get devcon() { return devcon.isOpen; }, build: __BUILD__, get fps() { return !!debugOverlay?.shown; }, day: { get hour() { return dayClock.hour; }, get night() { return dayClock.night; }, get sunLight() { return sky.sun; } } });
 })();
