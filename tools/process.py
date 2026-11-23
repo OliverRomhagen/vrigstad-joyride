@@ -398,6 +398,18 @@ BUILDING_SHIFT = {
     # the road; moved north until a full sidewalk fits between its front wall and the 9 m carriageway (the road is
     # drawn wider than it is, so further than the aerial alone), and west to keep clear of the driveway behind it
     48807861: (-1.5, -5),
+    # sheds traced in 2011 and 2012 (v1) about 4 m south of their roofs in the aerial, onto the road beside them
+    99634081: (0, -4),
+    173869280: (0, -4),
+    # the Tegnervägen row house (2011, v1) where the road, re-mapped in 2025, passes 0.5 m from its wall; the house
+    # matches the aerial, so the road is off, but moving the house is what this table can do: away from the road, up
+    # to 0.3 m from the row behind it
+    99634083: (0.8, -2.4),
+    # corners clipped by up to 0.7 m where a street bends or ends beside them; nudged clear
+    48400728: (-0.4, 1.6),   # the long house south of Torget, by the living street through the car park
+    100345766: (0, -0.8),    # the small house inside that car park
+    99738592: (0.6, 0),      # on Kristina Nilssons Väg
+    103000690: (-1.3, 0),    # where an unnamed street ends at its corner
 }
 buildings, roads, water, waterways, land, labels = [], [], [], [], [], {}
 parking_areas, parking_spaces, crossings, kerbs, trees, furniture = [], [], [], [], [], []
