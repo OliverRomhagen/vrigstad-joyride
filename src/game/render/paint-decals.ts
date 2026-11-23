@@ -13,7 +13,10 @@ export interface Panel {
 }
 
 const FACING = 0.35; // a decal keeps only the triangles that face its projector at least this much (the cosine of the angle)
-const NOSE_FACING = 0.15; // on the bonnet, less: it curves down to the nose, and the flames' roots should follow it there
+// the bonnet's flames take panels facing up and a little forward, so they follow its curve down to the nose but stay off the
+// wings' rounded shoulders, where they would smear into straight streaks
+const BONNET_FACING = new THREE.Vector3(0, 1, -0.5).normalize();
+const BONNET_FACING_MIN = 0.6;
 const AHEAD = 0.04; // the flames start this share of the car's length ahead of its nose, so their solid roots cover it
 const GLASS_EDGE_M = 0.03; // a decal triangle this near the top or bottom of a model's glass stays: the roof and the bonnet's back edge
 const LIFT_M = 0.006; // a decal stands this far off the paint, so it doesn't flicker into it, yet stays under a model's glass
@@ -103,14 +106,18 @@ function projectors(decal: Decal, paint: string, box: THREE.Box3): Projector[] {
   });
   if (decal === 'flames') {
     const nose = min.z - AHEAD * L,
-      zLen = 0.5 * L,
+      zLen = 0.42 * L,
       yc = min.y + 0.32 * H,
       yLen = 0.44 * H, // about as long against tall as the side picture, so the tongues aren't squashed
       bonnetLen = 0.34 * L;
     return [
       side(1, nose + zLen / 2, zLen, yc, yLen, textures().flamesNoseRight),
       side(-1, nose + zLen / 2, zLen, yc, yLen, textures().flames),
-      { ...top(nose + bonnetLen / 2, bonnetLen, 0.9 * W, textures().flamesBonnet), facingMin: NOSE_FACING },
+      {
+        ...top(nose + bonnetLen / 2, bonnetLen, 0.85 * W, textures().flamesBonnet),
+        facing: BONNET_FACING,
+        facingMin: BONNET_FACING_MIN,
+      },
     ];
   }
   if (decal === 'stripes') return [top((min.z + max.z) / 2, 1.02 * L, STRIPES_M, stripes(paint))];
@@ -210,16 +217,16 @@ let made: ReturnType<typeof makeTextures> | null = null;
 const textures = () => (made ??= makeTextures());
 
 function makeTextures() {
-  const flames = canvasTexture(512, 140, ctx => drawFlames(ctx, 512, 140, SIDE_TONGUES));
+  const flames = canvasTexture(1024, 280, ctx => drawFlames(ctx, 1024, 280, SIDE_TONGUES));
   const flamesNoseRight = flames.clone(); // the same picture, mirrored: on the right side its u runs towards the nose
   flamesNoseRight.repeat.x = -1;
   flamesNoseRight.offset.x = 1;
   flamesNoseRight.needsUpdate = true;
   // on the bonnet, from the nose (the top of the picture) back towards the windscreen
-  const flamesBonnet = canvasTexture(256, 512, ctx => {
-    ctx.translate(256, 0);
+  const flamesBonnet = canvasTexture(512, 1024, ctx => {
+    ctx.translate(512, 0);
     ctx.rotate(Math.PI / 2);
-    drawFlames(ctx, 512, 256, BONNET_TONGUES);
+    drawFlames(ctx, 1024, 512, BONNET_TONGUES);
   });
   const rallyNumber = canvasTexture(256, 256, ctx => {
     ctx.beginPath();
@@ -238,50 +245,107 @@ function makeTextures() {
   return { flames, flamesNoseRight, flamesBonnet, rallyNumber };
 }
 
-// hot-rod flames, `len` long from their roots on the left to their tips on the right, `wide` across
-type Tongues = readonly (readonly [tipX: number, tipY: number])[]; // each tongue's tip, as shares of the length and the width
+// hot-rod flames, `len` long from their roots on the left to their tips on the right, `wide` across. Each tongue is drawn along a
+// wavy centre line that bends one way and then the other, narrowing to a tip that curls; a brighter core runs inside it.
+type Tongue = {
+  y: number; // where its root sits across the picture, as a share of `wide`
+  tipX: number; // how far it reaches, as a share of `len`
+  tipY: number; // where its tip ends up across the picture, as a share of `wide`
+  half: number; // half its width at the root, as a share of `wide`
+  bend: number; // how far its centre line swings either way, as a share of `wide`
+  phase: number; // where in its swing it starts (rad)
+  waves?: number; // how much it swings along its length (rad of the wave); 5.2, a little under one S, when not given
+};
+type Tongues = readonly Tongue[];
 const SIDE_TONGUES: Tongues = [
-  [0.97, 0.2],
-  [0.62, 0.44],
-  [0.88, 0.66],
-  [0.55, 0.86],
+  { y: 0.22, tipX: 0.95, tipY: 0.1, half: 0.18, bend: 0.26, phase: 0.4, waves: 7.5 },
+  { y: 0.46, tipX: 0.7, tipY: 0.34, half: 0.17, bend: 0.28, phase: 2.6, waves: 7 },
+  { y: 0.66, tipX: 0.9, tipY: 0.6, half: 0.17, bend: 0.26, phase: 4.6, waves: 7.5 },
+  { y: 0.85, tipX: 0.6, tipY: 0.84, half: 0.14, bend: 0.2, phase: 1.5, waves: 7 },
 ];
 const BONNET_TONGUES: Tongues = [
-  [0.97, 0.16],
-  [0.66, 0.33],
-  [0.9, 0.52],
-  [0.58, 0.7],
-  [0.8, 0.86],
+  { y: 0.12, tipX: 0.78, tipY: 0.08, half: 0.09, bend: 0.06, phase: 3 },
+  { y: 0.3, tipX: 0.98, tipY: 0.24, half: 0.1, bend: 0.07, phase: 0.6 },
+  { y: 0.5, tipX: 0.72, tipY: 0.5, half: 0.1, bend: 0.08, phase: 2 },
+  { y: 0.7, tipX: 0.98, tipY: 0.76, half: 0.1, bend: 0.07, phase: 4.4 },
+  { y: 0.88, tipX: 0.78, tipY: 0.92, half: 0.09, bend: 0.06, phase: 1.4 },
 ];
+const ROOT_SHARE = 0.16; // the solid part at the nose, as a share of `len`, before the tongues part
+const TONGUE_STEPS = 40;
+
+// one tongue's outline: up one edge to the tip and back down the other, `grow` times its width and `reach` times its length
+function tongueOutline(t: Tongue, len: number, wide: number, grow: number, reach: number): [number, number][] {
+  const root = ROOT_SHARE * len,
+    tipX = root + (t.tipX * len - root) * reach,
+    centre = (k: number) => {
+      const ease = k * k * (3 - 2 * k); // drifts from the root's place across to the tip's
+      return [
+        root * (1 - k) * 0.4 + tipX * k, // starts a little inside the solid root, so no seam shows
+        (t.y + (t.tipY - t.y) * ease) * wide +
+          Math.sin(t.phase + k * (t.waves ?? 5.2)) * t.bend * wide * Math.sin(Math.PI * k) -
+          k ** 4 * 0.06 * wide, // the tip curls up
+      ] as const;
+    };
+  const upper: [number, number][] = [],
+    lower: [number, number][] = [];
+  for (let i = 0; i <= TONGUE_STEPS; i++) {
+    const k = i / TONGUE_STEPS,
+      [x, y] = centre(k),
+      [x2, y2] = centre(Math.min(1, k + 0.01)),
+      [x1, y1] = centre(Math.max(0, k - 0.01)),
+      dx = x2 - x1,
+      dy = y2 - y1,
+      d = Math.hypot(dx, dy) || 1,
+      w = t.half * wide * grow * (1 - k) ** 0.75 * (1 + 0.18 * Math.sin(t.phase * 2 + k * 9)); // a little wobble in the width
+    upper.push([x + (dy / d) * w, y - (dx / d) * w]);
+    lower.push([x - (dy / d) * w, y + (dx / d) * w]);
+  }
+  return [...upper, ...lower.reverse()];
+}
+
+function traceOutline(ctx: CanvasRenderingContext2D, pts: [number, number][]) {
+  ctx.moveTo(pts[0]![0], pts[0]![1]);
+  for (let i = 1; i < pts.length - 1; i++) {
+    const [x, y] = pts[i]!,
+      [nx, ny] = pts[i + 1]!;
+    ctx.quadraticCurveTo(x, y, (x + nx) / 2, (y + ny) / 2); // through the midpoints: smooth, with no corners
+  }
+  const last = pts.at(-1)!;
+  ctx.lineTo(last[0], last[1]);
+}
+
 function drawFlames(ctx: CanvasRenderingContext2D, len: number, wide: number, tongues: Tongues) {
-  const g = ctx.createLinearGradient(0, 0, len, 0);
-  g.addColorStop(0, '#fff3b0');
-  g.addColorStop(0.25, '#ffd21f');
-  g.addColorStop(0.6, '#ff7a12');
-  g.addColorStop(1, '#d4231a');
-  const rootX = 0.2 * len;
-  ctx.beginPath();
-  ctx.moveTo(0, 0.08 * wide);
-  let fromX = 0,
-    fromY = 0.08 * wide;
-  tongues.forEach(([tx, ty], i) => {
-    const tipX = tx * len,
-      tipY = ty * wide - 0.04 * wide, // the tips sweep up a little, as if the car were moving
-      next = tongues[i + 1],
-      valleyY = next ? ((ty + next[1]) / 2 + 0.03) * wide : 0.94 * wide;
-    ctx.bezierCurveTo(fromX + 0.25 * len, fromY, tipX - 0.2 * len, tipY + 0.02 * wide, tipX, tipY);
-    ctx.bezierCurveTo(tipX - 0.12 * len, tipY + 0.05 * wide, rootX + 0.25 * len, valleyY, rootX, valleyY);
-    fromX = rootX;
-    fromY = valleyY;
-  });
-  ctx.lineTo(0, 0.94 * wide);
-  ctx.closePath();
-  ctx.fillStyle = g;
-  ctx.fill();
+  const fire = ctx.createLinearGradient(0, 0, len, 0);
+  fire.addColorStop(0, '#fff3b0');
+  fire.addColorStop(0.3, '#ffd21f');
+  fire.addColorStop(0.65, '#ff7a12');
+  fire.addColorStop(1, '#d4231a');
+  const core = ctx.createLinearGradient(0, 0, len, 0);
+  core.addColorStop(0, '#fffbe6');
+  core.addColorStop(0.5, '#ffe45c');
+  core.addColorStop(1, '#ffb020');
+  const top = Math.min(...tongues.map(t => t.y - t.half)) * wide,
+    bottom = Math.max(...tongues.map(t => t.y + t.half)) * wide,
+    root = ROOT_SHARE * len;
+  const body = () => {
+    ctx.beginPath();
+    ctx.rect(0, top, root, bottom - top);
+    for (const t of tongues) traceOutline(ctx, tongueOutline(t, len, wide, 1, 1));
+  };
   ctx.lineJoin = 'round';
-  ctx.lineWidth = 0.022 * wide;
+  // the outline first, twice as wide, so the fill on top leaves only its outer half: no lines where the tongues overlap
+  body();
+  ctx.lineWidth = 0.05 * wide;
   ctx.strokeStyle = '#7a1208';
   ctx.stroke();
+  body();
+  ctx.fillStyle = fire;
+  ctx.fill('nonzero');
+  // the bright core inside each tongue, shorter and thinner
+  ctx.beginPath();
+  for (const t of tongues) traceOutline(ctx, tongueOutline(t, len, wide, 0.42, 0.72));
+  ctx.fillStyle = core;
+  ctx.fill('nonzero');
 }
 
 // two stripes and the gap between, across STRIPES_M; light on a dark car, dark on a light one
