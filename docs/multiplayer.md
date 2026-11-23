@@ -264,7 +264,7 @@ A first list, for whoever takes this part:
 ## Open questions
 
 - Which real connector first: `webrtc` with pasted invites (no service, more to learn) or the `relay` (one service,
-  dependable)?
+  dependable)? To be decided once the two-tab stage works.
 - Which relay service, and who pays and holds the account? PartyKit, which #1 suggests, is now part of Cloudflare
   *(unverified: current state and pricing)*. Netlify functions, also in #1, don't hold WebSocket connections
   *(unverified)*.
