@@ -18,7 +18,7 @@ The teaser and poster are rendered from the game itself by the scripts in `tools
 
 ## Play
 
-Play it at https://oliverromhagen.github.io/vrigstad-joyride/, or run `npm install && npm run build` and open `dist/index.html`. It needs WebGL. The fonts load from a CDN, so offline it falls back to system fonts.
+Play it at https://oliverromhagen.github.io/vrigstad-joyride/, or run `npm install && npm run build && npm run preview` and open the address it prints. It needs WebGL. Opening `dist/index.html` from disk doesn't work: the browser won't load the fonts and models beside it over `file://`.
 
 | Action | Keyboard | Phone |
 |---|---|---|
@@ -34,9 +34,9 @@ Taking an occupied car always earns a wanted star; a parked one sometimes does. 
 
 Three houses are safehouses, shown as green houses on the minimap and marked with a green door. Go inside on foot and stay for a minute and the police give up; it only works if no police car is within 60 m when you go in, and leaving early keeps your stars.
 
-Money is in riksdaler, everyday Swedish for kronor when you want to sound a little funny. You start with 200, shown under the stars. The kiosk on Torget sells trisslotter (30 riksdaler), cat treats and food. One ticket in ten wins, from 30 riksdaler up to a rare 10 000, and the more losing tickets you scratch in a row, the worse your language gets. Getting *gripen* costs a fine: a quarter of your money, or 100 riksdaler per star if that is more. And if 1 000 riksdaler is burning a hole in your pocket, press L.
+Money is in riksdaler, everyday Swedish for kronor when you want to sound a little funny. You start with 200, shown under the stars. The kiosk on Torget sells trisslotter (30 riksdaler), cat treats and food. One ticket in ten wins, from 30 riksdaler up to a rare 10 000, and the more losing tickets you scratch in a row, the worse your language gets. Skroten, the scrapyard by the workshop hall on Stockarydsvägen, buys the cars you steal: follow the signs, drive onto the ring inside the gate and press E. Plåt-Pelle, who runs it, has a word for you if you walk up to him. A clean car pays up to 1 600 riksdaler, a wreck only scrap, and nobody there buys a police car or deals with you while the police are after you. Getting *gripen* costs a fine: a quarter of your money, or 100 riksdaler per star if that is more. And if 1 000 riksdaler is burning a hole in your pocket, press L.
 
-For testing, `npm run dev` or `?dev` on any build's URL turns on dev mode: `§` (or `` ` ``) opens a console, where `help` lists the commands, `kr 500` adds 500 riksdaler, `mynt` adds 1 000 riksdaler and `adopt cat` gives you a new cat.
+For testing, `npm run dev` or `?dev` on any build's URL turns on dev mode: `§` (or `` ` ``) opens a console, where `help` lists the commands, `kr 500` adds 500 riksdaler, `mynt` adds 1 000 riksdaler, `adopt cat` gives you a new cat, `car volvo240` parks that car next to you, already yours, and `go skroten` takes you to Skroten (or to `torget`, the `kiosk` or a safehouse by its street).
 
 ## How it is built
 
@@ -49,7 +49,7 @@ data/raw/          OpenStreetMap extract (osm.json) and one elevation tile (tile
 data/vrigstad.json processed data: buildings, roads, water, land use, 25 m elevation grid
 tools/fetch.sh     re-downloads data/raw from the Overpass API and Mapzen terrain tiles
 tools/process.py   projects and clips the raw data into data/vrigstad.json
-tools/build.mjs    builds both pages with Vite into dist/, each as one self-contained file
+tools/build.mjs    builds both pages with Vite into dist/, each as one HTML file, with its fonts and models beside it
 ```
 
 It needs Node. Work on it with a dev server, and rebuild after changing anything in `src/`:

@@ -37,6 +37,11 @@ export interface Command {
   access?: Access;
   /** other names that run it: `tp` for `teleport` */
   aliases?: readonly string[];
+  /**
+   * Commands under this one, by name: `tune set …` runs `set` with the words after it. A word that names none runs this
+   * command's own `run` (group() refuses it). They share its access; help, `--help`, Tab and the usage line reach them.
+   */
+  subcommands?: Readonly<Record<string, Command>>;
   /** The words that fit at argument `index` (0 is the first after the name), given the arguments before it. */
   complete?(index: number, before: readonly string[]): readonly string[];
   /** Runs the command with the words after its name; returns the line to show. Throw a UsageError for bad arguments. */
@@ -62,6 +67,14 @@ const NAME = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/; // kebab-case, as every name peopl
 export const HELP_MAX = 80;
 const HELP_FLAGS = ['--help', '-h'];
 
+/** A command reached through the words typed: `tune set` and the words after it. */
+interface Found {
+  /** the names that led to it, as usage and help show them: `tune set` */
+  readonly path: string;
+  readonly cmd: Command;
+  readonly args: string[];
+}
+
 /** Commands by name. `help` is built in and lists the rest. */
 export class Commands {
   private readonly byName = new Map<string, Command>(); // the registered names
@@ -78,7 +91,7 @@ export class Commands {
       examples: ['help', 'help kr'],
       access: 'player',
       complete: index => (index === 0 ? this.names() : []),
-      run: a => this.help(a[0]),
+      run: a => this.help(a),
     });
   }
 
@@ -86,15 +99,9 @@ export class Commands {
   register(name: string, cmd: Command): () => void {
     const names = [name, ...(cmd.aliases ?? [])];
     if (new Set(names).size < names.length) throw new Error('command names repeat: ' + names.join(', '));
-    const help = cmd.help.trim();
-    if (!help || help.includes('\n') || help.length > HELP_MAX)
-      throw new Error(`${name}: help is one line of up to ${HELP_MAX} characters`);
-    for (const e of cmd.examples ?? [])
-      if (!names.includes(e.trim().split(/\s+/)[0])) throw new Error(`${name}: the example "${e}" doesn't run it`);
-    for (const n of names) {
-      if (!NAME.test(n)) throw new Error('command names are kebab-case: ' + n);
+    checkCommand(name, cmd, [names]);
+    for (const n of names)
       if (this.byName.has(n) || this.aliases.has(n)) throw new Error('command already registered: ' + n);
-    }
     this.byName.set(name, cmd);
     for (const a of cmd.aliases ?? []) this.aliases.set(a, name);
     let registered = true; // so a second call can't take out a later registration of the same command
@@ -128,8 +135,9 @@ export class Commands {
     const cmd = name === undefined ? undefined : this.byName.get(name);
     if (!cmd || name === undefined) return `Unknown command: ${typed}. Type help for the list.`;
     if (!this.canRun(cmd)) return `${name} works in dev mode only (?dev).`;
+    const found = descend(name, cmd, args);
     // every command answers --help the same way, before it runs, so none can forget to
-    if (args.length === 1 && HELP_FLAGS.includes(args[0])) return this.help(name);
+    if (found.args.length === 1 && HELP_FLAGS.includes(found.args[0])) return this.helpFor(found);
     const call: Call = { name, args, source };
     let ran = false,
       answer = '',
@@ -143,13 +151,13 @@ export class Commands {
       }
       ran = true;
       try {
-        answer = cmd.run(args, call);
+        answer = found.cmd.run(found.args, call);
       } catch (err) {
         if (!(err instanceof UsageError)) {
           failure = { err };
           throw err;
         }
-        answer = `${err.message ? err.message + ' ' : ''}Usage: ${this.usage(name, cmd)}`;
+        answer = `${err.message ? err.message + ' ' : ''}Usage: ${usage(found)}`;
       }
       return answer;
     };
@@ -169,19 +177,22 @@ export class Commands {
     if (words.length === 0) return fits(this.names());
     const name = this.resolve(words[0].toLowerCase());
     const cmd = name === undefined ? undefined : this.byName.get(name);
-    if (!cmd?.complete || !this.canRun(cmd)) return [];
-    const before = words.slice(1);
-    return fits(cmd.complete(before.length, before)).sort();
+    if (!cmd || name === undefined || !this.canRun(cmd)) return [];
+    // the words before the cursor that name a subcommand lead to it; the cursor's word may be one
+    const found = descend(name, cmd, words.slice(1));
+    if (found.cmd.subcommands) return found.args.length ? [] : fits(Object.keys(found.cmd.subcommands)).sort();
+    const before = found.args;
+    return fits(found.cmd.complete?.(before.length, before) ?? []).sort();
   }
 
   /** The usage line of the command a line starts with (`go <place> [speed]`), for the hint under the input. */
   usageFor(line: string): string | undefined {
-    const typed = line.trimStart().split(/\s+/)[0];
+    const [typed, ...args] = line.trimStart().split(/\s+/);
     const name = typed ? this.resolve(typed.toLowerCase()) : undefined;
     if (name === undefined) return undefined;
     const cmd = this.byName.get(name);
     if (!cmd || !this.canRun(cmd)) return undefined;
-    return this.usage(name, cmd);
+    return usage(descend(name, cmd, args));
   }
 
   private resolve(typed: string): string | undefined {
@@ -192,22 +203,14 @@ export class Commands {
     return this.allowed(cmd.access ?? 'dev');
   }
 
-  private usage(name: string, cmd: Command) {
-    return `${name} ${cmd.usage ?? ''}`.trimEnd();
-  }
-
-  private help(about?: string): string {
-    if (about) {
-      const name = this.resolve(about.toLowerCase());
+  private help(about: readonly string[]): string {
+    if (about.length) {
+      const name = this.resolve(about[0].toLowerCase());
       const cmd = name === undefined ? undefined : this.byName.get(name);
-      if (!cmd || name === undefined || !this.canRun(cmd)) throw new UsageError('No command called ' + about + '.');
-      const aka = cmd.aliases?.length ? ` (also ${cmd.aliases.join(', ')})` : '';
-      return [
-        `${this.usage(name, cmd)}: ${cmd.help}${aka}`,
-        ...(cmd.params ?? []).map(p => `  ${p.shown}: ${p.help}`),
-        ...(cmd.details ? [cmd.details] : []),
-        ...(cmd.examples?.length ? ['Examples:', ...cmd.examples.map(e => `  ${e}`)] : []), // one a line: an example may hold a comma
-      ].join('\n');
+      const found = cmd && name !== undefined ? descend(name, cmd, about.slice(1)) : undefined;
+      if (!cmd || !found || found.args.length || !this.canRun(cmd))
+        throw new UsageError('No command called ' + about.join(' ') + '.');
+      return this.helpFor(found);
     }
     return this.names()
       .map(n => {
@@ -216,6 +219,46 @@ export class Commands {
       })
       .join('\n');
   }
+
+  private helpFor({ path, cmd }: Found): string {
+    const aka = cmd.aliases?.length ? ` (also ${cmd.aliases.join(', ')})` : '';
+    const subs = Object.entries(cmd.subcommands ?? {}).sort(([a], [b]) => (a < b ? -1 : 1));
+    return [
+      `${usage({ path, cmd })}: ${cmd.help}${aka}`,
+      ...(cmd.params ?? []).map(p => `  ${p.shown}: ${p.help}`),
+      ...subs.map(([n, sub]) => `  ${usage({ path: `${path} ${n}`, cmd: sub })}: ${sub.help}`),
+      ...(cmd.details ? [cmd.details] : []),
+      ...(cmd.examples?.length ? ['Examples:', ...cmd.examples.map(e => `  ${e}`)] : []), // one a line: an example may hold a comma
+    ].join('\n');
+  }
+}
+
+function usage({ path, cmd }: Pick<Found, 'path' | 'cmd'>) {
+  return `${path} ${cmd.usage ?? ''}`.trimEnd();
+}
+
+/** Follows the words that name subcommands, as far as they go. */
+function descend(path: string, cmd: Command, args: string[]): Found {
+  let found: Found = { path, cmd, args };
+  for (;;) {
+    const sub = found.args[0] && found.cmd.subcommands?.[found.args[0].toLowerCase()];
+    if (!sub) return found;
+    found = { path: `${found.path} ${found.args[0].toLowerCase()}`, cmd: sub, args: found.args.slice(1) };
+  }
+}
+
+/** Refuses a command, or a subcommand under it, without one line of help, or with an example that doesn't run it. */
+function checkCommand(path: string, cmd: Command, starts: readonly (readonly string[])[]): void {
+  const help = cmd.help.trim();
+  if (!help || help.includes('\n') || help.length > HELP_MAX)
+    throw new Error(`${path}: help is one line of up to ${HELP_MAX} characters`);
+  for (const e of cmd.examples ?? []) {
+    const words = e.trim().split(/\s+/);
+    if (!starts.every((names, i) => names.includes(words[i])))
+      throw new Error(`${path}: the example "${e}" doesn't run it`);
+  }
+  for (const n of starts[starts.length - 1]) if (!NAME.test(n)) throw new Error('command names are kebab-case: ' + n);
+  for (const [n, sub] of Object.entries(cmd.subcommands ?? {})) checkCommand(`${path} ${n}`, sub, [...starts, [n]]);
 }
 
 /** A whole number of kronor, negative allowed; a UsageError for anything else. */

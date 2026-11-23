@@ -36,6 +36,7 @@ export interface CrashDeps {
   readonly viewer: Point; // the camera, which decides whether you saw a police car wreck
   toast(msg: string, secs?: number): void;
   hurtPlayer(n: number): void;
+  readonly god: boolean; // god mode: the car you drive takes no damage
   shake(dmg: number): void; // the camera's jolt
 }
 
@@ -60,9 +61,9 @@ export class Crashes {
 
   // one hit: both cars take the damage, and the player too if they're in one; the glass cracks in updateSmoke
   crash = (c: Car, o: Car | null, impact: number) => {
-    const { game, toast, hurtPlayer, shake, viewer } = this.g,
+    const { game, toast, hurtPlayer, shake, viewer, god } = this.g,
       { catAboard, pickLine } = this;
-    const hits = crashCars(game.clockS, impact, c, o);
+    const hits = crashCars(game.clockS, impact, c, o, god ? game.pcar : null);
     if (!hits.length) return;
     let said = false; // one line per crash: wrecked, then smoke, then the crash itself
     for (const { car: k, wrecked: w, smokeUp } of hits) {
