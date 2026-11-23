@@ -300,20 +300,38 @@ and areas to hold give them reasons to cross paths. The comparisons are DayZ and
 
 A throwaway on the branch `multiplayer-two-tab-prototype`, behind the lab flag. Open the game in **two windows side
 by side** (a tab in the background stops its frames) with `?lab=multiplayer`; add `&room=<name>` for a room of your
-own. Each window shows the other's player in a blue shirt, on foot or in the car they drive.
+own. Each window shows the other's player in a blue shirt on foot, and the car they drive.
 
 ![The second window shows the first window's player walking past](multiplayer-two-tabs.png)
 
 What it is: the `tabs` connector and a session in one file (`src/game/net/two-tabs.ts`), snapshots and the drawing
-in the past (`src/game/net/snapshots.ts`), and the meshes (`src/game/render/remote-players.ts`).
+in the past (`src/game/net/snapshots.ts`), the shared cars (`src/game/net/shared-cars.ts`) and the other players'
+meshes (`src/game/render/remote-players.ts`).
+
+Cars are the same car in every window:
+
+- **Ids.** The cars parked when the village is built get `p0`, `p1`, … from the order they were made in, which the
+  seed makes the same in every window. Any other car (one taken from traffic, one from the `car` command) gets an
+  id from the player who first drives it, such as `<player>:0`, and the other windows make it when they first hear
+  of it.
+- **Driving.** A snapshot names the car its player drives. The other windows move their own car with that id
+  (mode `remote`): you crash into it, traffic stops behind it, it is on the minimap, and E doesn't offer it. The
+  driver's window decides its damage.
+- **Getting out.** The driver's window says once where it left the car, or that the car is gone (sold at Skroten).
+  Every window keeps the newest word on each car and passes it all on when someone joins.
+- **Two players, one car.** The one who got in first keeps it (the player id settles a tie); the other is put back
+  on their feet with "Someone else got in first."
 
 What it leaves out, on purpose:
 
-- Remote cars are meshes only: nothing collides with them, nobody can get in, and they aren't on the minimap.
-- Cars have no shared identity yet. When a friend takes the parked Volvo, your Volvo stays parked and a second one
-  drives off.
-- No name tags, no shared police, traffic or time of day, and no clock sync (one computer has one clock).
-- What a peer sends is barely checked.
+- A parked car that is pushed, or damaged while nobody drives it, changes only in the window where it happened,
+  until someone drives it.
+- Traffic and the police stay each window's own, so a friend can be chased by police you can't see.
+- The loser of a car still gets the star and the "cars stolen" count for it.
+- No name tags, no shared time of day, and no clock sync (one computer has one clock): "who got in first" and
+  "the newest word" compare clocks, so they need it before two computers play.
+- Messages are checked for shape, real numbers and known car types, not for sense: a peer can still say it is
+  anywhere, in any car.
 
 ## Where the code goes, and tests
 
