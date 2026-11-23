@@ -395,9 +395,9 @@ CHURCH_WAY = 48762655   # Vrigstad kyrka; its tower is split out of this way's o
 # when its way is re-traced in OSM (past the version named)
 BUILDING_SHIFT = {
     # the old bank museum on Jönköpingsvägen, west of the Emån bridge: traced in 2010 (v1) about 3 m south, onto
-    # the road; moved north so its front wall clears the 9 m carriageway by 1 m, as it stands behind a sidewalk,
-    # and 1 m west to keep clear of the driveway behind it
-    48807861: (-1, -3.5),
+    # the road; moved north until a full sidewalk fits between its front wall and the 9 m carriageway (the road is
+    # drawn wider than it is, so further than the aerial alone), and west to keep clear of the driveway behind it
+    48807861: (-1.5, -5),
 }
 buildings, roads, water, waterways, land, labels = [], [], [], [], [], {}
 parking_areas, parking_spaces, crossings, kerbs, trees, furniture = [], [], [], [], [], []
