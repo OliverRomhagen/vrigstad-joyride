@@ -32,6 +32,111 @@ registers against, what is built, and what comes next. The player-facing story i
   The one exception is an adapter that makes commands for every entry of a registry, such as the tunables' `set` and
   `get` (#357): it gets a `*-commands.ts` file of its own beside the registry, since no one entry owns those commands.
 
+## A walkthrough
+
+The console is the "commands in" door of [Commands in, events out](../ARCHITECTURE.md#commands-in-events-out): a
+typed line, a panel's slider, a link's `?cmd=`, a replay and, later, another player all reach the game the same way,
+as a line through `Commands.run`. So most new systems meet it: they register a few commands, and the tools around
+the registry (help, Tab, the Log, Record) work for them without changes. This section follows real lines through it.
+
+```mermaid
+flowchart LR
+  subgraph page["page code (DOM)"]
+    box["DevConsole<br/>typed line, Tab, hint"]
+    url["?cmd= · binds · panels<br/>(not built yet)"]
+  end
+  subgraph sim["sim code (no DOM, no three.js)"]
+    run["Commands.run(line, source)"]
+    gate{"known?<br/>allowed?"}
+    descend["descend<br/>tune → set"]
+    helpq{"--help?"}
+    hooks["hooks, outermost first<br/>Log · Record · Network"]
+    cmd["Command.run<br/>typed args from command()"]
+    subgraph owners["modules that own the state"]
+      health["health.ts<br/>Health.god"]
+      wanted["police.ts<br/>Wanted"]
+      tunables["sim/tunables.ts<br/>Tunables"]
+    end
+  end
+  tests["unit and smoke tests"]
+  box -- console --> run
+  url -. url · script · panel .-> run
+  tests -- test --> run
+  run --> gate
+  gate -- "no: one line back" --> box
+  gate -- yes --> descend --> helpq
+  helpq -- "yes: its help" --> box
+  helpq -- no --> hooks --> cmd
+  cmd --> health & wanted & tunables
+  cmd -- "one line back" --> box
+  classDef pageCode fill:#fde8d8,stroke:#c96,color:#000
+  classDef simCode fill:#dceefb,stroke:#69c,color:#000
+  class box,url pageCode
+  class run,gate,descend,helpq,hooks,cmd,health,wanted,tunables simCode
+```
+
+Orange is page code, blue is sim code: the line between them is [the layers in
+ARCHITECTURE.md](../ARCHITECTURE.md), and Fallow keeps it (`fallow.toml`). The registry, the commands and the state
+they change never touch the DOM, so every step below runs in a unit test.
+
+### `tune set driving.grip 8`: a group over a registry
+
+1. **The box** (`src/game/devconsole.ts`) sends the line to `commands.run(line)`, with source `console`.
+2. **`Commands.run`** (`src/game/commands.ts`) splits it into words, finds `tune` (an alias would resolve to it
+   here), and checks its access. Then `descend` follows the words that name subcommands: `tune` is a `group()`, so
+   `set` picks its `set`, and `driving.grip 8` is left as the arguments.
+3. **The hooks** each get the call, `{ name: 'tune', args: ['set', 'driving.grip', '8'], source: 'console' }`, and
+   call `next()` to go on.
+4. **`command()`** (`src/game/command-args.ts`) parses the arguments it was built with:
+   `choice('tunable', () => tunables.keys())` accepts `driving.grip`, and `num('value')` reads `8` (`8,5` works too).
+   A word that doesn't parse throws a `UsageError`, which comes back as the error and the usage line, so `run` only
+   ever sees good values.
+5. **The adapter's `run`** (`src/game/sim/tunable-commands.ts`) calls `tunables.set('driving.grip', 8)`. The
+   registry (`src/game/sim/tunables.ts`) checks the range and writes the number into the `DRIVING` object in
+   `src/game/cars.ts`, which `addFields` connected it to.
+6. **The next frame**, `Fleet.drive` reads `DRIVING.GRIP` as always: the car corners differently, and nothing in the
+   driving model knows a console exists. The box shows `driving.grip = 8 1/s (was 12)`.
+
+### `god`: one flag, three rules
+
+1. `registerHealthCommands` (`src/game/health.ts`) registered `god` with one optional argument, `toggle('mode')`, so
+   `god`, `god on` and `god nej` all parse, and Tab offers `on` and `off`.
+2. Its `run` sets `Health.god`, fills the health up when it switches on, and redraws the health bar. That is all
+   the command does.
+3. Three rules read the flag, each in its own module: `canHurt` in `health.ts` takes no health, `crashCars` spares the
+   car you drive (`crashes.ts` passes it in), and `Wanted.update` in `police.ts` never starts a catch. `main.ts` hands
+   the flag to the last two as `get god()`, so neither reads the `Health` state itself.
+
+A command stays thin: the rules, and their unit tests, live in the modules. Another source that sets god mode, such
+as a cheat code or a lab flag, sets the same field and gets the same three rules.
+
+### A hook: the Log, in a few lines
+
+```ts
+const lines: { text: string; source: CallSource }[] = [];
+const stop = commands.use((call, next) => {
+  const answer = next(); // runs the command, and any hooks inside this one
+  lines.push({ text: `${[call.name, ...call.args].join(' ')} → ${answer}`, source: call.source });
+  return answer;
+});
+```
+
+The hook never names a command, yet it sees `tune set`, `god`, `kr` and every command still to be written. The Log
+tab (step 4 of [What comes next](#what-comes-next)) and replays (Record, #49) are hooks like this one. A hook sees
+`tune` as the name and `set` as the first argument, so this one joins the name and every argument back into the
+line.
+
+### Adding a command
+
+1. Put it in the module that owns the state: a `registerCommands` method on a class, or a `register<Area>Commands`
+   function beside the rule (see [The shape](#the-shape)).
+2. Build it with `command()`: a `help` line of up to 80 characters, `examples` that start with its name, and typed
+   `args`, so parsing, the usage line and Tab come for free.
+3. Keep `run` to reading its values and calling the module's API, and return one line to show.
+4. Call the register function in the module's unit test: a missing help line or a bad example fails there, in
+   seconds, rather than when the page starts.
+5. Call it once from `src/game/main.ts`, next to the others. `help` lists the command; nothing else needs to change.
+
 ## The contract
 
 ### A command
