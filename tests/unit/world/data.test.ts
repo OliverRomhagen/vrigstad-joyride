@@ -67,7 +67,20 @@ describe('data/vrigstad.json', () => {
       pair(r.pk, StreetParking);
       pair(r.po, ParkingOrientation);
       if (r.sww) for (const v of r.sww) expect(v === 0 || (v >= 0.8 && v <= 6)).toBe(true);
+      if (r.br) {
+        expect(Object.keys(r.br).every(k => k === 'l' || k === 'cy')).toBe(true);
+        if (r.br.l !== undefined) expect(Number.isInteger(r.br.l)).toBe(true);
+      }
     }
+    // the six mapped bridges (#238), each with its layer
+    expect(w.r.filter(r => r.br).map(r => [r.i, r.br?.l, r.br?.cy])).toEqual([
+      [48174896, 1, undefined],
+      [48401500, 1, 1],
+      [48401503, 1, 1],
+      [48401511, 1, 1],
+      [57834128, 1, undefined],
+      [58102458, 1, undefined],
+    ]);
     for (const a of w.pa ?? []) {
       expect(codes(ParkingKind)).toContain(a.k);
       if (a.sf !== undefined) expect(codes(Surface)).toContain(a.sf);

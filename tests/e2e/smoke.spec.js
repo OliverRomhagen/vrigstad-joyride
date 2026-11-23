@@ -79,6 +79,55 @@ test.describe('game (index.html)', () => {
     expect(errors).toEqual([]);
   });
 
+  // In Vrigstadsån's channel west of the bridge: the player starts in the water, below the bank either side (#263).
+  test('builds the lakes, the rivers in their channels and the shore, and starts you wet in the river', async ({
+    page,
+  }, testInfo) => {
+    const errors = watchErrors(page);
+    await page.goto('/index.html?at=-60,-518,1.6,0.3');
+    await page.setViewportSize({ width: 640, height: 360 }); // keep software WebGL affordable
+    await expectWebGL(page);
+    const { water: w } = await state(page);
+    expect(w.lakes).toBe(4);
+    expect(w.courses).toBeGreaterThan(0);
+    expect(w.meshes).toBeGreaterThan(0);
+    expect(w.triangles).toBeGreaterThan(0);
+    expect(w.refinedCells).toBeGreaterThan(0);
+    expect(w.reeds).toBeGreaterThan(0);
+    expect(w.stones).toBeGreaterThan(0);
+    expect(w.shore.stony + w.shore.reedy + w.shore.sandy + w.shore.grassy).toBeGreaterThan(0);
+    // the ground under the player is under the river's level, and the game calls it water
+    expect(w.level).not.toBeNull();
+    expect(w.ground).toBeLessThan(w.level);
+    expect(w.wet).toBe(true);
+    await page.locator('#go').click();
+    await frames(page, 5);
+    await page.screenshot({ path: testInfo.outputPath('game-river-channel.png') });
+    expect(errors).toEqual([]);
+  });
+
+  test('builds the six mapped bridges and starts you on the Jönköpingsvägen deck', async ({ page }, testInfo) => {
+    const errors = watchErrors(page);
+    await page.goto('/index.html?at=-33.9,-8.4,1.6,0.3');
+    await page.setViewportSize({ width: 640, height: 360 }); // keep software WebGL affordable
+    await expectWebGL(page);
+    const { bridges: b, water: w } = await state(page);
+    expect(b.count).toBe(6);
+    // over Vrigstadsån's channel, but on the deck: dry (#263)
+    expect(w.level).not.toBeNull();
+    expect(w.wet).toBe(false);
+    expect(b.byArchetype).toEqual({ 'road-slab': 1, 'path-steel': 4, 'path-timber': 1 });
+    expect(b.onDeck).toBe(true);
+    // the player stands on groundAt, so on the deck's surface rather than the terrain under it
+    expect(b.groundY).toBeCloseTo(b.deckY, 5);
+    expect(b.meshes).toBe(12);
+    expect(b.triangles).toBeLessThan(15000);
+    await page.locator('#go').click();
+    await frames(page, 5);
+    await page.screenshot({ path: testInfo.outputPath('game-bridge.png') });
+    expect(errors).toEqual([]);
+  });
+
   test('places street lamps, benches and bins and reports them on the hook, also in the debug view', async ({
     page,
   }, testInfo) => {
@@ -479,13 +528,14 @@ test.describe('game (index.html)', () => {
     expect(errors).toEqual([]);
   });
 
-  test('with ?dev, the console opens with §, its keys never move the player, Tab completes, kr and mynt add money, tune set changes a tunable, stars and god work, adopt cat gives you a cat (and L makes it rain)', async ({
+  test('with ?dev, the console opens with §, its keys never move the player, Tab completes, kr and mynt add money, tune set changes a tunable, stars and god work, adopt cat gives you a cat, fps shows frame times and errors, errors clear empties them (and L makes it rain)', async ({
     page,
   }) => {
     await page.goto('/index.html');
     await page.locator('#go').click();
     await page.keyboard.press('Backquote'); // no dev mode: no console
     expect(await state(page)).toMatchObject({ devcon: false });
+    await expect(page.locator('#debug')).toHaveCount(0); // nor the errors box
     await page.goto('/index.html?dev');
     await page.locator('#go').click();
     const { x, z } = await state(page);
@@ -558,6 +608,27 @@ test.describe('game (index.html)', () => {
     await expect(lines).toHaveCount(before + 1);
     await page.keyboard.press('Tab');
     await expect(lines).toHaveCount(before + 2);
+    await line.fill('');
+    await expect(page.locator('#debug-stats')).toBeHidden();
+    await expect(await run('fps')).toHaveText('Frame times on.'); // #356, from #257
+    const { build } = await state(page);
+    expect(build).toMatch(/^([0-9a-f]{7,}|unknown)$/);
+    await expect(page.locator('#debug-stats')).toContainText(/\d+ fps · worst [\d.]+ ms/);
+    await expect(page.locator('#debug-stats')).toContainText(/\d+ calls · \d+k tris/);
+    await expect(page.locator('#debug-stats')).toContainText('build ' + build);
+    await expect(page.locator('#debug-errors')).toBeEmpty();
+    // an error thrown outside the game shows in the red box in dev mode; twice counts up
+    await page.evaluate(() => {
+      for (let i = 0; i < 2; i++)
+        setTimeout(() => {
+          throw new Error('smoke test boom');
+        });
+    });
+    await expect(page.locator('#debug-errors')).toContainText(/^2× .*smoke test boom/);
+    await expect(await run('errors clear')).toHaveText('Errors cleared.');
+    await expect(page.locator('#debug-errors')).toBeEmpty();
+    await expect(await run('fps')).toHaveText('Frame times off.');
+    expect(await state(page)).toMatchObject({ fps: false });
     await page.keyboard.press('Escape');
     expect(await state(page)).toMatchObject({ devcon: false });
     await page.keyboard.press('KeyL'); // låt det regna: 1 000 kr in the air
@@ -565,6 +636,30 @@ test.describe('game (index.html)', () => {
     expect((await state(page)).banknotes).toBeGreaterThan(0);
     await page.keyboard.press('KeyL'); // not enough left: nothing is taken
     expect(await state(page)).toMatchObject({ kr: 700 });
+  });
+
+  test('Skroten buys the car you drive onto its ring', async ({ page }, testInfo) => {
+    const errors = watchErrors(page);
+    await page.goto('/index.html?dev');
+    await page.locator('#go').click();
+    await page.keyboard.press('Backquote');
+    await page.keyboard.type('go skroten'); // onto Skroten's ring (SKROTEN in src/game/places.ts)
+    await page.keyboard.press('Enter');
+    await expect(page.locator('#devcon li').last()).toHaveText('You are at Skroten.');
+    await page.keyboard.type('car volvo240'); // yours, so no star when you get in; parked 3.5 m away, still on the ring
+    await page.keyboard.press('Enter');
+    await expect(page.locator('#devcon li').last()).toHaveText('Parked a Volvo 240 next to you.');
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('KeyE');
+    expect(await state(page)).toMatchObject({ inCar: true, kr: 200 });
+    await expect(page.locator('#prompt')).toHaveText('ESell the Volvo 240 at Skroten');
+    await page.keyboard.press('KeyE');
+    await expect(page.locator('#kmenu')).toContainText('800 riksdaler');
+    await page.screenshot({ path: testInfo.outputPath('game-skroten-menu.png') });
+    await page.keyboard.press('Digit1');
+    await expect(page.locator('#kr')).toHaveText('1 000 riksdaler');
+    expect(await state(page)).toMatchObject({ inCar: false, car: null });
+    expect(errors).toEqual([]);
   });
 });
 
