@@ -6,14 +6,14 @@ import { carPrice, earn, fmtKr, pay, repairPrice, salePrice, type Wallet } from 
 import type { MenuItem } from './pets';
 import { tooFastToGetOut } from './player';
 import type { CarType } from './sim/vehicle-spec';
-import { OWNER_UV, type YardCar, yardHeading, yardToWorld } from './skroten-yard';
+import { LIFT_RING_M, OWNER_UV, type YardCar, yardHeading, yardToWorld } from './skroten-yard';
 import type { GameState } from './state';
 
 const OWNER_SAYS = 'Plåt-Pelle: ';
 const OWNER_AT = yardToWorld(OWNER_UV.u, OWNER_UV.v);
 const TALK_M = 3; // how close you stand to talk to him
 const SALE_REACH_M = 5; // his price stays on the plate while you stand this close to the car; a little over the reach to get in
-const LIFT_REACH_M = 2.5; // a car this close to the middle of the lift's bay stands on the lift
+const WHOLE = OWNER_SAYS + '”Den ä ju hel! Dä finns inget å laga.”';
 const NO_POLICE = OWNER_SAYS + '”En polisbil? Ä du inte klok? Den rör ja inte.”';
 const CHASED = OWNER_SAYS + '”Inte mä snuten i hälarna! Kom tebaks när du ä av mä dom.”';
 /** What he says when you talk to him on foot, one after the other. */
@@ -68,7 +68,7 @@ export class Skroten {
     if (this.g.stars) return CHASED;
     const kr = repairPrice(c.type, this.g.modelId(c), c.dmg);
     if (kr === null) return NO_POLICE;
-    return kr || OWNER_SAYS + '”Den ä ju hel! Dä finns inget å laga.”';
+    return kr || WHOLE;
   }
 
   // the car you drive stands on the lift
@@ -79,7 +79,7 @@ export class Skroten {
       c &&
       c === game.pcar &&
       liftAt &&
-      Math.hypot(c.x - liftAt.x, c.z - liftAt.z) < LIFT_REACH_M
+      Math.hypot(c.x - liftAt.x, c.z - liftAt.z) < LIFT_RING_M // on the ring that is drawn
     );
   }
 
@@ -129,6 +129,7 @@ export class Skroten {
   private openRepair(c: Car) {
     const { openMenu, toast, carName } = this.g,
       kr = this.repairQuote(c);
+    if (kr === WHOLE) return false; // nothing to mend: E gets you out, as the prompt says, without a word every time
     if (typeof kr === 'string') {
       toast(kr, 3.5);
       return false;
@@ -141,7 +142,7 @@ export class Skroten {
         ['no', 'Nä, dä får va'],
       ],
       k => {
-        if (k === 'fix') this.repair(c);
+        if (k === 'fix') this.repair(c, kr);
       },
       () => this.onLift(c) && !tooFastToGetOut(c),
     );
@@ -149,11 +150,13 @@ export class Skroten {
   }
 
   // the price is asked again at the moment of paying: stars can come while the menu is open, and the car can drive off before it closes
-  private repair(c: Car) {
+  // `shown` is the price on the menu: if the car took more damage while it was open, he names the new price instead of taking it
+  private repair(c: Car, shown: number) {
     const { toast, wallet } = this.g;
     if (!this.onLift(c) || tooFastToGetOut(c)) return;
     const kr = this.repairQuote(c);
-    if (typeof kr === 'string') toast(kr, 3.5);
+    if (typeof kr === 'number' && kr !== shown) this.openRepair(c);
+    else if (typeof kr === 'string') toast(kr, 3.5);
     else if (!pay(wallet, kr)) toast(OWNER_SAYS + '”' + fmtKr(kr) + ', sa ja. Kom tebaks när du har pengarna.”', 3.5);
     else {
       c.dmg = 0;

@@ -347,7 +347,8 @@ registerCarDamageCommand(commands, () => (game.inCar ? game.pcar : null));
 registerTunableCommands(commands, tunables);
 // go <place>: you, or the car you drive, straight there, out of any safehouse first
 places.registerCommands(commands, (x, z, name) => { leaveHouse(); const c = game.inCar ? game.pcar : null;
-  if (c) { c.x = x; c.z = z; c.v = c.slip = c.drift = c.boost = 0; c.vh = c.h; placeCar(meshed(c)); } else { player.x = x; player.z = z; player.speed = 0; } return 'You are at ' + name + '.'; });
+  if (c) { c.x = x; c.z = z; c.v = c.slip = c.drift = c.boost = 0; c.vh = c.h; placeCar(meshed(c)); } else { player.x = x; player.z = z; player.speed = 0; } return 'You are at ' + name + '.'; },
+  yard.workshop ? { verkstan: { x: yard.workshop.bay.x, z: yard.workshop.bay.z, name: "Plåt-Pelle's lift" } } : {});   // go verkstan: onto the lift
 fleet.registerCommands(commands, CIVILIAN_CAR_TYPES, () => view.camYaw, c => carName(c));   // car <model>
 debugOverlay?.registerCommands(commands);
 
@@ -401,6 +402,6 @@ loop.start();
 
 // ---------- test hook: read-only state for the smoke tests (src/game/test-hook.ts) ----------
 installTestHook({ game, view, player, health, cars, labs: lab.list(), get ragdolls() { return ragdolls.count; }, get stars() { return wanted.stars; }, get cats() { return cats.length; }, get ownCat() { return !!colony.owned; }, get displayCar() { return displayCar; }, lift: yard.workshop?.bay ?? null,
-  vehicleVisuals: { state: c => vehicleVisuals.state(meshed(c)) }, bodyMotion: { state: c => bodyMotion.state(meshed(c)) }, skyDome, street, debugStreetscape: DEBUG_STREETSCAPE, bridges: { index: bridges, draw: bridgeMeshes, groundAt }, furniture, water: { bodies: waterBodies, surface: waterLook.surface, props: waterLook.props, shore, terrainTriangles: terrainMesh.triangles, refinedCells: heightfield.refinedCells, buildMs: waterCutMs + waterMeshMs, inWater, hAt }, debugFurniture: DEBUG_FURNITURE, nearestCar,
+  vehicleVisuals: { state: c => vehicleVisuals.state(meshed(c)) }, crackShown: c => carDamage.crackShown(meshed(c)), bodyMotion: { state: c => bodyMotion.state(meshed(c)) }, skyDome, street, debugStreetscape: DEBUG_STREETSCAPE, bridges: { index: bridges, draw: bridgeMeshes, groundAt }, furniture, water: { bodies: waterBodies, surface: waterLook.surface, props: waterLook.props, shore, terrainTriangles: terrainMesh.triangles, refinedCells: heightfield.refinedCells, buildMs: waterCutMs + waterMeshMs, inWater, hAt }, debugFurniture: DEBUG_FURNITURE, nearestCar,
   get kr() { return wallet.kr; }, get banknotes() { return banknotes.live; }, get confetti() { return confetti.live; }, get devcon() { return devcon.isOpen; }, build: __BUILD__, get fps() { return !!debugOverlay?.shown; }, day: { get hour() { return dayClock.hour; }, get night() { return dayClock.night; }, get sunLight() { return sky.sun; } } });
 })();

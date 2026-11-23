@@ -29,6 +29,7 @@ export interface TestHookDeps {
   lift: { readonly x: number; readonly z: number; readonly inX: number; readonly inZ: number } | null; // the middle of the lift's bay in Skroten's workshop, and the way in from its door
   // what the car's model and springs are doing
   vehicleVisuals: { state(car: Car): unknown };
+  crackShown(car: Car): number; // the crack level its glass shows
   bodyMotion: { state(car: Car): unknown };
   skyDome: Pick<Sky, 'state'>;
   street: { layout: StreetscapeLayout; meshes: readonly unknown[]; tris: number; ms: number };
@@ -186,6 +187,7 @@ export function installTestHook(g: TestHookDeps) {
         fps: g.fps,
         hp: health.hp,
         carDmg: game.pcar ? game.pcar.dmg : null,
+        carCrack: game.pcar ? g.crackShown(game.pcar) : null,
         ownCat: g.ownCat,
         vehicle: displayCar ? vehicleVisuals.state(displayCar) : null,
         nearSelectedVehicle: n === displayCar,

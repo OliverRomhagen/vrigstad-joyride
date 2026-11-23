@@ -670,11 +670,6 @@ test.describe('game (index.html)', () => {
     const errors = watchErrors(page);
     await page.setViewportSize({ width: 640, height: 360 });
     await page.goto('/index.html?dev');
-    const { lift } = await state(page);
-    expect(lift).not.toBeNull();
-    // `car` parks 3.5 m east of you, nose the way you look: start that far west of the lift, looking the way in from the door, so the
-    // car stands on the lift between its posts, as you would drive it in
-    await page.goto(`/index.html?dev&at=${lift.x - 3.5},${lift.z},${Math.atan2(lift.inX, -lift.inZ)}`);
     await page.locator('#go').click();
     await page.keyboard.press('Backquote');
     for (const line of ['kr 500', 'car volvo240']) {
@@ -685,10 +680,13 @@ test.describe('game (index.html)', () => {
     await page.keyboard.press('KeyE');
     expect(await state(page)).toMatchObject({ inCar: true, kr: 700 });
     await page.keyboard.press('Backquote');
-    await page.keyboard.type('damage 60');
-    await page.keyboard.press('Enter');
+    for (const line of ['go verkstan', 'damage 60']) {
+      await page.keyboard.type(line); // in the car, onto the lift, then damaged there
+      await page.keyboard.press('Enter');
+    }
     await expect(page.locator('#devcon li').last()).toHaveText('Car damage: 60.');
     await page.keyboard.press('Escape');
+    await expect.poll(async () => (await state(page)).carCrack).toBe(2);
     await expect(page.locator('#prompt')).toHaveText('ERepair the Volvo 240 · 240 riksdaler');
     await page.keyboard.press('KeyE');
     await expect(page.locator('#kmenu')).toContainText('som ny');
@@ -696,7 +694,8 @@ test.describe('game (index.html)', () => {
     await page.keyboard.press('Digit1');
     await expect(page.locator('#kr')).toHaveText('460 riksdaler');
     expect(await state(page)).toMatchObject({ inCar: true, carDmg: 0 });
-    await page.screenshot({ path: testInfo.outputPath('game-skroten-repaired.png') }); // whole glass again
+    await expect.poll(async () => (await state(page)).carCrack).toBe(0); // whole glass again
+    await page.screenshot({ path: testInfo.outputPath('game-skroten-repaired.png') });
     expect(errors).toEqual([]);
   });
 
