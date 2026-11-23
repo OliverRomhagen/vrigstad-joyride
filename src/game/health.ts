@@ -93,7 +93,7 @@ export const crackLevel = (dmg: number) =>
 
 export interface Crashable extends Damageable {
   hitAt: number; // clock (s) of the car's last hit, for CRASH_COOL_S
-  mods?: CarMods; // a reinforced body takes less of the damage (sim/upgrades.ts)
+  mods: CarMods; // a reinforced body takes less of the damage (sim/upgrades.ts)
 }
 
 export interface CrashHit<C extends Crashable> {

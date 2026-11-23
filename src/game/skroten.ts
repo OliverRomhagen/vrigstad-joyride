@@ -18,7 +18,7 @@ import type { MenuItem } from './pets';
 import { tooFastToGetOut } from './player';
 import { UPGRADE_ORDER, UPGRADES, type Upgrade } from './sim/upgrades';
 import type { CarType } from './sim/vehicle-spec';
-import { OWNER_UV, type YardCar, yardHeading, yardToWorld } from './skroten-yard';
+import { LIFT_RING_M, OWNER_UV, type YardCar, yardHeading, yardToWorld } from './skroten-yard';
 import type { GameState } from './state';
 
 const OWNER_SAYS = 'Plåt-Pelle: ';
@@ -26,7 +26,6 @@ const OWNER_AT = yardToWorld(OWNER_UV.u, OWNER_UV.v);
 const TALK_M = 3; // how close you stand to talk to him
 const SALE_REACH_M = 5; // his price stays on the plate while you stand this close to the car; a little over the reach to get in
 const LOT_WRECK = OWNER_SAYS + '”Den där ä ju kaputt! Den får ja laga först. Kom tebaks sen.”';
-const LIFT_REACH_M = 2.5; // a car this close to the middle of the lift's bay stands on the lift
 const NO_POLICE = OWNER_SAYS + '”En polisbil? Ä du inte klok? Den rör ja inte.”';
 const CHASED = OWNER_SAYS + '”Inte mä snuten i hälarna! Kom tebaks när du ä av mä dom.”';
 const UPGRADE_NAMES: Readonly<Record<Upgrade, string>> = {
@@ -108,7 +107,7 @@ export class Skroten {
       c &&
       c === game.pcar &&
       liftAt &&
-      Math.hypot(c.x - liftAt.x, c.z - liftAt.z) < LIFT_REACH_M
+      Math.hypot(c.x - liftAt.x, c.z - liftAt.z) < LIFT_RING_M // on the ring that is drawn
     );
   }
 
@@ -168,7 +167,7 @@ export class Skroten {
     if (fix) items.push(['fix', 'Laga <small>' + fmtKr(fix) + '</small>']);
     for (const u of UPGRADE_ORDER)
       if (!c.mods[u])
-        items.push([u, UPGRADE_NAMES[u] + ' <small>' + fmtKr(UPGRADE_KR[u]) + ' · ' + upgradeHelp(u) + '</small>']);
+        items.push([u, UPGRADE_NAMES[u] + ' <small>' + fmtKr(UPGRADE_KR[u]) + ' · ' + upgradeHelp(u, c) + '</small>']);
     if (otherPaints(c).length) items.push(['paint', 'Lacka om <small>' + fmtKr(RESPRAY_KR) + '</small>']);
     items.push(['no', 'Nä, dä får va']);
     openMenu(
@@ -180,7 +179,7 @@ export class Skroten {
       items,
       k => {
         if (k === 'paint') this.openPaint(c);
-        else if (k === 'fix' ? this.repair(c) : isUpgrade(k) && this.upgrade(c, k)) this.openLift(c);
+        else if (k === 'fix' ? this.repair(c, fix) : isUpgrade(k) && this.upgrade(c, k)) this.openLift(c);
       },
       () => this.onLift(c) && !tooFastToGetOut(c),
     );
@@ -199,7 +198,10 @@ export class Skroten {
       ],
       k => {
         const p = k.startsWith('p') ? paints[Number(k.slice(1))] : undefined;
-        if (!p) return;
+        if (!p) {
+          if (k === 'no') this.openLift(c); // back to the lift's menu
+          return;
+        }
         if (
           this.work(c, RESPRAY_KR, () => {
             c.color = p;
@@ -227,8 +229,13 @@ export class Skroten {
     return false;
   }
 
-  private repair(c: Car) {
+  // `shown` is the price on the menu: if the car took more damage while it was open, he names the new price instead of taking it
+  private repair(c: Car, shown: number) {
     const kr = this.repairKr(c);
+    if (kr !== shown) {
+      if (this.onLift(c)) this.openLift(c);
+      return false;
+    }
     return (
       !!kr &&
       this.work(c, kr, () => {
@@ -276,7 +283,7 @@ export class Skroten {
 
   /** E by a car on his lot: his price on the menu plate, or a word about the police. */
   offerCar = (c: Car) => {
-    const { game, player, stars, openMenu, toast, carName } = this.g;
+    const { stars, openMenu, toast, carName } = this.g;
     if (stars) {
       toast(CHASED, 3.5);
       return;
@@ -296,14 +303,21 @@ export class Skroten {
       k => {
         if (k === 'buy') this.buy(c);
       },
-      () => !game.inCar && c.saleKr > 0 && Math.hypot(player.x - c.x, player.z - c.z) < SALE_REACH_M,
+      () => this.byForSale(c),
     );
   };
 
-  // stars can come while the menu is open
+  // you stand on foot by the car for sale, with no police after you: what keeps his menu open
+  private byForSale(c: Car) {
+    const { game, player, stars } = this.g;
+    return !game.inCar && !stars && c.saleKr > 0 && Math.hypot(player.x - c.x, player.z - c.z) < SALE_REACH_M;
+  }
+
+  // all asked again at the moment of paying, as for a sale: stars can come while the menu is open, and you can walk off before it closes
   private buy(c: Car) {
     const { stars, toast, wallet } = this.g;
     if (!c.saleKr) return;
+    if (!stars && !this.byForSale(c)) return; // walked off or got in: no sale, and no word
     const kr = lotPrice(c.saleKr, c.dmg); // a crash can come while the menu is open
     if (stars) toast(CHASED, 3.5);
     else if (kr === null) toast(LOT_WRECK, 3.5);
@@ -333,7 +347,8 @@ const isUpgrade = (k: string): k is Upgrade => (UPGRADE_ORDER as readonly string
 const pct = (share: number) => Math.round(share * 100) + ' %';
 
 // what an upgrade does, from its numbers now (the tunables can change them)
-function upgradeHelp(u: Upgrade) {
+function upgradeHelp(u: Upgrade, c: Car) {
+  if (u === 'engine' && c.type === 'epa') return Math.round(UPGRADES.EPA_TOP_MS * 3.6) + ' km/h · a limiter switch';
   if (u === 'engine') return '+' + pct(UPGRADES.ENGINE_TOP - 1) + ' top speed';
   if (u === 'springs') return 'grips and steers better';
   return pct(1 - UPGRADES.BODY_DAMAGE) + ' less crash damage';

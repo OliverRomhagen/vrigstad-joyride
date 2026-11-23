@@ -87,7 +87,7 @@ export class ActionPrompt {
       pr.hidden = this.g.menuOpen || tooFastToGetOut(game.pcar);
       pr.innerHTML = liftKr
         ? '<kbd>E</kbd>Repair the ' + carName(game.pcar) + ' · ' + fmtKr(liftKr)
-        : '<kbd>E</kbd>Upgrade the ' + carName(game.pcar);
+        : '<kbd>E</kbd>Upgrade or paint the ' + carName(game.pcar);
     } else if (game.inCar && game.pcar && !coarse) {
       pr.hidden = tooFastToGetOut(game.pcar);
       pr.innerHTML = '<kbd>E</kbd>Get out';
