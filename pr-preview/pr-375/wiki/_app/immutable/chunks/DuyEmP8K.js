@@ -1,1 +1,0 @@
-import{t as e}from"./cuXRn-lp.js";import"./DeMIHjEx.js";var t=e(`/`).replace(/wiki\/$/,``),n=`${t}map.html`;export{n,t};

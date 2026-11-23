@@ -1,0 +1,1 @@
+import{t as e}from"./CVGR5NSX.js";import"./CsASIp5y.js";var t=e(`/`).replace(/wiki\/$/,``),n=`${t}map.html`;export{n,t};

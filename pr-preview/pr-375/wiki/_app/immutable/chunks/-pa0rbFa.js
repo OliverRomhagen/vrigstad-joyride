@@ -1,1 +1,0 @@
-import{H as e,I as t,Q as n,U as r,gt as i}from"./cuXRn-lp.js";function a(a,o){var s=r(),c=n(s);t(c,()=>o.children??i),e(a,s)}export{a as t};

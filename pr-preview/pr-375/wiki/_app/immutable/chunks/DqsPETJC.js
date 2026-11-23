@@ -1,0 +1,1 @@
+import{$ as e,H as t,I as n,U as r,_t as i}from"./CVGR5NSX.js";function a(a,o){var s=r(),c=e(s);n(c,()=>o.children??i),t(a,s)}export{a as t};
