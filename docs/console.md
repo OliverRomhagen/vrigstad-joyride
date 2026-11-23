@@ -49,7 +49,9 @@ commands.register('go', command({
 - `command()` (`src/game/command-args.ts`) builds a `Command` from typed arguments: `int`, `num` (a Swedish comma
   works), `word`, `toggle` (on/off, ja/nej), `choice` and `rest`, each `optional()` at the end. From that one list come
   the parsing, the usage line (`<place> [speed]`), the error lines (`No place called gnosjö. Usage: go <place>
-  [speed]`) and Tab completion. `run` gets the values by name, typed: a choice is its own union of words.
+  [speed]`) and Tab completion. `run` gets the values by name, typed: a choice is its own union of words. A choice of
+  up to 8 words lists them in its error (`Pick one of: kiosk, skroten, torget.`), since the console on a phone has no
+  Tab; a longer one, such as the tunables' keys, keeps the short line.
 - A `choice` given a function reads it on every use, so a list that grows while the game runs (car models, unlocked
   places) completes and parses without registering again.
 - The plain shape still works: `register(name, { usage, help, run(words) })`, throwing `UsageError` for bad

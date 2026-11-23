@@ -323,7 +323,7 @@ describe('the car command', () => {
       () => 0,
       x => x.T.name,
     );
-    expect(c.run('car lada')).toBe('No model called lada. Usage: car <model>');
+    expect(c.run('car lada')).toBe('No model called lada. Pick one of: traktor, volvo240. Usage: car <model>');
     expect(c.complete('car ')).toEqual(['traktor', 'volvo240']);
   });
 
