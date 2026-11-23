@@ -4,6 +4,7 @@
 import type { BuildingIndex } from '../world/buildings';
 import { ROAD_WIDTH_M as ROAD_W } from '../world/data';
 import { clamp, wrap } from '../world/math';
+import { makeRnd } from '../world/random';
 import { nodeKey, type RoadNetwork } from '../world/roads';
 import type { Water } from '../world/water';
 import { choice, command, described } from './command-args';
@@ -58,6 +59,7 @@ const LOOK_PLAYER_M = 9,
 const STUCK_S = 6,
   GHOST_S = 3; // blocked this long, a traffic car drives through what blocks it for GHOST_S
 const SPAWN_AWAY_M = 260; // new traffic, a car parked to replace a sold one and a new car on Skroten's lot appear at least this far from you
+const LOT_SEED = 390; // the lot's own random stream
 export const LOT_RESTOCK_S = 120; // a spot on Skroten's lot stands empty at least this long after its car is sold
 const LOT_CLEAR_M = 3; // the spot is free when no car stands this close to it
 const LOT_ON_SPOT_M = 0.5; // a car for sale further than this from its spot has been shoved off it
@@ -200,6 +202,8 @@ export interface CarForSale extends Point {
 
 /** Every car in the village: parked, in traffic, the police's and yours. */
 export class Fleet {
+  // the lot's restocking rolls its own stream: it runs when the player happens to be far off, and would shift the world's rolls (rule 5)
+  private readonly lotRnd = makeRnd(LOT_SEED);
   readonly cars: Car[] = [];
   private readonly g: FleetDeps;
   // cars whose sale parks no new one: the car command's, which were never the village's, and traffic you took, which replaceTaken
@@ -247,8 +251,8 @@ export class Fleet {
   parkForSale(lot: readonly CarForSale[]) {
     for (const s of lot) this.lot.push({ at: s, car: this.parkOneForSale(s, s, s.colour), soldAt: 0 });
   }
-  // a car for sale of stock's model and price at spot `at`; with no colour it rolls its paint
-  private parkOneForSale(at: CarForSale, stock: CarForSale, colour?: string) {
+  // a car for sale of stock's model and price at spot `at`, in `colour`
+  private parkOneForSale(at: CarForSale, stock: CarForSale, colour: string) {
     const c = this.g.addCar(
       stock.type,
       at.x,
@@ -272,6 +276,7 @@ export class Fleet {
       const { at, car } = spot,
         outOfSight = Math.hypot(at.x - farFrom.x, at.z - farFrom.z) >= SPAWN_AWAY_M;
       if (car?.saleKr) {
+        if (outOfSight && car.dmg > 0) car.dmg = 0; // he mends what got knocked about, so he never sells a wreck at full price
         if (outOfSight && !onSpot(car, at) && this.spotClear(at, car)) {
           car.x = at.x;
           car.z = at.z;
@@ -288,8 +293,10 @@ export class Fleet {
       }
       if (nowS - spot.soldAt < LOT_RESTOCK_S || !outOfSight || !this.spotClear(at)) continue;
       // a tractor's spot gets a tractor and a car's a car: a tractor doesn't fit between the cars side by side
-      const kind = this.lot.filter(s => (s.at.type === 'traktor') === (at.type === 'traktor'));
-      spot.car = this.parkOneForSale(at, this.g.pick(kind).at);
+      const kind = this.lot.filter(s => (s.at.type === 'traktor') === (at.type === 'traktor')),
+        pickKind = <T>(a: readonly T[]) => a[Math.floor(this.lotRnd() * a.length)]!;
+      // in one of the paints the lot's cars of that kind came in; rolled from the lot's own stream, as both rolls are
+      spot.car = this.parkOneForSale(at, pickKind(kind).at, pickKind(kind).at.colour);
     }
   }
   // nothing but `except` stands within LOT_CLEAR_M of the spot; the cars on the spots beside it stand closer, and count only when shoved off

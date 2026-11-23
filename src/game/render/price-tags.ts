@@ -3,6 +3,7 @@
 // and the simple shapes alike.
 import * as THREE from 'three';
 import { makeRnd } from '../../world/random';
+import { lotPrice } from '../economy';
 import type { RenderedCar } from './car-meshes';
 
 const CARD_W_M = 0.58,
@@ -38,7 +39,10 @@ export interface PriceTagsDeps {
 
 type End = keyof typeof GLASS_MIN_UP;
 const ENDS: readonly End[] = ['front', 'back'];
-type Tag = { cards: THREE.Mesh[]; on: THREE.Object3D; kr: number }; // a card per end; `on`: the shape they were fitted to
+// where a card sits on one shape, in the car's frame; null when no ray found the glass
+type Fit = { position: THREE.Vector3; quaternion: THREE.Quaternion } | null;
+// a card per end; `on`: the shape they show on now; `fits`: each shape's fit, worked out once, as a car swaps its model in and out often
+type Tag = { cards: THREE.Mesh[]; on: THREE.Object3D; kr: number; fits: Map<THREE.Object3D, Fit[]> };
 
 /** The cards; `update` adds, fits and takes them away. */
 export class PriceTags {
@@ -65,21 +69,33 @@ export class PriceTags {
     for (const c of this.g.cars) {
       if (!c.saleKr) continue;
       const shape = this.g.visibleModel(c) ?? c.body,
+        kr = lotPrice(c.saleKr, c.dmg) ?? 0, // a wreck isn't for sale: no card
         tag = this.tags.get(c);
-      if (tag?.on === shape && tag.kr === c.saleKr) continue;
-      const cards = tag?.cards ?? ENDS.map(() => new THREE.Mesh(this.geo));
-      ENDS.forEach((end, i) => {
-        const card = cards[i]!;
-        card.material = this.material(c.saleKr!);
-        card.visible = this.fit(c, shape, card, end);
+      if (tag?.on === shape && tag.kr === kr) continue;
+      const cards = tag?.cards ?? ENDS.map(() => new THREE.Mesh(this.geo)),
+        fits = tag?.fits ?? new Map<THREE.Object3D, Fit[]>();
+      let shapeFits = fits.get(shape);
+      if (!shapeFits) {
+        shapeFits = ENDS.map(end => this.fit(c, shape, end));
+        fits.set(shape, shapeFits);
+      }
+      ENDS.forEach((_end, i) => {
+        const card = cards[i]!,
+          fit = shapeFits[i];
+        card.visible = !!(fit && kr);
+        if (fit) {
+          card.position.copy(fit.position);
+          card.quaternion.copy(fit.quaternion);
+        }
+        if (kr) card.material = this.material(kr);
         c.mesh.add(card);
       });
-      this.tags.set(c, { cards, on: shape, kr: c.saleKr });
+      this.tags.set(c, { cards, on: shape, kr, fits });
     }
   }
 
-  // puts the card on the windscreen or the rear window of `shape`, in c.mesh's frame; false when no ray finds the glass
-  private fit(c: RenderedCar, shape: THREE.Object3D, card: THREE.Mesh, end: End) {
+  // where a card goes on the windscreen or the rear window of `shape`, in c.mesh's frame; null when no ray finds the glass
+  private fit(c: RenderedCar, shape: THREE.Object3D, end: End): Fit {
     c.mesh.updateMatrixWorld(true);
     _inv.copy(c.mesh.matrixWorld).invert();
     const top = _box.setFromObject(shape).max.y - c.mesh.position.y,
@@ -95,11 +111,12 @@ export class PriceTags {
       _n.copy(hit.face.normal).transformDirection(hit.object.matrixWorld).transformDirection(_inv);
       if (_n.z * out < 0) _n.negate(); // a face wound the other way: the card faces out of its end
       if (_n.y < GLASS_MIN_UP[end]) continue;
-      card.position.copy(hit.point).applyMatrix4(_inv).addScaledVector(_n, CARD_OFF_M);
-      card.quaternion.setFromRotationMatrix(_m.lookAt(_n, ZERO, UP));
-      return true;
+      return {
+        position: hit.point.clone().applyMatrix4(_inv).addScaledVector(_n, CARD_OFF_M),
+        quaternion: new THREE.Quaternion().setFromRotationMatrix(_m.lookAt(_n, ZERO, UP)),
+      };
     }
-    return false;
+    return null;
   }
 
   // a white card with the price in red marker, Swedish style: "2 000:-", each figure a little off, and a quick line under it

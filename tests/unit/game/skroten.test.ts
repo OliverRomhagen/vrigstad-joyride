@@ -155,12 +155,26 @@ describe('Skroten sells the cars on its lot', () => {
   // you stand on foot `away` m from a Volvo on the lot that costs 2 000, with `kr` in your pocket
   function lot(o: { kr?: number; stars?: number; away?: number } = {}) {
     const t = skroten({ kr: o.kr ?? 5000, stars: o.stars }),
-      car = { type: 'volvo', x: 0, z: 0, saleKr: 2000, owned: false } as Car;
+      car = { type: 'volvo', x: 0, z: 0, saleKr: 2000, owned: false, dmg: 0 } as Car;
     t.game.inCar = false;
     t.game.pcar = null;
     Object.assign(t.g.player, { x: o.away ?? 2, z: 0 });
     return { ...t, car };
   }
+
+  it('asks less for a car that got knocked about, and sells no wreck', () => {
+    const dented = lot();
+    dented.car.dmg = 30;
+    dented.s.offerCar(dented.car);
+    dented.choose('buy');
+    expect(dented.wallet.kr).toBe(5000 - 1400);
+    const wreck = lot();
+    wreck.car.dmg = 100;
+    wreck.s.offerCar(wreck.car);
+    expect(wreck.menu()).toBeNull();
+    expect(wreck.calls.at(-1)).toContain('kaputt');
+    expect(wreck.car.owned).toBe(false);
+  });
 
   it('names its price, and the car is yours once you pay it', () => {
     const t = lot();

@@ -34,7 +34,12 @@ function car(type: CarType, x: number, z: number, h: number, mode: CarMode): Car
 function fleet(world: Partial<WorldData> = { r: [MAIN_ROAD] }, canPark = (_x: number, _z: number) => true) {
   const data = makeWorld({ size: SIZE_M, ...world });
   const roads = new RoadNetwork(data, { heightAt: () => 0 });
-  const rnd = makeRnd(1);
+  const base = makeRnd(1);
+  let rolls = 0; // how often the game's main stream was rolled
+  const rnd = () => {
+    rolls++;
+    return base();
+  };
   const log = {
     crashes: [] as [Car, Car | null][],
     rammed: [] as Car[],
@@ -66,7 +71,7 @@ function fleet(world: Partial<WorldData> = { r: [MAIN_ROAD] }, canPark = (_x: nu
     player,
     inCar: false,
   });
-  return { cars, log, player };
+  return { cars, log, player, rolls: () => rolls };
 }
 
 /** Drives `c` for `s` seconds with the same inputs every frame. */
@@ -441,6 +446,32 @@ describe("Skroten's lot", () => {
       expect(at(cars, lot[2]!).map(c => c.type)).toEqual(['traktor']);
       expect([...at(cars, LOT[0]!), ...at(cars, LOT[1]!)].map(c => c.type)).not.toContain('traktor');
     }
+  });
+
+  it("restocks from the lot's own random stream, leaving the game's main stream as it was", () => {
+    const { cars, rolls } = fleet({ r: [STREET] }),
+      far = { x: -500, z: 0 };
+    cars.parkForSale(LOT);
+    const before = rolls();
+    for (const c of cars.cars) {
+      c.saleKr = 0;
+      c.x += 1000;
+    }
+    cars.restockLot(far, 0);
+    cars.restockLot(far, LOT_RESTOCK_S);
+    expect(cars.cars.length).toBe(4);
+    expect(rolls()).toBe(before);
+  });
+
+  it('mends a car for sale that got knocked about, out of your sight', () => {
+    const { cars } = fleet({ r: [STREET] });
+    cars.parkForSale(LOT);
+    const rammed = cars.cars[0]!;
+    rammed.dmg = DMG_MAX; // wrecked on its spot
+    cars.restockLot({ x: 120, z: 0 }, 0); // you stand by the lot
+    expect(rammed.dmg).toBe(DMG_MAX);
+    cars.restockLot({ x: -500, z: 0 }, 0);
+    expect(rammed).toMatchObject({ dmg: 0, saleKr: 2000 });
   });
 
   it('puts a car for sale shoved off its spot back on it, out of your sight', () => {

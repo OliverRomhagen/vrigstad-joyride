@@ -2,7 +2,7 @@
 // He also sells the cars on his lot: press E by one for his price. Neither with the police after you, and he never buys a police car.
 // On foot you can talk to him. main.ts passes in the menu plate, the wallet and what happens to the car. No three.js or DOM here.
 import type { Car, CarForSale } from './cars';
-import { carPrice, earn, fmtKr, pay, salePrice, type Wallet } from './economy';
+import { carPrice, earn, fmtKr, lotPrice, pay, salePrice, type Wallet } from './economy';
 import type { MenuItem } from './pets';
 import { tooFastToGetOut } from './player';
 import type { CarType } from './sim/vehicle-spec';
@@ -13,6 +13,7 @@ const OWNER_SAYS = 'Plåt-Pelle: ';
 const OWNER_AT = yardToWorld(OWNER_UV.u, OWNER_UV.v);
 const TALK_M = 3; // how close you stand to talk to him
 const SALE_REACH_M = 5; // his price stays on the plate while you stand this close to the car; a little over the reach to get in
+const LOT_WRECK = OWNER_SAYS + '”Den där ä ju kaputt! Den får ja laga först. Kom tebaks sen.”';
 const CHASED = OWNER_SAYS + '”Inte mä snuten i hälarna! Kom tebaks när du ä av mä dom.”';
 /** What he says when you talk to him on foot, one after the other. */
 export const OWNER_LINES = [
@@ -125,7 +126,11 @@ export class Skroten {
       toast(CHASED, 3.5);
       return;
     }
-    const kr = c.saleKr;
+    const kr = lotPrice(c.saleKr, c.dmg);
+    if (kr === null) {
+      toast(LOT_WRECK, 3.5);
+      return;
+    }
     openMenu(
       'skrot-buy',
       OWNER_SAYS + '”Den där ' + carName(c) + '? ' + fmtKr(kr) + ', å den ä din.”',
@@ -142,10 +147,11 @@ export class Skroten {
 
   // stars can come while the menu is open
   private buy(c: Car) {
-    const { stars, toast, wallet } = this.g,
-      kr = c.saleKr;
-    if (!kr) return;
+    const { stars, toast, wallet } = this.g;
+    if (!c.saleKr) return;
+    const kr = lotPrice(c.saleKr, c.dmg); // a crash can come while the menu is open
     if (stars) toast(CHASED, 3.5);
+    else if (kr === null) toast(LOT_WRECK, 3.5);
     else if (!pay(wallet, kr)) toast(OWNER_SAYS + '”' + fmtKr(kr) + ', sa ja. Kom tebaks när du har pengarna.”', 3.5);
     else {
       c.saleKr = 0;

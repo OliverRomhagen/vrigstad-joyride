@@ -31,6 +31,7 @@ import { BODY_NODE, CIVILIAN_CAR_TYPES, VEHICLES } from './vehicle-registry';
 type BoxPart = [sx: number, sy: number, sz: number, x: number, y: number, z: number, colour: string];
 
 const PANEL_M = 3; // a sheet of the fence, and the gap between its posts
+const SELLS_MIN_W_M = 1.5; // the SÄLJER BILAR board is left out where the fence leaves it less room than this
 const FENCE_COLOURS = ['#8b8f91', '#9a6a4a', '#6f7c86', '#a3a7a3', '#7e4a30', '#86847a'];
 const WIRE_HEIGHTS_M = [2.45, 2.65, 2.85];
 const SCRAP_COLOURS = ['#7d3a24', '#8f4f2c', '#6b6f6f', '#9a9a92', '#5c4434', '#a0522d', '#4f5a63'];
@@ -300,11 +301,17 @@ export class SkrotenMeshes {
     // the fence east of the gate runs to the workshop, as long as the hall leaves it: the board sits in its middle, and fits it
     const eastRun = layout.fence.find(f => f.v0 === 0 && f.v1 === 0 && f.u0 === YARD.gateHalf),
       eastEnd = eastRun?.u1 ?? YARD.uMax,
-      sells = board(Math.min(4, eastEnd - YARD.gateHalf - 1), 1, 'SÄLJER BILAR', null),
+      sellsW = Math.min(4, eastEnd - YARD.gateHalf - 1),
       sellsU = (YARD.gateHalf + eastEnd) / 2;
-    sells.position.set(sellsU, groundY(sellsU, 0) + 1.3, -0.08);
-    gate.rotation.y = buys.rotation.y = sells.rotation.y = Math.PI; // their fronts face the road
-    yard.add(gate, buys, sells);
+    gate.rotation.y = buys.rotation.y = Math.PI; // their fronts face the road
+    yard.add(gate, buys);
+    if (sellsW >= SELLS_MIN_W_M) {
+      // left out if a data refresh ever brings the hall within a few metres of the gate
+      const sells = board(sellsW, 1, 'SÄLJER BILAR', null);
+      sells.position.set(sellsU, groundY(sellsU, 0) + 1.3, -0.08);
+      sells.rotation.y = Math.PI;
+      yard.add(sells);
+    }
     // TILL SALU on two posts in front of the cars for sale, facing the yard
     const sale = saleSign();
     sale.position.set(SALE_SIGN.u, groundY(SALE_SIGN.u, SALE_SIGN.v), SALE_SIGN.v);

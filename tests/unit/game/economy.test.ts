@@ -5,6 +5,7 @@ import {
   earn,
   FINE_PER_STAR_KR,
   fine,
+  lotPrice,
   newWallet,
   pay,
   registerWalletCommands,
@@ -131,5 +132,12 @@ describe('what Plåt-Pelle asks for a car on his lot', () => {
     expect(salePrice('epa', 'duett-epa')).toBe(1500);
     expect(salePrice('saab', undefined)).toBe(2500); // by type when the model has no price
     expect(salePrice('polis', undefined)).toBeNull();
+  });
+
+  it('asks less for one that got knocked about, never under scrap, and sells no wreck', () => {
+    expect(lotPrice(2000, 0)).toBe(2000);
+    expect(lotPrice(2000, 30)).toBe(1400);
+    expect(lotPrice(2000, 99)).toBe(SCRAP_KR);
+    expect(lotPrice(2000, DMG_MAX)).toBeNull();
   });
 });
