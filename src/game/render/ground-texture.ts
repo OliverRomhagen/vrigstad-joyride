@@ -17,8 +17,8 @@ export interface GroundTextureOptions {
 }
 const WATER_PAINT = '#4d7774',
   PAINT_SHARE = 0.85, // of a river's width: its width wanders, and the paint should stay under the water
-  BANK_EARTH_M = 1.6,
-  LAKE_BANK_PAINT_M = 8, // earth inside a lake's mapped shore (m) // bare earth up a river's banks, past its water (m)
+  BANK_EARTH_M = 1.6, // bare earth up a river's banks, past its water (m)
+  LAKE_BANK_PAINT_M = 8, // earth inside a lake's mapped shore (m)
   SHORE_BAND_M = 2.6; // the sand or gravel band along a shore stretch (m)
 
 /** The painted ground; `P` turns a world coordinate into canvas pixels, `K` is pixels per metre. */

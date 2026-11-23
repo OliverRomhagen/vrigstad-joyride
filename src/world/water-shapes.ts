@@ -76,6 +76,8 @@ const LAKE_DETAIL = 6;
 const LAKE_STEEP_M = 1.6;
 /** side of the lookup cells (m); half the elevation grid's, so a grid cell is four whole lookup cells */
 const CELL_M = 12.5;
+/** a lookup cell's key as a number, so the per-frame lookups (inWater, every car, the player, the cats) build no string */
+const cellKey = (cx: number, cz: number) => (cx + 2048) * 4096 + cz + 2048;
 
 // ---------- what the channel keeps away from ----------
 /** a street's ground is kept as it is this far past its edge (sidewalks, verges), easing into the bank over the next span (m) */
@@ -206,10 +208,10 @@ export class WaterBodies implements TerrainCut {
   private readonly half: number;
   private readonly base: { heightAt(x: number, z: number): number };
   /** lookup cells: course runs as [course, first sample, last sample], lake shore segments as [lake, ring, vertex] */
-  private readonly courseCells = new Map<string, number[]>();
-  private readonly shoreCells = new Map<string, number[]>();
+  private readonly courseCells = new Map<number, number[]>();
+  private readonly shoreCells = new Map<number, number[]>();
   /** what the channel keeps away from, KEEP_STRIDE numbers each: ax, az, bx, bz, keep and ease distances, open ends */
-  private readonly keepCells = new Map<string, number[]>();
+  private readonly keepCells = new Map<number, number[]>();
   private readonly buildings: { p: number[]; x0: number; x1: number; z0: number; z1: number }[];
 
   constructor(data: WorldData, base: { heightAt(x: number, z: number): number }) {
@@ -482,7 +484,7 @@ export class WaterBodies implements TerrainCut {
 
   /** Files the segment (or box) from a to b in every lookup cell within `reach` of it. */
   private file(
-    cells: Map<string, number[]>,
+    cells: Map<number, number[]>,
     ax: number,
     az: number,
     bx: number,
@@ -496,7 +498,7 @@ export class WaterBodies implements TerrainCut {
     const z1 = Math.floor((Math.max(az, bz) + reach) / CELL_M);
     for (let x = x0; x <= x1; x++)
       for (let z = z0; z <= z1; z++) {
-        const k = x + ',' + z;
+        const k = cellKey(x, z);
         const list = cells.get(k);
         if (list) list.push(...item);
         else cells.set(k, item.slice());
@@ -540,7 +542,7 @@ export class WaterBodies implements TerrainCut {
    * the centre line (m), and the level, half width, slope and bed interpolated there. False when none is that near.
    */
   nearestCourse(x: number, z: number, out: CoursePoint) {
-    const list = this.courseCells.get(Math.floor(x / CELL_M) + ',' + Math.floor(z / CELL_M));
+    const list = this.courseCells.get(cellKey(Math.floor(x / CELL_M), Math.floor(z / CELL_M)));
     out.d = Infinity;
     if (!list) return false;
     let best = -1;
@@ -583,7 +585,7 @@ export class WaterBodies implements TerrainCut {
 
   /** Distance from (x, z) to the nearest lake shore within MAX_BANK_M, with that lake, or false. */
   private nearestShore(x: number, z: number, out: { d: number; lake: number; along: number }) {
-    const list = this.shoreCells.get(Math.floor(x / CELL_M) + ',' + Math.floor(z / CELL_M));
+    const list = this.shoreCells.get(cellKey(Math.floor(x / CELL_M), Math.floor(z / CELL_M)));
     out.d = Infinity;
     if (!list) return false;
     for (let i = 0; i < list.length; i += 3) {
@@ -617,7 +619,7 @@ export class WaterBodies implements TerrainCut {
 
   /** 1 where the ground may be cut, 0 on and beside roads and buildings, easing between. */
   keepWeight(x: number, z: number) {
-    const list = this.keepCells.get(Math.floor(x / CELL_M) + ',' + Math.floor(z / CELL_M));
+    const list = this.keepCells.get(cellKey(Math.floor(x / CELL_M), Math.floor(z / CELL_M)));
     if (!list) return 1;
     let w = 1;
     for (let i = 0; i < list.length && w > 0; i += KEEP_STRIDE) {
@@ -674,14 +676,15 @@ export class WaterBodies implements TerrainCut {
     const cx = (x0 + x1) / 2;
     const cz = (z0 + z1) / 2;
     const reach = Math.hypot(x1 - x0, z1 - z0) / 2;
-    // the cell's lookup cells, where every segment near it is filed (the cells are the grid's own size)
+    // the cell's lookup cells, where every segment near it is filed: a lookup cell is half the grid's, so a grid cell is
+    // four whole lookup cells, one at each corner
     for (const [x, z] of [
       [x0 + 0.01, z0 + 0.01],
       [x1 - 0.01, z0 + 0.01],
       [x0 + 0.01, z1 - 0.01],
       [x1 - 0.01, z1 - 0.01],
     ]) {
-      const k = Math.floor(x / CELL_M) + ',' + Math.floor(z / CELL_M);
+      const k = cellKey(Math.floor(x / CELL_M), Math.floor(z / CELL_M));
       const courses = this.courseCells.get(k);
       if (courses)
         for (let i = 0; i < courses.length; i += 3) {

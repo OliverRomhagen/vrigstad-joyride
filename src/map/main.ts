@@ -30,6 +30,8 @@ const S = D.size, HALF = S / 2, N = D.n, EX = 2;
 // the game's river channels and lake shores, cut into the same doubled relief (src/world/water-shapes.ts)
 const baseGround = new Heightfield(D), waterBodies = new WaterBodies(D, baseGround), shore = layoutShore(waterBodies, baseGround);
 const heightfield = new Heightfield(D, { exaggeration: EX, cut: waterBodies }), hAt = heightfield.heightAt.bind(heightfield);
+// the cut ground in metres, as the game's water reads it: what is wet, and so where the streetscape builds, matches the game's
+const unexaggerated = { heightAt: (x: number, z: number) => hAt(x, z) / EX };
 const minE = heightfield.minElevationM, maxE = heightfield.maxElevationM;
 document.getElementById('relief').textContent = Math.round(minE) + '–' + Math.round(maxE) + ' m above sea level';
 
@@ -87,7 +89,7 @@ const street = (function () {
   const roads = new RoadNetwork(D, heightfield), buildings = new BuildingIndex(D);
   const sides = classifyStreetscape(D, roads, buildings, STREETSCAPE_OVERRIDES);
   bridgeIndex.fitWalkways(roads.lines, (ri, side) => (side < 0 ? sides[ri].left : sides[ri].right).sidewalk === 'present');
-  return buildStreetscape({ data: D, roads, heightfield, buildings, water: new Water(D, roads, { bodies: waterBodies }), sides });
+  return buildStreetscape({ data: D, roads, heightfield, buildings, water: new Water(D, roads, { bodies: waterBodies, ground: unexaggerated }), sides });
 })();
 function paintStreetscape(pal, before) {
   if (before) {   // parking areas under the roads, so aisles run over them
