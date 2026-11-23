@@ -78,6 +78,18 @@ const elements = [
   way(48762655, church, { building: 'church' }),
   // the bank museum, moved off Jönköpingsvägen; centred where BUILDING_SHIFT expects its outline
   way(48807861, ring(-80.4, -24.1, 10, 10), { building: 'yes' }),
+  // the other BUILDING_SHIFT ways, which must all be there, each a 10 m square on the centroid it expects
+  ...(
+    [
+      [99634081, -618.3, 75.6],
+      [173869280, 650.9, -988.2],
+      [99634083, -582.7, 82.3],
+      [48400728, -13.4, 73.7],
+      [100345766, -20.6, 53.3],
+      [99738592, -61.9, -132.5],
+      [103000690, -90.2, 119.5],
+    ] as const
+  ).map(([id, cx, cz]) => way(id, ring(cx - 5, cz - 5, 10, 10), { building: 'yes' })),
   street,
   street, // a duplicate, as a union of selectors can return
   { type: 'way', id: 2, nodes: [1, 2], tags: { highway: 'residential' } }, // no geometry: skipped, not a crash
