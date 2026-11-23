@@ -190,6 +190,7 @@ export function installTestHook(g: TestHookDeps) {
         carCrack: game.pcar ? g.crackShown(game.pcar) : null,
         carMods: game.pcar ? { ...game.pcar.mods } : null, // Plåt-Pelle's upgrades on the car you drive
         carColor: game.pcar ? game.pcar.color : null,
+        carDecal: game.pcar ? game.pcar.decal : null,
         ownCat: g.ownCat,
         vehicle: displayCar ? vehicleVisuals.state(displayCar) : null,
         nearSelectedVehicle: n === displayCar,

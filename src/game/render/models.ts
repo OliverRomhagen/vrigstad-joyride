@@ -267,6 +267,17 @@ const cached = (key: string, make: () => THREE.BufferGeometry) => {
   return geoCache[key];
 };
 export const carGeo = (t: string, c: string) => cached(t + c, () => softCar(t, c));
+/** The procedural car's painted panels only, with no glass, wheels or lamps, to project decals onto (render/paint-decals.ts); null for the tractor, which has none of its own. */
+export const carShellGeo = (t: string) =>
+  t === 'traktor' || !PROFILES[t]
+    ? null
+    : cached('shell:' + t, () => {
+        const P = PROFILES[t]!;
+        return mergeGeo([
+          [extrude(P.body, P.w, 0.07), '#ffffff'],
+          [extrude(P.roof, P.gw + 0.04, 0.03), '#ffffff'],
+        ]);
+      });
 export const BAR_BLUE = col(0x2f6bff),
   BAR_RED = col(0xff3b30);
 export const barMat = new THREE.MeshBasicMaterial({ color: BAR_BLUE.clone() }),
