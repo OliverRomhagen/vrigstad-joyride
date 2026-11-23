@@ -168,13 +168,15 @@ export interface BuildingMeshOptions {
   maxAnisotropy: number;
   /** A point inside each building to leave out, because the game draws it itself: Skroten's workshop and carport (render/skroten.ts). */
   skip?: readonly { x: number; z: number }[];
+  /** Walls in one colour, without darkening towards the ground: the toon style's bands read better on them (#413). */
+  flatWalls?: boolean;
 }
 /** The house shells in their colours with their trim, and one mesh of windows. Rolls rnd() once or twice per house, in data order. */
 export function addBuildings(
   scene: THREE.Scene,
   D: WorldData,
   heightfield: Heightfield,
-  { rnd, pick, maxAnisotropy, skip = [] }: BuildingMeshOptions,
+  { rnd, pick, maxAnisotropy, skip = [], flatWalls = false }: BuildingMeshOptions,
 ) {
   const isSkipped = (p: readonly number[]) => skip.some(s => inPoly(p as number[], s.x, s.z));
   const hAt = (x: number, z: number) => heightfield.heightAt(x, z);
@@ -272,7 +274,7 @@ export function addBuildings(
       c.set(b.k === 2 ? '#9c3a2c' : b.k ? '#efece3' : area > 450 ? pick(big) : pick(house)).convertSRGBToLinear();
       c2.set(b.k === 2 ? '#a8573f' : b.k ? '#3f4447' : rnd() < 0.35 ? '#4d4a48' : '#a8573f').convertSRGBToLinear();
       if (isSkipped(b.p)) return null; // after the rolls above, so the houses after it keep their colours
-      c3.copy(c).multiplyScalar(0.62); // walls darken towards the ground
+      c3.copy(c).multiplyScalar(flatWalls ? 1 : 0.62); // walls darken towards the ground
       return paint;
     };
     const details = (
@@ -426,7 +428,7 @@ export function addBuildings(
       }
     };
     const shells = new PaintedBuildingShells(D, heightfield, {
-      material: new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }),
+      material: new THREE.MeshLambertMaterial({ name: 'house shells', vertexColors: true, side: THREE.DoubleSide }), // the name gives it the toon style's house ramp
       colours,
       extra: details,
     }).mesh;
