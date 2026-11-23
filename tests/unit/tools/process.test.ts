@@ -76,6 +76,7 @@ const street = way(
 );
 const elements = [
   way(48762655, church, { building: 'church' }),
+  way(48807861, ring(500, 500, 10, 10), { building: 'yes' }), // the bank museum, moved off Jönköpingsvägen
   street,
   street, // a duplicate, as a union of selectors can return
   { type: 'way', id: 2, nodes: [1, 2], tags: { highway: 'residential' } }, // no geometry: skipped, not a crash
@@ -188,6 +189,12 @@ describe('tools/process.py street furniture data', () => {
     expect(out.r.find(r => r.i === 29)?.lt).toBe(1);
     expect(out.r.find(r => r.i === 30)?.lt).toBeUndefined();
     expect(out.r.find(r => r.i === 1)?.lt).toBeUndefined();
+  });
+});
+
+describe('tools/process.py buildings', () => {
+  it('moves an outline listed in BUILDING_SHIFT by its offset', () => {
+    expect(out.b.map(b => b.p)).toContainEqual([499, 496.5, 509, 496.5, 509, 506.5, 499, 506.5]);
   });
 });
 

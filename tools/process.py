@@ -391,6 +391,14 @@ LEIS = {'pitch': 6, 'playground': 3, 'sports_centre': 3, 'park': 3}
 SHORT = {'Best Western Hotell Vrigstad Värdshus': 'Vrigstad Värdshus', 'Torget Vrigstad': 'Torget',
          'Tallåsen, Vrigstads Idrottsplats': 'Tallåsen idrottsplats', 'Hagabanan - Vrigstad Motorklubb': 'Hagabanan'}
 CHURCH_WAY = 48762655   # Vrigstad kyrka; its tower is split out of this way's outline
+# outlines moved (dx, dz) m off the carriageway they were traced onto. shortcut: a fixed offset, so drop the entry
+# when its way is re-traced in OSM (past the version named)
+BUILDING_SHIFT = {
+    # the old bank museum on Jönköpingsvägen, west of the Emån bridge: traced in 2010 (v1) about 3 m south, onto
+    # the road; moved north so its front wall clears the 9 m carriageway by 1 m, as it stands behind a sidewalk,
+    # and 1 m west to keep clear of the driveway behind it
+    48807861: (-1, -3.5),
+}
 buildings, roads, water, waterways, land, labels = [], [], [], [], [], {}
 parking_areas, parking_spaces, crossings, kerbs, trees, furniture = [], [], [], [], [], []
 road_nodes = []              # per road: the OSM node id of each kept vertex, None where clipping made the vertex
@@ -470,6 +478,9 @@ for e in elements:
         report['kerb ways'] += 1
         continue
     if 'building' in t:
+        if ring and e['type'] == 'way' and e['id'] in BUILDING_SHIFT:
+            dx, dz = BUILDING_SHIFT[e['id']]
+            ring = [(x + dx, z + dz) for x, z in ring]
         if not ring or not inside(centroid(ring)): continue
         a = area(ring)
         kind = {'church': 1, 'hotel': 2}.get(t['building'], 0)
