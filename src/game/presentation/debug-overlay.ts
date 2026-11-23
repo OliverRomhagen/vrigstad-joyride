@@ -11,6 +11,11 @@ const GRAPH_MAX_MS = 50; // a frame this long fills the graph's height
 const BUDGET_60_MS = 1000 / 60,
   BUDGET_30_MS = 1000 / 30;
 const ERRORS_KEPT = 5;
+// the graph's bars, by the budget a frame kept, and its budget lines; a canvas can't read the page's CSS tokens
+const BAR_60_FPS = '#7fc97f',
+  BAR_30_FPS = '#f0c050',
+  BAR_SLOWER = '#f05a4a',
+  BUDGET_LINE = 'rgba(255, 255, 255, .45)';
 
 /** The part of three's `renderer.info` the overlay reads. */
 export interface RenderInfo {
@@ -19,12 +24,13 @@ export interface RenderInfo {
 }
 
 const CSS = `
+/* the colours are the game page's tokens (src/index.html); the error box darkens --alarm so its small text reads */
 #debug { position: absolute; top: calc(8px + env(safe-area-inset-top, 0px)); left: 50%; transform: translateX(-50%); z-index: 50;
-  pointer-events: none; font: 500 11px/1.35 ui-monospace, Menlo, Consolas, monospace; color: #e8f0e0; font-variant-numeric: tabular-nums;
+  pointer-events: none; font: 500 11px/1.35 ui-monospace, Menlo, Consolas, monospace; color: var(--ink); font-variant-numeric: tabular-nums;
   display: flex; flex-direction: column; align-items: center; gap: 4px; max-width: min(92vw, 420px); }
-#debug-stats { background: rgba(10, 14, 12, .72); border-radius: 4px; padding: 4px 6px; white-space: pre; }
+#debug-stats { background: var(--hud); border-radius: 4px; padding: 4px 6px; white-space: pre; }
 #debug-graph { display: block; width: 120px; height: 36px; margin-bottom: 3px; }
-#debug-errors { pointer-events: auto; cursor: pointer; background: rgba(150, 20, 20, .9); color: #fff; border-radius: 4px; padding: 4px 8px; white-space: pre-wrap; word-break: break-word; }
+#debug-errors { pointer-events: auto; cursor: pointer; background: color-mix(in srgb, var(--alarm) 60%, black); color: var(--ink); border-radius: 4px; padding: 4px 8px; white-space: pre-wrap; word-break: break-word; }
 #debug-errors:empty { display: none; }
 /* a phone held upright has the minimap, hearts and stars across the top, and toasts under them: go below those */
 @media (max-width: 600px) { #debug { top: calc(250px + env(safe-area-inset-top, 0px)); } }
@@ -183,10 +189,10 @@ export class DebugOverlay {
     for (let k = 0; k < GRAPH_FRAMES; k++) {
       const ms = this.stats.frameMs(k);
       if (!ms) break;
-      g.fillStyle = ms <= BUDGET_60_MS + 1 ? '#7fc97f' : ms <= BUDGET_30_MS + 1 ? '#f0c050' : '#f05a4a';
+      g.fillStyle = ms <= BUDGET_60_MS + 1 ? BAR_60_FPS : ms <= BUDGET_30_MS + 1 ? BAR_30_FPS : BAR_SLOWER;
       g.fillRect(w - (k + 1) * bw, y(ms), bw, h - y(ms));
     }
-    g.fillStyle = 'rgba(255, 255, 255, .45)';
+    g.fillStyle = BUDGET_LINE;
     g.fillRect(0, Math.round(y(BUDGET_60_MS)), w, 1);
     g.fillRect(0, Math.round(y(BUDGET_30_MS)), w, 1);
   }
