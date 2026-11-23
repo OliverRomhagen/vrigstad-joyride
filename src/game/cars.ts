@@ -11,6 +11,7 @@ import type { Commands } from './commands';
 import { impactSpeed, topSpeedShare, wrecked } from './health';
 import { bodyRadius, nearestBetweenSpines, pushBodyOut } from './sim/car-body';
 import { approach, rearPivotShift, yawRate } from './sim/handling';
+import type { Decal } from './sim/paint-jobs';
 import { accelOf, type CarMods, gripShare, noMods, steerResponseOf, topSpeedOf } from './sim/upgrades';
 import type { CarType, VehicleSpec } from './sim/vehicle-spec';
 
@@ -97,7 +98,8 @@ export interface Car extends Point {
   revSteer: number;
   dmg: number; // damage, and the clock (s) of the last hit (health.ts)
   hitAt: number;
-  color: string; // the paint (sRGB), one of T.cols
+  color: string; // the paint (sRGB): one of T.cols, or one of Plåt-Pelle's special paints (sim/paint-jobs.ts)
+  decal: Decal | null; // his flames, stripes or rally number; only his workshop paints them
   mods: CarMods; // Plåt-Pelle's upgrades (sim/upgrades.ts)
   limiterOff: boolean; // a tuned EPA-traktor's switch under the wheel is on: it drives as fast as a car
 }
@@ -145,6 +147,7 @@ export function newCar(
     dmg: 0,
     hitAt: -9,
     color,
+    decal: null,
     mods: noMods(),
     limiterOff: false,
   };
