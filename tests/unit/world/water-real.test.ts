@@ -1,6 +1,7 @@
 // The water on the real map (data/vrigstad.json): the channels, the lakes and what they must leave alone.
 import { describe, expect, it } from 'vitest';
 import data from '../../../data/vrigstad.json';
+import { BridgeIndex } from '../../../src/world/bridges';
 import { ROAD_WIDTH_M, type WorldData } from '../../../src/world/data';
 import { Heightfield } from '../../../src/world/heightfield';
 import { RoadNetwork } from '../../../src/world/roads';
@@ -11,8 +12,9 @@ const D = data as unknown as WorldData;
 const base = new Heightfield(D);
 const bodies = new WaterBodies(D, base);
 const ground = new Heightfield(D, { cut: bodies });
-const roads = new RoadNetwork(D, ground);
-const water = new Water(D, roads, { bodies, ground });
+const bridges = new BridgeIndex(D, base);
+const roads = new RoadNetwork(D, ground, bridges);
+const water = new Water(D, roads, { bodies, ground, decks: bridges });
 
 describe('the water on the real map', () => {
   it('finds the four lakes and joins the waterways into courses', () => {
@@ -73,8 +75,9 @@ describe('the water on the real map', () => {
     expect(highest).toBeLessThan(1);
   });
 
-  it('leaves every road at its height, across its width', () => {
+  it('leaves every road but the bridges at its height, across its width', () => {
     for (const r of D.r) {
+      if (r.br) continue; // the channel runs on under a deck (#238)
       const half = ROAD_WIDTH_M[r.c] / 2;
       for (let i = 2; i < r.p.length; i += 2) {
         const [ax, az, bx, bz] = [r.p[i - 2], r.p[i - 1], r.p[i], r.p[i + 1]];
@@ -97,18 +100,13 @@ describe('the water on the real map', () => {
         expect(Math.abs(ground.heightAt(b.p[i], b.p[i + 1]) - base.heightAt(b.p[i], b.p[i + 1]))).toBeLessThan(0.05);
   });
 
-  it('keeps the Jönköpingsvägen crossing of Vrigstadsån dry and at road height', () => {
-    expect(ground.heightAt(-33.9, -8.4)).toBeCloseTo(base.heightAt(-33.9, -8.4), 2);
-    expect(water.inWater(-33.9, -8.4)).toBe(false);
-  });
-
   it('is wet in the channel and dry on the banks above it', () => {
     let wet = 0;
     let dry = 0;
     let checked = 0;
     for (const c of bodies.courses)
       for (let k = 1; k < c.x.length - 1; k += 10) {
-        if (c.lake[k] >= 0 || bodies.keepWeight(c.x[k], c.z[k]) < 1) continue;
+        if (c.lake[k] >= 0 || bodies.keepWeight(c.x[k], c.z[k]) < 1 || bridges.onDeck(c.x[k], c.z[k])) continue;
         checked++;
         if (water.inWater(c.x[k], c.z[k])) wet++;
         const tx = c.x[k + 1] - c.x[k - 1];

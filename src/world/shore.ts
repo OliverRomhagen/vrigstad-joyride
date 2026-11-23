@@ -54,7 +54,12 @@ const STONE_ACROSS_M = [-0.6, 1.1] as const;
  * Lays out the shores of the bodies. `base` is the uncut ground the bodies were built on; the bank's steepness is
  * read from the cut. Roads and buildings near the water make a shore stony, as their embankments are.
  */
-export function layoutShore(bodies: WaterBodies, base: { heightAt(x: number, z: number): number }): ShoreLayout {
+export function layoutShore(
+  bodies: WaterBodies,
+  base: { heightAt(x: number, z: number): number },
+  /** where no prop may stand: under a bridge deck (#238), whose structure a reed would grow through */
+  keepOut: (x: number, z: number) => boolean = () => false,
+): ShoreLayout {
   const stretches: ShoreStretch[] = [];
   const ground = (x: number, z: number) => bodies.cutAt(x, z, base.heightAt(x, z));
   const classify = (
@@ -159,12 +164,10 @@ export function layoutShore(bodies: WaterBodies, base: { heightAt(x: number, z: 
     for (let j = 0; j < count; j++) {
       const along = (hash01(st.body, i, j, 'a') - 0.5) * STRETCH_M;
       const across = lo + (hi - lo) * hash01(st.body, i, j, 'c');
-      props.push(
-        st.x + st.tx * along + st.nx * across,
-        st.z + st.tz * along + st.nz * across,
-        0.7 + hash01(st.body, i, j, 's') * 0.6,
-        hash01(st.body, i, j, 'r') * Math.PI * 2,
-      );
+      const x = st.x + st.tx * along + st.nx * across;
+      const z = st.z + st.tz * along + st.nz * across;
+      if (keepOut(x, z)) continue;
+      props.push(x, z, 0.7 + hash01(st.body, i, j, 's') * 0.6, hash01(st.body, i, j, 'r') * Math.PI * 2);
     }
   });
   return { stretches, reeds, stones };

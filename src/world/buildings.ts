@@ -122,12 +122,21 @@ export class BuildingIndex {
   readonly footprints: Footprint[] = [];
   /** each cell lists the indices of the footprints whose bounding box touches it */
   readonly grid = new Map<string, number[]>();
+  private readonly barriers: { collide(o: { x: number; z: number }, r: number): boolean }[] = [];
   /** outlines you collide with that are no buildings (addSolid), and their grid */
   readonly solids: Footprint[] = [];
   private readonly solidGrid = new Map<string, number[]>();
 
   constructor(data: WorldData) {
     for (const b of data.b) this.addFootprint(b.p);
+  }
+
+  /**
+   * Adds something else that `collide` pushes out from, without a footprint: a bridge's railings (#238), which
+   * people, cats and the streetscape must not take for a house.
+   */
+  addBarrier(barrier: { collide(o: { x: number; z: number }, r: number): boolean }) {
+    this.barriers.push(barrier);
   }
 
   /** Adds an outline that things collide with; returns its index in `footprints`. */
@@ -145,9 +154,10 @@ export class BuildingIndex {
 
   /** Pushes the circle `o` (radius r, m) out of any footprint it overlaps. True on contact. */
   collide(o: { x: number; z: number }, r: number) {
-    const a = pushOut(o, r, this.footprints, this.grid),
-      b = pushOut(o, r, this.solids, this.solidGrid);
-    return a || b;
+    let hit = pushOut(o, r, this.footprints, this.grid);
+    if (pushOut(o, r, this.solids, this.solidGrid)) hit = true;
+    for (const b of this.barriers) if (b.collide(o, r)) hit = true;
+    return hit;
   }
 
   /** Stops the footprint at `index` from colliding; it stays in `footprints`. For a building the game rebuilds as walls you can pass between. */

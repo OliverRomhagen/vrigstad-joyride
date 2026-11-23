@@ -6,12 +6,14 @@ import D from '../../data/vrigstad.json';
 import '../fonts/barlow';
 import { BuildingIndex } from '../world/buildings';
 import { ROAD_WIDTH_M as ROAD_W } from '../world/data';
+import { BridgeIndex } from '../world/bridges';
 import { Heightfield } from '../world/heightfield';
 import { BuildingShellsByMaterial } from '../world/mesh/building-shells';
 import { TerrainMesh } from '../world/mesh/terrain';
 import { WaterMaterial } from '../world/mesh/water-material';
 import { WaterSurface } from '../world/mesh/water-surface';
 import { makeRnd } from '../world/random';
+import { BridgeMesh } from '../world/mesh/bridge-mesh';
 import { RoadNetwork } from '../world/roads';
 import { buildStreetscape } from '../world/streetscape';
 import { STREETSCAPE_OVERRIDES } from '../world/streetscape-overrides';
@@ -39,12 +41,12 @@ const PAL = {
     water: '#9fcdea', waterLine: '#6fb0dc', sand: 'rgba(222,206,160,.9)', gravel: 'rgba(170,165,152,.8)', contour: 'rgba(150,95,50,.42)',
     road: [['#f0a03c', '#8a5a1e'], ['#f7d774', '#9a8440'], ['#ffffff', '#9a9a8e'], ['#ffffff', '#b0b0a4']], track: '#9c7a52', path: '#6b5a48',
     text: '#2b2b26', halo: 'rgba(255,255,255,.85)', tree: '#5f9150', earth: '#b79f7c',
-    wall: '#e9e2d3', roof: '#7b6a5e', lmWall: '#a8392a', lmRoof: '#5b2a22' },
+    wall: '#e9e2d3', roof: '#7b6a5e', lmWall: '#a8392a', lmRoof: '#5b2a22', bridge: '#ffffff' },
   dark: { streetSw: '#5b6660', sidewalk: '#3f4842', parking: '#343b37', crossing: '#9aa39c', sky: '#0e1513', ground: '#232d27', land: ['#2b2f2b', '#353522', '#2e2c2f', '#26372a', '#26352b', '#1c3a26', '#2c4a2c'],
     water: '#163d57', waterLine: '#2a6289', sand: 'rgba(120,108,80,.9)', gravel: 'rgba(90,90,86,.8)', contour: 'rgba(200,150,100,.26)',
     road: [['#c98a3a', '#3a2a12'], ['#a8914a', '#332d16'], ['#5b6660', '#151a17'], ['#4b5550', '#151a17']], track: '#7a6548', path: '#8a7b68',
     text: '#dfe5dd', halo: 'rgba(10,14,12,.85)', tree: '#2f5a3a', earth: '#3a3229',
-    wall: '#a9a497', roof: '#5f5a55', lmWall: '#c5543f', lmRoof: '#6b3028' }
+    wall: '#a9a497', roof: '#5f5a55', lmWall: '#c5543f', lmRoof: '#6b3028', bridge: '#8f938e' }
 };
 const isDark = () => { const t = document.documentElement.dataset.theme;
   return t ? t === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches; };
@@ -83,9 +85,11 @@ sun.shadow.bias = -0.0004; sun.shadow.normalBias = 1.2;
 scene.add(sun);
 
 // ---- streetscape: the game's layout of pavements, corners, parking and crossings, painted as 2D outlines (#187) ----
+const bridgeIndex = new BridgeIndex(D, new Heightfield(D, { exaggeration: EX }), heightfield);   // the bridges (#238): their walkways fit the streetscape below
 const street = (function () {
   const roads = new RoadNetwork(D, heightfield), buildings = new BuildingIndex(D);
   const sides = classifyStreetscape(D, roads, buildings, STREETSCAPE_OVERRIDES);
+  bridgeIndex.fitWalkways(roads.lines, (ri, side) => (side < 0 ? sides[ri].left : sides[ri].right).sidewalk === 'present');
   return buildStreetscape({ data: D, roads, heightfield, buildings, water: new Water(D, roads, { bodies: waterBodies, ground: unexaggerated }), sides });
 })();
 function paintStreetscape(pal, before) {
@@ -189,14 +193,14 @@ function paint(pal) {
   // paths and tracks
   ctx.lineCap = 'butt';
   ctx.setLineDash([4 * K, 3 * K]); ctx.strokeStyle = pal.path; ctx.lineWidth = Math.max(1.2, 1.1 * K);
-  ctx.beginPath(); for (const r of D.r) if (r.c === 5) trace(r.p); ctx.stroke();
+  ctx.beginPath(); for (const r of D.r) if (r.c === 5 && !r.br) trace(r.p); ctx.stroke();
   ctx.setLineDash([8 * K, 4 * K]); ctx.strokeStyle = pal.track; ctx.lineWidth = Math.max(1.5, 2 * K);
-  ctx.beginPath(); for (const r of D.r) if (r.c === 4) trace(r.p); ctx.stroke();
+  ctx.beginPath(); for (const r of D.r) if (r.c === 4 && !r.br) trace(r.p); ctx.stroke();
   ctx.setLineDash([]); ctx.lineCap = 'round';
   // roads: all casings first, then fills, minor to major
   for (const pass of [1, 0]) for (const c of [3, 2, 1, 0]) {
     ctx.strokeStyle = pal.road[c][pass]; ctx.lineWidth = (ROAD_W[c] + (pass ? 2 : 0)) * K;
-    ctx.beginPath(); for (const r of D.r) if (r.c === c) trace(r.p); ctx.stroke();
+    ctx.beginPath(); for (const r of D.r) if (r.c === c && !r.br) trace(r.p); ctx.stroke();
   }
   paintStreetscape(pal, false);
   streetNames(pal);
@@ -216,6 +220,11 @@ const lakeWater = new WaterMaterial({ ...waterLook, colours: MAP_WATER_LIGHT, fl
 Object.assign(riverWater.material, { polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
 const waterSurface = new WaterSurface(waterBodies, { lakeMaterial: lakeWater.material, riverMaterial: riverWater.material, exaggeration: EX });
 scene.add(...waterSurface.meshes);
+
+// ---- bridges (#238): the game's structures, drawing their own deck, since the map has no road ribbons ----
+const bridgeMat = new THREE.MeshLambertMaterial({ vertexColors: true });
+const bridges = new BridgeMesh(bridgeIndex, { materials: { body: bridgeMat, railing: bridgeMat }, top: true, groundAt: hAt });
+scene.add(...bridges.meshes);
 
 // ---- buildings ----
 // one mesh per material, so a theme change only recolours them
@@ -282,7 +291,7 @@ function render() {
 function applyTheme() {
   const pal = PAL[isDark() ? 'dark' : 'light'];
   scene.background = new THREE.Color(pal.sky);
-  earthMat.color.set(pal.earth); treeMat.color.set(pal.tree);
+  earthMat.color.set(pal.earth); treeMat.color.set(pal.tree); bridgeMat.color.set(pal.bridge);
   waterHorizon.set(pal.sky); for (const w of [lakeWater, riverWater]) w.setColours(isDark() ? MAP_WATER_DARK : MAP_WATER_LIGHT);
   for (const k in mats) mats[k].color.set(pal[k]);
   paint(pal); legend(pal); requestRender();

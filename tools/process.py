@@ -1,4 +1,4 @@
-import collections, json, math, struct, sys, zlib
+import collections, json, math, re, struct, sys, zlib
 
 data_dir, out_path = sys.argv[1], sys.argv[2]
 LAT0, LON0 = 57.3555, 14.4756
@@ -510,6 +510,11 @@ for e in elements:
         pk, po = street_parking(t)
         if any(pk): extra['pk'] = pk
         if any(po): extra['po'] = po
+        if t.get('bridge', 'no') != 'no':
+            br = {}                                # layer is kept to confirm grade separation, never read as height
+            if re.fullmatch(r'-?\d+', t.get('layer', '')): br['l'] = int(t['layer'])
+            if t.get('bicycle') == 'designated': br['cy'] = 1
+            extra['br'] = br
         ids = dict(zip(pts, e['nodes']))       # unclipped vertices keep their exact projected coordinates
         pieces = clip_line(pts)
         for j, piece in enumerate(pieces):
@@ -647,6 +652,8 @@ print(f'crossing nodes whose footway does not connect on both sides: {sum(foot_e
 print(f'kerb nodes: {len(kerbs)}, by kerb {dict(collections.Counter(k["kb"] for k in kerbs))}; crossings with kerb=*: {sum("kb" in c for c in crossings)}; kerb ways: {report["kerb ways"]}')
 print(f'trees: {len(trees)} points ({report["tree rows"]} tree rows, sampled every 8 m)')
 surf = collections.Counter(r.get('sf', 0) for r in carriage)
+br = [r for r in roads if 'br' in r]
+print(f'bridges: {len(br)} pieces ' + ', '.join(f"{r['i']} (class {r['c']}, {round(length(list(zip(r['p'][::2], r['p'][1::2]))), 1)} m)" for r in br))
 print(f'carriageway surface tags: {sum(v for k, v in surf.items() if k)} of {len(carriage)} pieces')
 
 # ---------- street furniture coverage (#144; tools/furniture-report.ts adds what the game generates) ----------

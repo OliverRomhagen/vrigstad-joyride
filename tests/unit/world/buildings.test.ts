@@ -150,3 +150,21 @@ describe('forEachBuilding', () => {
     expect(windings).toEqual([1, -1]);
   });
 });
+
+describe('BuildingIndex barriers', () => {
+  it('pushes out from a barrier as from a wall, and reports the hit', () => {
+    const index = new BuildingIndex(makeWorld());
+    const fence = {
+      collide(o: { x: number; z: number }, r: number) {
+        if (o.z >= r) return false;
+        o.z = r;
+        return true;
+      },
+    };
+    index.addBarrier(fence);
+    const o = { x: 0, z: 0.2 };
+    expect(index.collide(o, 1)).toBe(true);
+    expect(o.z).toBe(1);
+    expect(index.collide({ x: 0, z: 5 }, 1)).toBe(false);
+  });
+});
