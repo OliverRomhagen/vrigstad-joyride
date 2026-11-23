@@ -3,6 +3,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import D from '../../data/vrigstad.json';
+import '../fonts/barlow';
 import { BuildingIndex } from '../world/buildings';
 import { ROAD_WIDTH_M as ROAD_W } from '../world/data';
 import { BridgeIndex } from '../world/bridges';

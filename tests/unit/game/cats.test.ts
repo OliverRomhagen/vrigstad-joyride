@@ -268,6 +268,17 @@ describe('your cat rides along', () => {
     expect(stray.ride).toBeNull();
   });
 
+  it('lands on the ground, not on the car, when the car is taken away mid-hop', () => {
+    const { c, cat, car, player } = getIn('volvo');
+    for (let i = 0; i < 90 && cat.hop?.onto !== car; i++) c.update(player, 1 / 30);
+    expect(cat.hop?.onto).toBe(car); // on its way up
+    c.hopOffCar(car); // Skroten takes the car
+    car.x = 500; // and it is gone
+    run(c, player, 1);
+    expect(cat.ride).toBeNull();
+    expect(car.cat).toBeNull();
+  });
+
   it('stays put when the car is out of reach', () => {
     const { c, cat, car, player } = getIn('volvo');
     car.x = 500;
@@ -381,6 +392,26 @@ describe('strays on the EPA flak', () => {
     run(c, player, 2);
     expect(cat.ride).toBeNull();
     expect(car.cat).toBeNull();
+  });
+
+  it('trotting to an EPA that Skroten takes, it sits down and never boards the gone car', () => {
+    const { c, cat, car, player, drive } = epaScene();
+    for (let i = 0; i < 3000 && cat.state !== 'epa'; i++) {
+      if (cat.state === 'walk' || cat.state === 'flee') {
+        cat.state = 'sit';
+        cat.t = 99;
+      }
+      c.update(player, 1 / 30);
+    }
+    expect(cat.epa).toBe(car); // on its way to the tailgate
+    c.hopOffCar(car); // Skroten takes the car
+    drive.cars.splice(drive.cars.indexOf(car), 1); // and it is gone
+    expect(cat.epa).toBeNull();
+    expect(cat.state).toBe('sit');
+    run(c, player, 10);
+    expect(cat.ride).toBeNull();
+    expect(cat.hop).toBeNull();
+    expect(car.cat).toBeFalsy();
   });
 
   it('your cat sent home mid-hop into your car leaves the car free', () => {

@@ -1,12 +1,13 @@
 // The game page: creates the modules and connects them (#177). What each does is in its own file; the sections below
 // say where.
 import * as THREE from 'three';
+import { DebugOverlay } from './presentation/debug-overlay';
 import { filmGrain } from './presentation/grain-entry';
 import { cameraMoved } from './presentation/iso800-grain';
 import { AdoptHearts } from './render/adopt-heart';
 import { Banknotes } from './render/banknotes';
 import { DriftFx } from './render/drift-fx';
-import { type VehicleId, vehicleDefinition } from './render/vehicle-registry';
+import { VEHICLES, type VehicleId, vehicleDefinition } from './render/vehicle-registry';
 import { VehicleVisuals } from './render/vehicle-visuals';
 import { BodyMotion } from './render/body-motion';
 import { CarDamageFx } from './render/car-damage';
@@ -14,6 +15,7 @@ import { CarMeshes, type RenderedCar } from './render/car-meshes';
 import { CameraRig } from './render/camera-rig';
 import { ShoutingDrivers } from './render/shouting-drivers';
 import data from '../../data/vrigstad.json';
+import '../fonts/barlow';
 import { LabFlags } from '../lab/flags';
 import { BridgeIndex } from '../world/bridges';
 import { BuildingIndex } from '../world/buildings';
@@ -51,8 +53,11 @@ import { CashRain } from './cash-rain';
 import { Confetti } from './confetti';
 import { DevConsole } from './devconsole';
 import { newWallet, registerWalletCommands } from './economy';
+import { Skroten } from './skroten';
+import { SKROT_CARPORT, SKROT_HALL, yardFloorAt, yardLayout } from './skroten-yard';
+import { SkrotenMeshes } from './render/skroten';
 import { KIOSK, type Place, Places } from './places';
-import { CAT_SCRATCH_HP, LOW_HP, hurt, newHealth } from './health';
+import { CAT_SCRATCH_HP, canHurt, LOW_HP, hurt, newHealth, registerHealthCommands } from './health';
 import { HOME } from './player';
 import { Wanted } from './police';
 import { Ragdolls } from './ragdolls';
@@ -65,6 +70,7 @@ import { addBridges, addBuildings, addRoadRibbons, addStreetscapeMeshes, addTerr
 import { type CarType, specFor } from './sim/vehicle-spec';
 import { Tunables } from './sim/tunables';
 import { registerCarTunables } from './sim/car-tunables';
+import { registerTunableCommands } from './sim/tunable-commands';
 import { newGameState, newViewState } from './state';
 import { Trisslott, trisslottSeed } from './trisslott';
 import { makeClock, skyAt, START_H, tickClock } from './day-cycle';
@@ -136,7 +142,8 @@ const terrainMesh = addTerrain(scene, heightfield, texture);
 const roads = new RoadNetwork(D, heightfield, bridges), { lines: R } = roads;
 let streetIndex: StreetscapeIndex | null = null;   // the streetscape's walkable height, built further down once the buildings and trees are known
 // what people, cats and cars stand on: the road, or the curb, pavement or parking area above it
-const groundAt = (x: number, z: number) => { const g = roads.groundAt(x, z), s = streetIndex && streetIndex.surfaceAt(x, z); return s !== null && s > g ? s : g; };
+let floorAt: (x: number, z: number) => number | null = () => null;   // Skroten's workshop floor, set once its yard is laid out further down
+const groundAt = (x: number, z: number) => { const f = floorAt(x, z); if (f !== null) return f; const g = roads.groundAt(x, z), s = streetIndex && streetIndex.surfaceAt(x, z); return s !== null && s > g ? s : g; };
 const roadRibbons = addRoadRibbons(scene, roads, heightfield, maxAnisotropy, bridges);
 
 // ---------- water: wet where the cut ground is under a lake's or river's level; surfaces, reeds and stones ----------
@@ -147,7 +154,10 @@ const waterT1 = performance.now(), waterLook = addWater(scene, waterBodies, shor
 const buildings = new BuildingIndex(D), { footprints: bPolys } = buildings;
 const addFootprint = buildings.addFootprint.bind(buildings), collide = buildings.collide.bind(buildings);
 buildings.addBarrier(bridges);   // the bridges' railings stop cars, people and cats as walls do (#238)
-addBuildings(scene, D, heightfield, { rnd, pick, maxAnisotropy });   // rolls rnd() for the house colours, before any tree spot
+const yard = yardLayout(bPolys, hAt); for (const i of yard.passable) buildings.stopColliding(i);   // Skroten (src/game/skroten-yard.ts): its workshop and carport become walls you can drive between
+for (const p of yard.outlines) buildings.addSolid(p);   // its fence, workshop walls, hut, wrecks and heaps, before any car parks; solids, so crowds and cats don't take them for houses
+floorAt = (x, z) => yardFloorAt(yard, x, z, hAt);   // everyone stands on the even floors of Skroten's workshop and carport
+addBuildings(scene, D, heightfield, { rnd, pick, maxAnisotropy, skip: [SKROT_HALL, SKROT_CARPORT] });   // rolls rnd() for the house colours, before any tree spot
 
 // ---------- trees: spruces and birches, each with its own shade, size and lean ----------
 const TREE_M2_PER_TRY = 110, TREE_ROAD_CLEARANCE_M = 2.5;   // one try at a tree per this much of a wood's bounding box; no trunk closer to a road's edge
@@ -186,7 +196,7 @@ function addCar(type: CarType, x: number, z: number, h: number, mode: CarMode, a
   return fleet.add(carMeshes.attach(newCar(type, x, z, h, mode, T, pick(T.cols)), assetId));
 }
 function removeCar(c: Car) { carMeshes.detach(meshed(c)); fleet.remove(c); }
-const fleet = new Fleet({ roads, buildings, water, half: HALF, rnd, pick, addCar, placeCar: c => placeCar(meshed(c)), crash: (c, o, impact) => crashes.crash(c, o, impact),
+const fleet = new Fleet({ roads, buildings, water, half: HALF, rnd, pick, addCar: (t, x, z, h, m, model) => addCar(t, x, z, h, m, model as VehicleId | undefined), placeCar: c => placeCar(meshed(c)), crash: (c, o, impact) => crashes.crash(c, o, impact),
   canPark: (x, z) => streetIndex!.surfaceAt(x, z) === null,   // streetIndex is built before parkCars runs
   rammed: c => { if (c === game.pcar && game.ramCool <= 0) { game.ramCool = 6; wanted.addStar(pickLine(WANTED_LINES) + ' Ramming a police car. That will not help.'); } },
   get player() { return player; }, get inCar() { return game.inCar; } });
@@ -194,11 +204,16 @@ const cars = fleet.cars as RenderedCar[], drive = fleet.drive.bind(fleet), advan
 const selectedVehicle = vehicleDefinition(new URLSearchParams(location.search).get('vehicle'));
 // dev mode (#218): on with npm run dev, or with ?dev on any build (preview links too). § or ` then opens the dev console.
 const DEV = import.meta.env.DEV || new URLSearchParams(location.search).has('dev');
+// in dev mode, uncaught errors show over the game (a phone has no devtools), and the console's fps shows frame times (src/game/presentation/debug-overlay.ts)
+const debugOverlay = DEV ? new DebugOverlay($('stage'), __BUILD__) : null;
 const calmMotion = matchMedia('(prefers-reduced-motion: reduce)');
-// gameplay numbers (#217): the cars' are in the registry so far. ?tune=driving.grip:8,vehicle.volvo.top-speed:45 overrides them
+// gameplay numbers (#217): the cars' are in the registry so far. In dev mode, ?tune=driving.grip:8,vehicle.volvo.top-speed:45
+// overrides them at load, and the console's tune set, get, list and reset change them while you play (#357)
 const tunables = new Tunables();
 registerCarTunables(tunables);
-for (const err of tunables.override(new URLSearchParams(location.search).get('tune') ?? '')) console.warn('?tune=', err);
+const tuneParam = new URLSearchParams(location.search).get('tune');
+if (tuneParam && !DEV) console.warn('?tune= works in dev mode only: add ?dev');
+else for (const err of tunables.override(tuneParam ?? '')) console.warn('?tune=', err);
 let displayCar: RenderedCar | null = null;
 function carName(c: Car) { return vehicleVisuals.definition(meshed(c))?.name || c.T.name; }
 fleet.parkCars();   // parked cars along streets and driveways
@@ -238,7 +253,7 @@ const colony = new CatColony({ scene, buildings, inWater, groundAt, half: HALF, 
 const { cats } = colony, updateCats = colony.update.bind(colony), catFirst = colony.catFirst.bind(colony), nearCat = colony.nearest.bind(colony);
 
 // ---------- crashes: what you say and feel when you hit something, and what you say to your cat riding along (src/game/crashes.ts) ----------
-const crashes = new Crashes({ game, colony, get viewer() { return camera.position; }, toast, hurtPlayer, shake });
+const crashes = new Crashes({ game, colony, get viewer() { return camera.position; }, toast, hurtPlayer, get god() { return health.god; }, shake });
 const { pickLine } = crashes;
 
 // ---------- your pets: P (or the Pets button) calls them, sends them home or sets them free (src/game/pets.ts) ----------
@@ -266,12 +281,13 @@ const wallet = newWallet();
 const wanted = new Wanted({ roads, rnd, pick, removeCar, drive, toast,
   spawnCar: (x, z, h) => addCar('polis', x, z, h, 'police'),
   drawStars: () => drawStars(), showEvading: on => $('stars').classList.toggle('evading', on), caught: n => busted(n),
-  get lyingLow() { return !!places.inside; } });
+  get lyingLow() { return !!places.inside; }, get god() { return health.god; } });
 
 // ---------- places: safehouses (lie low to lose your stars) and the trisslott kiosk ----------
 // the getter is read when a place uses it, so it follows the stars
 const places = new Places({ footprints: bPolys, roads: R, police: wanted.police, lieLow: secs => wanted.lieLow(secs), toast, get stars() { return wanted.stars; } });
 const placeMeshes = new PlaceMeshes({ scene, places, heightAt: hAt, col, boxGeo, paintMat, glass: GLASS });
+const skrotenMeshes = new SkrotenMeshes({ scene, heightAt: hAt, layout: yard, coarse, carModel: d => vehicleVisuals.template(d) });
 addFootprint([KIOSK.x - KIOSK.w / 2, KIOSK.z - KIOSK.d / 2, KIOSK.x + KIOSK.w / 2, KIOSK.z - KIOSK.d / 2, KIOSK.x + KIOSK.w / 2, KIOSK.z + KIOSK.d / 2, KIOSK.x - KIOSK.w / 2, KIOSK.z + KIOSK.d / 2]);   // the kiosk collides like a building
 // ---------- street furniture: lamps, benches and bins from OSM, rules where OSM says nothing (#144, src/world/furniture/) ----------
 // after the trees, the streetscape and the places, which it keeps clear of; the kiosk is a footprint by now
@@ -285,6 +301,11 @@ const furniture = (function () {
 // the kiosk's and the cats' menus (src/game/kiosk-cat-menus.ts); trisslott is declared further down
 const kioskCatMenus = new KioskCatMenus({ game, player, colony, health, openMenu, esc, toast, scratch: () => trisslott.scratch(), wallet, nearPlace, showHeart, drawPets, drawTreats, drawHealth });
 const { openKiosk, petCat, openOwnCat } = kioskCatMenus;
+// Skroten, which buys the car you drive in (src/game/skroten.ts); actions is declared further down
+const atSkroten = () => !!(game.inCar && game.pcar && places.skrotenAt(game.pcar.x, game.pcar.z));
+const skroten = new Skroten({ game, player, get stars() { return wanted.stars; }, openMenu, toast, atSkroten,
+  modelId: c => vehicleVisuals.definition(meshed(c))?.id, wallet,
+  sellCar: c => { colony.hopOffCar(meshed(c)); actions.getOut(); removeCar(c); fleet.replaceSold(c, player); } });
 function nearPlace() { return game.inCar ? null : places.nearest(player.x, player.z); }
 function enterHouse(p: Place) { if (places.enter(p, player)) player.mesh.visible = false; }
 function leaveHouse() { if (!places.leave()) return; player.mesh.visible = true; $('hide').hidden = true; }
@@ -314,6 +335,14 @@ const commands = new Commands();
 const devcon = new DevConsole({ root: $('devcon'), commands, canvas, doc: document, get input() { return input; }, get enabled() { return DEV; }, get menuOpen() { return !kmenu.hidden; } });
 registerWalletCommands(commands, wallet);
 pets.registerCommands(commands);
+wanted.registerCommands(commands);
+registerHealthCommands(commands, health, drawHealth);
+registerTunableCommands(commands, tunables);
+// go <place>: you, or the car you drive, straight there, out of any safehouse first
+places.registerCommands(commands, (x, z, name) => { leaveHouse(); const c = game.inCar ? game.pcar : null;
+  if (c) { c.x = x; c.z = z; c.v = c.slip = c.drift = c.boost = 0; c.vh = c.h; placeCar(meshed(c)); } else { player.x = x; player.z = z; player.speed = 0; } return 'You are at ' + name + '.'; });
+fleet.registerCommands(commands, new Map<string, CarType>([...VEHICLES.filter(v => !v.police).map(v => [v.id, v.archetype] as const), ['traktor', 'traktor']]), () => view.camYaw, c => carName(c));   // car <model>
+debugOverlay?.registerCommands(commands);
 
 // ---------- input: keys, mouse look and the touch controls (src/game/input.ts) ----------
 // the dev console sees each key first, then the menus (src/game/menu.ts)
@@ -343,27 +372,28 @@ function titleCard(title: string, msg: string) { hud.showTitleCard(title, msg); 
 // the driver of a car you steal gets out, and stands there shouting for a while (src/game/render/shouting-drivers.ts)
 const drivers = new ShoutingDrivers({ scene, groundAt, personParts, pick }), driverOut = drivers.driverOut;
 // what E does, and putting you back on your feet after Gripen! or a knock-out (src/game/actions.ts)
-const actions = new Actions({ game, view, player, cars, places, wanted, health, wallet, menuOpen: () => !kmenu.hidden, closeMenu, showPlayer: v => { player.mesh.visible = v; }, nearPlace, enterHouse, leaveHouse, nearCat, catFirst, openOwnCat, petCat, openKiosk, collide, placeCar, rnd, pick, toast, carName,
-  spokenName: c => vehicleVisuals.definition(meshed(c))?.spokenName, driverOut, spawnTraffic, drawStolen: () => { $('count').textContent = 'Cars stolen: ' + game.stolen; }, drawHealth, titleCard, sayLater: line => loop.sayLater(line), pickLine });
+const actions = new Actions({ game, view, player, cars, places, wanted, health, wallet, menuOpen: () => !kmenu.hidden, closeMenu, showPlayer: v => { player.mesh.visible = v; }, nearPlace, openSkroten: skroten.open, nearOwner: () => skroten.nearOwner(nearestCar()), talkToOwner: skroten.talk, enterHouse, leaveHouse, nearCat, catFirst, openOwnCat, petCat, openKiosk, collide, placeCar, rnd, pick, toast, carName,
+  spokenName: c => vehicleVisuals.definition(meshed(c))?.spokenName, driverOut, replaceTaken: (c, p) => fleet.replaceTaken(c, p), drawStolen: () => { $('count').textContent = 'Cars stolen: ' + game.stolen; }, drawHealth, titleCard, sayLater: line => loop.sayLater(line), pickLine });
 const { nearestCar, action, respawn, busted, knockedOut } = actions;
-function hurtPlayer(n: number) { if (n <= 0) return; const was = health.hp;
+function hurtPlayer(n: number) { if (!canHurt(health, n)) return; const was = health.hp;
   hud.flashHurt(n); hurt(health, n); drawHealth();
   if (was >= LOW_HP && health.hp < LOW_HP && health.hp > 0) loop.sayLater('”Ja behöver nog en korv me brö.”'); }   // a hint at the kiosk
 
 // ---------- the E prompt and the speed plate (src/game/prompt.ts) ----------
-const prompt = new ActionPrompt({ $, game, places, wanted, get menuOpen() { return !kmenu.hidden; }, coarse, nearPlace, nearCat, nearestCar, catFirst, carName, esc });
+const prompt = new ActionPrompt({ $, game, places, wanted, get menuOpen() { return !kmenu.hidden; }, coarse, nearPlace, skrotenBuys: () => skroten.buys(), nearOwner: () => skroten.nearOwner(nearestCar()), nearCat, nearestCar, catFirst, carName, esc });
 
 // ---------- main loop (src/game/loop.ts) ----------
 const loop = new GameLoop({ $, renderer, scene, camera, canvas, coarse, half: HALF, game, view, player, health, input, places, wanted, cars, startCam: START_CAM, barMat, barColours: [BAR_BLUE, BAR_RED], cameraRig: { update: placeCamera },
   get toasting() { return hud.toasting; }, inWater, collide, groundAt, drive, updateTraffic, knockedOut, hurtPlayer, shake, toast, hideTitleCard: () => hud.hideTitleCard(),
-  updateTrisslott: dt => trisslott.update(dt), updatePlaces: dt => placeMeshes.update(dt), updateDriftFx, updateVehicles: (T, dt) => vehicleVisuals.update(T, dt), updateSmoke, updateBanknotes: dt => banknotes.update(dt), updateConfetti: dt => confetti.update(dt), updateNpcs: (T, dt) => { updateNpcs(T, dt); ragdolls.update(dt); ragdollMeshes.update(); }, updateCats,
+  updateTrisslott: dt => trisslott.update(dt), updatePlaces: dt => { placeMeshes.update(dt); skrotenMeshes.update(dt, player); }, updateDriftFx, updateVehicles: (T, dt) => vehicleVisuals.update(T, dt), updateSmoke, updateBanknotes: dt => banknotes.update(dt), updateConfetti: dt => confetti.update(dt), updateNpcs: (T, dt) => { updateNpcs(T, dt); ragdolls.update(dt); ragdollMeshes.update(); }, updateCats,
   updateDrivers: (T, dt) => drivers.update(T, dt), updateBodies: (T, dt) => bodyMotion.update(T, dt), updateDaylight, drawHearts, updateHud: dt => hud.update(dt), drawMini,
-  updateSign, catRideLines: () => crashes.catRideLines(), closeMenuIfLeft: () => menuPlate.closeIfLeft(), updatePrompt: () => prompt.update(), drawHealth });
+  updateSign, catRideLines: () => crashes.catRideLines(), closeMenuIfLeft: () => menuPlate.closeIfLeft(), updatePrompt: () => prompt.update(), drawHealth,
+  timeFrame: workStart => { if (!debugOverlay) return; const t = performance.now(); debugOverlay.frame(t, t - workStart, renderer.info); } });
 $('go').addEventListener('click', loop.startGame);
 loop.start();
 
 // ---------- test hook: read-only state for the smoke tests (src/game/test-hook.ts) ----------
 installTestHook({ game, view, player, health, cars, labs: lab.list(), get ragdolls() { return ragdolls.count; }, get stars() { return wanted.stars; }, get cats() { return cats.length; }, get ownCat() { return !!colony.owned; }, get displayCar() { return displayCar; },
   vehicleVisuals: { state: c => vehicleVisuals.state(meshed(c)) }, bodyMotion: { state: c => bodyMotion.state(meshed(c)) }, skyDome, street, debugStreetscape: DEBUG_STREETSCAPE, bridges: { index: bridges, draw: bridgeMeshes, groundAt }, furniture, water: { bodies: waterBodies, surface: waterLook.surface, props: waterLook.props, shore, terrainTriangles: terrainMesh.triangles, refinedCells: heightfield.refinedCells, buildMs: waterCutMs + waterMeshMs, inWater, hAt }, debugFurniture: DEBUG_FURNITURE, nearestCar,
-  get kr() { return wallet.kr; }, get banknotes() { return banknotes.live; }, get confetti() { return confetti.live; }, get devcon() { return devcon.isOpen; }, day: { get hour() { return dayClock.hour; }, get night() { return dayClock.night; }, get sunLight() { return sky.sun; } } });
+  get kr() { return wallet.kr; }, get banknotes() { return banknotes.live; }, get confetti() { return confetti.live; }, get devcon() { return devcon.isOpen; }, build: __BUILD__, get fps() { return !!debugOverlay?.shown; }, day: { get hour() { return dayClock.hour; }, get night() { return dayClock.night; }, get sunLight() { return sky.sun; } } });
 })();
