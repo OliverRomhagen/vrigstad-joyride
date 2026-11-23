@@ -666,6 +666,39 @@ test.describe('game (index.html)', () => {
     expect(errors).toEqual([]);
   });
 
+  test('Plåt-Pelle mends a damaged car on the lift in his workshop', async ({ page }, testInfo) => {
+    const errors = watchErrors(page);
+    await page.goto('/index.html?dev');
+    const { lift } = await state(page);
+    expect(lift).not.toBeNull();
+    // `car` parks 3.5 m east of you, nose the way you look: start that far west of the lift, looking the way in from the door, so the
+    // car stands on the lift between its posts, as you would drive it in
+    await page.goto(`/index.html?dev&at=${lift.x - 3.5},${lift.z},${Math.atan2(lift.inX, -lift.inZ)}`);
+    await page.locator('#go').click();
+    await page.keyboard.press('Backquote');
+    for (const line of ['kr 500', 'car volvo240']) {
+      await page.keyboard.type(line);
+      await page.keyboard.press('Enter');
+    }
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('KeyE');
+    expect(await state(page)).toMatchObject({ inCar: true, kr: 700 });
+    await page.keyboard.press('Backquote');
+    await page.keyboard.type('damage 60');
+    await page.keyboard.press('Enter');
+    await expect(page.locator('#devcon li').last()).toHaveText('Car damage: 60.');
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#prompt')).toHaveText('ERepair the Volvo 240 · 240 riksdaler');
+    await page.keyboard.press('KeyE');
+    await expect(page.locator('#kmenu')).toContainText('som ny');
+    await page.screenshot({ path: testInfo.outputPath('game-skroten-repair.png') });
+    await page.keyboard.press('Digit1');
+    await expect(page.locator('#kr')).toHaveText('460 riksdaler');
+    expect(await state(page)).toMatchObject({ inCar: true, carDmg: 0 });
+    await page.screenshot({ path: testInfo.outputPath('game-skroten-repaired.png') }); // whole glass again
+    expect(errors).toEqual([]);
+  });
+
   test('Plåt-Pelle sells you a car from his lot, and it is yours to drive', async ({ page }, testInfo) => {
     const errors = watchErrors(page);
     await page.setViewportSize({ width: 640, height: 360 });

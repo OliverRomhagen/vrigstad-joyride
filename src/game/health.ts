@@ -1,6 +1,6 @@
 // Health and damage (#80): the player's health and each car's damage, as plain data and pure rules (no three.js, no DOM).
 // Crashes (#40), knocking down pedestrians (#35), food (#30), drink (#16) and cat scratches build on hurt / heal / damageCar.
-import { command, optional, toggle } from './command-args';
+import { command, int, optional, toggle } from './command-args';
 import type { Commands } from './commands';
 
 export const HP_MAX = 100;
@@ -164,6 +164,24 @@ export function registerHealthCommands(commands: Pick<Commands, 'register'>, h: 
         if (h.god) heal(h, HP_MAX);
         drawHealth();
         return h.god ? 'God mode on.' : 'God mode off.';
+      },
+    }),
+  );
+}
+
+/** The dev console's `damage <0-100>`: sets the damage of the car you drive, to try Skroten's repairs and the smoke and cracks. */
+export function registerCarDamageCommand(commands: Pick<Commands, 'register'>, car: () => Damageable | null): void {
+  commands.register(
+    'damage',
+    command({
+      help: `set the damage of the car you drive; ${DMG_MAX} wrecks it`,
+      examples: ['damage 60', 'damage 0'],
+      args: [int('damage', { min: 0, max: DMG_MAX })],
+      run: ({ damage }) => {
+        const c = car();
+        if (!c) return 'Get in a car first.';
+        c.dmg = damage;
+        return `Car damage: ${damage}.`;
       },
     }),
   );

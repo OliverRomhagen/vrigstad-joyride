@@ -7,7 +7,9 @@ import {
   fine,
   newWallet,
   pay,
+  REPAIR_MIN_KR,
   registerWalletCommands,
+  repairPrice,
   SCRAP_KR,
   START_KR,
   salePrice,
@@ -131,5 +133,19 @@ describe('what Plåt-Pelle asks for a car on his lot', () => {
     expect(salePrice('epa', 'duett-epa')).toBe(1500);
     expect(salePrice('saab', undefined)).toBe(2500); // by type when the model has no price
     expect(salePrice('polis', undefined)).toBeNull();
+  });
+});
+
+describe('what Plåt-Pelle asks to mend a car', () => {
+  it('asks up to half what Skroten pays for one whole, by the damage, in round tens', () => {
+    expect(repairPrice('volvo', 'volvo240', DMG_MAX)).toBe(400);
+    expect(repairPrice('volvo', 'volvo240', DMG_MAX / 2)).toBe(200);
+    expect(repairPrice('volvo', 'impala1970', DMG_MAX / 2)).toBe(400);
+  });
+
+  it('asks nothing for a whole car, at least the smallest price for a scratch, and never mends a police car', () => {
+    expect(repairPrice('volvo', 'volvo240', 0)).toBe(0);
+    expect(repairPrice('volvo', 'volvo240', 1)).toBe(REPAIR_MIN_KR);
+    expect(repairPrice('polis', 'xc70-police', 50)).toBeNull();
   });
 });
