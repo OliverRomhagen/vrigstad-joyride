@@ -98,7 +98,7 @@ Claude Code's built-in `/code-review` checks a change against this file, so thes
 
 ### Claude Code in this repo
 
-Shared agents (`.claude/agents/`) and skills (`.claude/skills/`) come with the repo, so every collaborator's Claude Code has them. Agents advise; none edits tracked files, and `performance-analyst` runs commands to build and measure, in a scratch worktree. Some are adapted from [Claude Code Game Studios](https://github.com/donchitos/claude-code-game-studios) (MIT, see `LICENSE`). Each holds only its own expertise and points here for the rules, so add a new one when work needs it, not ahead of it (#255 lists the candidates). Claude can start any of them on its own when a request matches its description.
+Shared agents (`.claude/agents/`) and skills (`.claude/skills/`) come with the repo, so every collaborator's Claude Code has them. Agents advise; none edits tracked files, and `performance-analyst` runs commands to build and measure, in a scratch worktree. Some are adapted from [Claude Code Game Studios](https://github.com/donchitos/claude-code-game-studios) (MIT, see `LICENSE`). Each holds only its own expertise and points here for the rules, so a refactor doesn't make it wrong. Try one on a real task before relying on it, and drop one nobody reaches for (#255 lists what was left out). Claude can start any of them on its own when a request matches its description.
 
 | Reach for | When |
 |---|---|
@@ -106,6 +106,18 @@ Shared agents (`.claude/agents/`) and skills (`.claude/skills/`) come with the r
 | `performance-analyst`, `/perf-profile` | Low fps, stutter, a performance regression |
 | `/balance-check` | Whether the numbers are balanced, e.g. before merging a tuning change |
 | `writer` | What people in the game say, in local Swedish |
+| `game-designer`, `/quick-design` | Shaping a feature from the player's side; a short spec for a small change |
+| `systems-designer`, `economy-designer` | The maths behind a mechanic; money, prices and payouts |
+| `ai-programmer` | How police, traffic, pedestrians and animals decide and move |
+| `level-designer` | Choosing and laying out a real place for play |
+| `technical-artist` | Art styles, post-processing, effects, model and texture budgets |
+| `ux-designer`, `ui-programmer`, `accessibility-specialist` | Flows, controls and the HUD; reviewing UI code; barriers for disabled players |
+| `sound-designer` | Specifying sounds and the mix before they're made |
+| `network-programmer`, `security-engineer` | Multiplayer sync; strings into HTML, saved data, CI permissions, privacy |
+| `/playtest-report` | Turning playtest notes on a preview into one shape |
+| `/test-flakiness` | Flaky or slow smoke tests in CI |
+| `/asset-audit` | Every model, image, sound and font has a licence, is used and fits a budget |
+| `/onboard` | A guide for a new collaborator's area |
 | `ticket-triage`, `/new-ticket` | Checking and filing issues (Tickets, above) |
 
 ## Code style
