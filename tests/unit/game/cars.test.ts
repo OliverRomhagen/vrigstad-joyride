@@ -4,11 +4,11 @@ import { Commands } from '../../../src/game/commands';
 import { CRASH_COOL_S, DMG_MAX } from '../../../src/game/health';
 import { type CarType, specFor } from '../../../src/game/sim/vehicle-spec';
 import { BuildingIndex } from '../../../src/world/buildings';
-import { ROAD_WIDTH_M, RoadClass, type WorldData } from '../../../src/world/data';
+import { BuildingKind, ROAD_WIDTH_M, RoadClass, type WorldData } from '../../../src/world/data';
 import { makeRnd } from '../../../src/world/random';
 import { RoadNetwork } from '../../../src/world/roads';
 import { Water } from '../../../src/world/water';
-import { makeWorld } from '../world/fixture';
+import { makeWorld, square } from '../world/fixture';
 
 const DT = 1 / 60;
 const SIZE_M = 2000; // big enough that no test reaches the map's edge
@@ -113,6 +113,15 @@ describe('drive', () => {
     expect(c.z).toBeLessThan(800); // heading 0 is north, towards -z
   });
 
+  it('stops with its nose at a wall, not inside it (#201)', () => {
+    // a house north of the road's south end, its south wall at z = 700
+    const { cars } = fleet({ r: [MAIN_ROAD], b: [{ p: square(-20, 660, 40), h: 5, k: BuildingKind.OTHER }] });
+    const c = car('volvo', 0, 712, 0, 'player'); // heading north, 9.6 m from the wall
+    driveFor(cars, c, 3, 0.4, 0, false);
+    expect(c.z - c.T.lengthM / 2).toBeCloseTo(700, 0); // the nose at the wall: before, it went 0.9 m in
+    expect(c.z - c.T.lengthM / 2).toBeGreaterThan(699.8);
+  });
+
   it('is slower off the road', () => {
     const { cars } = fleet();
     const c = car('volvo', 300, 800, 0, 'player');
@@ -206,6 +215,16 @@ describe('traffic', () => {
     expect(c?.mode).toBe('ai');
     expect(Math.hypot(c!.x - player.x, c!.z - player.z)).toBeGreaterThanOrEqual(260);
     expect(cars.cars).toEqual([c]);
+  });
+
+  it('spawns only where no other car stands, parked or in traffic (#409)', () => {
+    // traffic spawns at a road's vertices: five of them, 20 m apart, the first one taken by a parked car
+    const { cars } = fleet({ r: [{ c: RoadClass.PRIMARY, n: 'Storgatan', p: [0, 40, 0, 20, 0, 0, 0, -20, 0, -40] }] });
+    cars.add(car('volvo', 1, 40, 0, 'parked'));
+    for (let i = 0; i < 10; i++) cars.spawnTraffic(null);
+    expect(cars.cars).toHaveLength(4); // the last vertex is never a spawn, so three are left, and the parked car
+    for (const c of cars.cars)
+      for (const o of cars.cars) if (o !== c) expect(Math.hypot(o.x - c.x, o.z - c.z)).toBeGreaterThanOrEqual(7);
   });
 
   it('waits behind a car, and drives through it after 6 s', () => {
