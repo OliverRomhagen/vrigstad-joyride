@@ -106,6 +106,11 @@ describe('classifyStreetscape: separately mapped sidewalks', () => {
 });
 
 describe('classifyStreetscape: profiles', () => {
+  it('leaves a bridge bare: its deck carries its own walkways (#238)', () => {
+    const [s] = classify({ r: [street({ br: { l: 1 } })], b: centreHouses, labels: [TORGET] });
+    expect([s.left.sidewalk, s.right.sidewalk, s.streetTrees]).toEqual(['absent', 'absent', false]);
+  });
+
   it('gives the centre a 2 m sidewalk on both sides', () => {
     const [s] = classify({ r: [street()], b: centreHouses, labels: [TORGET] });
     expect(s.profile).toBe('centre');
