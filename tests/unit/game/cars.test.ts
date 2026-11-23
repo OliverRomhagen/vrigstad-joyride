@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { type Car, type CarMode, Fleet, newCar, type TrafficCar, TURBO_AT } from '../../../src/game/cars';
+import { Commands } from '../../../src/game/commands';
 import { CRASH_COOL_S, DMG_MAX } from '../../../src/game/health';
 import { type CarType, specFor } from '../../../src/game/sim/vehicle-spec';
 import { BuildingIndex } from '../../../src/world/buildings';
@@ -25,7 +26,12 @@ function fleet(world: Partial<WorldData> = { r: [MAIN_ROAD] }, canPark = (_x: nu
   const data = makeWorld({ size: SIZE_M, ...world });
   const roads = new RoadNetwork(data, { heightAt: () => 0 });
   const rnd = makeRnd(1);
-  const log = { crashes: [] as [Car, Car | null][], rammed: [] as Car[], placed: new Set<Car>() };
+  const log = {
+    crashes: [] as [Car, Car | null][],
+    rammed: [] as Car[],
+    placed: new Set<Car>(),
+    models: [] as (string | undefined)[],
+  };
   const player = { x: 0, z: -800 };
   const cars: Fleet = new Fleet({
     roads,
@@ -34,7 +40,10 @@ function fleet(world: Partial<WorldData> = { r: [MAIN_ROAD] }, canPark = (_x: nu
     half: SIZE_M / 2,
     rnd,
     pick: a => a[Math.floor(rnd() * a.length)],
-    addCar: (type, x, z, h, mode) => cars.add(car(type, x, z, h, mode)),
+    addCar: (type, x, z, h, mode, model) => {
+      log.models.push(model);
+      return cars.add(car(type, x, z, h, mode));
+    },
     placeCar: c => {
       log.placed.add(c);
     },
@@ -240,9 +249,95 @@ describe('parkCars', () => {
     for (const c of cars.cars) expect(c.z).toBeLessThan(0);
   });
 
+  it('replaces a sold car with one parked out of sight', () => {
+    const { cars } = fleet({ r: [STREET] });
+    cars.parkCars();
+    const sold = cars.cars.pop()!,
+      before = cars.cars.length,
+      you = { x: 0, z: 0 };
+    cars.replaceSold(sold, you);
+    expect(cars.cars.length).toBe(before + 1);
+    const c = cars.cars[before]!;
+    expect(c.mode).toBe('parked');
+    expect(Math.hypot(c.x - you.x, c.z - you.z)).toBeGreaterThanOrEqual(260);
+  });
+
+  it('parks no replacement in sight of you', () => {
+    const { cars } = fleet({ r: [STREET] }, (x, z) => Math.hypot(x, z) < 260); // only spots within sight are free
+    cars.parkCars();
+    const sold = cars.cars.pop()!,
+      before = cars.cars.length;
+    cars.replaceSold(sold, { x: 0, z: 0 });
+    expect(cars.cars.length).toBe(before);
+  });
+
+  it('parks no replacement for a car you took from traffic, which was already replaced', () => {
+    const { cars } = fleet({ r: [MAIN_ROAD, STREET] }), // traffic on the main road, parking on the street
+      you = { x: 0, z: 0 },
+      taken = cars.spawnTraffic(null)!,
+      before = cars.cars.length;
+    cars.replaceTaken(taken, you);
+    expect(cars.cars.length).toBe(before + 1);
+    cars.remove(taken);
+    cars.replaceSold(taken, you);
+    expect(cars.cars.length).toBe(before);
+  });
+
   it('parks none along a primary road', () => {
     const { cars } = fleet();
     cars.parkCars();
+    expect(cars.cars).toEqual([]);
+  });
+});
+
+describe('the car command', () => {
+  const MODELS = new Map<string, CarType>([
+    ['volvo240', 'volvo'],
+    ['traktor', 'traktor'],
+  ]);
+
+  it('parks a car of that model next to you, already yours', () => {
+    const { cars, log, player } = fleet(),
+      c = new Commands();
+    cars.registerCommands(
+      c,
+      MODELS,
+      () => 0,
+      x => x.T.name,
+    );
+    expect(c.run('car Volvo240')).toBe('Parked a ' + specFor('volvo').name + ' next to you.');
+    const parked = cars.cars.at(-1)!;
+    expect(parked.owned).toBe(true);
+    expect(Math.hypot(parked.x - player.x, parked.z - player.z)).toBeCloseTo(3.5);
+    expect(log.models.at(-1)).toBe('volvo240');
+    c.run('car traktor');
+    expect(log.models.at(-1)).toBeUndefined(); // the tractor has no model of its own
+  });
+
+  it('names the models it knows when it is given one it does not', () => {
+    const { cars } = fleet(),
+      c = new Commands();
+    cars.registerCommands(
+      c,
+      MODELS,
+      () => 0,
+      x => x.T.name,
+    );
+    expect(c.run('car lada')).toBe('No car called lada. Usage: car <volvo240 | traktor>');
+  });
+
+  it('gets no replacement when it is sold, so the cheat adds no cars to the village', () => {
+    const { cars } = fleet({ r: [STREET] }),
+      c = new Commands();
+    cars.registerCommands(
+      c,
+      MODELS,
+      () => 0,
+      x => x.T.name,
+    );
+    c.run('car volvo240');
+    const sold = cars.cars.pop()!;
+    cars.replaceSold(sold, { x: 0, z: 0 });
     expect(cars.cars).toEqual([]);
   });
 });

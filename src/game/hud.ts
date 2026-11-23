@@ -168,10 +168,10 @@ export class Hud {
       const L = Math.hypot(dx, dz),
         edge = MR * 0.88;
       if (L > edge) {
-        if (p.kind !== 'safe') continue;
+        if (p.kind === 'kiosk') continue;
         dx *= edge / L;
         dz *= edge / L;
-      } // safehouses stay pinned to the rim so they can be found
+      } // safehouses and Skroten stay pinned to the rim so they can be found
       const x = q(dx),
         y = q(dz);
       mctx.beginPath();
@@ -185,6 +185,9 @@ export class Hud {
         mctx.lineTo(x - 11, y - 2);
         mctx.closePath();
         mctx.fillStyle = '#4fd27a';
+      } else if (p.kind === 'skrot') {
+        mctx.rect(x - 8, y - 8, 16, 16);
+        mctx.fillStyle = '#d2692f';
       } else {
         mctx.arc(x, y, 8, 0, Math.PI * 2);
         mctx.fillStyle = '#f2c230';
