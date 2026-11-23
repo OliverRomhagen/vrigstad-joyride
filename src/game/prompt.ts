@@ -6,6 +6,7 @@ import { fmtKr, lotPrice } from './economy';
 import { wrecked } from './health';
 import type { Place } from './places';
 import { tooFastToGetOut } from './player';
+import { hasLimiterSwitch } from './sim/upgrades';
 import type { GameState } from './state';
 
 /** What the prompt reads from the rest of the game. The getters are read every time it is drawn. */
@@ -104,7 +105,9 @@ export class ActionPrompt {
     $('speed').hidden = !game.inCar;
     if (game.inCar && game.pcar) {
       $('kmh').textContent = String(Math.round(Math.abs(game.pcar.v) * 3.6));
-      $('carname').textContent = carName(game.pcar) + (wrecked(game.pcar) ? ' · wrecked' : '');
+      $('carname').textContent =
+        carName(game.pcar) + (wrecked(game.pcar) ? ' · wrecked' : game.pcar.limiterOff ? ' · limiter off' : '');
     }
+    $('p-limiter').hidden = !(game.inCar && game.pcar && hasLimiterSwitch(game.pcar));
   }
 }
