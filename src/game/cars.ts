@@ -8,6 +8,7 @@ import { nodeKey, type RoadNetwork } from '../world/roads';
 import type { Water } from '../world/water';
 import { type Commands, UsageError } from './commands';
 import { impactSpeed, topSpeedShare, wrecked } from './health';
+import { bodyRadius, nearestBetweenSpines, pushBodyOut } from './sim/car-body';
 import { approach, rearPivotShift, yawRate } from './sim/handling';
 import type { CarType, VehicleSpec } from './sim/vehicle-spec';
 
@@ -42,6 +43,8 @@ export const DRIVING = {
 export const TURBO_AT = [1, 2.2] as const; // s of sliding for a blue / an orange spark
 const TURBO_S = [0.7, 1.3]; // s each of those boosts lasts
 const _pivot = { dx: 0, dz: 0 }; // rearPivotShift writes here: no allocation per car per frame
+const _onC = { x: 0, z: 0 },
+  _onO = { x: 0, z: 0 }; // nearestBetweenSpines writes the nearest points of two cars here
 
 // Traffic
 const TRAFFIC_LIMIT_MS = [13.9, 11, 8.3] as const; // speed limit (m/s) on a primary road, a secondary one and a street (RoadClass); traffic drives on no other
@@ -175,6 +178,7 @@ export class Fleet {
   // cars whose sale parks no new one: the car command's, which were never the village's, and traffic you took, which replaceTaken
   // already replaced
   private readonly noReplacement = new WeakSet<Car>();
+  private readonly collideBuildings = (o: Point, r: number) => this.g.buildings.collide(o, r); // once, not a bind per car per frame
 
   constructor(g: FleetDeps) {
     this.g = g;
@@ -384,7 +388,7 @@ export class Fleet {
   }
   // shared driving model for the player and the police; only the player passes canDrift
   drive(c: Car, thr: number, steer: number, brake: boolean, dt: number, canDrift = false) {
-    const { roads, buildings, water, half: HALF, crash, rammed, placeCar } = this.g,
+    const { roads, water, half: HALF, crash, rammed, placeCar } = this.g,
       cars = this.cars;
     c.thr = thr = Math.abs(thr - c.thr) < 0.02 ? thr : approach(c.thr, thr, c.T.handling.throttleResponseS, dt);
     c.st = approach(c.st, steer, c.T.handling.steerResponseS, dt); // weight: speed and heading answer a little late
@@ -482,7 +486,7 @@ export class Fleet {
       vz = -Math.cos(c.vh) * c.v,
       bx = c.x,
       bz = c.z; // velocity and place before any hit: the push out gives the hit's normal
-    if (buildings.collide(c, 1.5)) {
+    if (pushBodyOut(c, this.collideBuildings)) {
       const nx = c.x - bx,
         nz = c.z - bz,
         L = Math.hypot(nx, nz);
@@ -492,19 +496,31 @@ export class Fleet {
     } // a wall ends the slide, and the turbo with it (charged or firing)
     for (const o of cars) {
       if (o === c) continue;
-      const dx = c.x - o.x,
-        dz = c.z - o.z,
-        d = Math.hypot(dx, dz);
-      if (d < 2.7 && d > 0.01) {
-        const push = 2.7 - d,
+      const reach = (c.T.lengthM + o.T.lengthM) / 2;
+      if (Math.abs(c.x - o.x) > reach || Math.abs(c.z - o.z) > reach) continue;
+      nearestBetweenSpines(c, o, _onC, _onO);
+      let nx = _onC.x - _onO.x,
+        nz = _onC.z - _onO.z,
+        d = Math.hypot(nx, nz);
+      if (d <= 0.01) {
+        nx = c.x - o.x; // the spines cross: apart along the centres, the whole way
+        nz = c.z - o.z;
+        d = 0;
+      }
+      const apart = bodyRadius(c) + bodyRadius(o),
+        L = Math.hypot(nx, nz);
+      if (d < apart && L > 0.01) {
+        nx /= L;
+        nz /= L;
+        const push = apart - d,
           oh = o.mode === 'ai' ? o.h : o.vh; // traffic steers by h alone
-        crash(c, o, impactSpeed(vx - Math.sin(oh) * o.v, vz + Math.cos(oh) * o.v, dx / d, dz / d));
-        c.x += (dx / d) * push;
-        c.z += (dz / d) * push;
+        crash(c, o, impactSpeed(vx - Math.sin(oh) * o.v, vz + Math.cos(oh) * o.v, nx, nz));
+        c.x += nx * push;
+        c.z += nz * push;
         if (Math.abs(c.v) > 6 && o.mode === 'police') rammed(c, o);
         if (o.mode === 'parked' || o.mode === 'idle') {
-          o.x -= (dx / d) * push * 0.4;
-          o.z -= (dz / d) * push * 0.4;
+          o.x -= nx * push * 0.4;
+          o.z -= nz * push * 0.4;
           placeCar(o);
         }
         c.v *= 0.05 ** dt;

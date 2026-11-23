@@ -4,11 +4,11 @@ import { Commands } from '../../../src/game/commands';
 import { CRASH_COOL_S, DMG_MAX } from '../../../src/game/health';
 import { type CarType, specFor } from '../../../src/game/sim/vehicle-spec';
 import { BuildingIndex } from '../../../src/world/buildings';
-import { ROAD_WIDTH_M, RoadClass, type WorldData } from '../../../src/world/data';
+import { BuildingKind, ROAD_WIDTH_M, RoadClass, type WorldData } from '../../../src/world/data';
 import { makeRnd } from '../../../src/world/random';
 import { RoadNetwork } from '../../../src/world/roads';
 import { Water } from '../../../src/world/water';
-import { makeWorld } from '../world/fixture';
+import { makeWorld, square } from '../world/fixture';
 
 const DT = 1 / 60;
 const SIZE_M = 2000; // big enough that no test reaches the map's edge
@@ -111,6 +111,15 @@ describe('drive', () => {
     expect(c.v).toBeGreaterThan(c.T.max * 0.8);
     expect(fastest).toBeLessThanOrEqual(c.T.max);
     expect(c.z).toBeLessThan(800); // heading 0 is north, towards -z
+  });
+
+  it('stops with its nose at a wall, not inside it (#201)', () => {
+    // a house north of the road's south end, its south wall at z = 700
+    const { cars } = fleet({ r: [MAIN_ROAD], b: [{ p: square(-20, 660, 40), h: 5, k: BuildingKind.OTHER }] });
+    const c = car('volvo', 0, 712, 0, 'player'); // heading north, 9.6 m from the wall
+    driveFor(cars, c, 3, 0.4, 0, false);
+    expect(c.z - c.T.lengthM / 2).toBeCloseTo(700, 0); // the nose at the wall: before, it went 0.9 m in
+    expect(c.z - c.T.lengthM / 2).toBeGreaterThan(699.8);
   });
 
   it('is slower off the road', () => {
