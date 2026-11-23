@@ -16,6 +16,7 @@ test('two tabs in one room show each other, on foot and in a car', async ({ cont
     await page.locator('#go').click();
   }
   const [a, b] = pages;
+  const carCount = (await state(b)).carCount;
   for (const page of pages) await expect.poll(async () => (await state(page)).remotePlayers).toBe(1);
 
   // a walks to the parked car beside Torget and gets in; b keeps showing one remote player through the change
@@ -34,6 +35,12 @@ test('two tabs in one room show each other, on foot and in a car', async ({ cont
   await a.waitForTimeout(1500);
   await a.keyboard.up('KeyW');
   expect((await state(b)).remotePlayers).toBe(1);
+  // the car a drives is the same car in b: b moves its own one, and has no car more than before
+  await expect.poll(async () => (await state(b)).remoteCars.length).toBe(1);
+  await a.waitForTimeout(600); // a's car has stopped, and b has caught up
+  const [at, seen] = [await state(a), await state(b)];
+  expect(seen.carCount).toBe(carCount);
+  expect(Math.hypot(seen.remoteCars[0].x - at.x, seen.remoteCars[0].z - at.z)).toBeLessThan(1);
   await info.attach('tab-b-sees-tab-a', {
     body: await b.screenshot({ path: info.outputPath('tab-b-sees-tab-a.png') }),
     contentType: 'image/png',
@@ -42,5 +49,6 @@ test('two tabs in one room show each other, on foot and in a car', async ({ cont
   // a closed tab leaves the others' world
   await a.close();
   await expect.poll(async () => (await state(b)).remotePlayers).toBe(0);
+  expect(await state(b)).toMatchObject({ remoteCars: [], carCount }); // the car stays, with nobody in it
   expect(errors.flat()).toEqual([]);
 });

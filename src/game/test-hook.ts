@@ -120,6 +120,8 @@ export function installTestHook(g: TestHookDeps) {
         activeVehicle: game.pcar ? vehicleVisuals.state(game.pcar) : null,
         body: game.pcar ? bodyMotion.state(game.pcar) : null,
         wheelbase: (game.pcar || displayCar)?.T.handling.wheelbaseM ?? 0,
+        carCount: cars.length,
+        remoteCars: cars.filter(c => c.mode === 'remote').map(c => ({ x: c.x, z: c.z })),
         traffic: cars.filter(c => c.mode === 'ai').map(c => ({ type: c.type, vehicle: vehicleVisuals.state(c) })),
         clouds: skyDome.state(),
         hour: g.day.hour,

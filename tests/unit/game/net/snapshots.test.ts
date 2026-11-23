@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { blankSnapshot, COAST_MS, type Snapshot, SnapshotBuffer } from '../../../../src/game/net/snapshots';
 
 const at = (t: number, over: Partial<Snapshot> = {}): Snapshot => ({ ...blankSnapshot(), t, ...over });
-const volvo = { type: 'volvo', model: null, color: '#b3261e' } as const;
+const volvo = { id: 'p3', since: 0, dmg: 0, look: { type: 'volvo', model: null, color: '#b3261e' } } as const;
 
 describe('SnapshotBuffer', () => {
   it('has nothing to show before the first snapshot', () => {

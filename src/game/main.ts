@@ -370,14 +370,16 @@ const prompt = new ActionPrompt({ $, game, places, wanted, get menuOpen() { retu
 // ---------- multiplayer prototype: ?lab=multiplayer shows the players of this browser's other tabs (docs/multiplayer.md) ----------
 // each tab sends its own player and draws the others' (src/game/net/two-tabs.ts, src/game/render/remote-players.ts); ?room= names the room
 let net: { update(dt: number): void; readonly peers: number } | null = null;
-if (lab.on('multiplayer')) Promise.all([import('./net/two-tabs'), import('./render/remote-players')]).then(([tabs, rp]) => {
-  const remotes = new rp.RemotePlayers({ scene, groundAt, makePerson: () => personParts('#58c4dd', '#3a3f45'), placeCar, disposeCar: c => carMeshes.detach(c),
-    makeCar: look => { const model = look.model as VehicleId | null; return carMeshes.attach(newCar(look.type, 0, 0, 0, 'idle', specFor(look.type, vehicleDefinition(model)), look.color), model ?? undefined); } });
-  net = tabs.startTwoTabs({ room: new URLSearchParams(location.search).get('room') || 'torget', remotes,
+if (lab.on('multiplayer')) { const seeded = cars.filter(c => c.mode === 'parked');   // now, before anyone takes one: the import below comes back later
+  Promise.all([import('./net/two-tabs'), import('./render/remote-players')]).then(([tabs, rp]) => {
+  net = tabs.startTwoTabs({ room: new URLSearchParams(location.search).get('room') || 'torget', remotes: new rp.RemotePlayers({ scene, groundAt, makePerson: () => personParts('#58c4dd', '#3a3f45') }),
     local: () => { const c = game.inCar ? game.pcar : null;
-      return c ? { x: c.x, z: c.z, h: c.h, vh: c.vh, v: c.v, y: 0, phase: 0, hidden: false, car: { type: c.type, model: vehicleVisuals.definition(meshed(c))?.id ?? null, color: c.color } }
-        : { x: player.x, z: player.z, h: player.h, vh: player.h, v: player.speed, y: player.y, phase: player.phase, hidden: !!places.inside, car: null }; } });
-}).catch(err => console.warn('Lab: multiplayer failed', err));
+      return c ? { x: c.x, z: c.z, h: c.h, vh: c.vh, v: c.v, y: 0, phase: 0, hidden: false }
+        : { x: player.x, z: player.z, h: player.h, vh: player.h, v: player.speed, y: player.y, phase: player.phase, hidden: !!places.inside }; },
+    cars: { cars, seeded, driven: () => game.inCar ? game.pcar : null, look: c => ({ type: c.type, model: vehicleVisuals.definition(meshed(c))?.id ?? null, color: c.color }),
+      addCar: (look, x, z, h) => { const model = vehicleDefinition(look.model)?.id; return fleet.add(carMeshes.attach(newCar(look.type, x, z, h, 'idle', specFor(look.type, vehicleDefinition(model ?? null)), look.color), model)); },
+      removeCar, placeCar: c => placeCar(meshed(c)), lostCar: () => { actions.getOut(); toast('Someone else got in first.', 2); } } });
+}).catch(err => console.warn('Lab: multiplayer failed', err)); }
 
 // ---------- main loop (src/game/loop.ts) ----------
 const loop = new GameLoop({ $, renderer, scene, camera, canvas, coarse, half: HALF, game, view, player, health, input, places, wanted, cars, startCam: START_CAM, barMat, barColours: [BAR_BLUE, BAR_RED], cameraRig: { update: placeCamera },

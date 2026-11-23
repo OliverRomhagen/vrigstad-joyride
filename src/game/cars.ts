@@ -58,8 +58,11 @@ const PARKED_CARS = 58; // parked when the village is built
 const PARK_AWAY_TRIES = 300; // tries at a far kerbside spot before giving up
 
 type Point = { x: number; z: number };
-/** Who drives a car: nobody yet (`parked`), nobody since you got out (`idle`), traffic (`ai`), the police, or you. */
-export type CarMode = 'parked' | 'idle' | 'ai' | 'police' | 'player';
+/**
+ * Who drives a car: nobody yet (`parked`), nobody since you got out (`idle`), traffic (`ai`), the police, you, or
+ * another player (`remote`: their client moves it, net/shared-cars.ts).
+ */
+export type CarMode = 'parked' | 'idle' | 'ai' | 'police' | 'player' | 'remote';
 /** A car. `h` is where its nose points and `vh` its line of travel (rad, 0 is north; they differ in a slide), `v` its speed along `vh` (m/s). */
 export interface Car extends Point {
   type: CarType;

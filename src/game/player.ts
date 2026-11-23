@@ -33,12 +33,12 @@ export interface CarNearby extends Point {
   mode: string;
 }
 
-/** The car you'd get into: the closest one within reach that isn't the police. */
+/** The car you'd get into: the closest one within reach that isn't the police's or another player's. */
 export function carInReach<C extends CarNearby>(p: Point, cars: readonly C[]): C | null {
   let best: C | null = null,
     bd = REACH_M;
   for (const c of cars) {
-    if (c.mode === 'police') continue;
+    if (c.mode === 'police' || c.mode === 'remote') continue;
     const d = Math.hypot(c.x - p.x, c.z - p.z);
     if (d < bd) {
       bd = d;

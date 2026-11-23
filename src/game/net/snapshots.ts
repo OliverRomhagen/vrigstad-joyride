@@ -10,6 +10,14 @@ export interface CarLook {
   color: string;
 }
 
+/** The car a player drives: which one it is, and enough for a client that has never seen it to make it. */
+export interface CarRef {
+  id: string; // the same on every client (shared-cars.ts)
+  since: number; // ms: when the player got in, which settles two players taking one car
+  dmg: number; // the driver's client decides the damage of the car they drive
+  look: CarLook;
+}
+
 /** One player at one moment: on foot, or the car they drive when `car` is set. */
 export interface Snapshot {
   t: number; // ms, on the clock the peers share
@@ -21,7 +29,7 @@ export interface Snapshot {
   y: number; // m above the ground, on foot (a jump)
   phase: number; // the walk cycle, on foot
   hidden: boolean; // inside a safehouse
-  car: CarLook | null;
+  car: CarRef | null;
 }
 
 export const SEND_HZ = 15;
@@ -30,8 +38,7 @@ export const COAST_MS = 250; // when snapshots stop, keep moving at the last spe
 const KEEP = 8; // snapshots kept per player: half a second
 
 const lerp = (a: number, b: number, k: number) => a + (b - a) * k;
-const sameCar = (a: CarLook | null, b: CarLook | null) =>
-  a === b || (!!a && !!b && a.type === b.type && a.model === b.model && a.color === b.color);
+const sameCar = (a: CarRef | null, b: CarRef | null) => a?.id === b?.id;
 
 /** The last snapshots of one remote player, and where that player is at a time between or just after them. */
 export class SnapshotBuffer {
