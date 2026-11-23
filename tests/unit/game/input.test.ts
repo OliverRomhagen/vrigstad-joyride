@@ -63,6 +63,9 @@ function input(opts: { coarse?: boolean; started?: boolean; menuKey?: (e: Keyboa
     rain: () => {
       calls.push('rain');
     },
+    limiter: () => {
+      calls.push('limiter');
+    },
     jump: () => {
       calls.push('jump');
     },
@@ -99,7 +102,7 @@ describe('Input', () => {
     expect(calls).toEqual([]);
   });
 
-  it('jumps on a fresh Space press only, and E, F or Enter act once per press', () => {
+  it('jumps on a fresh Space press only, E, F or Enter act once per press, and T flips the limiter once', () => {
     const { win, calls } = input();
     const e = fire(win, 'keydown', { code: 'Space' });
     fire(win, 'keydown', { code: 'Space', repeat: true });
@@ -109,7 +112,9 @@ describe('Input', () => {
     fire(win, 'keydown', { code: 'KeyR' });
     fire(win, 'keydown', { code: 'KeyL' });
     fire(win, 'keydown', { code: 'KeyL', repeat: true });
-    expect(calls).toEqual(['jump', 'action', 'action', 'respawn', 'rain']);
+    fire(win, 'keydown', { code: 'KeyT' });
+    fire(win, 'keydown', { code: 'KeyT', repeat: true });
+    expect(calls).toEqual(['jump', 'action', 'action', 'respawn', 'rain', 'limiter']);
     expect(e.defaultPrevented).toBe(true); // Space doesn't scroll the page
   });
 
