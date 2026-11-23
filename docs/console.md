@@ -59,16 +59,17 @@ flowchart LR
     end
   end
   tests["unit and smoke tests"]
+  caller(["the caller<br/>the box shows the line,<br/>a test reads it"])
   box -- console --> run
   url -. url · script · panel .-> run
   tests -- test --> run
   run --> gate
-  gate -- "no: one line back" --> box
+  gate -- "no: one line back" --> caller
   gate -- yes --> descend --> helpq
-  helpq -- "yes: its help" --> box
+  helpq -- "yes: its help" --> caller
   helpq -- no --> hooks --> cmd
   cmd --> health & wanted & tunables
-  cmd -- "one line back" --> box
+  cmd -- "one line back" --> caller
   classDef pageCode fill:#fde8d8,stroke:#c96,color:#000
   classDef simCode fill:#dceefb,stroke:#69c,color:#000
   class box,url pageCode
