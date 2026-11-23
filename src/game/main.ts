@@ -14,6 +14,7 @@ import { CarMeshes, type RenderedCar } from './render/car-meshes';
 import { CameraRig } from './render/camera-rig';
 import { ShoutingDrivers } from './render/shouting-drivers';
 import data from '../../data/vrigstad.json';
+import '../fonts/barlow';
 import { LabFlags } from '../lab/flags';
 import { BuildingIndex } from '../world/buildings';
 import { ROAD_WIDTH_M as ROAD_W, type WorldData } from '../world/data';

@@ -10,7 +10,7 @@ export default defineConfig({
   timeout: 120_000, // headless WebGL (SwiftShader in CI) renders only a few frames a second
   expect: { timeout: 30_000 },
   forbidOnly: !!process.env.CI,
-  retries: process.env.CI ? 1 : 0, // the fonts load from a CDN; do not fail a PR on one network blip
+  retries: process.env.CI ? 1 : 0, // do not fail a PR on one flaky run; the fonts no longer load from a CDN (#75), so try 0 next
   reporter: process.env.CI ? [['github'], ['list']] : 'list',
   use: {
     baseURL: `http://127.0.0.1:${PORT}`,

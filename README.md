@@ -18,7 +18,7 @@ The teaser and poster are rendered from the game itself by the scripts in `tools
 
 ## Play
 
-Play it at https://oliverromhagen.github.io/vrigstad-joyride/, or run `npm install && npm run build` and open `dist/index.html`. It needs WebGL. The fonts load from a CDN, so offline it falls back to system fonts.
+Play it at https://oliverromhagen.github.io/vrigstad-joyride/, or run `npm install && npm run build && npm run preview` and open the address it prints. It needs WebGL. Opening `dist/index.html` from disk doesn't work: the browser won't load the fonts and models beside it over `file://`.
 
 | Action | Keyboard | Phone |
 |---|---|---|
@@ -49,7 +49,7 @@ data/raw/          OpenStreetMap extract (osm.json) and one elevation tile (tile
 data/vrigstad.json processed data: buildings, roads, water, land use, 25 m elevation grid
 tools/fetch.sh     re-downloads data/raw from the Overpass API and Mapzen terrain tiles
 tools/process.py   projects and clips the raw data into data/vrigstad.json
-tools/build.mjs    builds both pages with Vite into dist/, each as one self-contained file
+tools/build.mjs    builds both pages with Vite into dist/, each as one HTML file, with its fonts and models beside it
 ```
 
 It needs Node. Work on it with a dev server, and rebuild after changing anything in `src/`:
