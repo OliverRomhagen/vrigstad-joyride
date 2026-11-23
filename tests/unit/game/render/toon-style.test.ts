@@ -45,6 +45,7 @@ test('vehicle finishes come from the GLB material names, or metalness', () => {
   expect(finishOf(named('restrained satin chrome', 0.7))).toBe('metal');
   expect(finishOf(named('period wheel covers', 0.5))).toBe('metal');
   expect(finishOf(new THREE.MeshLambertMaterial())).toBe('paint');
+  expect(finishOf(new THREE.MeshLambertMaterial({ name: 'house shells' }))).toBe('house');
 });
 
 test('each finish draws with its own ramp, shared between materials', () => {
@@ -59,6 +60,15 @@ test('each finish draws with its own ramp, shared between materials', () => {
   expect(Array.from(ramps[1].image.data as Uint8Array)).toEqual([...FINISH_LEVELS.lamp]);
   expect(Array.from(ramps[2].image.data as Uint8Array)).toEqual([...FINISH_LEVELS.glass]);
   expect(ramps[3]).toBe(ramps[0]);
+});
+
+test('the houses get more, finer bands, so two walls at different angles to the sun shade apart (#413)', () => {
+  // under a high sun every wall's dot is below 0.5: one facing the sun (0.45) and one turned from it (0.1) share a band on
+  // the paint ramp, not on the house ramp
+  const band = (levels: readonly number[], dot: number) =>
+    Math.min(levels.length - 1, Math.floor((dot * 0.5 + 0.5) * levels.length));
+  expect(band(FINISH_LEVELS.paint, 0.45)).toBe(band(FINISH_LEVELS.paint, 0.1));
+  expect(band(FINISH_LEVELS.house, 0.45)).toBeGreaterThan(band(FINISH_LEVELS.house, 0.1));
 });
 
 test('light shifts from the fill to the sun while drawing, and back after', () => {

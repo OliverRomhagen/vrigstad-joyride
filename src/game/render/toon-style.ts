@@ -13,11 +13,14 @@ export const FINISH_LEVELS = {
   metal: [30, 200, 70, 255], // chrome's stripes: a bright band before a dark one, as a reflection gives
   glass: [12, 28, 50, 165], // dark, with one hard highlight facing the sun
   lamp: [110, 130, 150, 180], // lenses barely shade, so they read as lamps from any side
+  // the houses' walls: under a high sun every wall's dot is below 0.5, so the paint ramp gives most of them one band and
+  // their corners vanish; six levels split them by how far each turns from the sun (#413)
+  house: [9, 32, 72, 125, 185, 255],
 } as const;
 export type Finish = keyof typeof FINISH_LEVELS;
 // Toon bands only shape direct light; the hemisphere fill is smooth and washes them out, so it gives way to the sun.
 export const TOON_SUN_SCALE = 1.22;
-export const TOON_FILL_SCALE = 0.52;
+export const TOON_FILL_SCALE = 0.4; // 0.52 in the lab; lower, so the walls turned from the sun fall a band darker (#413)
 // Ink lines, as the lab draws them: along the edges where faces meet at more than this angle, so boxes and car
 // panels get lines and smooth curves don't. Only under objects flagged with INK_FLAG: rigid things, not terrain,
 // roads or trees.
@@ -45,6 +48,7 @@ const isOpaque = (material: MeshMaterial) =>
 
 export function finishOf(material: THREE.Material): Finish {
   const name = material.name.toLowerCase();
+  if (name === 'house shells') return 'house';
   if (/glass|glazing|window/.test(name)) return 'glass';
   if (/lamp|lens|beam|indicator|reflector/.test(name)) return 'lamp';
   if (/rubber|tire|tyre|weatherstrip/.test(name)) return 'rubber';
