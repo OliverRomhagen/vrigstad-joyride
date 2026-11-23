@@ -412,6 +412,7 @@ BUILDING_SHIFT = {
     99738592: (0.6, 0, -61.9, -132.5),      # on Kristina Nilssons Väg
     103000690: (-1.3, 0, -90.2, 119.5),     # where an unnamed street ends at its corner
 }
+shifted = set()   # BUILDING_SHIFT ways found in osm.json
 buildings, roads, water, waterways, land, labels = [], [], [], [], [], {}
 parking_areas, parking_spaces, crossings, kerbs, trees, furniture = [], [], [], [], [], []
 road_nodes = []              # per road: the OSM node id of each kept vertex, None where clipping made the vertex
@@ -496,6 +497,7 @@ for e in elements:
             mx, mz = centroid(ring)
             assert math.hypot(mx - cx, mz - cz) < 0.5, f'way {e["id"]} was re-traced: re-check its BUILDING_SHIFT'
             ring = [(x + dx, z + dz) for x, z in ring]
+            shifted.add(e['id'])
         if not ring or not inside(centroid(ring)): continue
         a = area(ring)
         kind = {'church': 1, 'hotel': 2}.get(t['building'], 0)
@@ -580,6 +582,7 @@ for e in elements:
             land.append({'k': k, 'p': flat(r)})
 
 assert sum('s' in b for b in buildings) == 1, f'church way {CHURCH_WAY} missing from osm.json'
+assert shifted == set(BUILDING_SHIFT), f'BUILDING_SHIFT ways missing from osm.json: {set(BUILDING_SHIFT) - shifted}'
 
 # ---------- crossing and kerb nodes, tied to road vertices through the ways' node lists ----------
 on_roads = collections.defaultdict(list)          # node id -> [(class, road index, vertex index)], carriageways only
