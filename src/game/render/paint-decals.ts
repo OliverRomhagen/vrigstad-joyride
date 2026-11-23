@@ -13,6 +13,8 @@ export interface Panel {
 }
 
 const FACING = 0.35; // a decal keeps only the triangles that face its projector at least this much (the cosine of the angle)
+const NOSE_FACING = 0.15; // on the bonnet, less: it curves down to the nose, and the flames' roots should follow it there
+const AHEAD = 0.04; // the flames start this share of the car's length ahead of its nose, so their solid roots cover it
 const GLASS_EDGE_M = 0.03; // a decal triangle this near the top or bottom of a model's glass stays: the roof and the bonnet's back edge
 const LIFT_M = 0.006; // a decal stands this far off the paint, so it doesn't flicker into it, yet stays under a model's glass
 const RALLY_DISC_M = 0.62; // across the rally number's disc
@@ -24,6 +26,7 @@ type Projector = {
   rot: THREE.Euler;
   size: THREE.Vector3; // across, up and deep, in the projector's own axes; it paints along its z
   facing: THREE.Vector3; // the way the panels it paints face, in the car's frame
+  facingMin?: number; // how squarely they must face it; FACING when not given
   tex: THREE.Texture;
 };
 
@@ -51,7 +54,8 @@ export function decalMeshes(
     for (const p of panels) {
       stand.geometry = p.geometry;
       stand.matrixWorld.copy(p.toFrame);
-      const facing = facingOnly(new DecalGeometry(stand, pr.pos, pr.rot, pr.size), pr.facing, glass);
+      const decal = new DecalGeometry(stand, pr.pos, pr.rot, pr.size),
+        facing = facingOnly(decal, pr.facing, pr.facingMin ?? FACING, glass);
       if (facing) pieces.push(facing);
     }
     if (!pieces.length) continue;
@@ -98,14 +102,15 @@ function projectors(decal: Decal, paint: string, box: THREE.Box3): Projector[] {
     tex,
   });
   if (decal === 'flames') {
-    const zc = min.z + 0.3 * L,
-      zLen = 0.44 * L,
+    const nose = min.z - AHEAD * L,
+      zLen = 0.5 * L,
       yc = min.y + 0.32 * H,
-      yLen = 0.44 * H; // about as long against tall as the side picture, so the tongues aren't squashed
+      yLen = 0.44 * H, // about as long against tall as the side picture, so the tongues aren't squashed
+      bonnetLen = 0.34 * L;
     return [
-      side(1, zc, zLen, yc, yLen, textures().flamesNoseRight),
-      side(-1, zc, zLen, yc, yLen, textures().flames),
-      top(min.z + 0.16 * L, 0.3 * L, 0.9 * W, textures().flamesBonnet),
+      side(1, nose + zLen / 2, zLen, yc, yLen, textures().flamesNoseRight),
+      side(-1, nose + zLen / 2, zLen, yc, yLen, textures().flames),
+      { ...top(nose + bonnetLen / 2, bonnetLen, 0.9 * W, textures().flamesBonnet), facingMin: NOSE_FACING },
     ];
   }
   if (decal === 'stripes') return [top((min.z + max.z) / 2, 1.02 * L, STRIPES_M, stripes(paint))];
@@ -121,6 +126,7 @@ function projectors(decal: Decal, paint: string, box: THREE.Box3): Projector[] {
 function facingOnly(
   g: THREE.BufferGeometry,
   dir: THREE.Vector3,
+  min: number,
   glass: THREE.Box3 | null,
 ): THREE.BufferGeometry | null {
   const pos = g.getAttribute('position'),
@@ -135,7 +141,7 @@ function facingOnly(
   for (let i = 0; i + 2 < pos.count; i += 3) {
     let d = 0;
     for (let k = i; k < i + 3; k++) d += nor.getX(k) * dir.x + nor.getY(k) * dir.y + nor.getZ(k) * dir.z;
-    if (d / 3 >= FACING && !(glass && underGlass(pos, i, glass))) keep.push(i, i + 1, i + 2);
+    if (d / 3 >= min && !(glass && underGlass(pos, i, glass))) keep.push(i, i + 1, i + 2);
   }
   if (!keep.length) {
     g.dispose();
