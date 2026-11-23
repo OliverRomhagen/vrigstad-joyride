@@ -12,11 +12,12 @@ export interface Panel {
   toFrame: THREE.Matrix4;
 }
 
-const FACING = 0.35; // a decal keeps only the triangles that face its projector at least this much (the cosine of the angle)
+const FACING = 0.45; // a decal shows fully where its panel faces the projector at least this much (the cosine of the angle)
+const FADE = 0.25; // and fades out over this much less
 // the bonnet's flames take panels facing up and a little forward, so they follow its curve down to the nose but stay off the
 // wings' rounded shoulders, where they would smear into straight streaks
 const BONNET_FACING = new THREE.Vector3(0, 1, -0.5).normalize();
-const BONNET_FACING_MIN = 0.6;
+const BONNET_FACING_MIN = 0.7;
 const AHEAD = 0.04; // the flames start this share of the car's length ahead of its nose, so their solid roots cover it
 const GLASS_EDGE_M = 0.03; // a decal triangle this near the top or bottom of a model's glass stays: the roof and the bonnet's back edge
 const LIFT_M = 0.006; // a decal stands this far off the paint, so it doesn't flicker into it, yet stays under a model's glass
@@ -129,7 +130,9 @@ function projectors(decal: Decal, paint: string, box: THREE.Box3): Projector[] {
   ];
 }
 
-// the triangles of g that face `dir` and lie outside the glass: a projector also catches panels side-on, where its picture would smear
+// the triangles of g that face `dir` and lie outside the glass. A projector also catches panels side-on, where its picture would
+// smear: each vertex fades out, by its alpha, as its panel turns from facing `min` to facing FADE less, so where the body curves
+// away from it (the shoulder between the side and the bonnet) the decal thins out softly instead of stopping in steps
 function facingOnly(
   g: THREE.BufferGeometry,
   dir: THREE.Vector3,
@@ -139,17 +142,16 @@ function facingOnly(
   const pos = g.getAttribute('position'),
     nor = g.getAttribute('normal'),
     uv = g.getAttribute('uv');
-  if (!pos?.count) {
+  if (!pos?.count || !nor) {
     g.dispose();
-    return null;
+    return null; // DecalGeometry gives normals for every panel with them, and a panel without would take the decal flat-on anyway
   }
-  if (!nor) return g;
+  const alphaAt = (i: number) =>
+    Math.min(1, Math.max(0, (nor.getX(i) * dir.x + nor.getY(i) * dir.y + nor.getZ(i) * dir.z - (min - FADE)) / FADE));
   const keep: number[] = [];
-  for (let i = 0; i + 2 < pos.count; i += 3) {
-    let d = 0;
-    for (let k = i; k < i + 3; k++) d += nor.getX(k) * dir.x + nor.getY(k) * dir.y + nor.getZ(k) * dir.z;
-    if (d / 3 >= min && !(glass && underGlass(pos, i, glass))) keep.push(i, i + 1, i + 2);
-  }
+  for (let i = 0; i + 2 < pos.count; i += 3)
+    if (Math.max(alphaAt(i), alphaAt(i + 1), alphaAt(i + 2)) > 0 && !(glass && underGlass(pos, i, glass)))
+      keep.push(i, i + 1, i + 2);
   if (!keep.length) {
     g.dispose();
     return null;
@@ -161,10 +163,15 @@ function facingOnly(
     });
     return new THREE.BufferAttribute(out, n);
   };
+  const colour = new Float32Array(keep.length * 4).fill(1);
+  keep.forEach((i, j) => {
+    colour[j * 4 + 3] = alphaAt(i);
+  });
   const f = new THREE.BufferGeometry();
   f.setAttribute('position', copy(pos, 3, LIFT_M));
   f.setAttribute('normal', copy(nor, 3));
   if (uv) f.setAttribute('uv', copy(uv, 2));
+  f.setAttribute('color', new THREE.BufferAttribute(colour, 4)); // white: only its alpha changes the picture
   g.dispose();
   return f;
 }
@@ -192,6 +199,7 @@ function material(tex: THREE.Texture) {
   if (!m) {
     m = new THREE.MeshStandardMaterial({
       map: tex,
+      vertexColors: true, // white, with an alpha that fades the decal where the body turns away (facingOnly)
       transparent: true,
       alphaTest: 0.02,
       depthWrite: false,
@@ -257,11 +265,12 @@ type Tongue = {
   waves?: number; // how much it swings along its length (rad of the wave); 5.2, a little under one S, when not given
 };
 type Tongues = readonly Tongue[];
+// kept clear of the picture's top and bottom edges, where the decal's box would cut them off straight
 const SIDE_TONGUES: Tongues = [
-  { y: 0.22, tipX: 0.95, tipY: 0.1, half: 0.18, bend: 0.26, phase: 0.4, waves: 7.5 },
-  { y: 0.46, tipX: 0.7, tipY: 0.34, half: 0.17, bend: 0.28, phase: 2.6, waves: 7 },
-  { y: 0.66, tipX: 0.9, tipY: 0.6, half: 0.17, bend: 0.26, phase: 4.6, waves: 7.5 },
-  { y: 0.85, tipX: 0.6, tipY: 0.84, half: 0.14, bend: 0.2, phase: 1.5, waves: 7 },
+  { y: 0.26, tipX: 0.95, tipY: 0.2, half: 0.14, bend: 0.12, phase: 0.4, waves: 7.5 },
+  { y: 0.44, tipX: 0.7, tipY: 0.38, half: 0.15, bend: 0.2, phase: 2.6, waves: 7 },
+  { y: 0.6, tipX: 0.9, tipY: 0.58, half: 0.15, bend: 0.2, phase: 4.6, waves: 7.5 },
+  { y: 0.76, tipX: 0.6, tipY: 0.78, half: 0.12, bend: 0.1, phase: 1.5, waves: 7 },
 ];
 const BONNET_TONGUES: Tongues = [
   { y: 0.12, tipX: 0.78, tipY: 0.08, half: 0.09, bend: 0.06, phase: 3 },
