@@ -284,6 +284,11 @@ export class CarDamageFx {
     }
   }
 
+  /** The crack level `c`'s glass shows now, for the test hook: 0 for whole glass. */
+  crackShown(c: RenderedCar) {
+    return this.views.get(c)?.crack ?? 0;
+  }
+
   /** T is where the camera looks: only the cars near it smoke. */
   updateSmoke(dt: number, T: { x: number; z: number }) {
     const { cars, vehicleVisuals, groundAt, rnd: dmgRnd } = this.g,

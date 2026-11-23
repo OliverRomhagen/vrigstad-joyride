@@ -132,6 +132,8 @@ export const PROP_SIZE = {
 export const RAMP_M = 2.5;
 const FLOOR_STEP_M = 1, // the floor is fitted to the ground sampled this far apart
   FLOOR_CLEAR_M = 0.05; // and stands this far above its highest point
+/** The ring round the lift's bay: its outer radius (m), inside the posts. A car whose middle is inside it stands on the lift. */
+export const LIFT_RING_M = 1.85;
 const BAY_IN_M = 15, // the bay's middle, this far in from the door
   LIFT_HALF_M = 2.1; // the lift's posts, this far either side of the bay's middle: a car's 1.5 m collision radius passes between
 /** The carport: its outline and walls, the open front, and the posts along it (world metres). */

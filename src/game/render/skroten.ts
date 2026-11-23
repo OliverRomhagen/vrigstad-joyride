@@ -8,6 +8,7 @@ import {
   CONTAINERS,
   floorAt,
   HUT,
+  LIFT_RING_M,
   OWNER_UV,
   PROP_SIZE,
   RAMP_M,
@@ -25,11 +26,13 @@ import {
   yardToWorld,
 } from '../skroten-yard';
 import { boxGeo, carGeo, mergeGeo, type Person, paintMat, personParts } from './models';
+import { SKROT_COLOUR } from './places';
 import { BODY_NODE, CIVILIAN_CAR_TYPES, VEHICLES } from './vehicle-registry';
 
 /** One box: size, position and colour, as boxGeo takes it. */
 type BoxPart = [sx: number, sy: number, sz: number, x: number, y: number, z: number, colour: string];
 
+const LIFT_RING_LIFT_M = 0.02; // the lift's ring stands this far off the floor
 const PANEL_M = 3; // a sheet of the fence, and the gap between its posts
 const SELLS_MIN_W_M = 1.5; // the SÄLJER BILAR board is left out where the fence leaves it less room than this
 const FENCE_COLOURS = ['#8b8f91', '#9a6a4a', '#6f7c86', '#a3a7a3', '#7e4a30', '#86847a'];
@@ -330,7 +333,7 @@ export class SkrotenMeshes {
       this.loadNear = () => void this.loadCars(detailed, yard, standY, g.carModel);
     }
     const built: THREE.Object3D[] = [yard];
-    if (layout.workshop) built.push(hallMeshes(heightAt, layout.workshop));
+    if (layout.workshop) built.push(hallMeshes(heightAt, layout.workshop), liftRing(layout.workshop));
     if (layout.carport) built.push(carportMeshes(heightAt, layout.carport));
     // on a phone nothing here casts a shadow, as the cars on the road don't (VehicleVisuals); the yard's models are skipped there anyway
     if (g.coarse)
@@ -418,6 +421,34 @@ export class SkrotenMeshes {
     this.ownerH += d * Math.min(1, dt * OWNER_TURN_K);
     n.rotation.y = -this.ownerH;
   }
+}
+
+// an orange ring on the workshop's floor round the lift's bay, like the one on the yard, so you can see where to park to have the car
+// mended; inside the lift's posts
+function liftRing(ws: Workshop) {
+  const geo = new THREE.RingGeometry(LIFT_RING_M - 0.35, LIFT_RING_M, 40),
+    { x, z } = ws.bay,
+    { a, bx, cz } = ws.floor;
+  geo.rotateX(-Math.PI / 2);
+  // each corner on the floor, which slopes (some 8 % along the bay): a flat ring would sink in at one end and float at the other
+  const pos = geo.getAttribute('position');
+  for (let i = 0; i < pos.count; i++) pos.setY(i, bx * pos.getX(i) + cz * pos.getZ(i) + LIFT_RING_LIFT_M);
+  geo.computeVertexNormals();
+  const ring = new THREE.Mesh(
+    geo,
+    new THREE.MeshBasicMaterial({
+      color: new THREE.Color(SKROT_COLOUR).convertSRGBToLinear(),
+      transparent: true,
+      opacity: 0.8,
+      depthWrite: false,
+      polygonOffset: true, // drawn over the floor it lies on, even far off where depth is coarse
+      polygonOffsetFactor: -4,
+      polygonOffsetUnits: -4,
+    }),
+  );
+  ring.position.set(x, a + bx * x + cz * z, z);
+  ring.castShadow = ring.receiveShadow = false;
+  return ring;
 }
 
 /** Plåt-Pelle: blue overalls, a red cap with a peak, and a grey beard. Standing at the origin, facing −z. */
