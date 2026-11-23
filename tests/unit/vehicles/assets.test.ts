@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import { Box3, Vector3 } from 'three';
+import { Box3, type Material, Mesh, Vector3 } from 'three';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { expect, test } from 'vitest';
@@ -10,6 +10,7 @@ import {
   VEHICLES,
   WHEEL_NODES,
 } from '../../../src/game/render/vehicle-registry';
+import { KEPT_PARTS } from '../../../tools/vehicle-parts';
 
 const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
 test.each(VEHICLES)('$id decodes with named body, wheel hubs and metre dimensions', async spec => {
@@ -34,6 +35,15 @@ test.each(VEHICLES)('$id decodes with named body, wheel hubs and metre dimension
   expect(size.y).toBeLessThan(3);
   expect(size.z).toBeGreaterThan(3);
   expect(size.z).toBeLessThan(7);
+});
+test.each(VEHICLES)('$id has one static part per material on its body (#408)', async spec => {
+  const bytes = readFileSync('src/public/' + spec.url);
+  const { scene } = await loader.parseAsync(new Uint8Array(bytes).buffer, '');
+  const materials = scene
+    .getObjectByName(BODY_NODE)!
+    .children.filter(part => part instanceof Mesh && !part.children.length && !KEPT_PARTS.test(part.name))
+    .map(part => ((part as Mesh).material as Material).name);
+  expect(materials.length).toBe(new Set(materials).size); // npm run compress:vehicles merges them
 });
 test('every model is in the world, worn only by its own simulation type', () => {
   const used = Object.entries(VEHICLE_VARIANTS).flatMap(([archetype, variants]) =>
