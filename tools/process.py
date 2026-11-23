@@ -391,13 +391,14 @@ LEIS = {'pitch': 6, 'playground': 3, 'sports_centre': 3, 'park': 3}
 SHORT = {'Best Western Hotell Vrigstad Värdshus': 'Vrigstad Värdshus', 'Torget Vrigstad': 'Torget',
          'Tallåsen, Vrigstads Idrottsplats': 'Tallåsen idrottsplats', 'Hagabanan - Vrigstad Motorklubb': 'Hagabanan'}
 CHURCH_WAY = 48762655   # Vrigstad kyrka; its tower is split out of this way's outline
-# outlines moved (dx, dz) m off the carriageway they were traced onto. shortcut: a fixed offset, so drop the entry
-# when its way is re-traced in OSM (past the version named)
+# outlines moved (dx, dz) m off the carriageway they were traced onto, each with the centroid (cx, cz) of the outline
+# it was tuned on. shortcut: a fixed offset; a re-traced way moves its centroid and fails the build, so re-check the
+# offset then (our roads are wider than the real ones, so a correct outline may still need a small one)
 BUILDING_SHIFT = {
     # the old bank museum on Jönköpingsvägen, west of the Emån bridge: traced in 2010 (v1) about 3 m south, onto
     # the road; moved north until a full sidewalk fits between its front wall and the 9 m carriageway (the road is
     # drawn wider than it is, so further than the aerial alone), and west to keep clear of the driveway behind it
-    48807861: (-1.5, -5),
+    48807861: (-1.5, -5, -75.4, -19.1),
 }
 buildings, roads, water, waterways, land, labels = [], [], [], [], [], {}
 parking_areas, parking_spaces, crossings, kerbs, trees, furniture = [], [], [], [], [], []
@@ -479,7 +480,9 @@ for e in elements:
         continue
     if 'building' in t:
         if ring and e['type'] == 'way' and e['id'] in BUILDING_SHIFT:
-            dx, dz = BUILDING_SHIFT[e['id']]
+            dx, dz, cx, cz = BUILDING_SHIFT[e['id']]
+            mx, mz = centroid(ring)
+            assert math.hypot(mx - cx, mz - cz) < 0.5, f'way {e["id"]} was re-traced: re-check its BUILDING_SHIFT'
             ring = [(x + dx, z + dz) for x, z in ring]
         if not ring or not inside(centroid(ring)): continue
         a = area(ring)
