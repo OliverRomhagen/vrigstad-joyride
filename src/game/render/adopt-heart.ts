@@ -4,7 +4,7 @@
 import * as THREE from 'three';
 import { CAT_ADOPT_PETS, type Cat, type CatColony } from '../cats';
 
-const HEART_BROKE_S = 0.8,
+export const HEART_BROKE_S = 0.8,
   HEART_ADOPT_S = 2; // a broken streak wobbles the empty heart / an adopted cat shows a full one this long (s) before it goes
 const HEART_M = 0.42,
   HEART_Y = 0.9,
