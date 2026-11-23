@@ -15,13 +15,15 @@ function room(link: Partial<Link> = {}) {
     players: { p: { playing: boolean }; session: Session }[] = [];
   let now = 0;
 
-  function join(me: string) {
+  /** `skewMs`: how far this player's computer clock is from the true time */
+  function join(me: string, skewMs = 0) {
     const cars: Car[] = [0, 10].map(x => newCar('volvo', x, 0, 0, 'parked', VEHICLE_SPECS.volvo, look.color)),
       seen = new Map<string, Snapshot>(), // the other players as last drawn
       p = { x: 0, driven: null as Car | null, playing: true };
     const transport = hub.join(me);
     const session = new Session({
       transport,
+      clock: () => now + skewMs,
       local: () => ({ x: p.driven?.x ?? p.x, z: 0, h: 0, vh: Math.PI / 2, v: 0, y: 0, phase: 0, hidden: false }),
       remotes: { show: (id, s) => void seen.set(id, { ...s }), remove: id => void seen.delete(id) },
       cars: {
@@ -53,7 +55,7 @@ function room(link: Partial<Link> = {}) {
       now += FRAME_MS;
       move(FRAME_MS / 1000);
       hub.advance(now);
-      for (const { p, session } of players) if (p.playing) session.update(FRAME_MS / 1000, now);
+      for (const { p, session } of players) if (p.playing) session.update(FRAME_MS / 1000);
     }
   }
   return { join, run };
@@ -123,9 +125,54 @@ describe('Session over the loopback connector', () => {
       cars[0].mode = 'player';
     }
     run(1000);
-    expect(a.cars[0].mode).toBe('player'); // the same moment, so the lower id keeps it
-    expect(b.p.driven).toBeNull();
-    expect(b.cars[0].mode).toBe('remote');
+    // which one depends on whose reading of the room's clock was a hair earlier; what matters is that they agree
+    const [kept, lost] = a.p.driven ? [a, b] : [b, a];
+    expect(kept.cars[0].mode).toBe('player');
+    expect(lost.p.driven).toBeNull();
+    expect(lost.cars[0].mode).toBe('remote');
+  });
+
+  it('agrees on one clock when the clocks of the computers are seconds apart', () => {
+    const { join, run } = room(BAD),
+      a = join('a', 5000),
+      b = join('b', -3000);
+    let worst = 0;
+    run(1000);
+    run(4000, dt => {
+      a.p.x += 4 * dt;
+      const shown = b.seen.get('a');
+      if (shown) worst = Math.max(worst, a.p.x - shown.x);
+    });
+    expect(b.seen.get('a')!.x).toBeGreaterThan(14);
+    expect(worst).toBeLessThan(4 * 0.6);
+    expect(Math.abs(a.session.now - b.session.now)).toBeLessThan(60); // within the network's unevenness
+
+    // b gets into the car 300 ms before a, though a's clock says b is 8 s late
+    b.p.driven = b.cars[0];
+    b.cars[0].mode = 'player';
+    run(300);
+    a.p.driven = a.cars[0];
+    a.cars[0].mode = 'player';
+    run(1000);
+    expect(b.cars[0].mode).toBe('player');
+    expect(a.p.driven).toBeNull();
+  });
+
+  it('keeps the room going when the player whose clock it runs on leaves', () => {
+    const { join, run } = room(),
+      a = join('a', 5000),
+      b = join('b'),
+      c = join('c', -2000);
+    run(1500);
+    const before = b.session.now;
+    a.p.playing = false;
+    a.transport.close();
+    run(2000, dt => {
+      b.p.x += 4 * dt;
+    });
+    expect(b.session.now - before).toBeCloseTo(2000, -2);
+    expect(Math.abs(b.session.now - c.session.now)).toBeLessThan(20);
+    expect(c.seen.get('b')!.x).toBeGreaterThan(6);
   });
 
   it('takes away a player who says goodbye at once, and one who goes silent after a while', () => {
@@ -139,7 +186,7 @@ describe('Session over the loopback connector', () => {
     b.transport.close();
     run(FRAME_MS);
     expect([...a.seen.keys()]).toEqual(['c']);
-    c.p.playing = false; // a closed laptop: no goodbye
+    c.p.playing = false; // a tab in the background: no frames and no snapshots, though it still answers pings
     run(SILENT_MS - 500);
     expect(a.session.peers).toBe(1);
     run(1000);
@@ -153,6 +200,7 @@ describe('Session over the loopback connector', () => {
       cars: Car[] = [];
     const session = new Session({
       transport: hub.join('me'),
+      clock: () => 200,
       local: () => ({ x: 0, z: 0, h: 0, vh: 0, v: 0, y: 0, phase: 0, hidden: false }),
       remotes: { show: id => void seen.push(id), remove: () => {} },
       cars: {
@@ -182,7 +230,7 @@ describe('Session over the loopback connector', () => {
     ])
       bad.send(m, true);
     hub.advance(1);
-    session.update(0.016, 200);
+    session.update(0.016);
     expect(session.peers).toBe(0);
     expect(seen).toEqual([]);
   });
