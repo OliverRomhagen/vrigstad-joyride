@@ -227,7 +227,7 @@ function makeTextures() {
     ctx.font = '900 132px "Arial Black", Arial, sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText('76', 128, 136);
+    ctx.fillText('69', 128, 136);
   });
   return { flames, flamesNoseRight, flamesBonnet, rallyNumber };
 }
