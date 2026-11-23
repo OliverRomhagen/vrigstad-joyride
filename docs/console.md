@@ -184,8 +184,8 @@ Each step is a PR of its own, in this order; the first two are what #218 asks fo
 1. **Tab and a hint in the box.** Tab completes from `complete()` (twice shows the choices), and the input shows the
    usage line of the command being typed. Page code in `devconsole.ts`; a smoke step types a command and checks it ran.
 2. **The core dev commands** (#356), each in the module that owns the state, with `command()`: `god [mode]`
-   (`health.ts`) and `stars <0-3>` (`police.ts`) are built; `fps` (the frame-time overlay), `go <place>` (from #346's
-   spots) and `car <model>` follow. Each one's rule gets a unit test in its module.
+   (`health.ts`), `stars <0-3>` (`police.ts`), `go <place>` (also `tp`, `places.ts`) and `car <model>` (`cars.ts`)
+   are built; `fps` (the frame-time overlay) follows. Each one's rule gets a unit test in its module.
 3. **Tunables** (#217, built in #357). `src/game/sim/tunable-commands.ts` turns the registry's entries into
    `tune set <tunable> <value>`, `tune get <tunable>`, `tune list [prefix]` and `tune reset [tunable]`, with the key as
    a `choice` and the value as a `num` that the registry checks against the entry's range. They sit under `tune`, so

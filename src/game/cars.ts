@@ -6,7 +6,8 @@ import { ROAD_WIDTH_M as ROAD_W } from '../world/data';
 import { clamp, wrap } from '../world/math';
 import { nodeKey, type RoadNetwork } from '../world/roads';
 import type { Water } from '../world/water';
-import { type Commands, UsageError } from './commands';
+import { choice, command, described } from './command-args';
+import type { Commands } from './commands';
 import { impactSpeed, topSpeedShare, wrecked } from './health';
 import { approach, rearPivotShift, yawRate } from './sim/handling';
 import type { CarType, VehicleSpec } from './sim/vehicle-spec';
@@ -189,22 +190,25 @@ export class Fleet {
     facing: () => number,
     carName: (c: Car) => string,
   ) {
-    commands.register('car', {
-      usage: '<' + [...models.keys()].join(' | ') + '>',
-      help: 'park a car of that model next to you',
-      run: a => {
-        const id = a[0]?.toLowerCase(),
-          type = id && models.get(id);
-        if (!type) throw new UsageError(a[0] ? 'No car called ' + a[0] + '.' : '');
-        if (this.g.inCar) return 'Get out of the car first.';
-        const o = { x: this.g.player.x + CAR_BY_YOU_M, z: this.g.player.z };
-        this.g.buildings.collide(o, PARK_CLEAR_M);
-        const c = this.g.addCar(type, o.x, o.z, facing(), 'parked', id === type ? undefined : id);
-        c.owned = true;
-        this.noReplacement.add(c);
-        return 'Parked a ' + carName(c) + ' next to you.';
-      },
-    });
+    const ids = [...models.keys()];
+    commands.register(
+      'car',
+      command({
+        help: 'park a car of that model next to you',
+        examples: ['car volvo240', 'car traktor'],
+        args: [described(choice('model', ids), 'a car type, or one of its models')],
+        run: ({ model: id }) => {
+          const type = models.get(id)!; // choice() only gives back an id from the list
+          if (this.g.inCar) return 'Get out of the car first.';
+          const o = { x: this.g.player.x + CAR_BY_YOU_M, z: this.g.player.z };
+          this.g.buildings.collide(o, PARK_CLEAR_M);
+          const c = this.g.addCar(type, o.x, o.z, facing(), 'parked', id === type ? undefined : id);
+          c.owned = true;
+          this.noReplacement.add(c);
+          return 'Parked a ' + carName(c) + ' next to you.';
+        },
+      }),
+    );
   }
 
   /** Puts a new car in the village. */

@@ -79,7 +79,9 @@ describe('Places', () => {
     expect(went.at(-1)).toEqual([HOME.x, HOME.z]);
     expect(c.run('go kiosk')).toBe('You are at Kiosken.');
     expect(c.run('go gästgivaregatan')).toBe('You are at Gästgivaregatan.');
-    expect(c.run('go mars')).toBe('No place called mars. Usage: go <torget | gästgivaregatan | kiosk | skroten>');
+    expect(c.run('go mars')).toBe('No place called mars. Usage: go <place>');
+    expect(c.run('tp kiosk')).toBe('You are at Kiosken.');
+    expect(c.complete('go ')).toEqual(['gästgivaregatan', 'kiosk', 'skroten', 'torget']);
   });
 
   it('finds Skroten for a car within 4 m of its ring, never for you on foot', () => {

@@ -314,7 +314,7 @@ describe('the car command', () => {
     expect(log.models.at(-1)).toBeUndefined(); // the tractor has no model of its own
   });
 
-  it('names the models it knows when it is given one it does not', () => {
+  it('refuses a model it does not know, and Tab offers the ones it does', () => {
     const { cars } = fleet(),
       c = new Commands();
     cars.registerCommands(
@@ -323,7 +323,8 @@ describe('the car command', () => {
       () => 0,
       x => x.T.name,
     );
-    expect(c.run('car lada')).toBe('No car called lada. Usage: car <volvo240 | traktor>');
+    expect(c.run('car lada')).toBe('No model called lada. Usage: car <model>');
+    expect(c.complete('car ')).toEqual(['traktor', 'volvo240']);
   });
 
   it('gets no replacement when it is sold, so the cheat adds no cars to the village', () => {
