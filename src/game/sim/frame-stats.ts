@@ -1,5 +1,6 @@
 // Frame timings for the fps overlay (#356, from #257): a ring of the last frames, so it can show drops that an average fps
-// hides. Plain numbers, no DOM, so the tests can feed it made-up frames.
+// hides. Plain numbers, no DOM, so the tests can feed it made-up frames. It measures the page rather than the game, but
+// sim/ is where the zone rules keep code free of the DOM and three.js, and that is what it needs to stay testable.
 
 export const FRAMES_KEPT = 360; // frames remembered: 3 s at 120 Hz
 const FPS_WINDOW_MS = 1000; // fps counts the frames in this long

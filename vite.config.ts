@@ -3,8 +3,10 @@ import { defineConfig, type Plugin } from 'vite';
 import { viteSingleFile } from 'vite-plugin-singlefile';
 
 // The commit a page is built from, shown by the console's fps and in the test hook, so a bug report or a preview
-// screenshot says which build it was.
+// screenshot says which build it was. A PR's preview builds GitHub's temporary merge commit, which no one can look
+// up, so its workflow passes the PR's head commit as BUILD_SHA.
 function buildStamp(): string {
+  if (process.env.BUILD_SHA) return process.env.BUILD_SHA.slice(0, 7);
   try {
     return execSync('git rev-parse --short HEAD', { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
   } catch {

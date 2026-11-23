@@ -479,7 +479,7 @@ test.describe('game (index.html)', () => {
     expect(errors).toEqual([]);
   });
 
-  test('with ?dev, the console opens with §, its keys never move the player, Tab completes, kr and mynt add money, tune set changes a tunable, stars and god work, adopt cat gives you a cat, fps shows frame times and errors (and L makes it rain)', async ({
+  test('with ?dev, the console opens with §, its keys never move the player, Tab completes, kr and mynt add money, tune set changes a tunable, stars and god work, adopt cat gives you a cat, fps shows frame times and errors, errors clear empties them (and L makes it rain)', async ({
     page,
   }) => {
     await page.goto('/index.html');
@@ -576,6 +576,8 @@ test.describe('game (index.html)', () => {
         });
     });
     await expect(page.locator('#debug-errors')).toContainText(/^2× .*smoke test boom/);
+    await expect(await run('errors clear')).toHaveText('Errors cleared.');
+    await expect(page.locator('#debug-errors')).toBeEmpty();
     await expect(await run('fps')).toHaveText('Frame times off.');
     expect(await state(page)).toMatchObject({ fps: false });
     await page.keyboard.press('Escape');

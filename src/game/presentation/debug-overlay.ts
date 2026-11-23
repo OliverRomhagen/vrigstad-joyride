@@ -1,7 +1,7 @@
 // The dev overlay (#356, from the closed #257): the console's `fps` shows frame times as a graph, fps and the slowest
 // recent frame, what the renderer drew and the build. Uncaught errors show in a red box whenever it exists (dev mode),
-// since a phone has no devtools to show them.
-import { command, optional, toggle } from '../command-args';
+// since a phone has no devtools to show them; a tap on the box, or `errors clear`, empties it.
+import { command, group, optional, toggle } from '../command-args';
 import type { Commands } from '../commands';
 import { FrameStats } from '../sim/frame-stats';
 
@@ -24,7 +24,7 @@ const CSS = `
   display: flex; flex-direction: column; align-items: center; gap: 4px; max-width: min(92vw, 420px); }
 #debug-stats { background: rgba(10, 14, 12, .72); border-radius: 4px; padding: 4px 6px; white-space: pre; }
 #debug-graph { display: block; width: 120px; height: 36px; margin-bottom: 3px; }
-#debug-errors { background: rgba(150, 20, 20, .9); color: #fff; border-radius: 4px; padding: 4px 8px; white-space: pre-wrap; word-break: break-word; }
+#debug-errors { pointer-events: auto; cursor: pointer; background: rgba(150, 20, 20, .9); color: #fff; border-radius: 4px; padding: 4px 8px; white-space: pre-wrap; word-break: break-word; }
 #debug-errors:empty { display: none; }
 /* a phone held upright has the minimap, hearts and stars across the top, and toasts under them: go below those */
 @media (max-width: 600px) { #debug { top: calc(250px + env(safe-area-inset-top, 0px)); } }
@@ -36,10 +36,24 @@ const CSS = `
 export function errorLine(e: { message?: string; filename?: string; lineno?: number; reason?: unknown }): string {
   if ('reason' in e) {
     const r = e.reason;
-    return 'Unhandled rejection: ' + (r instanceof Error ? r.message : String(r));
+    return 'Unhandled rejection: ' + (r instanceof Error ? r.message : describe(r));
   }
   const file = e.filename ? e.filename.split('/').pop() : '';
   return (e.message || 'Error') + (file ? ' (' + file + (e.lineno ? ':' + e.lineno : '') + ')' : '');
+}
+
+const REASON_MAX = 200; // characters of a rejection's reason, so one big object can't fill the screen
+
+// a rejection's reason can be anything: String() makes a plain object "[object Object]", and JSON.stringify throws on a
+// cycle or a BigInt, and says less than String() about an Event ({"isTrusted":true}) or an object of getters ({})
+function describe(r: unknown): string {
+  let s = String(r);
+  if (typeof r === 'object' && r !== null)
+    try {
+      const json = JSON.stringify(r);
+      if (json && json !== '{}' && json !== '{"isTrusted":true}') s = json;
+    } catch {}
+  return s.length > REASON_MAX ? s.slice(0, REASON_MAX - 1) + '…' : s;
 }
 
 /** The overlay. Build it early, so it catches errors from the rest of the start-up, and call `frame` once per frame. */
@@ -77,6 +91,7 @@ export class DebugOverlay {
     root.append(this.statsEl, this.errorsEl);
     doc.head.append(style);
     parent.append(root);
+    this.errorsEl.addEventListener('click', () => this.clearErrors());
     target.addEventListener('error', e => this.error(errorLine(e)));
     target.addEventListener('unhandledrejection', e => this.error(errorLine(e)));
   }
@@ -86,7 +101,7 @@ export class DebugOverlay {
     return !this.statsEl.hidden;
   }
 
-  /** The dev console's `fps [on]`: on its own it flips. */
+  /** The dev console's `fps [on]`, which flips on its own, and `errors clear`. */
   registerCommands(commands: Pick<Commands, 'register'>) {
     commands.register(
       'fps',
@@ -103,6 +118,29 @@ export class DebugOverlay {
         },
       }),
     );
+    commands.register(
+      'errors',
+      group({
+        help: 'the red box of uncaught errors in dev mode',
+        examples: ['errors clear'],
+        subcommands: {
+          clear: command({
+            help: 'empty the red box of uncaught errors',
+            examples: ['errors clear'],
+            args: [],
+            run: () => {
+              this.clearErrors();
+              return 'Errors cleared.';
+            },
+          }),
+        },
+      }),
+    );
+  }
+
+  private clearErrors(): void {
+    this.errors.length = 0;
+    this.errorsEl.textContent = '';
   }
 
   /** Records the frame that ends now (ms, performance.now) after `workMs` of our own work, and redraws. */

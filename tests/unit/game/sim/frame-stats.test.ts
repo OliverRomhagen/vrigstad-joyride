@@ -65,5 +65,10 @@ describe('errorLine', () => {
   it('says what a rejection was rejected with', () => {
     expect(errorLine({ reason: new Error('no glb') })).toBe('Unhandled rejection: no glb');
     expect(errorLine({ reason: 'timeout' })).toBe('Unhandled rejection: timeout');
+    expect(errorLine({ reason: { code: 404 } })).toBe('Unhandled rejection: {"code":404}');
+    const cycle: { self?: unknown } = {};
+    cycle.self = cycle;
+    expect(errorLine({ reason: cycle })).toBe('Unhandled rejection: [object Object]');
+    expect(errorLine({ reason: { long: 'x'.repeat(500) } })).toHaveLength('Unhandled rejection: '.length + 200);
   });
 });
