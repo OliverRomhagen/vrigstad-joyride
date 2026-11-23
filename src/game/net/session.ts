@@ -239,7 +239,6 @@ export class Session {
   }
 
   /** Leaves the room: hears nothing more, and takes the others away, letting go of the cars they drove. */
-  // fallow-ignore-next-line unused-class-member -- main.ts calls it through a type of its own, as it loads the session behind the flag
   leave() {
     const { transport } = this.g;
     transport.receive = () => {};

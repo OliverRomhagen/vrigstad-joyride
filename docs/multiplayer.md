@@ -321,6 +321,8 @@ its own, so a PR preview never meets the live game.
 
 What it is, in `src/game/net/`, in the layers described above:
 
+- `start.ts`: joins the room the address names, and connects the session to the game; `src/game/main.ts` only
+  gates it behind the flag and hands it what it reads.
 - `transport.ts`: what a connector gives the session, a `Transport` that only moves messages in a room.
 - `tabs-transport.ts`: the `tabs` connector, over a `BroadcastChannel`. `connectors.ts` holds the connectors by
   name and loads the one picked with `import()`.
