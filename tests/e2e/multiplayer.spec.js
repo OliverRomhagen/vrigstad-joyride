@@ -68,6 +68,8 @@ test('two pages swap WebRTC invite and reply codes through the panel', async ({ 
   }
   const [a, b] = pages;
   const code = page => page.locator('#mp-out');
+  // the panel says who learns the player's address before they make a code
+  await expect(a.locator('#mp-notice')).toHaveText(/asks no server/);
 
   await a.getByRole('button', { name: 'Invite a friend' }).click();
   await expect(code(a)).toHaveValue(/^vj1\./);

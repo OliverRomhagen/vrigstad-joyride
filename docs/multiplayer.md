@@ -351,8 +351,10 @@ The browsers then talk straight to each other. There is no server of ours, and n
 
 - **What a player gives away.** The codes hold the player's network addresses, and the friend sees the address
   they connect from. To be reached from outside their home network, the browser asks a STUN server for its public
-  address: that server sees the address and nothing of the game. The default is Google's public one
-  (`stun.l.google.com:19302`); `&stun=off` asks none (same network only) and `&stun=host:port` asks another.
+  address: that server sees the address and nothing of the game. The default is Cloudflare's public one
+  (`stun.cloudflare.com:3478`), which its docs say anyone may use; `&stun=off` asks none (same network only) and
+  `&stun=host:port` asks another. The panel names the server before a player makes a code. A server of our own
+  would be the only fully private one, and belongs with the opt-in backend.
 - **Who is who** comes from the code a player sent, never from a message, so nobody can speak as someone else.
   Codes and messages are size-limited and checked before use.
 - **Two players for now.** Every pair needs its own swap of codes; a third player has to swap with both.

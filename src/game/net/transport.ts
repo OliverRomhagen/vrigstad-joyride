@@ -7,6 +7,8 @@
  * player makes an invite, the friend answers it with a reply, and the first finishes with that reply.
  */
 export interface Invites {
+  /** a line for the player, shown before they make a code: what making one gives away, and to whom */
+  readonly notice: string;
   /** a code to send to one friend */
   invite(): Promise<string>;
   /** takes a friend's invite code and gives the reply code to send back; throws an Error to show the player */

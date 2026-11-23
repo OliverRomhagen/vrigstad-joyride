@@ -9,7 +9,8 @@
 // ?stun=host:port asks another one.
 import type { Invites, Transport } from './transport';
 
-const DEFAULT_STUN = 'stun.l.google.com:19302';
+// Cloudflare's public one: its docs say anyone may use it, free. Ours to pick again when the game has a server
+const DEFAULT_STUN = 'stun.cloudflare.com:3478';
 const CODE_PREFIX = 'vj1.'; // a code of another version is refused, not misread
 const MAX_CODE_CHARS = 20_000,
   MAX_SIGNAL_BYTES = 64_000, // what a code may unpack to: a pasted code is input from outside
@@ -79,9 +80,15 @@ async function unpack(code: string, type: Signal['type']): Promise<Signal> {
   return s;
 }
 
-function iceServers(): RTCIceServer[] {
+/** The STUN server to ask, as host:port, or '' for none. */
+function stunServer() {
   const stun = new URLSearchParams(location.search).get('stun') ?? DEFAULT_STUN;
-  return stun === 'off' ? [] : [{ urls: 'stun:' + stun }];
+  return stun === 'off' ? '' : stun;
+}
+
+function iceServers(): RTCIceServer[] {
+  const stun = stunServer();
+  return stun ? [{ urls: 'stun:' + stun }] : [];
 }
 
 // the description with every address the browser found in it, so one code carries all of it
@@ -146,7 +153,11 @@ export function webrtcTransport(): Transport & { invites: Invites } {
     };
   }
 
+  const stun = stunServer();
   const invites: Invites = {
+    notice: stun
+      ? 'Making a code asks ' + stun + ' for your public address. Your friend sees your address too.'
+      : 'Making a code asks no server, so it only works on the same network. Your friend sees your address.',
     async invite() {
       const link = makeLink(),
         invite = crypto.randomUUID();

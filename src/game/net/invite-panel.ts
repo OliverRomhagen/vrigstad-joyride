@@ -15,6 +15,7 @@ const CSS = `
 #mp textarea { display: block; box-sizing: border-box; width: 100%; height: 64px; resize: none; font: 11px/1.3 ui-monospace, Menlo, Consolas, monospace;
   color: inherit; background: rgba(244, 241, 230, .1); border: 1px solid rgba(244, 241, 230, .4); border-radius: 4px; padding: 4px 6px; word-break: break-all; }
 #mp .mp-error { color: #ffb4a8; }
+#mp .mp-notice { font-size: 12px; opacity: .8; overflow-wrap: anywhere; }
 `;
 
 /** What the panel reads. */
@@ -47,6 +48,7 @@ export function showInvitePanel(g: InvitePanelDeps) {
     choose = el('div', '', { className: 'mp-row' }),
     inviteBtn = el('button', 'Invite a friend', { type: 'button' }),
     joinBtn = el('button', 'I have an invite', { type: 'button' }),
+    notice = el('p', g.invites.notice, { id: 'mp-notice', className: 'mp-notice' }),
     outLabel = el('p'),
     out = el('textarea', '', { readOnly: true, id: 'mp-out', ariaLabel: 'Code to send' }),
     copy = el('button', 'Copy', { type: 'button' }),
@@ -61,7 +63,7 @@ export function showInvitePanel(g: InvitePanelDeps) {
     goRow = el('div', '', { className: 'mp-row' });
   copyRow.append(copy);
   goRow.append(go);
-  body.append(choose, outLabel, out, copyRow, inLabel, input, goRow, status);
+  body.append(choose, notice, outLabel, out, copyRow, inLabel, input, goRow, status);
   root.append(el('style', CSS), head, body);
   // typing a code must not drive the car: the game listens for keys further up
   for (const type of ['keydown', 'keyup', 'keypress'] as const) root.addEventListener(type, e => e.stopPropagation());
@@ -76,7 +78,7 @@ export function showInvitePanel(g: InvitePanelDeps) {
   function draw() {
     const sending = (step === 'inviting' && !!out.value) || (step === 'joining' && replied),
       pasting = (step === 'inviting' && !!out.value) || (step === 'joining' && !replied);
-    choose.hidden = step !== 'idle';
+    choose.hidden = notice.hidden = step !== 'idle';
     outLabel.hidden = out.hidden = copyRow.hidden = !sending;
     inLabel.hidden = input.hidden = goRow.hidden = !pasting;
     outLabel.textContent =
