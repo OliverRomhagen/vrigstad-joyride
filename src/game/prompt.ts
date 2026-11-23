@@ -16,6 +16,8 @@ export interface ActionPromptDeps {
   readonly menuOpen: boolean; // a menu covers the prompt
   coarse: boolean; // a touch screen: no "Get out" prompt, the E button says it
   nearPlace(): Place | null;
+  skrotenBuys(): boolean; // the car you drive stands on Skroten's ring, and Skroten would buy it
+  nearOwner(): boolean; // you stand on foot next to Plåt-Pelle
   nearCat(): Cat | null;
   nearestCar(): Car | null;
   catFirst(kt: Cat | null, pl: Place | null): boolean;
@@ -23,7 +25,7 @@ export interface ActionPromptDeps {
   esc(t: string): string; // escapes a name for HTML
 }
 
-/** Redraws the prompt and the plates; main.ts calls `update` a few times a second. */
+/** Redraws the prompt and the plates; the loop calls `update` a few times a second. */
 export class ActionPrompt {
   private readonly g: ActionPromptDeps;
 
@@ -32,7 +34,21 @@ export class ActionPrompt {
   }
 
   update() {
-    const { $, game, places, wanted, coarse, nearPlace, nearCat, nearestCar, catFirst, carName, esc } = this.g;
+    const {
+      $,
+      game,
+      places,
+      wanted,
+      coarse,
+      nearPlace,
+      skrotenBuys,
+      nearOwner,
+      nearCat,
+      nearestCar,
+      catFirst,
+      carName,
+      esc,
+    } = this.g;
     const pr = $('prompt'),
       pl = game.started && !places.inside ? nearPlace() : null,
       kt = game.started ? nearCat() : null,
@@ -56,6 +72,12 @@ export class ActionPrompt {
     } else if (pl) {
       pr.hidden = this.g.menuOpen;
       pr.innerHTML = '<kbd>E</kbd>' + (pl.kind === 'safe' ? 'Go inside the safehouse' : 'Handla i kiosken');
+    } else if (game.started && nearOwner()) {
+      pr.hidden = this.g.menuOpen;
+      pr.innerHTML = '<kbd>E</kbd>Talk to Plåt-Pelle';
+    } else if (game.inCar && game.pcar && skrotenBuys()) {
+      pr.hidden = this.g.menuOpen || tooFastToGetOut(game.pcar);
+      pr.innerHTML = '<kbd>E</kbd>Sell the ' + carName(game.pcar) + ' at Skroten';
     } else if (game.inCar && game.pcar && !coarse) {
       pr.hidden = tooFastToGetOut(game.pcar);
       pr.innerHTML = '<kbd>E</kbd>Get out';

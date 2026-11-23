@@ -83,6 +83,9 @@ export interface StreetSides {
   streetTrees: boolean;
 }
 
+/** A road's side spec: left (-1) or right (+1) of the way's own direction. */
+export const sideSpecOf = (sides: StreetSides, side: -1 | 1) => (side < 0 ? sides.left : sides.right);
+
 export interface FootprintLike {
   x0: number;
   x1: number;
@@ -294,7 +297,8 @@ export function classifyStreetscape(
     const use = r.s ?? RoadUse.NONE;
     const carriageway = road.c <= RoadClass.SERVICE && use !== RoadUse.SIDEWALK && use !== RoadUse.CROSSING;
     const out: StreetSides = { profile: 'outskirts', left: blank(), right: blank(), streetTrees: false };
-    if (!carriageway) return out;
+    // a bridge carries its own walkways and edge beams (#238): no pavement, parking or trees on a deck
+    if (!carriageway || r.br) return out;
 
     const f = frontage(road, centres);
     const override = r.i !== undefined ? overrides[r.i] : undefined;

@@ -37,6 +37,17 @@ export interface Road {
   pk?: [StreetParking, StreetParking];
   /** street parking orientation [left, right] */
   po?: [ParkingOrientation, ParkingOrientation];
+  /** lit=yes (1) or lit=no (2); absent when not mapped */
+  lt?: 1 | 2;
+  /** bridge=* other than no: the road crosses on a bridge (#238) */
+  br?: BridgeTags;
+}
+
+export interface BridgeTags {
+  /** layer=*: confirms grade separation, never an elevation */
+  l?: number;
+  /** bicycle=designated: a cycle bridge, with a wider deck and a higher railing */
+  cy?: 1;
 }
 
 /** amenity=parking on the ground; underground, multi-storey and rooftop parking are dropped by tools/process.py */
@@ -78,6 +89,18 @@ export interface KerbPoint {
   kb: Kerb;
 }
 
+/** a mapped street lamp, bench, waste basket or bus stop (#144); way-mapped ones are their middle */
+export interface FurniturePoint {
+  /** OSM id: nodes and ways number separately, so it is unique only with `e` */
+  i: number;
+  /** the OSM element: 'w' for a way, left out for a node */
+  e?: 'w';
+  k: FurnitureCode;
+  x: number;
+  z: number;
+  /** a bench's direction=*: the way a seated person faces, degrees clockwise from north */
+  d?: number;
+}
 export interface Waterway {
   k: WaterwayKind;
   p: number[];
@@ -120,6 +143,8 @@ export interface WorldData {
   kb?: KerbPoint[];
   /** mapped trees, flat [x, z, ...]; tree rows sampled every 8 m */
   t?: number[];
+  /** mapped street furniture and bus stops, sorted by code and id */
+  fu?: FurniturePoint[];
 }
 
 // Class codes, as tools/process.py assigns them
@@ -190,3 +215,6 @@ export type CrossingKind = (typeof CrossingKind)[keyof typeof CrossingKind];
 
 export const Kerb = { UNKNOWN: 0, RAISED: 1, LOWERED: 2, FLUSH: 3, ROLLED: 4 } as const;
 export type Kerb = (typeof Kerb)[keyof typeof Kerb];
+/** street furniture codes (#144), as tools/process.py assigns them; bus stops are context for placement, never drawn */
+export const FurnitureCode = { STREET_LAMP: 0, BENCH: 1, WASTE_BASKET: 2, BUS_STOP: 3 } as const;
+export type FurnitureCode = (typeof FurnitureCode)[keyof typeof FurnitureCode];

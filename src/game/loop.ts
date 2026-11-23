@@ -51,16 +51,20 @@ export interface GameLoopDeps {
   hurtPlayer(n: number): void;
   shake(dmg: number): void;
   toast(msg: string, secs?: number): void;
+  hideTitleCard(): void; // when titleCardT runs out
   // stepped every frame, in this order
   updateTrisslott(dt: number): void;
   updatePlaces(dt: number): void; // spins the places' gems
   updateDriftFx(c: Car | null): void;
   updateVehicles(T: Point, dt: number): void;
   updateSmoke(dt: number, T: Point): void;
+  updateBanknotes(dt: number): void; // from låt det regna and a big trisslott win
+  updateConfetti(dt: number): void; // from a trisslott win
   updateNpcs(T: Point, dt: number): void;
   updateCats(T: Point, dt: number): void;
   updateDrivers(T: Point, dt: number): void;
   updateBodies(T: Point, dt: number): void; // after every car has moved this frame
+  updateDaylight(dt: number): void; // the time of day: before the camera, which places the sun along its direction
   drawHearts(dt: number): void;
   updateHud(dt: number): void;
   drawMini(T: Point & { h: number }): void;
@@ -70,6 +74,7 @@ export interface GameLoopDeps {
   closeMenuIfLeft(): void;
   updatePrompt(): void;
   drawHealth(): void;
+  timeFrame(workStart: number): void; // after drawing: the frame's work began at workStart (ms, performance.now)
 }
 
 /** Runs the game: `start` begins the frames, `startGame` is the Start button. */
@@ -87,7 +92,7 @@ export class GameLoop {
     this.g = g;
   }
 
-  // a line that waits for the toast and any big screen to clear, so it doesn't cut off what was just said
+  // a line that waits for the toast and any title card to clear, so it doesn't cut off what was just said
   sayLater = (line: string) => {
     this.laterLine = line;
   };
@@ -124,7 +129,6 @@ export class GameLoop {
   private frame = (now: number) => {
     const g = this.g,
       {
-        $,
         game,
         view,
         player,
@@ -134,6 +138,7 @@ export class GameLoop {
         input: { keys, joy },
       } = g;
     requestAnimationFrame(this.frame);
+    const workStart = performance.now();
     const dt = clamp((now - this.last) / 1000, 0, 0.05);
     this.last = now;
     const mx = game.started ? clamp((keys.right ? 1 : 0) - (keys.left ? 1 : 0) + joy.x, -1, 1) : 0,
@@ -141,9 +146,9 @@ export class GameLoop {
     game.clockS += dt;
     if (game.started) regen(health, dt);
     if (health.hp <= 0) g.knockedOut(); // here, not where the hit lands: that can be halfway through moving the car
-    if (game.bigT > 0) {
-      game.bigT -= dt;
-      if (game.bigT <= 0) $('big').hidden = true;
+    if (game.titleCardT > 0) {
+      game.titleCardT -= dt;
+      if (game.titleCardT <= 0) g.hideTitleCard();
     }
     if (game.ramCool > 0) game.ramCool -= dt;
     g.updateTrisslott(dt);
@@ -161,7 +166,11 @@ export class GameLoop {
         mx,
         my,
         view.camYaw,
-        { run: !!keys.run || joy.on, wet: g.inWater(player.x, player.z), still: game.bigT > 0 || !!places.inside },
+        {
+          run: !!keys.run || joy.on,
+          wet: g.inWater(player.x, player.z),
+          still: game.titleCardT > 0 || !!places.inside,
+        },
         g.half,
       );
       g.collide(player, 0.5);
@@ -184,7 +193,7 @@ export class GameLoop {
           }
         }
       const wetNow = g.inWater(player.x, player.z); // after this frame's move: take-off and wading depth follow where the player stands now
-      hop(player, dt, jump && !wetNow && !places.inside && game.bigT <= 0); // on foot, Space and the touch Brake button jump
+      hop(player, dt, jump && !wetNow && !places.inside && game.titleCardT <= 0); // on foot, Space and the touch Brake button jump
       // walking: arms swing against the legs and the body bobs; in the air: legs apart and both arms up
       const air = player.y > 0,
         sw = air ? 0.5 : Math.sin(player.phase) * 0.75,
@@ -203,6 +212,8 @@ export class GameLoop {
     const T = game.inCar && game.pcar ? game.pcar : player;
     g.updateVehicles(T, dt);
     g.updateSmoke(dt, T);
+    g.updateBanknotes(dt);
+    g.updateConfetti(dt);
     for (const c of cars) if (c.mode === 'ai') g.updateTraffic(c as TrafficCar, dt); // spawnTraffic gives every 'ai' car its place on the road
     g.updateNpcs(T, dt);
     g.updateCats(T, dt);
@@ -217,12 +228,13 @@ export class GameLoop {
     g.updateDrivers(T, dt);
     g.updateBodies(T, dt);
 
+    g.updateDaylight(dt);
     g.cameraRig.update(T, now, dt);
 
     // HUD
     g.drawHearts(dt);
     g.updateHud(dt);
-    if (!g.toasting && this.laterLine && game.bigT <= 0) {
+    if (!g.toasting && this.laterLine && game.titleCardT <= 0) {
       g.toast(this.laterLine, 3);
       this.laterLine = null;
     }
@@ -238,5 +250,6 @@ export class GameLoop {
     g.drawMini(T);
     if (g.toon) g.toon.render(g.scene, g.camera);
     else g.renderer.render(g.scene, g.camera);
+    g.timeFrame(workStart);
   };
 }

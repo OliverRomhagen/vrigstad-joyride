@@ -10,9 +10,13 @@
 entry = ["src/map/main.ts", "tools/trailer/inpage.js"]
 
 # Exceptions: exported, but only used in their own file. Un-export them, or use them in a test, then drop the entry.
-# tools/streetscape-report.mjs loads this through Vite's runnerImport, which Fallow can't follow.
+# tools/streetscape-report.mjs loads these through Vite's runnerImport, which Fallow can't follow.
 [[ignoreExports]]
 file = "tools/streetscape-report.ts"
+exports = ["report"]
+
+[[ignoreExports]]
+file = "tools/furniture-report.ts"
 exports = ["report"]
 
 [[ignoreExports]]
@@ -39,11 +43,12 @@ patterns = ["src/world/**"]
 # The page modules in src/game/, which would otherwise fall into sim below. They are page code (see the last zone).
 [[boundaries.zones]]
 name = "page"
-patterns = ["src/game/main.ts", "src/game/hud.ts", "src/game/input.ts", "src/game/menu.ts", "src/game/loop.ts", "src/game/prompt.ts", "src/game/test-hook.ts"]
+patterns = ["src/game/main.ts", "src/game/hud.ts", "src/game/input.ts", "src/game/menu.ts", "src/game/loop.ts", "src/game/prompt.ts", "src/game/test-hook.ts", "src/game/devconsole.ts", "src/game/confetti.ts"]
 
 [[boundaries.zones]]
 name = "render"
-patterns = ["src/game/render/**"]
+# presentation/: overlays drawn over the whole page (the ISO 800 grain), which own their DOM layer.
+patterns = ["src/game/render/**", "src/game/presentation/**"]
 
 # Game rules as plain data: everything else in src/game/, src/game/sim/ once #49 moves the rules there, so a new module is checked
 # from its first commit. A new page module goes in the page list above instead.
@@ -51,8 +56,8 @@ patterns = ["src/game/render/**"]
 name = "sim"
 patterns = ["src/game/**"]
 
-# Everything else in src/: the map page and the lab, with the page modules listed above. It may import anything (it has
-# no rule), but the other zones may not import it.
+# Everything else in src/: the map page and the lab flags, with the page modules listed above. It may import anything (it
+# has no rule), but the other zones may not import it, so a lab gate stays in page code (#323).
 [[boundaries.zones]]
 name = "page"
 patterns = ["src/**"]

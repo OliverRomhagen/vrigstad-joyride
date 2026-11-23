@@ -8,7 +8,7 @@ const HARD_MS = 27; // 20 m/s over CRASH_MIN_MS: 45 damage, and it hurts the dri
 // only what a crash reads of a car
 const car = (o: Partial<Car> = {}) => ({ x: 0, z: 0, v: 0, mode: 'parked', dmg: 0, hitAt: -9, ...o }) as Car;
 
-function crashes(o: { cat?: boolean; viewer?: { x: number; z: number } } = {}) {
+function crashes(o: { cat?: boolean; viewer?: { x: number; z: number }; god?: boolean } = {}) {
   const game = newGameState(),
     toasts: string[] = [],
     hurts: number[] = [],
@@ -23,12 +23,22 @@ function crashes(o: { cat?: boolean; viewer?: { x: number; z: number } } = {}) {
     viewer: o.viewer ?? { x: 0, z: 0 },
     toast: msg => void toasts.push(msg),
     hurtPlayer: n => void hurts.push(n),
+    god: o.god ?? false,
     shake: d => void shakes.push(d),
   });
   return { c, game, pcar, toasts, hurts, shakes };
 }
 
 describe('Crashes.crash', () => {
+  it('in god mode, damages the other car but not yours, and still shakes the camera', () => {
+    const t = crashes({ god: true }),
+      other = car();
+    t.c.crash(t.pcar, other, HARD_MS);
+    expect(t.pcar.dmg).toBe(0);
+    expect(other.dmg).toBe(45);
+    expect(t.shakes).toEqual([45]);
+  });
+
   it('hurts you, shakes the camera and says one line, at most once every few seconds', () => {
     const t = crashes();
     t.c.crash(t.pcar, null, HARD_MS);
@@ -59,7 +69,8 @@ describe('Crashes.crash', () => {
     const near = crashes(),
       far = crashes({ viewer: { x: 500, z: 0 } });
     for (const t of [near, far]) t.c.crash(car({ mode: 'police', dmg: 90 }), null, HARD_MS);
-    expect(near.toasts).toEqual(['The police car is wrecked.']);
+    expect(near.toasts).toHaveLength(1);
+    expect(near.toasts[0]).toMatch(/^”.+” The police car is wrecked\.$/); // your line, then what happened
     expect(far.toasts).toEqual([]);
   });
 });

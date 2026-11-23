@@ -1,5 +1,7 @@
 // Health and damage (#80): the player's health and each car's damage, as plain data and pure rules (no three.js, no DOM).
 // Crashes (#40), knocking down pedestrians (#35), food (#30), drink (#16) and cat scratches build on hurt / heal / damageCar.
+import { command, optional, toggle } from './command-args';
+import type { Commands } from './commands';
 
 export const HP_MAX = 100;
 export const KORV_HP = 10,
@@ -28,13 +30,17 @@ export const CRACK_AT = [20, 50, 75]; // cracked glass: the windscreen and rear 
 export interface Health {
   hp: number;
   calm: number; // s since the last hurt
+  god: boolean; // the dev console's god mode: no health lost, your car takes no damage (crashCars), no getting caught (police.ts)
 }
 
-export const newHealth = (): Health => ({ hp: HP_MAX, calm: REGEN_DELAY_S });
+export const newHealth = (): Health => ({ hp: HP_MAX, calm: REGEN_DELAY_S, god: false });
+
+/** Whether n health would come off: false in god mode, or once the player is out. */
+export const canHurt = (h: Health, n: number) => n > 0 && h.hp > 0 && !h.god;
 
 /** Takes n health. True when this knocks the player out (health hits zero). */
 export function hurt(h: Health, n: number): boolean {
-  if (n <= 0 || h.hp <= 0) return false;
+  if (!canHurt(h, n)) return false;
   h.hp = Math.max(0, h.hp - n);
   h.calm = 0;
   return h.hp === 0;
@@ -99,7 +105,13 @@ const NO_HITS: never[] = []; // shared: a slow scrape along a wall calls crashCa
 /** A crash at this impact speed (m/s) of car a into car b, or into a wall when b is null, at clock nowS (s).
  * Damages each car not hit in the last CRASH_COOL_S (each keeps its own, so ramming a car that was just hit still damages yours)
  * and says what changed for it; empty when nothing took damage. */
-export function crashCars<C extends Crashable>(nowS: number, impact: number, a: C, b: C | null): CrashHit<C>[] {
+export function crashCars<C extends Crashable>(
+  nowS: number,
+  impact: number,
+  a: C,
+  b: C | null,
+  spared: C | null = null, // takes the hit but no damage: the car you drive in god mode
+): CrashHit<C>[] {
   const d = crashDamage(impact);
   if (d <= 0) return NO_HITS;
   const hits: CrashHit<C>[] = [];
@@ -107,7 +119,7 @@ export function crashCars<C extends Crashable>(nowS: number, impact: number, a: 
     if (nowS - car.hitAt < CRASH_COOL_S) continue;
     car.hitAt = nowS;
     const smoke = smokeLevel(car.dmg),
-      w = damageCar(car, d);
+      w = car !== spared && damageCar(car, d);
     hits.push({ car, wrecked: w, smokeUp: !w && smokeLevel(car.dmg) > smoke });
   }
   return hits;
@@ -135,4 +147,23 @@ export function wakeSpot<S extends Spot & { kind: string }>(
     }
   }
   return spot;
+}
+
+/** The dev console's `god [on|off]`: on its own it flips. Switching it on fills the health up too. */
+export function registerHealthCommands(commands: Pick<Commands, 'register'>, h: Health, drawHealth: () => void): void {
+  commands.register(
+    'god',
+    command({
+      help: 'god mode: no hurt, no damage to your car, no getting caught',
+      details: 'Crashes and chases still happen: the police chase you, but can’t catch you.',
+      examples: ['god', 'god off'],
+      args: [optional(toggle('mode'))],
+      run: ({ mode }) => {
+        h.god = mode ?? !h.god;
+        if (h.god) heal(h, HP_MAX);
+        drawHealth();
+        return h.god ? 'God mode on.' : 'God mode off.';
+      },
+    }),
+  );
 }

@@ -43,6 +43,7 @@ const CAT_FOLLOW_M = 2.5,
   CAT_FIND_M = 60; // an owned cat walks after you when further than this (m); further than CAT_FIND_M it catches up out of sight
 const CAT_CATCH_UP_M = 6,
   CAT_CALL_M = 20; // a lost cat catching up shows up this far from you (m); a called one comes running from this far (m)
+const CAT_NEW_M = 1.5; // a cat made on the spot (the dev console's adopt) appears this far from you (m)
 // [coat, ears and paws, chest and muzzle (optional)]
 const CAT_COLS = [
   ['#d9822b', '#f0e0c8'],
@@ -316,6 +317,14 @@ export class CatColony {
     this.g.toast('”Mjau!”\n”Då ä du min katt nu. Kom så går vi hem!”', 3.5);
   }
 
+  /** A new random stray on dry land right by T (the player, or their car): the dev console's adopt. */
+  spawnNear(T: Point) {
+    const k = this.make(T.x, T.z, this.rnd() * Math.PI * 2);
+    this.placeNear(k, T, CAT_NEW_M);
+    k.mesh.position.set(k.x, this.g.groundAt(k.x, k.z), k.z);
+    return k;
+  }
+
   /** Said no to adopting it: it takes as many good pets again before it asks next time. */
   decline(k: Cat) {
     k.pets = 0;
@@ -416,7 +425,7 @@ export class CatColony {
   // a spot just outside a random wall of a house in the cell around (x, z)
   private spawn(T: Point, minD: number) {
     const { grid: bGrid, footprints: bPolys } = this.g.buildings,
-      { inWater, paintMat, blob, scene } = this.g,
+      { inWater } = this.g,
       HALF = this.g.half,
       rnd = this.rnd;
     for (let t = 0; t < 10; t++) {
@@ -452,33 +461,40 @@ export class CatColony {
         Math.hypot(o.x - T.x, o.z - T.z) < minD
       )
         continue;
-      const mesh = new THREE.Mesh(this.geo(this.pick(CAT_COLS)), paintMat);
-      mesh.castShadow = true;
-      mesh.rotation.order = 'YXZ';
-      mesh.scale.setScalar(1.1 + rnd() * 0.25);
-      blob(mesh, 0.32, 0.55);
-      const k: Cat = {
-        name: CAT_NAME,
-        x: o.x,
-        z: o.z,
-        h: Math.atan2(nx, -nz),
-        want: 0,
-        state: 'sit',
-        t: 3 + rnd() * 15,
-        nope: 0,
-        phase: 0,
-        mesh,
-        epa: null,
-        hop: null,
-        ride: null,
-        pets: 0,
-        owned: false,
-      };
-      k.want = k.h;
-      scene.add(mesh);
-      this.cats.push(k);
+      this.make(o.x, o.z, Math.atan2(nx, -nz));
       return;
     }
+  }
+
+  // a new random stray at (x, z) facing h, in the scene and the colony
+  private make(x: number, z: number, h: number) {
+    const { paintMat, blob, scene } = this.g,
+      rnd = this.rnd;
+    const mesh = new THREE.Mesh(this.geo(this.pick(CAT_COLS)), paintMat);
+    mesh.castShadow = true;
+    mesh.rotation.order = 'YXZ';
+    mesh.scale.setScalar(1.1 + rnd() * 0.25);
+    blob(mesh, 0.32, 0.55);
+    const k: Cat = {
+      name: CAT_NAME,
+      x,
+      z,
+      h,
+      want: h,
+      state: 'sit',
+      t: 3 + rnd() * 15,
+      nope: 0,
+      phase: 0,
+      mesh,
+      epa: null,
+      hop: null,
+      ride: null,
+      pets: 0,
+      owned: false,
+    };
+    scene.add(mesh);
+    this.cats.push(k);
+    return k;
   }
 
   // a cat leaving the world: free its car, and take it out of the scene
@@ -580,6 +596,21 @@ export class CatColony {
       k.state = 'walk';
       k.t = 2 + rnd() * 3;
       k.want = rnd() * Math.PI * 2;
+    }
+  }
+
+  /** A cat riding on c hops off, as when its ride stops: before c leaves the world (sold at Skroten). */
+  hopOffCar(c: CatCar) {
+    if (c.cat?.ride === c) this.hopOff(c.cat);
+    for (const k of this.cats) {
+      if (k.hop?.onto === c)
+        this.landHop(k); // one on its way up lands on the ground instead
+      else if (k.epa === c) {
+        // one trotting towards the tailgate sits down where it is
+        k.epa = null;
+        k.state = 'sit';
+        k.t = 3 + this.rnd() * 6;
+      }
     }
   }
 

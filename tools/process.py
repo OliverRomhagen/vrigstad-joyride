@@ -1,4 +1,4 @@
-import collections, json, math, struct, sys, zlib
+import collections, json, math, re, struct, sys, zlib
 
 data_dir, out_path = sys.argv[1], sys.argv[2]
 LAT0, LON0 = 57.3555, 14.4756
@@ -336,6 +336,43 @@ def crossing_kind(t):
     return CROSS_UNKNOWN
 
 
+# street furniture (#144): codes as src/world/data.ts FurnitureCode; bus stops are context, not drawn
+FU_LAMP, FU_BENCH, FU_BIN, FU_BUS_STOP = 0, 1, 2, 3
+LIT = {'yes': 1, 'no': 2}   # lit=* on a road; anything else (24/7, automatic, ...) is left out as not plainly yes or no
+CARDINAL = {k: i * 22.5 for i, k in enumerate('N NNE NE ENE E ESE SE SSE S SSW SW WSW W WNW NW NNW'.split())}
+
+
+def furniture_code(t):
+    if t.get('highway') == 'street_lamp': return FU_LAMP
+    if t.get('amenity') == 'bench': return FU_BENCH
+    if t.get('amenity') == 'waste_basket': return FU_BIN
+    if t.get('highway') == 'bus_stop': return FU_BUS_STOP
+    return None
+
+
+def direction(v):
+    """direction=* in degrees clockwise from north (a number or a cardinal), or None when it doesn't parse."""
+    if v is None: return None
+    v = v.strip().upper()
+    if v in CARDINAL: return CARDINAL[v]
+    try: return round(float(v) % 360, 1)
+    except ValueError: return None
+
+
+def add_furniture(e, t, pt):
+    k = furniture_code(t)
+    if k is None:
+        if t.get('leisure') == 'picnic_table' and inside(pt): report['picnic tables'] += 1
+        return False
+    if not inside(pt): report['furniture outside the world'] += 1; return True
+    f = {'i': e['id'], 'k': k, 'x': round(pt[0], 1), 'z': round(pt[1], 1)}
+    if e['type'] != 'node': f['e'] = e['type'][0]   # nodes and ways number separately
+    d = direction(t.get('direction')) if k == FU_BENCH else None
+    if d is not None: f['d'] = d
+    furniture.append(f)
+    return True
+
+
 # ---------- features ----------
 d = json.load(open(data_dir + '/osm.json'))
 seen, elements, skipped = set(), [], collections.Counter()
@@ -355,7 +392,7 @@ SHORT = {'Best Western Hotell Vrigstad Värdshus': 'Vrigstad Värdshus', 'Torget
          'Tallåsen, Vrigstads Idrottsplats': 'Tallåsen idrottsplats', 'Hagabanan - Vrigstad Motorklubb': 'Hagabanan'}
 CHURCH_WAY = 48762655   # Vrigstad kyrka; its tower is split out of this way's outline
 buildings, roads, water, waterways, land, labels = [], [], [], [], [], {}
-parking_areas, parking_spaces, crossings, kerbs, trees = [], [], [], [], []
+parking_areas, parking_spaces, crossings, kerbs, trees, furniture = [], [], [], [], [], []
 road_nodes = []              # per road: the OSM node id of each kept vertex, None where clipping made the vertex
 report = collections.Counter()
 nodes_by_id = {}             # crossing and kerb nodes, matched to road vertices once every road is in
@@ -396,6 +433,7 @@ for e in elements:
     name = t.get('name')
     if e['type'] == 'node':
         pt = proj(e['lat'], e['lon'])
+        add_furniture(e, t, pt)   # and on: a bus stop can carry kerb=raised too
         if not inside(pt): continue
         if t.get('natural') == 'tree': trees.append(pt)
         if t.get('amenity') == 'parking_space': report['parking space nodes'] += 1
@@ -415,6 +453,9 @@ for e in elements:
         continue
     pts = geom(e)
     ring = closed_ring(pts)
+    if (furniture_code(t) is not None or t.get('leisure') == 'picnic_table') and 'highway' not in t and 'building' not in t:
+        add_furniture(e, t, centroid(ring) if ring else point_along(pts, length(pts) / 2))   # a way-mapped bench or bin: its middle
+        continue
     if t.get('amenity') in ('parking', 'parking_space') and 'highway' not in t and 'building' not in t:
         r = clip_poly(ring) if ring else []
         if len(r) > 2: add_parking(e, t, [r], [])
@@ -459,6 +500,7 @@ for e in elements:
         elif t.get('footway') == 'crossing' or t.get('path') == 'crossing' or t.get('cycleway') == 'crossing': extra['s'] = USE_CROSSING
         if not extra.get('s'): extra.pop('s', None)
         if surface(t.get('surface')): extra['sf'] = surface(t['surface'])
+        if t.get('lit') in LIT: extra['lt'] = LIT[t['lit']]
         w = metres(t.get('width'))
         if w and 0 < w < 40: extra['w'] = round(w, 1)
         sw, ww, ssf = sidewalks(t)
@@ -468,6 +510,11 @@ for e in elements:
         pk, po = street_parking(t)
         if any(pk): extra['pk'] = pk
         if any(po): extra['po'] = po
+        if t.get('bridge', 'no') != 'no':
+            br = {}                                # layer is kept to confirm grade separation, never read as height
+            if re.fullmatch(r'-?\d+', t.get('layer', '')): br['l'] = int(t['layer'])
+            if t.get('bicycle') == 'designated': br['cy'] = 1
+            extra['br'] = br
         ids = dict(zip(pts, e['nodes']))       # unclipped vertices keep their exact projected coordinates
         pieces = clip_line(pts)
         for j, piece in enumerate(pieces):
@@ -534,6 +581,7 @@ if parking_spaces: out['ps'] = parking_spaces
 if crossings: out['x'] = crossings
 if kerbs: out['kb'] = kerbs
 if trees: out['t'] = flat(trees)
+if furniture: out['fu'] = sorted(furniture, key=lambda f: (f['k'], f.get('e', 'n'), f['i']))
 # Label order is draw priority on the map: these first, the rest as found.
 order = ['Vrigstad Kyrka', 'Torget', 'Vrigstad Värdshus', 'Slättsjön', 'Lundholmssjön', 'Vrigstadsån']
 out['labels'].sort(key=lambda l: order.index(l['t']) if l['t'] in order else 99)
@@ -604,4 +652,16 @@ print(f'crossing nodes whose footway does not connect on both sides: {sum(foot_e
 print(f'kerb nodes: {len(kerbs)}, by kerb {dict(collections.Counter(k["kb"] for k in kerbs))}; crossings with kerb=*: {sum("kb" in c for c in crossings)}; kerb ways: {report["kerb ways"]}')
 print(f'trees: {len(trees)} points ({report["tree rows"]} tree rows, sampled every 8 m)')
 surf = collections.Counter(r.get('sf', 0) for r in carriage)
+br = [r for r in roads if 'br' in r]
+print(f'bridges: {len(br)} pieces ' + ', '.join(f"{r['i']} (class {r['c']}, {round(length(list(zip(r['p'][::2], r['p'][1::2]))), 1)} m)" for r in br))
 print(f'carriageway surface tags: {sum(v for k, v in surf.items() if k)} of {len(carriage)} pieces')
+
+# ---------- street furniture coverage (#144; tools/furniture-report.ts adds what the game generates) ----------
+print('\n## Street furniture coverage (OSM, in the world square)')
+fk = collections.Counter(f['k'] for f in furniture)
+print(f'mapped: street lamps {fk[FU_LAMP]}, benches {fk[FU_BENCH]} ({sum("d" in f for f in furniture)} with direction), '
+      f'waste baskets {fk[FU_BIN]}, bus stops {fk[FU_BUS_STOP]}; picnic tables {report["picnic tables"]} (counted only); '
+      f'{report["furniture outside the world"]} outside the world')
+for v, label in ((1, 'yes'), (2, 'no')):
+    rs = [r for r in roads if r.get('lt') == v]
+    print(f'roads with lit={label}: {len(rs)} pieces, {km(rs)} km')

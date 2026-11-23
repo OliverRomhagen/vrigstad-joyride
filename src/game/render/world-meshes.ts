@@ -2,18 +2,26 @@
 // the streetscape's pavements and parking, and the trees. The world's data and queries come from src/world/.
 // Moved from src/game/main.ts (#177); main.ts calls these in the same order as before, since the house colours roll rnd().
 import * as THREE from 'three';
+import type { BridgeIndex } from '../../world/bridges';
 import { type BuildingShape, HOUSE_MAX_M2, HOUSE_MIN_M2 } from '../../world/buildings';
 import type { WorldData } from '../../world/data';
 import type { Heightfield } from '../../world/heightfield';
+import { BridgeMesh } from '../../world/mesh/bridge-mesh';
 import { PaintedBuildingShells } from '../../world/mesh/building-shells';
 import { ParkingMesh } from '../../world/mesh/parking-mesh';
 import { RoadRibbons } from '../../world/mesh/road-ribbons';
+import { ShoreProps } from '../../world/mesh/shore-props';
 import { SidewalkMesh } from '../../world/mesh/sidewalk-mesh';
 import { TerrainMesh } from '../../world/mesh/terrain';
+import { WaterMaterial } from '../../world/mesh/water-material';
+import { WaterSurface } from '../../world/mesh/water-surface';
 import { pointInPolygon as inPoly } from '../../world/polygon';
 import type { RoadNetwork } from '../../world/roads';
+import type { ShoreLayout } from '../../world/shore';
 import type { StreetscapeLayout } from '../../world/streetscape';
 import { col } from '../../world/three-legacy';
+import { GAME_WATER } from '../../world/water-palette';
+import type { WaterBodies } from '../../world/water-shapes';
 import { mergeGeo } from './models';
 import { INK_FLAG } from './toon-style';
 
@@ -32,7 +40,54 @@ export function addTerrain(scene: THREE.Scene, heightfield: Heightfield, texture
   );
   far.rotation.x = -Math.PI / 2;
   far.position.y = -SKIRT_DEPTH_M;
-  scene.add(terrain.surface, far, terrain.skirt);
+  scene.add(terrain.surface, ...terrain.refined, far, terrain.skirt);
+  return terrain;
+}
+
+// ---------- water: lake and river surfaces, and the shore's reeds and stones ----------
+const REED_COLOURS = ['#7f9150', '#93964f', '#a69a62', '#6f8748'],
+  STONE_COLOURS = ['#8c877c', '#77736b', '#9d988b', '#837a6c'];
+/** The water's surfaces and the shore's props; `tick` moves the ripples on once a frame. */
+export function addWater(
+  scene: THREE.Scene,
+  bodies: WaterBodies,
+  shore: ShoreLayout,
+  heightfield: Heightfield,
+  look: { sunDir: THREE.Vector3; horizon: THREE.Color; coarse: boolean },
+) {
+  const detail = look.coarse ? 'lite' : 'full';
+  const lake = new WaterMaterial({
+    colours: GAME_WATER,
+    sunDir: look.sunDir,
+    horizon: look.horizon,
+    flowing: false,
+    detail,
+  });
+  const river = new WaterMaterial({
+    colours: GAME_WATER,
+    sunDir: look.sunDir,
+    horizon: look.horizon,
+    flowing: true,
+    detail,
+  });
+  // a river's end tucks under the lake it meets: the same level, so it wins the depth test by a nudge
+  Object.assign(river.material, { polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
+  const surface = new WaterSurface(bodies, { lakeMaterial: lake.material, riverMaterial: river.material });
+  const props = new ShoreProps(shore, {
+    heightAt: (x, z) => heightfield.heightAt(x, z),
+    reedColours: REED_COLOURS.map(c => col(c)),
+    stoneColours: STONE_COLOURS.map(c => col(c)),
+  });
+  scene.add(...surface.meshes, ...props.meshes);
+  return {
+    surface,
+    props,
+    materials: [lake, river],
+    tick(dt: number, sunLight: number) {
+      lake.tick(dt, sunLight);
+      river.tick(dt, sunLight);
+    },
+  };
 }
 
 // ---------- roads: crisp ribbons on the terrain ----------
@@ -44,6 +99,7 @@ export function addRoadRibbons(
   roads: RoadNetwork,
   heightfield: Heightfield,
   maxAnisotropy: number,
+  bridges: BridgeIndex,
 ) {
   const asphalt = (() => {
     // a light, speckled tile that the road colours tint, so asphalt and gravel aren't flat
@@ -73,9 +129,25 @@ export function addRoadRibbons(
     asphalt,
     roadColours: ROAD_COLOURS,
     centreLineColour: CENTRE_LINE_COLOUR,
+    heightOf: bridges.ribbonHeight.bind(bridges),
+    skip: ri => (bridges.bridgeOf(ri)?.archetype ?? 'road-slab') !== 'road-slab',
   });
   scene.add(...roadRibbons.meshes);
   return roadRibbons;
+}
+
+// ---------- bridges: decks, edge beams, walkways and railings over the ribbons (#238) ----------
+/** The bridges' structure, timed for the test hook; the ribbons draw their driving surface. */
+export function addBridges(scene: THREE.Scene, bridges: BridgeIndex, heightfield: Heightfield) {
+  const t0 = performance.now();
+  const material = new THREE.MeshLambertMaterial({ vertexColors: true });
+  const draw = new BridgeMesh(bridges, {
+    materials: { body: material, railing: material },
+    top: false,
+    groundAt: (x, z) => heightfield.heightAt(x, z),
+  });
+  scene.add(...draw.meshes);
+  return { meshes: draw.meshes, triangles: draw.triangles, ms: performance.now() - t0 };
 }
 
 // ---------- buildings (painted in Swedish house colours) ----------
@@ -87,14 +159,17 @@ export interface BuildingMeshOptions {
   rnd(): number;
   pick<T>(a: readonly T[]): T;
   maxAnisotropy: number;
+  /** A point inside each building to leave out, because the game draws it itself: Skroten's workshop and carport (render/skroten.ts). */
+  skip?: readonly { x: number; z: number }[];
 }
 /** The house shells in their colours, and one mesh of windows and trim. Rolls rnd() once or twice per house, in data order. */
 export function addBuildings(
   scene: THREE.Scene,
   D: WorldData,
   heightfield: Heightfield,
-  { rnd, pick, maxAnisotropy }: BuildingMeshOptions,
+  { rnd, pick, maxAnisotropy, skip = [] }: BuildingMeshOptions,
 ) {
+  const isSkipped = (p: readonly number[]) => skip.some(s => inPoly(p as number[], s.x, s.z));
   const hAt = (x: number, z: number) => heightfield.heightAt(x, z);
   const winTex = (() => {
     const cv = document.createElement('canvas');
@@ -187,6 +262,7 @@ export function addBuildings(
     const colours = ({ building: b, area }: BuildingShape) => {
       c.set(b.k === 2 ? '#9c3a2c' : b.k ? '#efece3' : area > 450 ? pick(big) : pick(house)).convertSRGBToLinear();
       c2.set(b.k === 2 ? '#a8573f' : b.k ? '#3f4447' : rnd() < 0.35 ? '#4d4a48' : '#a8573f').convertSRGBToLinear();
+      if (isSkipped(b.p)) return null; // after the rolls above, so the houses after it keep their colours
       c3.copy(c).multiplyScalar(0.62); // walls darken towards the ground
       return paint;
     };
@@ -194,7 +270,7 @@ export function addBuildings(
       { building: b, ring, yAt, base, top, hi, area, winding: wind }: BuildingShape,
       emit: (x: number, y: number, z: number, k: THREE.Color) => void,
     ) => {
-      if (b.k === 1 || area < HOUSE_MIN_M2 || area > HOUSE_MAX_M2) return; // not the church and its tower, not sheds or barns
+      if (b.k === 1 || area < HOUSE_MIN_M2 || area > HOUSE_MAX_M2 || isSkipped(b.p)) return; // not the church and its tower, not sheds or barns, not one drawn elsewhere
       const m = ring.length,
         yb = hi + 0.2,
         yt = top - 0.25,
