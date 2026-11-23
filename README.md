@@ -18,7 +18,7 @@ The teaser and poster are rendered from the game itself by the scripts in `tools
 
 ## Play
 
-Play it at https://oliverromhagen.github.io/vrigstad-joyride/, or run `npm install && npm run build` and open `dist/index.html`. It needs WebGL. The fonts load from a CDN, so offline it falls back to system fonts.
+Play it at https://oliverromhagen.github.io/vrigstad-joyride/, or run `npm install && npm run build && npm run preview` and open the address it prints. It needs WebGL. Opening `dist/index.html` from disk doesn't work: the browser won't load the fonts and models beside it over `file://`.
 
 | Action | Keyboard | Phone |
 |---|---|---|
@@ -30,11 +30,13 @@ Play it at https://oliverromhagen.github.io/vrigstad-joyride/, or run `npm insta
 | Back to Torget | R | |
 | Go inside a safehouse / scratch a trisslott | E | Use button |
 
-Taking an occupied car always earns a wanted star; a parked one sometimes does. Each star (up to three) sends a police car. Stay about 170 m clear of them for 18 seconds and they give up. Get boxed in at low speed and you are *gripen* and sent back to Torget.
+Taking an occupied car always earns a wanted star; a parked one sometimes does. So does knocking someone over: hit a pedestrian at more than 15 km/h and they fly, tumble, and get back up a few seconds later. Each star (up to three) sends a police car. Stay about 170 m clear of them for 18 seconds and they give up. Get boxed in at low speed and you are *gripen* and sent back to Torget.
 
 Three houses are safehouses, shown as green houses on the minimap and marked with a green door. Go inside on foot and stay for a minute and the police give up; it only works if no police car is within 60 m when you go in, and leaving early keeps your stars.
 
-The kiosk on Torget sells trisslotter. One in a thousand wins, and the more losing tickets you scratch in a row, the worse your language gets.
+Money is in riksdaler, everyday Swedish for kronor when you want to sound a little funny. You start with 200, shown under the stars. The kiosk on Torget sells trisslotter (30 riksdaler), cat treats and food. One ticket in ten wins, from 30 riksdaler up to a rare 10 000, and the more losing tickets you scratch in a row, the worse your language gets. Skroten, the scrapyard by the workshop hall on Stockarydsvägen, buys the cars you steal: follow the signs, drive onto the ring inside the gate and press E. Plåt-Pelle, who runs it, has a word for you if you walk up to him. A clean car pays up to 1 600 riksdaler, a wreck only scrap, and nobody there buys a police car or deals with you while the police are after you. Getting *gripen* costs a fine: a quarter of your money, or 100 riksdaler per star if that is more. And if 1 000 riksdaler is burning a hole in your pocket, press L.
+
+For testing, `npm run dev` or `?dev` on any build's URL turns on dev mode: `§` (or `` ` ``) opens a console, where `help` lists the commands, `kr 500` adds 500 riksdaler, `mynt` adds 1 000 riksdaler, `adopt cat` gives you a new cat, `car volvo240` parks that car next to you, already yours, and `go skroten` takes you to Skroten (or to `torget`, the `kiosk` or a safehouse by its street).
 
 ## How it is built
 
@@ -47,7 +49,7 @@ data/raw/          OpenStreetMap extract (osm.json) and one elevation tile (tile
 data/vrigstad.json processed data: buildings, roads, water, land use, 25 m elevation grid
 tools/fetch.sh     re-downloads data/raw from the Overpass API and Mapzen terrain tiles
 tools/process.py   projects and clips the raw data into data/vrigstad.json
-tools/build.mjs    builds both pages with Vite into dist/, each as one self-contained file
+tools/build.mjs    builds both pages with Vite into dist/, each as one HTML file, with its fonts and models beside it
 ```
 
 It needs Node. Work on it with a dev server, and rebuild after changing anything in `src/`:
@@ -79,17 +81,19 @@ Add `?lab=<id>,<id>` to the game's link, a preview's or the live one, to switch 
 
 ## Releases
 
-Versions use semver tags (`vMAJOR.MINOR.PATCH`) on `main`. Bump the minor version for new features and the patch version for fixes.
+Versions use semver tags on `main`: `vMAJOR.MINOR.PATCH`, and `vMAJOR.MINOR.PATCH-alpha.N` for prereleases. Bump the minor version for new features and the patch version for fixes.
 
-To cut a release, from an up-to-date `main`:
+To cut a release, open **Actions → release → Run workflow** and pick what to bump, or from a terminal:
 
 ```sh
-git tag -a v0.1.0 -m "v0.1.0"
-git push origin v0.1.0
-gh release create v0.1.0 --generate-notes
+gh workflow run release.yml -f bump=alpha   # alpha (v0.1.0-alpha.3 → alpha.4), patch, minor or major
 ```
 
-`--generate-notes` builds the changelog from merged PR titles, so keep those titles descriptive.
+The workflow finds the next version from the existing tags, tags the latest `main` and publishes the release (alphas as prereleases). Anyone with write access can run it. `patch`, `minor` and `major` count from the latest release that isn't an alpha, so `minor` after `v0.1.0-alpha.3` releases `v0.1.0`.
+
+The release notes are generated from merged PR titles, so keep those titles descriptive.
+
+The notes come in sections by the PR titles' type (`.github/release.yml`): breaking changes, features, fixes, performance, data and reverts for players first, then code structure, tests and CI, tooling and docs. The sections read labels that the PR triage workflow sets from each title, so a PR merged without them lands under "Other".
 
 Publishing a release also announces it in the Discord server: a repository webhook (Settings → Webhooks) posts `release` events to the channel's Discord webhook URL with `/github` appended. The URL is a secret, so it lives only in the webhook settings.
 

@@ -1,12 +1,11 @@
 // Drift effects: sparks at the rear wheels (white, then blue and orange as the turbo charges), a flame while boosting, skid marks.
 // Moved from src/game/main.ts (#177); main.ts passes in what the effects read from the rest of the game.
 import * as THREE from 'three';
-import '../../world/three-legacy'; // before SPARK_COLS: with colour management on, col() would convert twice
 import { makeRnd } from '../../world/random';
+import { col } from '../../world/three-legacy';
 
 const SKID_N = 600,
   SKID_STEP_M = 0.6; // skid marks kept (the oldest goes first); length of one mark (m)
-const col = (c: number) => new THREE.Color(c).convertSRGBToLinear();
 const SPARK_COLS = [col(0xfff2c0), col(0x4aa8ff), col(0xff8a1f)];
 const _sp = new THREE.Vector3(),
   _sq = new THREE.Quaternion(),

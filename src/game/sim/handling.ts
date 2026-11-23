@@ -1,5 +1,5 @@
 // How a car answers the controls: its steering geometry and how quickly speed and heading follow the input.
-// Pure data and functions, no three.js: drive() in src/game/main.ts reads them. Each type's numbers are in vehicle-spec.ts.
+// Pure data and functions, no three.js: drive() in src/game/cars.ts reads them. Each type's numbers are in vehicle-spec.ts.
 
 export type Handling = {
   /** Distance between the axles, in metres; a longer car turns wider for the same steering input. */
@@ -12,12 +12,16 @@ export type Handling = {
   throttleResponseS: number;
 };
 
-const MAX_LOCK_RAD = 0.6; // front-wheel angle at full stick, standing still
-const LOCK_FADE_MS = 13; // m/s at which the lock has halved; it fades with speed squared, so a fast car's small correction stays small
+// in one object so the tunables registry can change them while the game runs; each one's unit, range and meaning are
+// in car-tunables.ts, and only there
+export const STEERING = {
+  MAX_LOCK_RAD: 0.6,
+  LOCK_FADE_MS: 13, // the lock fades with speed squared, so a fast car's small correction stays small
+};
 
 /** Yaw rate in rad/s of a car at speed v (m/s) with the stick at steer (−1..1), from the bicycle model. */
 export function yawRate(v: number, steer: number, wheelbaseM: number): number {
-  return (v / wheelbaseM) * Math.tan((steer * MAX_LOCK_RAD) / (1 + (v / LOCK_FADE_MS) ** 2));
+  return (v / wheelbaseM) * Math.tan((steer * STEERING.MAX_LOCK_RAD) / (1 + (v / STEERING.LOCK_FADE_MS) ** 2));
 }
 
 /** Moves current toward target as a first-order lag with time constant responseS; frame-rate independent. */

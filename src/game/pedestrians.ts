@@ -2,22 +2,27 @@
 // Moved from src/game/main.ts (#177); main.ts passes in what the pedestrians read from the rest of the game.
 import type * as THREE from 'three';
 import type { BuildingIndex } from '../world/buildings';
-import { type Label, ROAD_WIDTH_M as ROAD_W } from '../world/data';
+import type { Label } from '../world/data';
+import { wrap } from '../world/math';
 import { nodeKey, ROAD_CELL_M as RC, type RoadLine, type RoadNetwork } from '../world/roads';
+import { bodyRadius, type CarBody, nearestOnSpine, PERSON_RADIUS_M } from './sim/car-body';
 
 // Each 50 m cell gets a density (0..1): how built-up the cell and its neighbours are, plus a boost near named places.
 // NPC_ZONES hand-tunes spots on top of that (m multiplies the density within r metres).
+const _onCar = { x: 0, z: 0 }; // nearestOnSpine writes here: no allocation per walker per car
 const NPC_ZONES = [{ x: -8.9, z: 30.1, r: 80, m: 1.8 }]; // Torget
 const NPC_MAX = 42,
   NPC_MAX_COARSE = 26; // count around the player in the busiest places; on a touch screen
 const NPC_NEAR = 200,
   NPC_FAR = 250; // spawn / despawn radius around the player (m)
+const LOST_RUN = 2; // back on their feet off their path, they run back to it at this many times their walking speed
+export const LOST_MAX_S = 8; // and if they're not there after this long (s), a house is in the way: they're put on it
 const SHIRTS = ['#b5463a', '#3f6b8a', '#5c7a4a', '#7a5a8a', '#d8d4c8', '#2b3a55', '#c9862f', '#8c1c1c', '#4d4a48'],
   PANTS = ['#3a3a3a', '#2b3a55', '#4a4038', '#5a6470', '#23272b'],
   HAIR = ['#5a4632', '#2a2320', '#c9a560', '#8a8580', '#7a3f22'];
 
 type Point = { x: number; z: number };
-/** A person's mesh, as personParts in main.ts builds it. */
+/** A person's mesh, as personParts in src/game/render/models.ts builds it. */
 export type PersonMesh = THREE.Object3D & { legs: THREE.Object3D[] };
 /** Where a pedestrian is on the walk graph: road ri, from vertex a towards a + dir, t metres along; the same shape as a car's. */
 export interface Npc extends Point {
@@ -32,7 +37,18 @@ export interface Npc extends Point {
   h: number;
   phase: number;
   first: boolean;
+  gawk: number; // s left staring at the player
+  look: Look;
+  scale: number; // their size: 1 is the standard person
   mesh: PersonMesh;
+  down?: boolean; // knocked over: the ragdolls (src/game/ragdolls.ts) move them until they clear this
+  lost?: number; // back on their feet off their path: they run back to it rather than snap, for at most this many more seconds
+}
+/** What a pedestrian wears, as personParts in src/game/render/models.ts takes it. */
+export interface Look {
+  shirt: string;
+  pants: string;
+  hair: string;
 }
 
 /** What the pedestrians read from the rest of the game. The getters are read when used, so main.ts can declare those later. */
@@ -42,14 +58,17 @@ export interface CrowdDeps {
   buildings: Pick<BuildingIndex, 'footprints' | 'collide'>;
   labels: readonly Label[];
   groundAt(x: number, z: number): number;
+  /** how far from road ri's centre line people walk on `side` (-1 left, +1 right of the road's own direction) (m) */
+  walkOffset(ri: number, side: -1 | 1): number;
   coarse: boolean; // touch screen: fewer pedestrians
-  wrap(a: number): number;
   rnd(): number; // the game's seeded stream, so the rolls stay in the order they were
   pick<T>(a: readonly T[]): T;
   personParts(shirt: string, pants: string, hair: string): PersonMesh;
   /** moves a walker on to the next segment at a junction of `graph` */
   advance(n: Npc, graph: Map<string, number[]>): void;
-  cars: readonly Point[];
+  cars: readonly CarBody[];
+  /** a car drives into n: true takes n out of the crowd's hands (n.down) instead of pushing them aside. Unset, everyone is pushed. */
+  readonly hit?: ((n: Npc, car: Point) => boolean) | null;
   readonly player: Point;
   readonly inCar: boolean;
 }
@@ -123,7 +142,7 @@ export class Crowd {
   }
 
   private spawn(T: Point, minD: number) {
-    const { rnd, pick, personParts, scene } = this.g,
+    const { rnd, pick, scene } = this.g,
       { R } = this;
     for (let t = 0; t < 12; t++) {
       const ang = rnd() * Math.PI * 2,
@@ -150,19 +169,28 @@ export class Crowd {
         h: 0,
         phase: 0,
         first: true,
-        mesh: personParts(pick(SHIRTS), pick(PANTS), pick(HAIR)),
+        gawk: 0,
+        scale: 1,
+        ...this.dress(pick(SHIRTS), pick(PANTS), pick(HAIR)),
       };
-      n.mesh.scale.setScalar(0.92 + rnd() * 0.14);
+      n.scale = 0.92 + rnd() * 0.14;
+      n.mesh.scale.setScalar(n.scale);
       scene.add(n.mesh);
       this.npcs.push(n);
       return;
     }
   }
 
+  private dress(shirt: string, pants: string, hair: string) {
+    return { look: { shirt, pants, hair }, mesh: this.g.personParts(shirt, pants, hair) };
+  }
+
   private updateNpc(n: Npc, dt: number) {
-    const { rnd, advance, cars, player, inCar, groundAt, wrap } = this.g,
+    if (n.down) return;
+    const { rnd, advance, cars, hit, player, inCar, groundAt, walkOffset } = this.g,
       { R } = this;
     const d0 = this.densAt(n.x, n.z);
+    if (n.gawk > 0) n.gawk -= dt;
     if (n.idle > 0) {
       n.idle -= dt;
       n.phase *= 0.8;
@@ -187,17 +215,47 @@ export class Crowd {
       B = r.p[n.a + n.dir],
       dx = (B[0] - A[0]) / L,
       dz = (B[1] - A[1]) / L,
-      off = r.c <= 3 ? (ROAD_W[r.c] / 2 + 0.8) * n.side : 0;
-    const k = n.first ? 1 : Math.min(1, dt * 4);
-    n.x += (A[0] + dx * n.t - dz * off - n.x) * k;
-    n.z += (A[1] + dz * n.t + dx * off - n.z) * k;
+      off = r.c <= 3 ? walkOffset(n.ri, (n.side * n.dir) as -1 | 1) * n.side : 0; // side of travel times direction: the road's own side
+    const k = n.first ? 1 : Math.min(1, dt * 4),
+      px = A[0] + dx * n.t - dz * off,
+      pz = A[1] + dz * n.t + dx * off;
+    let rx = 0,
+      rz = 0;
+    if (n.lost) {
+      const ex = px - n.x,
+        ez = pz - n.z,
+        d = Math.hypot(ex, ez),
+        s = n.speed * LOST_RUN * dt;
+      n.lost -= dt;
+      if (d <= s || n.lost <= 0) {
+        n.lost = 0;
+        n.x = px;
+        n.z = pz;
+      } else {
+        rx = ex / d;
+        rz = ez / d;
+        n.x += rx * s;
+        n.z += rz * s;
+        n.phase += s * 2.1;
+      }
+    } else {
+      n.x += (px - n.x) * k;
+      n.z += (pz - n.z) * k;
+    }
     for (const c of cars) {
-      const ex = n.x - c.x,
-        ez = n.z - c.z,
-        d = Math.hypot(ex, ez);
-      if (d < 2.3 && d > 0.01) {
-        n.x += (ex / d) * (2.3 - d);
-        n.z += (ez / d) * (2.3 - d);
+      if (Math.abs(n.x - c.x) > c.T.lengthM || Math.abs(n.z - c.z) > c.T.lengthM) continue;
+      nearestOnSpine(c, n.x, n.z, _onCar);
+      const ex = n.x - _onCar.x,
+        ez = n.z - _onCar.z,
+        d = Math.hypot(ex, ez),
+        apart = bodyRadius(c) + PERSON_RADIUS_M;
+      if (d < apart && d > 0.01) {
+        if (hit?.(n, c)) {
+          n.down = true;
+          return;
+        }
+        n.x += (ex / d) * (apart - d);
+        n.z += (ez / d) * (apart - d);
       }
     }
     if (!inCar) {
@@ -210,9 +268,16 @@ export class Crowd {
       }
     }
     this.collide(n, 0.35);
-    // walking: face the way along the path; standing around: glance at the player when they come close
+    // walking: face the way along the path; standing around: glance at the player when they come close, or stare while gawking
     const ph = Math.hypot(player.x - n.x, player.z - n.z),
-      want = n.idle > 0 ? (ph < 8 ? Math.atan2(player.x - n.x, -(player.z - n.z)) : n.h) : Math.atan2(dx, -dz);
+      want =
+        rx || rz
+          ? Math.atan2(rx, -rz)
+          : n.idle > 0
+            ? ph < 8 || n.gawk > 0
+              ? Math.atan2(player.x - n.x, -(player.z - n.z))
+              : n.h
+            : Math.atan2(dx, -dz);
     n.h = n.first ? want : wrap(n.h + wrap(want - n.h) * Math.min(1, dt * 5));
     n.first = false;
     const sw = Math.sin(n.phase) * 0.6;
@@ -220,6 +285,18 @@ export class Crowd {
     n.mesh.legs[1].rotation.x = -sw;
     n.mesh.position.set(n.x, groundAt(n.x, n.z), n.z);
     n.mesh.rotation.y = -n.h;
+  }
+
+  /** Everyone within r metres of o stops and stares at the player for s seconds; anyone knocked over is busy getting up. True when anyone saw. */
+  stare(o: Point, r: number, s: number) {
+    let seen = false;
+    for (const n of this.npcs)
+      if (!n.down && Math.hypot(n.x - o.x, n.z - o.z) < r) {
+        n.gawk = s;
+        n.idle = Math.max(n.idle, s);
+        seen = true;
+      }
+    return seen;
   }
 
   /** Keeps a crowd around the player that matches how busy the area is, refilling everything after a teleport, and moves everyone; T is where the player (or their car) is. */

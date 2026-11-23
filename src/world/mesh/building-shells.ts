@@ -9,32 +9,46 @@ import type { Heightfield } from '../heightfield';
 
 type Surface = 'wallFoot' | 'wallTop' | 'roof';
 
-/** Emits the shell's triangles, three vertices each: walls, then the roof, then the spire. */
+/**
+ * The footprint's points counter-clockwise on a north-up map (x east, z south), the order that puts each wall's outside
+ * on the right as you walk it, so a wall drawn from one point to the next, then up, faces out.
+ */
+const counterClockwise = <T>(points: T[], winding: number) => (winding > 0 ? [...points].reverse() : points);
+
+/**
+ * Emits the shell's triangles, three vertices each: walls, then the roof, then the spire. Front faces point out of the
+ * building, whichever way round the footprint is listed: an inverted-hull outline needs that (#206).
+ */
 function eachShellVertex(shape: BuildingShape, emit: (x: number, y: number, z: number, surface: Surface) => void) {
-  const { ring, yAt, sides, outline, base, top } = shape;
-  const m = ring.length;
+  const { ring, yAt, sides, outline, base, top, winding } = shape;
+  const corners = counterClockwise(ring, winding);
+  const m = corners.length;
   for (let i = 0; i < m; i++) {
-    const a = ring[i];
-    const d = ring[(i + 1) % m];
-    const ta = yAt(a);
-    const td = yAt(d);
-    emit(a.x, base, a.z, 'wallFoot');
-    emit(d.x, base, d.z, 'wallFoot');
-    emit(d.x, td, d.z, 'wallTop');
-    emit(a.x, base, a.z, 'wallFoot');
-    emit(d.x, td, d.z, 'wallTop');
-    emit(a.x, ta, a.z, 'wallTop');
+    const start = corners[i];
+    const end = corners[(i + 1) % m];
+    const startTop = yAt(start);
+    const endTop = yAt(end);
+    emit(start.x, base, start.z, 'wallFoot');
+    emit(end.x, base, end.z, 'wallFoot');
+    emit(end.x, endTop, end.z, 'wallTop');
+    emit(start.x, base, start.z, 'wallFoot');
+    emit(end.x, endTop, end.z, 'wallTop');
+    emit(start.x, startTop, start.z, 'wallTop');
   }
   for (const side of sides) {
     // triangulateShape wants { x, y } points, and drops a closing point that repeats the first
     const flat = side.map(v => new THREE.Vector2(v.x, v.z));
-    for (const face of THREE.ShapeUtils.triangulateShape(flat, [])) {
-      for (const i of face) emit(side[i].x, yAt(side[i]), side[i].z, 'roof');
+    // triangulateShape's faces come out facing down either way round, so take each one backwards
+    for (const [i, j, k] of THREE.ShapeUtils.triangulateShape(flat, [])) {
+      emit(side[k].x, yAt(side[k]), side[k].z, 'roof');
+      emit(side[j].x, yAt(side[j]), side[j].z, 'roof');
+      emit(side[i].x, yAt(side[i]), side[i].z, 'roof');
     }
   }
   const spire = shape.building.s;
   if (spire) {
-    const n = outline.length;
+    const rim = counterClockwise(outline, winding);
+    const n = rim.length;
     let cx = 0;
     let cz = 0;
     for (const v of outline) {
@@ -42,10 +56,10 @@ function eachShellVertex(shape: BuildingShape, emit: (x: number, y: number, z: n
       cz += v.z / n;
     }
     for (let i = 0; i < n; i++) {
-      const a = outline[i];
-      const d = outline[(i + 1) % n];
-      emit(a.x, top, a.z, 'roof');
-      emit(d.x, top, d.z, 'roof');
+      const start = rim[i];
+      const end = rim[(i + 1) % n];
+      emit(start.x, top, start.z, 'roof');
+      emit(end.x, top, end.z, 'roof');
       emit(cx, top + spire, cz, 'roof');
     }
   }
@@ -75,8 +89,11 @@ export type EmitVertex = (x: number, y: number, z: number, colour: THREE.Color) 
 export interface PaintedShellOptions {
   /** a material with `vertexColors` on */
   material: THREE.Material;
-  /** called once per building, in `data.b` order, before its shell is built; the colours are read before the next call, so it may reuse them */
-  colours: (shape: BuildingShape) => ShellColours;
+  /**
+   * called once per building, in `data.b` order, before its shell is built; the colours are read before the next call, so it may reuse
+   * them. null leaves that building's shell out, for a caller that draws it itself.
+   */
+  colours: (shape: BuildingShape) => ShellColours | null;
   /** called after each building's shell, to add triangles to the same mesh (a chimney) or build details of its own */
   extra?: (shape: BuildingShape, emit: EmitVertex) => void;
 }
@@ -101,6 +118,7 @@ export class PaintedBuildingShells {
     };
     forEachBuilding(data, heightfield, shape => {
       const paint = colours(shape);
+      if (!paint) return;
       eachShellVertex(shape, (x, y, z, surface) => {
         emit(x, y, z, surface === 'roof' ? paint.roof : surface === 'wallTop' ? paint.wall : paint.wallFoot);
       });
