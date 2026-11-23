@@ -4,6 +4,8 @@
 today, the direction proposed, and the questions still open. Claims about outside services and libraries are marked
 *(unverified)* where nobody has checked them against current documentation.
 
+Mock screens of what a player might see are in [multiplayer-mock.html](multiplayer-mock.html) (open it in a browser).
+
 ## Goals
 
 - **First: a few friends in one Vrigstad**, joined by a link, the way a party game works. Drop in, drop out, no lobby.
@@ -74,6 +76,22 @@ times a second. Everyone else draws it, a little in the past, and never changes 
 **When two players want the same thing** (both press E at one car): someone has to order the requests. With a relay
 or backend, its message order decides. Without one, the peer with the lowest id decides. The loser's client puts them
 back on foot.
+
+```mermaid
+sequenceDiagram
+  participant A as Sixten
+  participant R as Relay (or lowest peer id)
+  participant B as Majken
+  A->>R: take car 37
+  B->>R: take car 37
+  R-->>A: Sixten took car 37
+  R-->>B: Sixten took car 37
+  Note over A: owns car 37, starts sending it
+  Note over B: lost: stays on foot
+  loop 15 times a second
+    A->>B: snapshot of car 37
+  end
+```
 
 **Crashes between players.** Each client resolves its own car against the other's drawn car. The two sides see
 slightly different crashes. That is accepted for now; a later fix is the hitter sending "I hit you this hard".
@@ -170,6 +188,27 @@ A backend joins a room as a peer, and says what it can do. A feature asks for a 
 
 A player's own browser can offer a capability too: a "host" is a peer with `authority`.
 
+The same room, three ways. The game code above the connector is the same in each:
+
+```mermaid
+flowchart LR
+  subgraph mesh["Direct (WebRTC mesh): a few friends"]
+    A1((A)) --- B1((B))
+    A1 --- C1((C))
+    B1 --- C1
+  end
+  subgraph hub["Relay: dependable, hides IPs"]
+    A2((A)) --- R[relay]
+    B2((B)) --- R
+    C2((C)) --- R
+  end
+  subgraph back["Backend: large lobbies"]
+    A3((A)) --- S[backend<br/>relay · authority · world]
+    B3((B)) --- S
+    C3((…50)) --- S
+  end
+```
+
 ## WebRTC
 
 Worth exploring as its own piece of work, though probably not the default connector.
@@ -179,6 +218,22 @@ Worth exploring as its own piece of work, though probably not the default connec
 - **Signalling is still needed** to introduce two peers. Options, cheapest first: copy and paste an invite code
   between friends (no infrastructure at all); a library that borrows public networks for signalling, such as Trystero
   *(unverified)*; our own small endpoint.
+  With a pasted invite, no service is involved at all:
+
+  ```mermaid
+  sequenceDiagram
+    participant A as Sixten's browser
+    participant D as Discord (any chat)
+    participant B as Majken's browser
+    A->>A: make an offer (how to reach me)
+    A->>D: paste invite code
+    D->>B: Majken pastes it in
+    B->>B: make an answer
+    B->>D: paste reply code
+    D->>A: Sixten pastes it in
+    A-->B: direct, encrypted connection
+  ```
+
 - **Some networks block direct connections**, mobile data often among them. Those need a TURN relay, which costs
   traffic and so is a backend capability. How many players this hits is worth measuring, not guessing.
 - **Mesh size.** Everyone connected to everyone is `n × (n − 1) / 2` connections: 28 for 8 players, 1 225 for 50. Past
