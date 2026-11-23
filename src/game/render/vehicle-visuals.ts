@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import type { Decal } from '../sim/paint-jobs';
+import { decalMeshes, disposeDecal, type Panel } from './paint-decals';
 import { BODY_NODE, type VehicleId, vehicleDefinition, WHEEL_NODES } from './vehicle-registry';
 
 type Car = { mesh: THREE.Object3D; x: number; z: number; h: number };
@@ -23,7 +25,10 @@ type View = {
   travel: number;
   distance: number;
   color?: string;
+  decal: Decal | null; // Plåt-Pelle's decal, and its meshes on the loaded model's body
+  decals: THREE.Mesh[];
 };
+const GLASS_NODE = 'glass'; // a model's windows are the nodes named glass…; a decal stays off them
 const DETAIL_RANGE_M = 120,
   DETAIL_KEEP_M = 15, // a detailed car keeps its model until it is this much further away than the next candidate, so it doesn't pop back and forth
   DETAIL_CAP_COARSE = 3,
@@ -95,6 +100,7 @@ export class VehicleVisuals {
         view.status = 'loaded';
         this.onBody?.(view.car, sprung);
         if (view.color) this.paint(view.car, view.color);
+        if (view.decal) this.dress(view);
         this.updateVisibility(view);
       })
       .catch(error => {
@@ -126,6 +132,43 @@ export class VehicleVisuals {
       node.material = Array.isArray(node.material) ? node.material.map(recolor) : recolor(node.material);
     });
   }
+  /** Puts Plåt-Pelle's decal on the car's model, or takes it off (null); `paint` is the car's colour, which the stripes' colour follows. */
+  decorate(car: Car, decal: Decal | null, paint: string) {
+    const view = this.records.get(car);
+    if (!view || view.definition.police) return;
+    view.decal = decal;
+    view.color = paint;
+    if (view.root) this.dress(view);
+  }
+  // the decal projected onto the model's painted panels, measured in the car's frame and hung on the sprung body, so it rolls with it
+  private dress(view: View) {
+    disposeDecal(view.decals);
+    view.decals = [];
+    const root = view.root,
+      frame = root?.parent,
+      body = root?.getObjectByName(BODY_NODE);
+    if (!view.decal || !frame || !body) return;
+    frame.updateMatrixWorld(true);
+    const toFrame = frame.matrixWorld.clone().invert(),
+      panels: Panel[] = [];
+    body.traverse(node => {
+      if (!(node instanceof THREE.Mesh) || (node !== body && !node.name.startsWith(BODY_NODE + '_'))) return;
+      panels.push({ geometry: node.geometry, toFrame: toFrame.clone().multiply(node.matrixWorld) });
+    });
+    const glass = new THREE.Box3(),
+      part = new THREE.Box3();
+    root.traverse(node => {
+      if (!(node instanceof THREE.Mesh) || !node.name.startsWith(GLASS_NODE)) return;
+      node.geometry.boundingBox ?? node.geometry.computeBoundingBox();
+      glass.union(part.copy(node.geometry.boundingBox!).applyMatrix4(toFrame.clone().multiply(node.matrixWorld)));
+    });
+    const toBody = toFrame.clone().multiply(body.matrixWorld).invert();
+    view.decals = decalMeshes(view.decal, view.color ?? '#ffffff', panels, glass.isEmpty() ? null : glass);
+    for (const m of view.decals) {
+      m.applyMatrix4(toBody);
+      body.add(m);
+    }
+  }
   attach(car: Car, id: VehicleId, fallback: THREE.Mesh, color?: string) {
     const definition = vehicleDefinition(id)!;
     const view: View = {
@@ -136,6 +179,8 @@ export class VehicleVisuals {
       wheels: [],
       materials: new Set(),
       beacons: [],
+      decal: null,
+      decals: [],
       selected: false,
       removed: false,
       x: car.x,
@@ -225,6 +270,7 @@ export class VehicleVisuals {
     if (!view) return;
     view.removed = true;
     view.root?.removeFromParent();
+    disposeDecal(view.decals);
     for (const m of view.materials) m.dispose();
     this.views.splice(this.views.indexOf(view), 1);
     this.records.delete(car);
