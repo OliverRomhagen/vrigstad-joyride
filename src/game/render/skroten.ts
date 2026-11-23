@@ -25,6 +25,7 @@ import {
   yardToWorld,
 } from '../skroten-yard';
 import { boxGeo, carGeo, mergeGeo, type Person, paintMat, personParts } from './models';
+import { SKROT_COLOUR } from './places';
 import { BODY_NODE, CIVILIAN_CAR_TYPES, VEHICLES } from './vehicle-registry';
 
 /** One box: size, position and colour, as boxGeo takes it. */
@@ -34,6 +35,7 @@ const PANEL_M = 3; // a sheet of the fence, and the gap between its posts
 const SELLS_MIN_W_M = 1.5; // the SÄLJER BILAR board is left out where the fence leaves it less room than this
 const FENCE_COLOURS = ['#8b8f91', '#9a6a4a', '#6f7c86', '#a3a7a3', '#7e4a30', '#86847a'];
 const WIRE_HEIGHTS_M = [2.45, 2.65, 2.85];
+const LIFT_RING_M = 1.85; // the lift's ring's outer radius: inside its posts, 2.1 m either side of the bay's middle
 const SCRAP_COLOURS = ['#7d3a24', '#8f4f2c', '#6b6f6f', '#9a9a92', '#5c4434', '#a0522d', '#4f5a63'];
 const RUST = '#8a4a2a', // the boards
   POST = '#5b4a3a',
@@ -330,7 +332,7 @@ export class SkrotenMeshes {
       this.loadNear = () => void this.loadCars(detailed, yard, standY, g.carModel);
     }
     const built: THREE.Object3D[] = [yard];
-    if (layout.workshop) built.push(hallMeshes(heightAt, layout.workshop));
+    if (layout.workshop) built.push(hallMeshes(heightAt, layout.workshop), liftRing(layout.workshop));
     if (layout.carport) built.push(carportMeshes(heightAt, layout.carport));
     // on a phone nothing here casts a shadow, as the cars on the road don't (VehicleVisuals); the yard's models are skipped there anyway
     if (g.coarse)
@@ -418,6 +420,29 @@ export class SkrotenMeshes {
     this.ownerH += d * Math.min(1, dt * OWNER_TURN_K);
     n.rotation.y = -this.ownerH;
   }
+}
+
+// an orange ring on the workshop's floor round the lift's bay, like the one on the yard, so you can see where to park to have the car
+// mended; inside the lift's posts
+function liftRing(ws: Workshop) {
+  const geo = new THREE.RingGeometry(LIFT_RING_M - 0.35, LIFT_RING_M, 40);
+  geo.rotateX(-Math.PI / 2);
+  const ring = new THREE.Mesh(
+      geo,
+      new THREE.MeshBasicMaterial({
+        color: new THREE.Color(SKROT_COLOUR).convertSRGBToLinear(),
+        transparent: true,
+        opacity: 0.8,
+        depthWrite: false,
+        polygonOffset: true, // drawn over the floor it lies on, even far off where depth is coarse
+        polygonOffsetFactor: -4,
+        polygonOffsetUnits: -4,
+      }),
+    ),
+    { x, z } = ws.bay;
+  ring.position.set(x, ws.floor.a + ws.floor.bx * x + ws.floor.cz * z + 0.06, z);
+  ring.castShadow = ring.receiveShadow = false;
+  return ring;
 }
 
 /** Plåt-Pelle: blue overalls, a red cap with a peak, and a grey beard. Standing at the origin, facing −z. */

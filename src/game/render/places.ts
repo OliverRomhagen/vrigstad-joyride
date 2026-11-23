@@ -5,8 +5,9 @@ import * as THREE from 'three';
 import { type Door, KIOSK, type Places } from '../places';
 
 const SAFE_COLOUR = 0x4fd27a,
-  KIOSK_COLOUR = 0xf2c230,
-  SKROT_COLOUR = 0xd2692f; // sRGB
+  KIOSK_COLOUR = 0xf2c230;
+/** Skroten's rings, on the yard and on the workshop's lift (sRGB). */
+export const SKROT_COLOUR = 0xd2692f;
 const SKROT_RING_SCALE = 3; // Skroten's ring is this much wider than the others, round a car
 const GEM_SPIN = 1.6; // rad/s
 const WHITE = '#e8e2d2',
