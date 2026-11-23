@@ -57,5 +57,5 @@ export const steerResponseOf = (c: Driven) =>
   c.T.handling.steerResponseS * (c.mods.springs ? UPGRADES.SPRINGS_STEER : 1);
 /** The share of the grip the car has, with its springs. */
 export const gripShare = (mods: CarMods) => (mods.springs ? UPGRADES.SPRINGS_GRIP : 1);
-/** The share of a crash's damage the car takes, with its body; a car without mods (a test's stub) takes all of it. */
-export const damageShare = (mods: CarMods | undefined) => (mods?.body ? UPGRADES.BODY_DAMAGE : 1);
+/** The share of a crash's damage the car takes, with its body. */
+export const damageShare = (mods: CarMods) => (mods.body ? UPGRADES.BODY_DAMAGE : 1);

@@ -16,8 +16,11 @@ const _f = new THREE.Vector3(),
 export interface RenderedCar extends Car {
   mesh: THREE.Group;
   body: THREE.Mesh;
-  painted: string; // the paint the meshes wear; a respray changes the car's color, and placeCar catches up
 }
+
+// the paint a car's meshes wear: a respray changes the car's, and placeCar catches up. Render's own bookkeeping, kept here
+// rather than on the sim's car.
+type Look = { paint: string };
 
 /** What the car meshes read from the rest of the game. */
 export interface CarMeshesDeps {
@@ -36,6 +39,7 @@ export interface CarMeshesDeps {
 /** Makes, places and disposes the meshes of every car. It never adds a car to the list or removes one: the Fleet does (#297). */
 export class CarMeshes {
   private readonly g: CarMeshesDeps;
+  private readonly looks = new Map<Car, Look>();
   private readonly modelRnd = makeRnd(240); // own stream: which model a car wears doesn't shift the world's rolls
 
   constructor(g: CarMeshesDeps) {
@@ -51,13 +55,14 @@ export class CarMeshes {
     _m.makeBasis(_r, n, _f.negate());
     c.mesh.quaternion.setFromRotationMatrix(_m);
     c.mesh.position.set(c.x, groundAt(c.x, c.z) - (c.wet ? 0.55 : 0), c.z);
-    if (c.painted !== c.color) this.repaint(c);
+    const look = this.looks.get(c);
+    if (look && look.paint !== c.color) this.repaint(c, look);
     vehicleVisuals.sync(c);
   }
   // a respray: the procedural body's geometry carries its paint (cached by type and colour, so the old one isn't disposed), the model its materials
-  private repaint(c: RenderedCar) {
+  private repaint(c: RenderedCar, look: Look) {
     const { carGeo, vehicleVisuals } = this.g;
-    c.painted = c.color;
+    look.paint = c.color;
     c.body.geometry = carGeo(c.type, c.color);
     vehicleVisuals.paint(c, c.color);
   }
@@ -79,7 +84,8 @@ export class CarMeshes {
       bar.position.set(0, 1.62, 0.2);
       fallback.add(bar);
     }
-    const c = Object.assign(car, { mesh, body: fallback, painted: color });
+    const c = Object.assign(car, { mesh, body: fallback });
+    this.looks.set(c, { paint: color });
     scene.add(mesh);
     this.placeCar(c);
     bodyMotion.add(c, T.suspension, fallback);
@@ -92,6 +98,7 @@ export class CarMeshes {
   detach(c: RenderedCar) {
     const { scene, vehicleVisuals, bodyMotion } = this.g;
     vehicleVisuals.dispose(c);
+    this.looks.delete(c);
     bodyMotion.remove(c);
     scene.remove(c.mesh);
   }

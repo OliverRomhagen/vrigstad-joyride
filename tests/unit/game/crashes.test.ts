@@ -2,11 +2,13 @@ import { describe, expect, it } from 'vitest';
 import type { Car } from '../../../src/game/cars';
 import type { Cat } from '../../../src/game/cats';
 import { Crashes } from '../../../src/game/crashes';
+import { noMods } from '../../../src/game/sim/upgrades';
 import { newGameState } from '../../../src/game/state';
 
 const HARD_MS = 27; // 20 m/s over CRASH_MIN_MS: 45 damage, and it hurts the driver
 // only what a crash reads of a car
-const car = (o: Partial<Car> = {}) => ({ x: 0, z: 0, v: 0, mode: 'parked', dmg: 0, hitAt: -9, ...o }) as Car;
+const car = (o: Partial<Car> = {}) =>
+  ({ x: 0, z: 0, v: 0, mode: 'parked', dmg: 0, hitAt: -9, mods: noMods(), ...o }) as Car;
 
 function crashes(o: { cat?: boolean; viewer?: { x: number; z: number }; god?: boolean } = {}) {
   const game = newGameState(),

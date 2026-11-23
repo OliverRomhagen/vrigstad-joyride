@@ -186,6 +186,30 @@ describe('Plåt-Pelle mends the car on the lift', () => {
     expect(t.menu()!.items.map(([k]) => k)).not.toContain('fix'); // the menu comes back, for an upgrade
   });
 
+  it('names the new price instead of taking it when the car took more damage with the menu open', () => {
+    const t = skroten({ model: 'volvo240', car: { dmg: 50 }, kr: 1000 });
+    t.driveOntoLift();
+    t.s.open();
+    t.g.game.pcar!.dmg = 80; // rammed while you read the menu
+    t.choose('fix');
+    expect(t.wallet.kr).toBe(1000);
+    expect(t.g.game.pcar!.dmg).toBe(80);
+    expect(t.menu()!.title).toContain(fmtKr(320));
+    t.choose('fix');
+    expect(t.wallet.kr).toBe(1000 - 320);
+    expect(t.g.game.pcar!.dmg).toBe(0);
+  });
+
+  it('closes the menu once the car rolls off faster than you can get out', () => {
+    const t = skroten({ car: { dmg: 50 }, kr: 1000 });
+    t.driveOntoLift();
+    t.s.open();
+    t.g.game.pcar!.v = 5;
+    expect(t.menu()!.stay!()).toBe(false);
+    t.choose('fix');
+    expect(t.g.game.pcar!.dmg).toBe(50);
+  });
+
   it('keeps the damage and your money when you say no, or cannot pay', () => {
     const no = skroten({ car: { dmg: 50 }, kr: 500 });
     no.driveOntoLift();
@@ -257,6 +281,30 @@ describe('Plåt-Pelle upgrades the car on the lift', () => {
     t.choose('springs');
     expect(t.g.game.pcar!.mods).toEqual({ engine: true, springs: true, body: true });
     expect(keys(t)).toEqual(['paint', 'no']);
+  });
+
+  it('fits nothing once the police are after you, and closes the menu after a refused job', () => {
+    const t = skroten({ kr: 2000 });
+    t.driveOntoLift();
+    t.s.open();
+    (t.g as { stars: number }).stars = 1; // they come while the menu is open
+    t.choose('engine');
+    expect(t.g.game.pcar!.mods.engine).toBe(false);
+    expect(t.wallet.kr).toBe(2000);
+    expect(t.calls.at(-1)).toContain('Inte mä snuten i hälarna!');
+    const before = t.menu();
+    t.choose('springs'); // the same, stale menu: nothing reopened it
+    expect(t.menu()).toBe(before);
+  });
+
+  it('goes back to the lift menu when you say no to a respray', () => {
+    const t = skroten({ kr: 500 });
+    t.driveOntoLift();
+    t.s.open();
+    t.choose('paint');
+    t.choose('no');
+    expect(t.menu()!.kind).toBe('skrot-lift');
+    expect(t.wallet.kr).toBe(500);
   });
 
   it('has a word for tuning an EPA-traktor', () => {
