@@ -208,6 +208,16 @@ describe('traffic', () => {
     expect(cars.cars).toEqual([c]);
   });
 
+  it('spawns only where no other car stands, parked or in traffic (#409)', () => {
+    // traffic spawns at a road's vertices: five of them, 20 m apart, the first one taken by a parked car
+    const { cars } = fleet({ r: [{ c: RoadClass.PRIMARY, n: 'Storgatan', p: [0, 40, 0, 20, 0, 0, 0, -20, 0, -40] }] });
+    cars.add(car('volvo', 1, 40, 0, 'parked'));
+    for (let i = 0; i < 10; i++) cars.spawnTraffic(null);
+    expect(cars.cars).toHaveLength(4); // the last vertex is never a spawn, so three are left, and the parked car
+    for (const c of cars.cars)
+      for (const o of cars.cars) if (o !== c) expect(Math.hypot(o.x - c.x, o.z - c.z)).toBeGreaterThanOrEqual(7);
+  });
+
   it('waits behind a car, and drives through it after 6 s', () => {
     const { cars } = fleet();
     // 400 m along the main road from its south end, heading north

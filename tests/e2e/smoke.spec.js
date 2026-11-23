@@ -219,6 +219,7 @@ test.describe('game (index.html)', () => {
     const s = await state(page);
     expect(s.vehicle.id).toBe('volvo240');
     expect(s.traffic.length).toBeGreaterThan(0);
+    expect(s.startGapM).toBeGreaterThanOrEqual(7); // no car was placed inside another, the Volvo at Torget included (#409)
     const fleet = { volvo: ['volvo240', 'impala1970'], saab: ['saab900', 'xc70', 'micra-k11'], epa: ['duett-epa'] };
     for (const c of s.traffic) expect(fleet[c.type] ?? [null]).toContain(c.vehicle?.id ?? null);
     const notice = await page.request.get('/media/vehicles/NOTICE.txt');

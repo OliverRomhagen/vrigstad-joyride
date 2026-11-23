@@ -55,6 +55,7 @@ const STUCK_S = 6,
   GHOST_S = 3; // blocked this long, a traffic car drives through what blocks it for GHOST_S
 const SPAWN_AWAY_M = 260; // new traffic, and a car parked to replace a sold one, appears at least this far from you
 const PARKED_CARS = 58; // parked when the village is built
+const SPAWN_CLEAR_M = 7; // a new car, parked or in traffic, appears at least this far from every other car (#409)
 const PARK_AWAY_TRIES = 300; // tries at a far kerbside spot before giving up
 
 type Point = { x: number; z: number };
@@ -234,18 +235,21 @@ export class Fleet {
     if (this.noReplacement.has(sold)) return;
     for (let tries = 0; tries < PARK_AWAY_TRIES; tries++) if (this.parkOne(farFrom)) return;
   }
+  // no car within SPAWN_CLEAR_M of (x, z), so a new one there doesn't stand inside it
+  private isClear(x: number, z: number) {
+    return !this.cars.some(c => Math.hypot(c.x - x, c.z - z) < SPAWN_CLEAR_M);
+  }
   // one try at a kerbside spot; with farFrom, only one at least SPAWN_AWAY_M from it
   private parkOne(farFrom: Point | null): boolean {
     const {
-        rnd,
-        pick,
-        roads: { lines: R },
-        buildings,
-        water,
-        half: HALF,
-        canPark,
-      } = this.g,
-      cars = this.cars;
+      rnd,
+      pick,
+      roads: { lines: R },
+      buildings,
+      water,
+      half: HALF,
+      canPark,
+    } = this.g;
     const r = pick(R);
     if (r.c !== 2 && r.c !== 3) return false;
     const i = 1 + Math.floor(rnd() * (r.p.length - 1)),
@@ -264,7 +268,7 @@ export class Fleet {
       oz = o.z;
     if (buildings.collide(o, PARK_CLEAR_M) || water.inWater(ox, oz) || !canPark(ox, oz)) return false;
     if (farFrom && Math.hypot(ox - farFrom.x, oz - farFrom.z) < SPAWN_AWAY_M) return false;
-    if (cars.some(c => Math.hypot(c.x - ox, c.z - oz) < 7)) return false;
+    if (!this.isClear(ox, oz)) return false;
     this.g.addCar(this.civType(), ox, oz, Math.atan2(dx, -dz) + (side < 0 ? Math.PI : 0), 'parked');
     return true;
   }
@@ -312,6 +316,7 @@ export class Fleet {
         a = Math.floor(rnd() * (r.p.length - 1)),
         p = r.p[a];
       if (farFrom && Math.hypot(p[0] - farFrom.x, p[1] - farFrom.z) < SPAWN_AWAY_M) continue;
+      if (!this.isClear(p[0], p[1])) continue;
       const type = rnd() < 0.5 ? 'volvo' : rnd() < 0.7 ? 'saab' : 'epa';
       return Object.assign(this.g.addCar(type, p[0], p[1], 0, 'ai'), { ri, a, dir: 1, t: 0, first: true });
     }
