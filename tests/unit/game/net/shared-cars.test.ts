@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { type Car, newCar } from '../../../../src/game/cars';
-import { type RestingCar, SharedCars } from '../../../../src/game/net/shared-cars';
+import { MAX_ADDED_CARS, type RestingCar, SharedCars } from '../../../../src/game/net/shared-cars';
 import { blankSnapshot, type CarLook, type Snapshot } from '../../../../src/game/net/snapshots';
 import { VEHICLE_SPECS } from '../../../../src/game/sim/vehicle-spec';
 
@@ -124,5 +124,33 @@ describe('SharedCars', () => {
     b.shared.remove('a', 5000);
     expect(b.cars[0]).toMatchObject({ mode: 'idle', x: 20 });
     expect(b.shared.known).toMatchObject([{ id: 'p0', x: 20, t: 5000, gone: false }]);
+  });
+
+  it('makes at most MAX_ADDED_CARS cars for ids it has never seen, and has room again when one is sold', () => {
+    const b = client('b'),
+      left = (id: string, gone = false): RestingCar => ({ id, t: 1000, x: 0, z: 0, h: 0, dmg: 0, look, gone });
+    b.shared.hear(Array.from({ length: MAX_ADDED_CARS + 50 }, (_, i) => left('x:' + i)));
+    expect(b.cars).toHaveLength(2 + MAX_ADDED_CARS);
+    b.shared.show('x', { ...blankSnapshot(), t: 1000, car: { id: 'x:new', since: 0, dmg: 0, look } });
+    expect(b.cars).toHaveLength(2 + MAX_ADDED_CARS);
+    b.shared.hear([{ ...left('x:0', true), t: 2000 }]);
+    b.shared.hear([left('x:later')]);
+    expect(b.cars).toHaveLength(2 + MAX_ADDED_CARS);
+    expect(b.cars.at(-1)).toMatchObject({ x: 0, mode: 'idle' });
+  });
+
+  it("moves the times it keeps when the room's clock jumps, so newer words still win", () => {
+    const a = client('a'),
+      b = client('b');
+    a.getIn(a.cars[0]);
+    a.shared.local(1000);
+    a.state.driven = null;
+    a.cars[0].mode = 'idle';
+    a.shared.local(5000); // a left it at 5000 on a's own clock
+    a.shared.shift(-10_000); // a joins a room whose clock is 10 s behind a's
+    b.shared.hear(a.told);
+    // b moves the car later, by the room's clock: -3000 is after a's 5000 - 10 000
+    a.shared.hear([{ ...a.told[0], t: -3000, x: 77 }]);
+    expect(a.cars[0].x).toBe(77);
   });
 });

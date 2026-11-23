@@ -55,6 +55,7 @@ export function showInvitePanel(g: InvitePanelDeps) {
     inLabel = el('p'),
     input = el('textarea', '', { id: 'mp-in', ariaLabel: 'Code from your friend', spellcheck: false }),
     go = el('button', '', { type: 'button', id: 'mp-go' }),
+    back = el('button', 'Start over', { type: 'button' }),
     status = el('p', '', { id: 'mp-status' });
   status.setAttribute('role', 'status');
   head.append(title, toggle);
@@ -62,7 +63,7 @@ export function showInvitePanel(g: InvitePanelDeps) {
   const copyRow = el('div', '', { className: 'mp-row' }),
     goRow = el('div', '', { className: 'mp-row' });
   copyRow.append(copy);
-  goRow.append(go);
+  goRow.append(go, back);
   body.append(choose, notice, outLabel, out, copyRow, inLabel, input, goRow, status);
   root.append(el('style', CSS), head, body);
   // typing a code must not drive the car: the game listens for keys further up
@@ -80,7 +81,8 @@ export function showInvitePanel(g: InvitePanelDeps) {
       pasting = (step === 'inviting' && !!out.value) || (step === 'joining' && !replied);
     choose.hidden = notice.hidden = step !== 'idle';
     outLabel.hidden = out.hidden = copyRow.hidden = !sending;
-    inLabel.hidden = input.hidden = goRow.hidden = !pasting;
+    inLabel.hidden = input.hidden = go.hidden = !pasting;
+    goRow.hidden = step === 'idle';
     outLabel.textContent =
       step === 'inviting' ? '1. Send this invite code to your friend:' : '2. Send this reply code back to your friend:';
     inLabel.textContent =
@@ -95,13 +97,13 @@ export function showInvitePanel(g: InvitePanelDeps) {
   }
   // runs one step, with its buttons off meanwhile; what goes wrong is said in the panel
   async function run(work: () => Promise<void>) {
-    for (const b of [inviteBtn, joinBtn, go]) b.disabled = true;
+    for (const b of [inviteBtn, joinBtn, go, back]) b.disabled = true;
     try {
       await work();
     } catch (err) {
       say(err instanceof Error ? err.message : String(err), true);
     }
-    for (const b of [inviteBtn, joinBtn, go]) b.disabled = false;
+    for (const b of [inviteBtn, joinBtn, go, back]) b.disabled = false;
     draw();
   }
 
@@ -121,6 +123,10 @@ export function showInvitePanel(g: InvitePanelDeps) {
     step = 'joining';
     say('');
     draw();
+  });
+  back.addEventListener('click', () => {
+    reset();
+    say('');
   });
   copy.addEventListener('click', () => {
     out.select();
@@ -142,14 +148,18 @@ export function showInvitePanel(g: InvitePanelDeps) {
     }),
   );
 
-  let shown = -1;
+  // a friend connecting ends the swap; one shown again after a while in the background doesn't
+  let shown = -1,
+    linked = 0;
   setInterval(() => {
-    const n = g.peers();
-    if (n === shown) return;
-    if (n > shown && shown >= 0) {
+    const { links } = g.invites;
+    if (links > linked) {
       reset();
       say('Connected.');
     }
+    linked = links;
+    const n = g.peers();
+    if (n === shown) return;
     shown = n;
     title.textContent = n ? 'Playing with ' + n + (n === 1 ? ' friend' : ' friends') : 'Playing alone';
   }, 300);

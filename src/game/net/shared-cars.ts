@@ -38,6 +38,9 @@ export interface SharedCarsDeps {
 }
 
 type Drive = { car: Car; since: number }; // a car another player drives, and since when (ms)
+// cars the others made here (driven out of traffic, a police car, the one Skroten put back): a room's worth, and a
+// limit on what a peer that sends new ids without end can make this player build
+export const MAX_ADDED_CARS = 200;
 const isDriven = (c: Car) => c.mode === 'player' || c.mode === 'remote';
 
 /** Which car is which across the players, who drives each, and where the ones nobody drives were left. */
@@ -50,6 +53,7 @@ export class SharedCars {
   private mine: Car | null = null; // the car this player drove at the last look
   private since = 0;
   private made = 0;
+  private readonly madeHere = new Set<Car>(); // cars made here for another player's id, at most MAX_ADDED_CARS
 
   constructor(g: SharedCarsDeps) {
     this.g = g;
@@ -66,6 +70,31 @@ export class SharedCars {
   private forget(c: Car, id: string) {
     this.byId.delete(id);
     this.ids.delete(c);
+    this.madeHere.delete(c);
+  }
+
+  // the car with that id, made if this player has never seen it and there is room for one more
+  private car(id: string, look: CarLook, x: number, z: number, h: number) {
+    const known = this.byId.get(id);
+    if (known || this.madeHere.size >= MAX_ADDED_CARS) return known ?? null;
+    const c = this.name(this.g.addCar(look, x, z, h), id);
+    this.madeHere.add(c);
+    return c;
+  }
+
+  /** The room's clock moved by `ms`: the times kept so far move with it, so they still compare with new ones. */
+  shift(ms: number) {
+    this.since += ms;
+    for (const r of this.resting.values()) r.t += ms;
+    for (const d of this.drivers.values()) d.since += ms;
+  }
+
+  /**
+   * This player was away (a tab in the background) long enough for the others to let go of their car: the claim
+   * on it starts now, so one who got in meanwhile keeps it, on every client alike.
+   */
+  claimAgain(now: number) {
+    if (this.mine) this.since = now;
   }
 
   /** every car's last resting place this player knows of, for a player who just joined */
@@ -105,9 +134,9 @@ export class SharedCars {
   /** Puts the car the player `peer` drives where their snapshot says, and lets go of the one they drove before. */
   show(peer: string, s: Snapshot) {
     const { g } = this,
-      ref = s.car,
-      before = this.drivers.get(peer);
-    let car = ref && (this.byId.get(ref.id) ?? this.name(g.addCar(ref.look, s.x, s.z, s.h), ref.id));
+      ref = s.car;
+    let drive = this.drivers.get(peer),
+      car = ref && this.car(ref.id, ref.look, s.x, s.z, s.h);
     if (car && ref && car === g.driven()) {
       // both took it: the one who got in first keeps it, and the other hears the same and gets out
       if (ref.since < this.since || (ref.since === this.since && peer < g.me)) {
@@ -115,9 +144,14 @@ export class SharedCars {
         g.lostCar();
       } else car = null;
     }
-    if (before && before.car !== car) this.release(peer, before);
+    if (drive && drive.car !== car) {
+      this.release(peer, drive);
+      drive = undefined;
+    }
     if (!car || !ref) return;
-    this.drivers.set(peer, { car, since: ref.since });
+    // the same object every frame while they drive one car: this runs for each driver, every frame
+    if (drive) drive.since = ref.since;
+    else this.drivers.set(peer, { car, since: ref.since });
     car.mode = 'remote';
     car.x = s.x;
     car.z = s.z;
@@ -172,7 +206,8 @@ export class SharedCars {
       }
       return;
     }
-    c ??= this.name(g.addCar(r.look, r.x, r.z, r.h), r.id);
+    c ??= this.car(r.id, r.look, r.x, r.z, r.h) ?? undefined;
+    if (!c) return;
     c.x = r.x;
     c.z = r.z;
     c.h = c.vh = r.h;

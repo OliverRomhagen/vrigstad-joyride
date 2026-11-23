@@ -158,6 +158,40 @@ describe('Session over the loopback connector', () => {
     expect(a.p.driven).toBeNull();
   });
 
+  it("keeps the first player's clock when one who joins later has a clock that runs behind", () => {
+    const { join, run } = room(BAD),
+      a = join('a');
+    run(2000);
+    const b = join('b', -10_000),
+      before = a.session.now;
+    run(2000, dt => {
+      a.p.x += 4 * dt;
+    });
+    expect(a.session.now - before).toBeCloseTo(2000, -2);
+    expect(Math.abs(a.session.now - b.session.now)).toBeLessThan(60);
+    expect(b.seen.get('a')!.x).toBeGreaterThan(6);
+  });
+
+  it('lets a player back from the background lose the car another took meanwhile', () => {
+    const { join, run } = room(),
+      a = join('a'),
+      b = join('b');
+    run(500);
+    a.p.driven = a.cars[0];
+    a.cars[0].mode = 'player';
+    run(1000);
+    a.p.playing = false; // a's tab in the background: the others let go of a's car after a while
+    run(SILENT_MS + 500);
+    expect(b.cars[0].mode).toBe('idle');
+    b.p.driven = b.cars[0];
+    b.cars[0].mode = 'player';
+    run(1000);
+    a.p.playing = true;
+    run(1000);
+    expect(b.p.driven).toBe(b.cars[0]);
+    expect(a.p.driven).toBeNull();
+  });
+
   it('keeps the room going when the player whose clock it runs on leaves', () => {
     const { join, run } = room(),
       a = join('a', 5000),
@@ -227,6 +261,15 @@ describe('Session over the loopback connector', () => {
       { snap: { ...snap, car: { ...car, look: { ...look, type: 'constructor' } } } },
       { cars: 'all of them' },
       { cars: [{ id: 'p0', t: 1, x: 0, z: 0, h: 0, dmg: 0, look: { ...look, type: 'tank' }, gone: false }] },
+      // numbers that would overflow the blending, freeze a car's state, win every tie or speed a car up
+      { snap: { ...snap, x: 1e308 } },
+      { snap: { ...snap, v: 9000 } },
+      { snap: { ...snap, t: 1e15 } },
+      { snap: { ...snap, car: { ...car, look, since: -1e300 } } },
+      { snap: { ...snap, car: { ...car, look, dmg: -50 } } },
+      // a look that would make a new car geometry for every message, or a type that only looks like one
+      { snap: { ...snap, car: { ...car, look: { ...look, color: 'rgb(1,2,3)' } } } },
+      { snap: { ...snap, car: { ...car, look: { ...look, type: ['volvo'] } } } },
     ])
       bad.send(m, true);
     hub.advance(1);

@@ -15,6 +15,8 @@ export interface Invites {
   accept(code: string): Promise<string>;
   /** takes the reply to an invite made here; throws an Error to show the player */
   finish(code: string): Promise<void>;
+  /** how many friends are connected now, whether or not they are shown */
+  readonly links: number;
 }
 
 /** One player's end of a room. The session sets `receive` and `left`; a message that arrives before that is lost. */

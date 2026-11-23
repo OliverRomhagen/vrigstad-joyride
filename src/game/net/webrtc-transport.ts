@@ -17,9 +17,13 @@ const MAX_CODE_CHARS = 20_000,
   MAX_MESSAGE_CHARS = 256_000;
 const GATHER_MS = 4000; // wait this long for the browser to find its addresses, then go with what it has
 const FAST_BACKLOG_BYTES = 64_000; // with this much unsent, a snapshot is skipped: a newer one follows
+const MAX_PENDING = 4; // invites out at once; a fifth closes the oldest, which nobody answered
 
-/** What a code holds. `invite` ties a reply to its invite, so a host can have several out at once. */
-type Signal = { from: string; invite: string; type: 'offer' | 'answer'; sdp: string };
+/**
+ * What a code holds. `invite` ties a reply to its invite, so a host can have several out at once. `build` is the
+ * game's: a car's id or a message can mean something else in another build.
+ */
+type Signal = { from: string; invite: string; type: 'offer' | 'answer'; sdp: string; build: string };
 type Link = { pc: RTCPeerConnection; reliable: RTCDataChannel; fast: RTCDataChannel };
 
 const b64 = (bytes: Uint8Array) =>
@@ -77,6 +81,8 @@ async function unpack(code: string, type: Signal['type']): Promise<Signal> {
   }
   const isStr = (v: unknown) => typeof v === 'string' && v.length < 80;
   if (!s || !isStr(s.from) || !isStr(s.invite) || s.type !== type || typeof s.sdp !== 'string') throw wrong;
+  if (s.build !== __BUILD__)
+    throw new Error('That code is from another version of the game. Both of you reload the page, then start again.');
   return s;
 }
 
@@ -111,25 +117,40 @@ async function described(pc: RTCPeerConnection) {
 export function webrtcTransport(): Transport & { invites: Invites } {
   const me = crypto.randomUUID(),
     links = new Map<string, Link>(), // the players connected, by id
-    pending = new Map<string, Link>(); // invites out, by invite id, waiting for their reply
+    pending = new Map<string, Link>(), // invites out, by invite id, waiting for their reply
+    every = new Set<Link>(); // every link not closed yet, connected or not, for `close`
 
   // both ends make the same two channels, so neither waits for the other to open them
   function makeLink(): Link {
-    const pc = new RTCPeerConnection({ iceServers: iceServers() });
-    return {
-      pc,
-      reliable: pc.createDataChannel('reliable', { negotiated: true, id: 0 }),
-      fast: pc.createDataChannel('fast', { negotiated: true, id: 1, ordered: false, maxRetransmits: 0 }),
-    };
+    const pc = new RTCPeerConnection({ iceServers: iceServers() }),
+      link = {
+        pc,
+        reliable: pc.createDataChannel('reliable', { negotiated: true, id: 0 }),
+        fast: pc.createDataChannel('fast', { negotiated: true, id: 1, ordered: false, maxRetransmits: 0 }),
+      };
+    every.add(link);
+    return link;
   }
 
-  // who the other end is comes from the code they sent, never from a message: nobody can speak as someone else
+  function shut(link: Link) {
+    every.delete(link);
+    link.pc.close();
+  }
+
+  // an id that is this player's or already in the room is refused: a code could otherwise take a player's place
+  function refuse(peer: string) {
+    if (peer === me) throw new Error('That is your own code. Send it to a friend.');
+    if (links.has(peer)) throw new Error('That friend is already here.');
+  }
+
+  // Who the other end is comes from the code they sent, never from a message, and is refused when it is taken: a
+  // message can't speak as another player. What the code says is still only the word of whoever wrote it.
   function connect(link: Link, peer: string) {
     const { pc, reliable, fast } = link;
     const gone = () => {
+      shut(link); // also a link that never opened: its friend never pasted the reply
       if (links.get(peer) !== link) return;
       links.delete(peer);
-      pc.close();
       transport.left(peer);
     };
     const hear = (e: MessageEvent) => {
@@ -144,8 +165,9 @@ export function webrtcTransport(): Transport & { invites: Invites } {
     };
     reliable.onmessage = fast.onmessage = hear;
     reliable.onopen = () => {
-      links.get(peer)?.pc.close(); // the same player connecting again
-      links.set(peer, link);
+      // two codes with one id, both pasted before either connected: the first to connect keeps it
+      if (links.has(peer)) shut(link);
+      else links.set(peer, link);
     };
     reliable.onclose = gone;
     pc.onconnectionstatechange = () => {
@@ -158,31 +180,40 @@ export function webrtcTransport(): Transport & { invites: Invites } {
     notice: stun
       ? 'Making a code asks ' + stun + ' for your public address. Your friend sees your address too.'
       : 'Making a code asks no server, so it only works on the same network. Your friend sees your address.',
+    get links() {
+      return links.size;
+    },
     async invite() {
       const link = makeLink(),
         invite = crypto.randomUUID();
       await link.pc.setLocalDescription(await link.pc.createOffer());
       pending.set(invite, link);
-      return pack({ from: me, invite, type: 'offer', sdp: await described(link.pc) });
+      for (const [id, old] of pending) {
+        if (pending.size <= MAX_PENDING) break;
+        pending.delete(id);
+        shut(old);
+      }
+      return pack({ from: me, invite, type: 'offer', sdp: await described(link.pc), build: __BUILD__ });
     },
     async accept(code) {
       const offer = await unpack(code, 'offer');
-      if (offer.from === me) throw new Error('That is your own invite. Send it to a friend.');
+      refuse(offer.from);
       const link = makeLink();
       try {
         await link.pc.setRemoteDescription({ type: 'offer', sdp: offer.sdp });
         await link.pc.setLocalDescription(await link.pc.createAnswer());
       } catch {
-        link.pc.close();
+        shut(link);
         throw new Error('That invite code is damaged. Ask for a new one.');
       }
       connect(link, offer.from);
-      return pack({ from: me, invite: offer.invite, type: 'answer', sdp: await described(link.pc) });
+      return pack({ from: me, invite: offer.invite, type: 'answer', sdp: await described(link.pc), build: __BUILD__ });
     },
     async finish(code) {
       const answer = await unpack(code, 'answer'),
         link = pending.get(answer.invite);
       if (!link) throw new Error('That reply is to another invite. Make a new invite and try again.');
+      refuse(answer.from);
       try {
         await link.pc.setRemoteDescription({ type: 'answer', sdp: answer.sdp });
       } catch {
@@ -211,7 +242,7 @@ export function webrtcTransport(): Transport & { invites: Invites } {
     receive: () => {},
     left: () => {},
     close() {
-      for (const link of [...links.values(), ...pending.values()]) link.pc.close();
+      for (const link of every) shut(link);
     },
   };
   addEventListener('pagehide', transport.close);
