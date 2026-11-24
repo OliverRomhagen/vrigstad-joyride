@@ -163,7 +163,7 @@ describe('Plåt-Pelle mends the car on the lift', () => {
   it('names his price for the damage, and mends the car once you pay', () => {
     const t = skroten({ model: 'volvo240', car: { dmg: 50 }, kr: 500 });
     t.driveOntoLift();
-    expect(t.s.repairs()).toBe(200);
+    expect(t.s.repairKr()).toBe(200);
     expect(t.s.open()).toBe(true);
     expect(t.menu()!.kind).toBe('skrot-fix');
     expect(t.menu()!.title).toContain(fmtKr(200));
@@ -189,13 +189,15 @@ describe('Plåt-Pelle mends the car on the lift', () => {
     expect(broke.calls.at(-1)).toContain('Kom tebaks när du har pengarna');
   });
 
-  it('opens nothing and says nothing for a whole car, so E gets you out', () => {
-    const t = skroten({ car: { dmg: 0 }, kr: 1000 });
-    t.driveOntoLift();
-    expect(t.s.repairs()).toBeNull();
-    expect(t.s.open()).toBe(false);
-    expect(t.menu()).toBeNull();
-    expect(t.calls).toEqual([]);
+  it('opens nothing and says nothing for a whole car, so E gets you out, even a police car or with the police after you', () => {
+    for (const o of [{}, { car: { type: 'polis' } }, { stars: 1 }] as const) {
+      const t = skroten({ ...o, car: { dmg: 0, ...('car' in o ? o.car : {}) }, kr: 1000 });
+      t.driveOntoLift();
+      expect(t.s.repairKr()).toBeNull();
+      expect(t.s.open()).toBe(false);
+      expect(t.menu()).toBeNull();
+      expect(t.calls).toEqual([]);
+    }
   });
 
   it('names the new price instead of taking it when the car took more damage with the menu open', () => {
@@ -229,7 +231,7 @@ describe('Plåt-Pelle mends the car on the lift', () => {
     ] as const) {
       const t = skroten({ ...o, kr: 1000 } as Parameters<typeof skroten>[0]);
       t.driveOntoLift();
-      expect(t.s.repairs()).toBeNull();
+      expect(t.s.repairKr()).toBeNull();
       expect(t.s.open()).toBe(false);
       expect(t.menu()).toBeNull();
       expect(t.calls.at(-1)).toContain(says);
@@ -239,7 +241,7 @@ describe('Plåt-Pelle mends the car on the lift', () => {
   it('offers nothing off the lift, keeps the menu only while the car stands on it, and mends none that left', () => {
     const t = skroten({ car: { dmg: 50 }, kr: 500 });
     t.leaveRing();
-    expect(t.s.repairs()).toBeNull();
+    expect(t.s.repairKr()).toBeNull();
     expect(t.s.open()).toBe(false);
     t.driveOntoLift();
     t.s.open();

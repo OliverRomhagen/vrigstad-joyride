@@ -28,6 +28,14 @@ export const KIOSK = { x: -13, z: 25.5, w: 3, d: 2.2, counterZ: 2.3 } as const;
 /** Skroten: its ring, just inside the yard's gate on the south side of Stockarydsvägen (skroten-yard.ts). */
 export const SKROTEN = yardToWorld(RING_UV.u, RING_UV.v);
 
+/** Where `go` takes you; `h` turns the car you drive that way when you get there (a car's heading, radians). */
+export interface GoSpot {
+  x: number;
+  z: number;
+  name: string;
+  h?: number;
+}
+
 export interface Place {
   kind: 'safe' | 'kiosk' | 'skrot';
   name: string;
@@ -117,10 +125,10 @@ export class Places {
    */
   registerCommands(
     commands: Pick<Commands, 'register'>,
-    goTo: (x: number, z: number, name: string) => string,
-    more: Readonly<Record<string, { x: number; z: number; name: string }>> = {},
+    goTo: (x: number, z: number, name: string, h?: number) => string,
+    more: Readonly<Record<string, GoSpot>> = {},
   ) {
-    const spots = new Map<string, { x: number; z: number; name: string }>([['torget', { ...HOME, name: 'Torget' }]]);
+    const spots = new Map<string, GoSpot>([['torget', { ...HOME, name: 'Torget' }]]);
     for (const p of this.list) spots.set(p.kind === 'kiosk' ? 'kiosk' : p.name.toLowerCase(), p);
     for (const [key, spot] of Object.entries(more)) spots.set(key, spot);
     const names = [...spots.keys()];
@@ -135,7 +143,7 @@ export class Places {
         ],
         run: ({ place }) => {
           const spot = spots.get(place)!; // choice() only gives back a name from the list
-          return goTo(spot.x, spot.z, spot.name);
+          return goTo(spot.x, spot.z, spot.name, spot.h);
         },
       }),
     );

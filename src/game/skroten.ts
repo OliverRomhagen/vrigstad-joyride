@@ -13,9 +13,9 @@ const OWNER_SAYS = 'Plåt-Pelle: ';
 const OWNER_AT = yardToWorld(OWNER_UV.u, OWNER_UV.v);
 const TALK_M = 3; // how close you stand to talk to him
 const SALE_REACH_M = 5; // his price stays on the plate while you stand this close to the car; a little over the reach to get in
-const WHOLE = OWNER_SAYS + '”Den ä ju hel! Dä finns inget å laga.”';
 const NO_POLICE = OWNER_SAYS + '”En polisbil? Ä du inte klok? Den rör ja inte.”';
 const CHASED = OWNER_SAYS + '”Inte mä snuten i hälarna! Kom tebaks när du ä av mä dom.”';
+const SHORT = (kr: number) => OWNER_SAYS + '”' + fmtKr(kr) + ', sa ja. Kom tebaks när du har pengarna.”';
 /** What he says when you talk to him on foot, one after the other. */
 export const OWNER_LINES = [
   '”Tjena! Har du nån bil du vill bli av mä? Kör in den på ringen.”',
@@ -63,12 +63,11 @@ export class Skroten {
     return carPrice(c.type, this.g.modelId(c), c.dmg) ?? NO_POLICE;
   }
 
-  // what Plåt-Pelle asks to mend c, or the reason he won't
+  // what Plåt-Pelle asks to mend c, or the reason he won't; 0 for a car with no damage, before any reason, so a whole car on the lift gets no word
   private repairQuote(c: Car): number | string {
+    if (c.dmg <= 0) return 0;
     if (this.g.stars) return CHASED;
-    const kr = repairPrice(c.type, this.g.modelId(c), c.dmg);
-    if (kr === null) return NO_POLICE;
-    return kr || WHOLE;
+    return repairPrice(c.type, this.g.modelId(c), c.dmg) ?? NO_POLICE;
   }
 
   // the car you drive stands on the lift
@@ -129,7 +128,7 @@ export class Skroten {
   private openRepair(c: Car) {
     const { openMenu, toast, carName } = this.g,
       kr = this.repairQuote(c);
-    if (kr === WHOLE) return false; // nothing to mend: E gets you out, as the prompt says, without a word every time
+    if (kr === 0) return false; // nothing to mend: E gets you out, as the prompt says, without a word every time
     if (typeof kr === 'string') {
       toast(kr, 3.5);
       return false;
@@ -157,7 +156,7 @@ export class Skroten {
     const kr = this.repairQuote(c);
     if (typeof kr === 'number' && kr !== shown) this.openRepair(c);
     else if (typeof kr === 'string') toast(kr, 3.5);
-    else if (!pay(wallet, kr)) toast(OWNER_SAYS + '”' + fmtKr(kr) + ', sa ja. Kom tebaks när du har pengarna.”', 3.5);
+    else if (!pay(wallet, kr)) toast(SHORT(kr), 3.5);
     else {
       c.dmg = 0;
       toast(OWNER_SAYS + '”Så där! Som ny. Nästan.” −' + fmtKr(kr) + '.', 4);
@@ -165,11 +164,11 @@ export class Skroten {
   }
 
   /** The car you drive stands on the lift and has damage Plåt-Pelle would mend: his price, else null. */
-  repairs(): number | null {
+  repairKr(): number | null {
     const c = this.g.game.pcar;
     if (!this.onLift(c)) return null;
     const kr = this.repairQuote(c);
-    return typeof kr === 'number' ? kr : null;
+    return typeof kr === 'number' ? kr || null : null;
   }
 
   /** The car you drive stands on the ring, and Skroten would make an offer for it. */
@@ -230,7 +229,7 @@ export class Skroten {
       return;
     }
     const kr = c.saleKr;
-    if (!pay(wallet, kr)) toast(OWNER_SAYS + '”' + fmtKr(kr) + ', sa ja. Kom tebaks när du har pengarna.”', 3.5);
+    if (!pay(wallet, kr)) toast(SHORT(kr), 3.5);
     else {
       c.saleKr = 0;
       c.owned = true;

@@ -686,6 +686,9 @@ test.describe('game (index.html)', () => {
     }
     await expect(page.locator('#devcon li').last()).toHaveText('Car damage: 60.');
     await page.keyboard.press('Escape');
+    const { lift, carAt } = await state(page);
+    expect(Math.hypot(carAt.x - lift.x, carAt.z - lift.z)).toBeLessThan(1.85); // on the ring (LIFT_RING_M)
+    expect(Math.sin(carAt.h) * lift.inX - Math.cos(carAt.h) * lift.inZ).toBeCloseTo(1); // nose in from the door: the body fits between the posts
     await expect.poll(async () => (await state(page)).carCrack).toBe(2);
     await expect(page.locator('#prompt')).toHaveText('ERepair the Volvo 240 · 240 riksdaler');
     await page.keyboard.press('KeyE');

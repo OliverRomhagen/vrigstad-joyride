@@ -30,7 +30,6 @@ import { FURNITURE_OVERRIDES } from '../world/furniture/overrides';
 import { furnitureExclusions, placeFurniture } from '../world/furniture/placement';
 import { StreetFurniture } from '../world/mesh/street-furniture';
 import { classifyStreetscape } from '../world/streetscape-rules';
-import { col } from '../world/three-legacy';
 import { treeSpots } from '../world/trees';
 import { layoutShore } from '../world/shore';
 import { Water } from '../world/water';
@@ -291,7 +290,7 @@ const wanted = new Wanted({ roads, rnd, pick, removeCar, drive, toast,
 // ---------- places: safehouses (lie low to lose your stars) and the trisslott kiosk ----------
 // the getter is read when a place uses it, so it follows the stars
 const places = new Places({ footprints: bPolys, roads: R, police: wanted.police, lieLow: secs => wanted.lieLow(secs), toast, get stars() { return wanted.stars; } });
-const placeMeshes = new PlaceMeshes({ scene, places, heightAt: hAt, col, boxGeo, paintMat, glass: GLASS });
+const placeMeshes = new PlaceMeshes({ scene, places, heightAt: hAt, boxGeo, paintMat, glass: GLASS });
 const skrotenMeshes = new SkrotenMeshes({ scene, heightAt: hAt, layout: yard, coarse, carModel: d => vehicleVisuals.template(d) });
 const priceTags = new PriceTags({ doc: document, cars, visibleModel: c => vehicleVisuals.visibleModel(c) });   // Plåt-Pelle's price in the rear windows on his lot
 addFootprint([KIOSK.x - KIOSK.w / 2, KIOSK.z - KIOSK.d / 2, KIOSK.x + KIOSK.w / 2, KIOSK.z - KIOSK.d / 2, KIOSK.x + KIOSK.w / 2, KIOSK.z + KIOSK.d / 2, KIOSK.x - KIOSK.w / 2, KIOSK.z + KIOSK.d / 2]);   // the kiosk collides like a building
@@ -346,9 +345,9 @@ registerHealthCommands(commands, health, drawHealth);
 registerCarDamageCommand(commands, () => (game.inCar ? game.pcar : null));
 registerTunableCommands(commands, tunables);
 // go <place>: you, or the car you drive, straight there, out of any safehouse first
-places.registerCommands(commands, (x, z, name) => { leaveHouse(); const c = game.inCar ? game.pcar : null;
-  if (c) { c.x = x; c.z = z; c.v = c.slip = c.drift = c.boost = 0; c.vh = c.h; placeCar(meshed(c)); } else { player.x = x; player.z = z; player.speed = 0; } return 'You are at ' + name + '.'; },
-  yard.workshop ? { verkstan: { x: yard.workshop.bay.x, z: yard.workshop.bay.z, name: "Plåt-Pelle's lift" } } : {});   // go verkstan: onto the lift
+places.registerCommands(commands, (x, z, name, h) => { leaveHouse(); const c = game.inCar ? game.pcar : null;
+  if (c) { c.x = x; c.z = z; if (h !== undefined) c.h = h; c.v = c.slip = c.drift = c.boost = 0; c.vh = c.h; placeCar(meshed(c)); } else { player.x = x; player.z = z; player.speed = 0; } return 'You are at ' + name + '.'; },
+  yard.workshop ? { verkstan: { x: yard.workshop.bay.x, z: yard.workshop.bay.z, name: "Plåt-Pelle's lift", h: Math.atan2(yard.workshop.bay.inX, -yard.workshop.bay.inZ) } } : {});   // go verkstan: onto the lift, nose in from the door, so the body fits between the posts
 fleet.registerCommands(commands, CIVILIAN_CAR_TYPES, () => view.camYaw, c => carName(c));   // car <model>
 debugOverlay?.registerCommands(commands);
 
@@ -388,7 +387,7 @@ function hurtPlayer(n: number) { if (!canHurt(health, n)) return; const was = he
   if (was >= LOW_HP && health.hp < LOW_HP && health.hp > 0) loop.sayLater('”Ja behöver nog en korv me brö.”'); }   // a hint at the kiosk
 
 // ---------- the E prompt and the speed plate (src/game/prompt.ts) ----------
-const prompt = new ActionPrompt({ $, game, places, wanted, get menuOpen() { return !kmenu.hidden; }, coarse, nearPlace, skrotenBuys: () => skroten.buys(), skrotenRepairs: () => skroten.repairs(), nearOwner: () => skroten.nearOwner(nearestCar()), nearCat, nearestCar, catFirst, carName, esc });
+const prompt = new ActionPrompt({ $, game, places, wanted, get menuOpen() { return !kmenu.hidden; }, coarse, nearPlace, skrotenBuys: () => skroten.buys(), skrotenRepairKr: () => skroten.repairKr(), nearOwner: () => skroten.nearOwner(nearestCar()), nearCat, nearestCar, catFirst, carName, esc });
 
 // ---------- main loop (src/game/loop.ts) ----------
 const loop = new GameLoop({ $, renderer, scene, camera, canvas, coarse, half: HALF, game, view, player, health, input, places, wanted, cars, startCam: START_CAM, barMat, barColours: [BAR_BLUE, BAR_RED], cameraRig: { update: placeCamera },

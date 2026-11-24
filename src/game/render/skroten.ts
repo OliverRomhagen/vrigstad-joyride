@@ -26,13 +26,13 @@ import {
   yardToWorld,
 } from '../skroten-yard';
 import { boxGeo, carGeo, mergeGeo, type Person, paintMat, personParts } from './models';
-import { SKROT_COLOUR } from './places';
+import { ringMaterial, SKROT_COLOUR } from './places';
 import { BODY_NODE, CIVILIAN_CAR_TYPES, VEHICLES } from './vehicle-registry';
 
 /** One box: size, position and colour, as boxGeo takes it. */
 type BoxPart = [sx: number, sy: number, sz: number, x: number, y: number, z: number, colour: string];
 
-const LIFT_RING_LIFT_M = 0.02; // the lift's ring stands this far off the floor
+const LIFT_RING_FLOAT_M = 0.02; // the lift's ring stands this far off the floor
 const PANEL_M = 3; // a sheet of the fence, and the gap between its posts
 const SELLS_MIN_W_M = 1.5; // the SÄLJER BILAR board is left out where the fence leaves it less room than this
 const FENCE_COLOURS = ['#8b8f91', '#9a6a4a', '#6f7c86', '#a3a7a3', '#7e4a30', '#86847a'];
@@ -432,15 +432,11 @@ function liftRing(ws: Workshop) {
   geo.rotateX(-Math.PI / 2);
   // each corner on the floor, which slopes (some 8 % along the bay): a flat ring would sink in at one end and float at the other
   const pos = geo.getAttribute('position');
-  for (let i = 0; i < pos.count; i++) pos.setY(i, bx * pos.getX(i) + cz * pos.getZ(i) + LIFT_RING_LIFT_M);
+  for (let i = 0; i < pos.count; i++) pos.setY(i, bx * pos.getX(i) + cz * pos.getZ(i) + LIFT_RING_FLOAT_M);
   geo.computeVertexNormals();
   const ring = new THREE.Mesh(
     geo,
-    new THREE.MeshBasicMaterial({
-      color: new THREE.Color(SKROT_COLOUR).convertSRGBToLinear(),
-      transparent: true,
-      opacity: 0.8,
-      depthWrite: false,
+    Object.assign(ringMaterial(SKROT_COLOUR), {
       polygonOffset: true, // drawn over the floor it lies on, even far off where depth is coarse
       polygonOffsetFactor: -4,
       polygonOffsetUnits: -4,

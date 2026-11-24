@@ -8,6 +8,15 @@ const SAFE_COLOUR = 0x4fd27a,
   KIOSK_COLOUR = 0xf2c230;
 /** Skroten's rings, on the yard and on the workshop's lift (sRGB). */
 export const SKROT_COLOUR = 0xd2692f;
+/** A place's see-through ring; the workshop lift's ring is made from it too, so the rings stay alike when one is retuned. */
+export const ringMaterial = (colour: number) =>
+  new THREE.MeshBasicMaterial({
+    color: new THREE.Color(colour).convertSRGBToLinear(),
+    transparent: true,
+    opacity: 0.8,
+    side: THREE.DoubleSide,
+    depthWrite: false,
+  });
 const SKROT_RING_SCALE = 3; // Skroten's ring is this much wider than the others, round a car
 const GEM_SPIN = 1.6; // rad/s
 const WHITE = '#e8e2d2',
@@ -22,7 +31,6 @@ export interface PlaceMeshDeps {
   scene: THREE.Scene;
   places: Pick<Places, 'list' | 'doors'>;
   heightAt(x: number, z: number): number;
-  col(c: number): THREE.Color; // an sRGB colour in linear space
   boxGeo(parts: BoxPart[]): THREE.BufferGeometry;
   paintMat: THREE.Material; // vertex colours
   glass: string;
@@ -42,13 +50,7 @@ export class PlaceMeshes {
       // each building goes in just before its ring and gem
       if (p.kind === 'safe') scene.add(door(g.places.doors[doorI++], heightAt, boxGeo, paintMat));
       else if (p.kind === 'kiosk') scene.add(kiosk(heightAt, boxGeo, paintMat, g.glass));
-      const mat = new THREE.MeshBasicMaterial({
-        color: g.col(p.kind === 'safe' ? SAFE_COLOUR : p.kind === 'kiosk' ? KIOSK_COLOUR : SKROT_COLOUR),
-        transparent: true,
-        opacity: 0.8,
-        side: THREE.DoubleSide,
-        depthWrite: false,
-      });
+      const mat = ringMaterial(p.kind === 'safe' ? SAFE_COLOUR : p.kind === 'kiosk' ? KIOSK_COLOUR : SKROT_COLOUR);
       const y = heightAt(p.x, p.z),
         ring = new THREE.Mesh(ringGeo, mat),
         gem = new THREE.Mesh(gemGeo, mat);

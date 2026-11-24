@@ -18,7 +18,7 @@ export interface ActionPromptDeps {
   coarse: boolean; // a touch screen: no "Get out" prompt, the E button says it
   nearPlace(): Place | null;
   skrotenBuys(): boolean; // the car you drive stands on Skroten's ring, and Skroten would buy it
-  skrotenRepairs(): number | null; // what Plåt-Pelle asks to mend the car you drive on the workshop's lift; null when he wouldn't
+  skrotenRepairKr(): number | null; // what Plåt-Pelle asks to mend the car you drive on the workshop's lift; null when he wouldn't
   nearOwner(): boolean; // you stand on foot next to Plåt-Pelle
   nearCat(): Cat | null;
   nearestCar(): Car | null;
@@ -44,7 +44,7 @@ export class ActionPrompt {
       coarse,
       nearPlace,
       skrotenBuys,
-      skrotenRepairs,
+      skrotenRepairKr,
       nearOwner,
       nearCat,
       nearestCar,
@@ -56,7 +56,7 @@ export class ActionPrompt {
       pl = game.started && !places.inside ? nearPlace() : null,
       kt = game.started ? nearCat() : null,
       c = game.started && !game.inCar && !places.inside ? nearestCar() : null,
-      repairKr = game.inCar ? skrotenRepairs() : null;
+      repairKr = game.inCar ? skrotenRepairKr() : null;
     $('hide').hidden = !places.inside;
     if (places.inside) {
       $('hide').innerHTML = wanted.stars
