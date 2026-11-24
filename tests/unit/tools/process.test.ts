@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { copyFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import {
   CrossingKind,
   FurnitureCode,
@@ -77,7 +77,7 @@ const street = way(
 const elements = [
   way(48762655, church, { building: 'church' }),
   // the bank museum, moved off Jönköpingsvägen; centred where BUILDING_SHIFT expects its outline
-  way(48807861, ring(-80.4, -24.1, 10, 10), { building: 'yes' }),
+  way(48807861, ring(-80.5, -26.1, 10, 10), { building: 'yes' }),
   street,
   street, // a duplicate, as a union of selectors can return
   { type: 'way', id: 2, nodes: [1, 2], tags: { highway: 'residential' } }, // no geometry: skipped, not a crash
@@ -159,19 +159,28 @@ const elements = [
   ),
 ];
 
-let dir = '';
+// runs tools/process.py on an Overpass answer in a temp dir; a failed assert throws with the script's stderr
+const runProcess = (els: readonly unknown[]) => {
+  const dir = mkdtempSync(join(tmpdir(), 'process-'));
+  try {
+    copyFileSync('data/raw/tile.png', join(dir, 'tile.png'));
+    writeFileSync(join(dir, 'osm.json'), JSON.stringify({ elements: els }));
+    const log = execFileSync('python3', ['tools/process.py', dir, join(dir, 'out.json')], {
+      encoding: 'utf8',
+      stdio: 'pipe',
+    });
+    return { log, out: JSON.parse(readFileSync(join(dir, 'out.json'), 'utf8')) as WorldData };
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+};
+
 let out: WorldData;
 let log = '';
 
 beforeAll(() => {
-  dir = mkdtempSync(join(tmpdir(), 'process-'));
-  copyFileSync('data/raw/tile.png', join(dir, 'tile.png'));
-  writeFileSync(join(dir, 'osm.json'), JSON.stringify({ elements }));
-  log = execFileSync('python3', ['tools/process.py', dir, join(dir, 'out.json')], { encoding: 'utf8' });
-  out = JSON.parse(readFileSync(join(dir, 'out.json'), 'utf8'));
+  ({ out, log } = runProcess(elements));
 });
-
-afterAll(() => rmSync(dir, { recursive: true, force: true }));
 
 describe('tools/process.py street furniture data', () => {
   it('keeps mapped lamps, benches, bins and bus stops, with a bench direction when it parses', () => {
@@ -195,29 +204,29 @@ describe('tools/process.py street furniture data', () => {
 
 describe('tools/process.py buildings', () => {
   it('moves an outline listed in BUILDING_SHIFT by its offset', () => {
-    expect(out.b.map(b => b.p)).toContainEqual([-81.9, -29.1, -71.9, -29.1, -71.9, -19.1, -81.9, -19.1]);
+    expect(out.b.map(b => b.p)).toContainEqual([-82, -31.1, -72, -31.1, -72, -21.1, -82, -21.1]);
   });
 
-  // runs process.py on the fixture with the bank museum's way replaced (or left out, for undefined)
-  const processWithMuseum = (museum: ReturnType<typeof way> | undefined) => {
-    const alt = mkdtempSync(join(tmpdir(), 'process-'));
-    try {
-      copyFileSync('data/raw/tile.png', join(alt, 'tile.png'));
-      const els = elements.flatMap(e => (e.type === 'way' && e.id === 48807861 ? (museum ? [museum] : []) : [e]));
-      writeFileSync(join(alt, 'osm.json'), JSON.stringify({ elements: els }));
-      execFileSync('python3', ['tools/process.py', alt, join(alt, 'out.json')], { stdio: 'pipe' });
-    } finally {
-      rmSync(alt, { recursive: true, force: true });
-    }
-  };
+  // the fixture with the bank museum's way replaced, or dropped for undefined
+  const withMuseum = (museum: ReturnType<typeof way> | undefined) =>
+    elements.flatMap(e => (e.type === 'way' && e.id === 48807861 ? (museum ? [museum] : []) : [e]));
+  const museumRing = ring(-80.5, -26.1, 10, 10);
 
   it('fails the build when a listed outline was re-traced', () => {
-    const retraced = way(48807861, ring(-79.4, -24.1, 10, 10), { building: 'yes' }); // 1 m east
-    expect(() => processWithMuseum(retraced)).toThrow(/way 48807861 was re-traced/);
+    const retraced = way(48807861, ring(-79.5, -26.1, 10, 10), { building: 'yes' }); // 1 m east
+    expect(() => runProcess(withMuseum(retraced))).toThrow(/way 48807861 was re-traced/);
   });
 
-  it('fails the build when a listed way is missing from osm.json', () => {
-    expect(() => processWithMuseum(undefined)).toThrow(/BUILDING_SHIFT ways missing from osm.json: \{48807861\}/);
+  it('keeps a listed outline that only gained a corner on an edge', () => {
+    const [a, b, ...rest] = museumRing;
+    const entrance = way(48807861, [a, [(a[0] + b[0]) / 2, a[1]], b, ...rest], { building: 'yes' });
+    expect(() => runProcess(withMuseum(entrance))).not.toThrow();
+  });
+
+  it('fails the build when a listed way is no longer a building outline', () => {
+    const msg = /BUILDING_SHIFT ways not found as building outlines in osm\.json: \{48807861\}/;
+    expect(() => runProcess(withMuseum(undefined))).toThrow(msg);
+    expect(() => runProcess(withMuseum(way(48807861, museumRing, { amenity: 'bank' })))).toThrow(msg);
   });
 });
 

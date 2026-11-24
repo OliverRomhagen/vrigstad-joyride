@@ -170,6 +170,16 @@ def centroid(pts):
     return (sum(p[0] for p in pts) / len(pts), sum(p[1] for p in pts) / len(pts))
 
 
+def area_centroid(ring):
+    """The centroid of the shape, not of its corners: a corner added on an edge doesn't move it."""
+    a = cx = cz = 0.0
+    for i in range(len(ring)):
+        (x0, z0), (x1, z1) = ring[i - 1], ring[i]
+        c = x0 * z1 - x1 * z0
+        a += c; cx += (x0 + x1) * c; cz += (z0 + z1) * c
+    return cx / (3 * a), cz / (3 * a)
+
+
 def length(pts):
     return sum(math.dist(pts[i - 1], pts[i]) for i in range(1, len(pts)))
 
@@ -391,16 +401,16 @@ LEIS = {'pitch': 6, 'playground': 3, 'sports_centre': 3, 'park': 3}
 SHORT = {'Best Western Hotell Vrigstad Värdshus': 'Vrigstad Värdshus', 'Torget Vrigstad': 'Torget',
          'Tallåsen, Vrigstads Idrottsplats': 'Tallåsen idrottsplats', 'Hagabanan - Vrigstad Motorklubb': 'Hagabanan'}
 CHURCH_WAY = 48762655   # Vrigstad kyrka; its tower is split out of this way's outline
-# outlines moved (dx, dz) m off the carriageway they were traced onto, each with the centroid (cx, cz) of the outline
-# it was tuned on. shortcut: a fixed offset; a re-traced way moves its centroid and fails the build, so re-check the
+# outlines moved (dx, dz) m off the carriageway they were traced onto, each with the area centroid (cx, cz) of the
+# outline it was tuned on. shortcut: a fixed offset; a re-traced way moves its centroid and fails the build, so re-check the
 # offset then (our roads are wider than the real ones, so a correct outline may still need a small one)
 BUILDING_SHIFT = {
     # the old bank museum on Jönköpingsvägen, west of the Emån bridge: traced in 2010 (v1) about 3 m south, onto
     # the road; moved north until a full sidewalk fits between its front wall and the 9 m carriageway (the road is
-    # drawn wider than it is, so further than the aerial alone), and west to keep clear of the driveway behind it
-    48807861: (-1.5, -5, -75.4, -19.1),
+    # drawn wider than it is, so further than the aerial alone), and west so it only grazes the driveway behind it
+    48807861: (-1.5, -5, -75.5, -21.1),
 }
-shifted = set()   # BUILDING_SHIFT ways found in osm.json
+shifted = set()   # BUILDING_SHIFT ways found as building outlines
 buildings, roads, water, waterways, land, labels = [], [], [], [], [], {}
 parking_areas, parking_spaces, crossings, kerbs, trees, furniture = [], [], [], [], [], []
 road_nodes = []              # per road: the OSM node id of each kept vertex, None where clipping made the vertex
@@ -482,7 +492,7 @@ for e in elements:
     if 'building' in t:
         if ring and e['type'] == 'way' and e['id'] in BUILDING_SHIFT:
             dx, dz, cx, cz = BUILDING_SHIFT[e['id']]
-            mx, mz = centroid(ring)
+            mx, mz = area_centroid(ring)
             assert math.hypot(mx - cx, mz - cz) < 0.5, f'way {e["id"]} was re-traced: re-check its BUILDING_SHIFT'
             ring = [(x + dx, z + dz) for x, z in ring]
             shifted.add(e['id'])
@@ -570,7 +580,7 @@ for e in elements:
             land.append({'k': k, 'p': flat(r)})
 
 assert sum('s' in b for b in buildings) == 1, f'church way {CHURCH_WAY} missing from osm.json'
-assert shifted == set(BUILDING_SHIFT), f'BUILDING_SHIFT ways missing from osm.json: {set(BUILDING_SHIFT) - shifted}'
+assert shifted == set(BUILDING_SHIFT), f'BUILDING_SHIFT ways not found as building outlines in osm.json: {set(BUILDING_SHIFT) - shifted}'
 
 # ---------- crossing and kerb nodes, tied to road vertices through the ways' node lists ----------
 on_roads = collections.defaultdict(list)          # node id -> [(class, road index, vertex index)], carriageways only
