@@ -2,6 +2,13 @@
 # Git detects binary files (models, images) itself and leaves them alone.
 * text=auto eol=lf
 
-# Generated files: GitHub collapses them in review diffs and leaves them out of language stats.
-# data/vrigstad.json is built by tools/process.py.
+# Generated and vendored files: GitHub leaves both out of language stats and collapses the generated ones in review
+# diffs, and the Claude review leaves both out (.github/workflows/claude-review.yml, which reads this file from main).
+# data/vrigstad.json is built by tools/process.py, from data/raw/, which tools/fetch.sh downloads.
+# Mark exact paths, or folders only tools write, never a pattern any file can match: *.min.js would let a PR keep its
+# own code out of the review just by its name. A file a PR adds under a marked folder is left out too, so keep those
+# folders few.
 data/vrigstad.json linguist-generated=true
+data/raw/** linguist-vendored=true
+# The review still lists a package-lock.json changed without its package.json as one to read by hand.
+package-lock.json linguist-generated=true
