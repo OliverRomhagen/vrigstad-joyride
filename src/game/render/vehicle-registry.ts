@@ -2,6 +2,7 @@ import type { CarType } from '../sim/vehicle-spec';
 
 // Metres, +Y up, -Z forward; normalized exports share these node names. rearAxle is metres behind the model's centre.
 // length is the model's, measured along Z; width is the body's without mirrors, from the car's spec sheet: the hitbox (#201).
+// height is the roof's, from the spec sheet too: what you stand on up there (#451).
 export const BODY_NODE = 'body';
 export const WHEEL_NODES = ['wheel_fl', 'wheel_fr', 'wheel_rl', 'wheel_rr'] as const;
 export const VEHICLES = [
@@ -16,6 +17,7 @@ export const VEHICLES = [
     rearAxle: 1.23,
     length: 4.82,
     width: 1.71,
+    height: 1.46,
     police: false,
   },
   {
@@ -29,6 +31,7 @@ export const VEHICLES = [
     rearAxle: 1.257,
     length: 4.68,
     width: 1.69,
+    height: 1.42,
     police: false,
   },
   {
@@ -42,6 +45,7 @@ export const VEHICLES = [
     rearAxle: 1.393,
     length: 4.74,
     width: 1.86,
+    height: 1.56,
     // a tall, heavy estate on the Saab's type: slower to answer, softer and leaning more
     handling: { steerResponseS: 0.14, throttleResponseS: 0.25 },
     suspension: {
@@ -65,6 +69,7 @@ export const VEHICLES = [
     rearAxle: 1.393,
     length: 4.74,
     width: 1.86,
+    height: 1.56,
     police: true,
   },
   {
@@ -78,6 +83,7 @@ export const VEHICLES = [
     rearAxle: 1.2294,
     length: 5.49,
     width: 2.03,
+    height: 1.39,
     suspension: { freqHz: 1.0, damping: 0.45, rollPerAcc: 0.006, maxRollRad: 0.09 }, // a soft American barge
     police: false,
   },
@@ -92,6 +98,7 @@ export const VEHICLES = [
     rearAxle: 1.2275,
     length: 3.7,
     width: 1.59,
+    height: 1.42,
     suspension: { freqHz: 1.9, rollPerAcc: 0.004 }, // short, light and busy
     police: false,
   },
@@ -106,6 +113,7 @@ export const VEHICLES = [
     rearAxle: 1.5,
     length: 4.1,
     width: 1.6,
+    height: 1.55,
     police: false,
   },
 ] as const satisfies readonly (Record<string, unknown> & { archetype: CarType })[];

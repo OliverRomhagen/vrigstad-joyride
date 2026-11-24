@@ -160,6 +160,7 @@ export function installTestHook(g: TestHookDeps) {
         x: player.x,
         z: player.z,
         y: player.y,
+        floor: player.floor, // how high what you stand on is: a car's top on a car (#451)
         yaw: view.camYaw,
         zoom: view.zoom,
         inCar: game.inCar,

@@ -7,7 +7,7 @@ import type { Car, Fleet, TrafficCar } from './cars';
 import { CRASH_COOL_S, type Health, impactSpeed, regen, runOverHurt } from './health';
 import type { Input } from './input';
 import type { Places } from './places';
-import { hop, type PlayerState, ride, walk } from './player';
+import { hop, type PlayerState, ride, standOn, walk } from './player';
 import type { Wanted } from './police';
 import type { CameraRig } from './render/camera-rig';
 import type { Person } from './render/models';
@@ -82,6 +82,7 @@ export class GameLoop {
   private readonly g: GameLoopDeps;
   private last = performance.now();
   private runOverAt = -9; // the player's own cooldown for being run over, apart from the cars' crash cooldowns
+  private stoodOn: { c: Car; x: number; z: number; h: number } | null = null; // the car you stood on last frame, and where it was
   private signT = 0;
   private blinkT = 0;
   private laterLine: string | null = null;
@@ -159,7 +160,20 @@ export class GameLoop {
     if (game.inCar && game.pcar) {
       g.drive(game.pcar, my, mx, !!keys.brake, dt, true);
       ride(player, game.pcar);
+      this.stoodOn = null;
     } else {
+      const was = this.stoodOn;
+      if (was) {
+        // the car you stand on moved since last frame, and turned: it carries you along (#451)
+        const dh = was.c.h - was.h,
+          ox = player.x - was.x,
+          oz = player.z - was.z,
+          cs = Math.cos(dh),
+          sn = Math.sin(dh);
+        player.x = was.c.x + ox * cs - oz * sn;
+        player.z = was.c.z + ox * sn + oz * cs;
+        player.h += dh;
+      }
       walk(
         player,
         dt,
@@ -174,8 +188,12 @@ export class GameLoop {
         g.half,
       );
       g.collide(player, 0.5);
+      let on: Car | null = null; // the car you stand on, or pull yourself up onto: it neither pushes you off nor runs you over
+      if (places.inside) player.floor = 0;
+      else on = standOn(player, cars);
       if (!places.inside)
         for (const c of cars) {
+          if (c === on) continue;
           if (Math.abs(player.x - c.x) > c.T.lengthM || Math.abs(player.z - c.z) > c.T.lengthM) continue;
           nearestOnSpine(c, player.x, player.z, _onCar);
           const dx = player.x - _onCar.x,
@@ -197,8 +215,9 @@ export class GameLoop {
         }
       const wetNow = g.inWater(player.x, player.z); // after this frame's move: take-off and wading depth follow where the player stands now
       hop(player, dt, jump && !wetNow && !places.inside && game.titleCardT <= 0); // on foot, Space and the touch Brake button jump
+      this.stoodOn = on && player.y === player.floor ? { c: on, x: on.x, z: on.z, h: on.h } : null;
       // walking: arms swing against the legs and the body bobs; in the air: legs apart and both arms up
-      const air = player.y > 0,
+      const air = player.y > player.floor,
         sw = air ? 0.5 : Math.sin(player.phase) * 0.75,
         lift = player.y + (air ? 0 : Math.abs(Math.sin(player.phase)) * 0.05),
         m = player.mesh,

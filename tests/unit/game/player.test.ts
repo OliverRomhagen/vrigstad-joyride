@@ -1,7 +1,19 @@
 import { describe, expect, it } from 'vitest';
-import { carInReach, hop, type PlayerState, standAt, stepOut, tooFastToGetOut, walk } from '../../../src/game/player';
+import {
+  type CarToStandOn,
+  carInReach,
+  carTopAt,
+  hop,
+  type PlayerState,
+  standAt,
+  standOn,
+  stepOut,
+  tooFastToGetOut,
+  walk,
+} from '../../../src/game/player';
+import { specFor } from '../../../src/game/sim/vehicle-spec';
 
-const you = (x = 0, z = 0): PlayerState => ({ x, z, y: 0, vy: 0, h: 0, speed: 0, phase: 0 });
+const you = (x = 0, z = 0): PlayerState => ({ x, z, y: 0, vy: 0, floor: 0, h: 0, speed: 0, phase: 0 });
 const car = (x: number, z: number, mode = 'parked', h = 0, v = 0) => ({ x, z, h, v, mode });
 const onFoot = { run: false, wet: false, still: false };
 // walks `secs` in 10 ms frames
@@ -82,5 +94,96 @@ describe('player', () => {
     hop(p, 0.1, true);
     standAt(p, 5, 6);
     expect(p).toMatchObject({ x: 5, z: 6, y: 0, vy: 0 });
+  });
+});
+
+// A parked Volvo at the origin, nose north (towards -z): its right side is +x, its roof runs from 1.95 m behind its middle to
+// 0.35 m ahead of it (z from 1.95 to -0.35), at 1.54 m; its bonnet and load deck are at 0.98 m.
+const volvo = (): CarToStandOn => ({ x: 0, z: 0, h: 0, T: specFor('volvo') });
+const DT = 1 / 60;
+// one frame on foot, as loop.ts runs it: you move, find what you stand on, then hop; `step` is how far you move this frame
+function frame(p: PlayerState, cars: CarToStandOn[], jump: boolean, step = { x: 0, z: 0 }) {
+  p.x += step.x;
+  p.z += step.z;
+  const on = standOn(p, cars);
+  hop(p, DT, jump);
+  return on;
+}
+
+describe('standing on cars (#451)', () => {
+  it("knows a car's top: the roof over its cabin, the bonnet and load deck at its ends", () => {
+    const c = volvo();
+    expect(carTopAt(c, 0, 1)).toBe(1.54); // under the roof
+    expect(carTopAt(c, 0, -1.5)).toBe(0.98); // the bonnet, ahead of the windscreen
+    expect(carTopAt(c, 0, 2.2)).toBe(0.98); // the load deck behind the roof
+  });
+
+  it('pulls you up onto the roof when you jump at the side of a car', () => {
+    const c = volvo(),
+      p = you(0.87 + 0.35, 1); // beside the right side, touching it (body radius 0.87, a person 0.4)
+    let on = frame(p, [c], true);
+    for (let i = 0; i < 60; i++) on = frame(p, [c], false);
+    expect(on).toBe(c);
+    expect(p.floor).toBe(1.54);
+    expect(p.y).toBe(1.54);
+    expect(Math.abs(p.x)).toBeLessThan(0.87); // in over the car, not floating beside it
+  });
+
+  it("doesn't climb a car you only walk into", () => {
+    const c = volvo(),
+      p = you(0.87 + 0.35, 1);
+    for (let i = 0; i < 30; i++) expect(frame(p, [c], false)).toBeNull();
+    expect(p.y).toBe(0);
+    expect(p.floor).toBe(0);
+  });
+
+  it("can't reach a roof higher than the jump and the pull-up together", () => {
+    const tractor: CarToStandOn = { x: 0, z: 0, h: 0, T: specFor('traktor') },
+      p = you(0.95 + 0.35, 0.7); // beside the cab, whose roof is 2.72 m up
+    frame(p, [tractor], true);
+    for (let i = 0; i < 60; i++) frame(p, [tractor], false);
+    expect(p.floor).toBe(0);
+    expect(p.y).toBe(0);
+  });
+
+  it('keeps you on the roof, lets you jump on it, and drops you when you walk off its edge', () => {
+    const c = volvo(),
+      p = you(0, 1);
+    p.y = p.floor = 1.54;
+    expect(frame(p, [c], false)).toBe(c);
+    expect(p.y).toBe(1.54);
+    frame(p, [c], true); // a hop on the roof
+    expect(p.y).toBeGreaterThan(1.54);
+    for (let i = 0; i < 60; i++) frame(p, [c], false);
+    expect(p.y).toBe(1.54); // back on the roof
+    frame(p, [c], false, { x: 1.4, z: 0 }); // off its right side, clear of it, as loop.ts's push out of cars leaves you
+    expect(p.floor).toBe(0);
+    for (let i = 0; i < 60; i++) frame(p, [c], false);
+    expect(p.y).toBe(0);
+  });
+
+  it('steps down from the roof onto the bonnet', () => {
+    const c = volvo(),
+      p = you(0, 0);
+    p.y = p.floor = 1.54;
+    frame(p, [c], false, { x: 0, z: -1 }); // ahead of the windscreen
+    for (let i = 0; i < 60; i++) frame(p, [c], false);
+    expect(p.y).toBe(0.98);
+  });
+
+  it('stops you at the windscreen when you walk from the bonnet into the roof', () => {
+    const c = volvo(),
+      p = you(0, -1.2);
+    p.y = p.floor = 0.98;
+    frame(p, [c], false, { x: 0, z: 1 }); // into the cabin, under the roof
+    expect(p.z).toBeCloseTo(-0.36, 2); // back at the windscreen
+    expect(p.y).toBe(0.98);
+  });
+
+  it('takes the roof height from the model a car wears, and keeps its roof in place on a longer one', () => {
+    const impala = specFor('volvo', { length: 5.49, width: 2.03, height: 1.39 });
+    expect(impala.roofM).toBe(1.39);
+    expect(impala.deckM).toBe(0.98);
+    expect(impala.roofRearM).toBeCloseTo((-1.95 * 5.49) / 4.8, 6);
   });
 });

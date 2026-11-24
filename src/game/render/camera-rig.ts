@@ -55,11 +55,14 @@ export class CameraRig {
     this.g.view.zoom = clamp(this.g.view.zoom * factor, ZOOM_MIN, ZOOM_MAX);
   };
 
-  /** Follows T, the player or the car they drive; `now` is the frame's time (ms), for the clouds. */
-  update(T: Point, now: number, dt: number) {
+  /**
+   * Follows T, the player or the car they drive; `now` is the frame's time (ms), for the clouds. On foot, `floor` is how high
+   * what you stand on is (a car's roof, #451): the camera rises with it, but not with every hop.
+   */
+  update(T: Point & { readonly floor?: number }, now: number, dt: number) {
     const { camera, sun, skyDome, game, view, groundAt, heightAt: hAt, rnd: dmgRnd } = this.g;
     let dist: number,
-      ty = groundAt(T.x, T.z);
+      ty = groundAt(T.x, T.z) + (T.floor ?? 0);
     if (!game.started) {
       view.camYaw = wrap(view.camYaw + dt * 0.07);
       dist = 46;
