@@ -31,13 +31,18 @@ export interface CameraRigDeps {
   rnd(): number; // the shake's own stream, shared with the smoke, since both roll every frame
   calmMotion: { readonly matches: boolean }; // prefers-reduced-motion
   readonly sunIntensity: number; // the sun's intensity for the time of day under a clear sky (Daylight.sunIntensity)
+  readonly showroom?: boolean; // ?lab=garage: the garage is open (#3), and the camera stays where you drag it round the car you drive
 }
+const SHOWROOM_DIST_M = 6.5, // close in: the workshop is narrow
+  SHOWROOM_LOOK_M = -0.4, // aims under the car, which lifts it in the frame, above the stats at the bottom
+  SHOWROOM_SIDE = -Math.PI / 2 - 0.6; // lookOff that puts the camera off the car's right front: its paint, rims and nose
 
 /** Places the camera every frame; `shake` jolts it after a crash. */
 export class CameraRig {
   private readonly g: CameraRigDeps;
   private shakeT = 0;
   private shakeM = 0;
+  private showing = false; // the garage's free camera was on last frame
 
   constructor(g: CameraRigDeps) {
     this.g = g;
@@ -59,12 +64,23 @@ export class CameraRig {
   update(T: Point, now: number, dt: number) {
     const { camera, sun, skyDome, game, view, groundAt, heightAt: hAt, rnd: dmgRnd } = this.g;
     let dist: number,
+      lookY = 1.5, // m over the ground the camera aims at
       ty = groundAt(T.x, T.z);
     if (!game.started) {
       view.camYaw = wrap(view.camYaw + dt * 0.07);
       dist = 46;
       view.camPitch = 0.42;
+    } else if (game.inCar && game.pcar && this.g.showroom) {
+      // a free camera: it comes round to the car's front corner as the garage opens, then dragging turns lookOff round the
+      // parked car, and nothing swings it back while the garage is open
+      if (!this.showing) view.lookOff = SHOWROOM_SIDE;
+      view.camYaw += wrap(game.pcar.h + view.lookOff - view.camYaw) * Math.min(1, dt * 4);
+      dist = SHOWROOM_DIST_M;
+      lookY = SHOWROOM_LOOK_M;
+      this.showing = true;
     } else if (game.inCar && game.pcar) {
+      if (this.showing) view.lookOff = 0; // out of the garage: back behind the car now, not through the workshop's walls
+      this.showing = false;
       view.lookIdle += dt;
       if (view.lookIdle > 1.2 && !this.g.dragging) view.lookOff *= 0.02 ** dt;
       view.camYaw += wrap(game.pcar.h - game.pcar.slip * 0.6 + view.lookOff - view.camYaw) * Math.min(1, dt * 4.5);
@@ -75,7 +91,7 @@ export class CameraRig {
       cx = T.x - Math.sin(view.camYaw) * dist * cp,
       cz = T.z + Math.cos(view.camYaw) * dist * cp;
     camera.position.set(cx, Math.max(ty + 1.5 + dist * Math.sin(view.camPitch), hAt(cx, cz) + 0.8), cz);
-    camera.lookAt(T.x, ty + 1.5, T.z);
+    camera.lookAt(T.x, ty + lookY, T.z);
     if (this.shakeT > 0) {
       this.shakeT -= dt;
       const k = Math.max(0, this.shakeT / SHAKE_S) ** 2 * this.shakeM * 2; // eases out, so the jolt fades instead of stopping dead

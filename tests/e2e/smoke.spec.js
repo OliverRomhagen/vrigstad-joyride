@@ -716,6 +716,40 @@ test.describe('game (index.html)', () => {
     expect(errors).toEqual([]);
   });
 
+  test('with ?lab=garage, the lift opens the garage, where one bill mends and tunes the car', async ({ page }, testInfo) => {
+    const errors = watchErrors(page);
+    await page.setViewportSize({ width: 640, height: 360 });
+    await page.goto('/index.html?dev&lab=garage');
+    await page.locator('#go').click();
+    await page.keyboard.press('Backquote');
+    for (const line of ['kr 3000', 'car volvo240']) {
+      await page.keyboard.type(line);
+      await page.keyboard.press('Enter');
+    }
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('KeyE');
+    await page.keyboard.press('Backquote');
+    for (const line of ['go verkstan', 'damage 60']) {
+      await page.keyboard.type(line);
+      await page.keyboard.press('Enter');
+    }
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('KeyE');
+    await expect(page.locator('#garage')).toBeVisible();
+    await expect(page.locator('#garage .g-pelle')).toContainText('tilltufsad');
+    await page.keyboard.press('Digit2'); // Laga
+    await page.keyboard.press('ArrowDown'); // the engine's shelf
+    await page.keyboard.press('Digit2'); // Trimma motorn
+    await expect(page.locator('#garage .g-bill b')).toHaveText('840 riksdaler');
+    await page.screenshot({ path: testInfo.outputPath('game-garage.png') });
+    await page.keyboard.press('Enter');
+    await expect(page.locator('#garage .g-kr')).toHaveText('2 360 riksdaler');
+    expect(await state(page)).toMatchObject({ inCar: true, carDmg: 0, carMods: { engine: true, springs: false, body: false } });
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#garage')).toBeHidden();
+    expect(errors).toEqual([]);
+  });
+
   test('Plåt-Pelle sells you a car from his lot, and it is yours to drive', async ({ page }, testInfo) => {
     const errors = watchErrors(page);
     await page.setViewportSize({ width: 640, height: 360 });
