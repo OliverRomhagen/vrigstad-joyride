@@ -1,5 +1,5 @@
 <!-- Vrigstad at nightfall, under the wiki's footer: the sky from the top of the page comes back as the last light behind the
-     forest, a few houses and the church, and the sign where the village ends. A drawing, not the game's rendering; the houses
+     forest, a few houses and the church, and the village's sign by the road. A drawing, not the game's rendering; the houses
      are placed by hand, the spruces by a seeded roll, so the prerendered page is the same on every build. -->
 <script lang="ts">
 // the drawing's size, in its own units. It fills the window's width at its full height (wiki.css), and a phone shows its
@@ -63,7 +63,7 @@ const windows = HOUSES.filter(h => h.lit).map(h => ({
   y: GROUND - Math.round(h.h * 0.7),
 }));
 
-const SIGN = { x: 944, y: GROUND - 72 }; // where the village ends, the far side of the last house
+const SIGN = { x: 944, y: GROUND - 72 }; // by the road, the far side of the last house
 </script>
 
 <svg class="nightfall" viewBox="0 0 {W} {H}" preserveAspectRatio="xMidYMax slice" aria-hidden="true" focusable="false">
@@ -82,12 +82,11 @@ const SIGN = { x: 944, y: GROUND - 72 }; // where the village ends, the far side
   {#each windows as lit (lit.x)}
     <rect x={lit.x} y={lit.y} width="7" height="8" fill="#f3c98b" opacity="0.55" />
   {/each}
-  <!-- the end of the village: its name, struck through, on a blue Swedish place-name sign; dimmed, as by dusk -->
+  <!-- the village's name on a blue Swedish place-name sign; dimmed, as by dusk -->
   <g opacity="0.55">
     <rect x={SIGN.x + 57} y={SIGN.y + 40} width="4" height={GROUND - SIGN.y - 40} fill="#3a3d44" />
     <rect x={SIGN.x} y={SIGN.y} width="118" height="42" rx="4" fill="#123a63" stroke="#aeb7c0" stroke-width="2.5" />
     <text x={SIGN.x + 59} y={SIGN.y + 29} text-anchor="middle" fill="#c3cbd3" class="nightfall-sign">Vrigstad</text>
-    <line x1={SIGN.x + 4} y1={SIGN.y + 38} x2={SIGN.x + 114} y2={SIGN.y + 4} stroke="#9b2c31" stroke-width="5" />
   </g>
 </svg>
 

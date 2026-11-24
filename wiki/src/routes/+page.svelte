@@ -62,8 +62,9 @@ let { data } = $props();
 /* the sign at the edge of the village: blue, a white border inside its edge, the name in white */
 .road-sign {
   display: inline-block;
-  padding: 6px 22px 4px;
-  font: 700 clamp(1.75rem, 5vw, 2.375rem) / 1.1 var(--font);
+  /* more room below than above: the g's tail hangs under the line, and the white border runs 5px inside the edge */
+  padding: 0.22em 0.6em 0.36em;
+  font: 700 clamp(1.75rem, 5vw, 2.375rem) / 1 var(--font);
   letter-spacing: 0.03em;
   color: #fff;
   background: var(--sign-blue);
