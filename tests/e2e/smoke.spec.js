@@ -699,7 +699,9 @@ test.describe('game (index.html)', () => {
     expect(errors).toEqual([]);
   });
 
-  test('with ?lab=garage, Plåt-Pelle paints the car and fits neon on the lift (#3)', async ({ page }, testInfo) => {
+  test('with ?lab=garage, Plåt-Pelle shows paint and neon on the car, and fits them when you buy (#3)', async ({
+    page,
+  }, testInfo) => {
     const errors = watchErrors(page);
     await page.setViewportSize({ width: 640, height: 360 });
     await page.goto('/index.html?dev&lab=garage');
@@ -719,12 +721,16 @@ test.describe('game (index.html)', () => {
     await page.keyboard.press('KeyE');
     await expect(page.locator('#kmenu')).toContainText('Neon under bilen');
     await page.keyboard.press('Digit1'); // Lack (a whole car has no repair)
-    await page.keyboard.press('Digit5'); // Slättsjöblå metallic
+    await page.keyboard.press('Digit5'); // tries Slättsjöblå metallic on
+    await expect(page.locator('#kmenu')).toContainText('Köp Slättsjöblå metallic');
+    expect(await state(page)).toMatchObject({ carMods: null, kr: 2200 }); // on show, not bought (200 to start with, and 2000 from the console)
+    await page.keyboard.press('Digit1'); // Köp
     await expect(page.locator('#kr')).toHaveText('1 700 riksdaler');
     await expect(page.locator('#kmenu')).toContainText('på bilen'); // the shelf comes back, with the paint on
     await page.keyboard.press('Escape'); // back to the front
     await page.keyboard.press('Digit3'); // Neon under bilen
-    await page.keyboard.press('Digit1'); // Blått neon
+    await page.keyboard.press('Digit1'); // tries Blått neon on
+    await page.keyboard.press('Digit1'); // Köp
     await expect(page.locator('#kr')).toHaveText('1 300 riksdaler');
     expect(await state(page)).toMatchObject({ inCar: true, carMods: { paint: 'slattsjo-bla', glow: 'bla' } });
     await page.screenshot({ path: testInfo.outputPath('game-garage.png') });

@@ -30,10 +30,9 @@ export class CarModsMeshes {
     this.g = g;
   }
 
-  /** Shows the car's mods, after the garage changed them. */
-  apply(c: RenderedCar) {
+  /** Shows these parts on the car: by default its own; in the garage, perhaps with one being tried on. */
+  apply(c: RenderedCar, mods: CarMods = c.mods ?? {}) {
     const { vehicleVisuals, carGeo } = this.g,
-      mods: CarMods = c.mods ?? {},
       paint = mods.paint && PAINTS[mods.paint],
       color = paint ? paint.hex : c.color;
     c.body.geometry = carGeo(c.type, color); // the procedural body, which shows until the model loads and far away

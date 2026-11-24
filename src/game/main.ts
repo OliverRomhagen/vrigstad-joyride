@@ -319,7 +319,7 @@ const skroten = new Skroten({ game, player, get stars() { return wanted.stars; }
 let garage: Garage | null = null, carMods: CarModsMeshes | null = null;
 if (lab.on('garage')) Promise.all([import('./garage'), import('./render/car-mods')]).then(([g, r]) => {
   const look = carMods = new r.CarModsMeshes({ vehicleVisuals, carGeo });
-  garage = new g.Garage({ game, get stars() { return wanted.stars; }, openMenu, toast, wallet, onLift: c => skroten.onLift(c), repairKr: () => skroten.repairs(), repair: () => { skroten.open(); }, carName, changed: c => look.apply(meshed(c)) });
+  garage = new g.Garage({ game, get stars() { return wanted.stars; }, openMenu, toast, wallet, onLift: c => skroten.onLift(c), repairKr: () => skroten.repairs(), repair: () => { skroten.open(); }, carName, changed: (c, shown) => look.apply(meshed(c), shown) });
 }).catch(err => console.warn('Lab: garage failed', err));
 function nearPlace() { return game.inCar ? null : places.nearest(player.x, player.z); }
 function enterHouse(p: Place) { if (places.enter(p, player)) player.mesh.visible = false; }
@@ -402,7 +402,7 @@ const prompt = new ActionPrompt({ $, game, places, wanted, get menuOpen() { retu
 // ---------- main loop (src/game/loop.ts) ----------
 const loop = new GameLoop({ $, renderer, scene, camera, canvas, coarse, half: HALF, game, view, player, health, input, places, wanted, cars, startCam: START_CAM, barMat, barColours: [BAR_BLUE, BAR_RED], cameraRig: { update: placeCamera },
   get toasting() { return hud.toasting; }, inWater, collide, groundAt, drive, updateTraffic, knockedOut, hurtPlayer, shake, toast, hideTitleCard: () => hud.hideTitleCard(),
-  updateTrisslott: dt => trisslott.update(dt), updatePlaces: dt => { placeMeshes.update(dt); skrotenMeshes.update(dt, player); }, updateDriftFx, updateVehicles: (T, dt) => { vehicleVisuals.update(T, dt); priceTags.update(dt); carMods?.update(daylight.sunShare); }, updateSmoke, updateBanknotes: dt => banknotes.update(dt), updateConfetti: dt => confetti.update(dt), updateNpcs: (T, dt) => { updateNpcs(T, dt); ragdolls.update(dt); ragdollMeshes.update(); }, updateCats,
+  updateTrisslott: dt => trisslott.update(dt), updatePlaces: dt => { placeMeshes.update(dt); skrotenMeshes.update(dt, player); }, updateDriftFx, updateVehicles: (T, dt) => { vehicleVisuals.update(T, dt); priceTags.update(dt); carMods?.update(daylight.sunShare); garage?.settle(!kmenu.hidden && !!menuPlate.menuKind?.startsWith('garage')); }, updateSmoke, updateBanknotes: dt => banknotes.update(dt), updateConfetti: dt => confetti.update(dt), updateNpcs: (T, dt) => { updateNpcs(T, dt); ragdolls.update(dt); ragdollMeshes.update(); }, updateCats,
   updateDrivers: (T, dt) => drivers.update(T, dt), updateBodies: (T, dt) => bodyMotion.update(T, dt), updateDaylight, drawHearts, updateHud: dt => hud.update(dt), drawMini,
   updateSign, catRideLines: () => crashes.catRideLines(), closeMenuIfLeft: () => menuPlate.closeIfLeft(), updatePrompt: () => prompt.update(), drawHealth, restockLot: () => fleet.restockLot(player, game.clockS),
   timeFrame: workStart => { if (!debugOverlay) return; const t = performance.now(); debugOverlay.frame(t, t - workStart, renderer.info); } });

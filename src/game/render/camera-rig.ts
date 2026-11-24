@@ -31,13 +31,9 @@ export interface CameraRigDeps {
   rnd(): number; // the shake's own stream, shared with the smoke, since both roll every frame
   calmMotion: { readonly matches: boolean }; // prefers-reduced-motion
   readonly sunIntensity: number; // the sun's intensity for the time of day under a clear sky (Daylight.sunIntensity)
-  readonly showroom?: boolean; // a garage menu is open (#3): the camera swings round the car you drive, to show it off
+  readonly showroom?: boolean; // a garage menu is open (#3): the camera stays where you drag it round the car you drive
 }
-// In the garage the camera swings to and fro behind the car rather than all the way round: the workshop is too narrow to
-// circle a car parked on its lift, and the room is behind it, towards the door it came in by.
-const SHOWROOM_SWING = 0.95, // rad either side of straight behind
-  SHOWROOM_RATE = 0.45, // rad/s of the swing's phase: one swing there and back in about 14 s
-  SHOWROOM_DIST_M = 5.5,
+const SHOWROOM_DIST_M = 5.5, // close in: the workshop is narrow
   SHOWROOM_LOOK_M = -0.6; // aims under the car, which lifts it in the frame, above the menu plate at the bottom
 
 /** Places the camera every frame; `shake` jolts it after a crash. */
@@ -45,7 +41,7 @@ export class CameraRig {
   private readonly g: CameraRigDeps;
   private shakeT = 0;
   private shakeM = 0;
-  private showT = 0; // s the garage's swing has run
+  private showing = false; // the garage's free camera was on last frame
 
   constructor(g: CameraRigDeps) {
     this.g = g;
@@ -74,13 +70,14 @@ export class CameraRig {
       dist = 46;
       view.camPitch = 0.42;
     } else if (game.inCar && game.pcar && this.g.showroom) {
-      this.showT += dt;
-      const aim = wrap(game.pcar.h + SHOWROOM_SWING * Math.sin(this.showT * SHOWROOM_RATE));
-      view.camYaw += wrap(aim - view.camYaw) * Math.min(1, dt * 3); // eases in from where the camera was
+      // a free camera: dragging turns lookOff round the parked car, and nothing swings it back while the garage is open
+      view.camYaw += wrap(game.pcar.h + view.lookOff - view.camYaw) * Math.min(1, dt * 8);
       dist = SHOWROOM_DIST_M;
       lookY = SHOWROOM_LOOK_M;
+      this.showing = true;
     } else if (game.inCar && game.pcar) {
-      this.showT = 0;
+      if (this.showing) view.lookOff = 0; // out of the garage: back behind the car now, not through the workshop's walls
+      this.showing = false;
       view.lookIdle += dt;
       if (view.lookIdle > 1.2 && !this.g.dragging) view.lookOff *= 0.02 ** dt;
       view.camYaw += wrap(game.pcar.h - game.pcar.slip * 0.6 + view.lookOff - view.camYaw) * Math.min(1, dt * 4.5);

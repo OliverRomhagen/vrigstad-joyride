@@ -55,6 +55,13 @@ describe('CarModsMeshes', () => {
     expect(calls).toContainEqual(['paint', '#27406b', false]);
   });
 
+  it('shows parts it is given instead of its own, for a part being tried on in the garage', () => {
+    const { mods, c, calls } = setup();
+    mods.apply(c, { rims: 'krom' });
+    expect(c.mods).toBeUndefined();
+    expect(calls).toContainEqual(['rims', RIMS.krom]);
+  });
+
   it('gives the model its rims, and takes them off again', () => {
     const { mods, c, calls } = setup();
     c.mods = { rims: 'guld' };

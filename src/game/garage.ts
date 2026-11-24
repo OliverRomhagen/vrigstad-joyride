@@ -1,6 +1,7 @@
 // The garage (#3, the `garage` lab experiment): Plåt-Pelle tunes and restyles the car you drive onto the workshop's lift.
-// A part is paid for and put on the moment you pick it, so it shows on the car while the menu is still open, and the
-// list comes back for the next one. Mending stays Skroten's (skroten.ts); this only offers it. No three.js or DOM here.
+// Picking a part tries it on: the car shows it, nothing is paid, and the list comes back with a line to buy it. Leaving
+// the list, or the garage, puts the car's own parts back. Mending stays Skroten's (skroten.ts); this only offers it.
+// No three.js or DOM here.
 import type { Car } from './cars';
 import { fmtKr, pay, type Wallet } from './economy';
 import type { MenuItem } from './pets';
@@ -26,7 +27,7 @@ export interface GarageDeps {
   repairKr(): number | null; // what Plåt-Pelle asks to mend it; null when there's nothing to mend
   repair(): void; // his repair offer, on the menu plate
   carName(c: Car): string;
-  changed(c: Car): void; // rendering puts the new parts on
+  changed(c: Car, shown: CarMods): void; // rendering shows these parts on the car: its own, or with one being tried on
 }
 
 type Shelf = 'paint' | 'rims' | 'glow' | 'engine';
@@ -36,9 +37,23 @@ const OFF = 'off';
 /** Plåt-Pelle's garage on the workshop's lift. */
 export class Garage {
   private readonly g: GarageDeps;
+  private trying: { car: Car; shelf: Shelf; id: string } | null = null; // a part on show, not paid for
 
   constructor(g: GarageDeps) {
     this.g = g;
+  }
+
+  // shows the car's own parts again, after trying one on
+  private stopTrying() {
+    const t = this.trying;
+    if (!t) return;
+    this.trying = null;
+    this.g.changed(t.car, t.car.mods ?? {});
+  }
+
+  /** `open`: a garage menu is open. Once none is, however it closed, a part being tried on comes off; main.ts calls it every frame. */
+  settle(open: boolean) {
+    if (!open) this.stopTrying();
   }
 
   // the car you drive, on the lift, slow enough to get out of: what keeps a garage menu open
@@ -97,9 +112,15 @@ export class Garage {
 
   private shelf(c: Car, shelf: Shelf) {
     const mods = c.mods ?? {},
+      trying = this.trying?.car === c && this.trying.shelf === shelf ? this.trying.id : null,
       items: MenuItem[] = [];
+    if (trying)
+      items.push(['buy', 'Köp ' + partName(shelf, trying) + ' <small>' + fmtKr(price(shelf, trying)!) + '</small>']);
     const add = (id: string, name: string, kr: number, on: boolean) =>
-      items.push([id, name + ' <small>' + (on ? 'på bilen' : kr ? fmtKr(kr) : 'gratis') + '</small>']);
+      items.push([
+        id,
+        name + ' <small>' + (on ? 'på bilen' : id === trying ? 'provar' : kr ? fmtKr(kr) : 'gratis') + '</small>',
+      ]);
     let title = OWNER_SAYS;
     if (shelf === 'paint') {
       title += '”Vilken färg? Ja lackar om den på en kafferast.”';
@@ -122,32 +143,47 @@ export class Garage {
       'garage-' + shelf,
       title,
       items,
-      k => (k === 'no' ? this.front(c) : this.fit(c, shelf, k)),
+      k => {
+        if (k === 'no') {
+          this.stopTrying();
+          this.front(c);
+        } else if (k === 'buy' && trying) this.fit(c, shelf, trying);
+        else this.tryOn(c, shelf, k);
+      },
       () => this.here(c),
     );
+  }
+
+  // shows the part on the car without paying; taking a part off is free, so it's done at once
+  private tryOn(c: Car, shelf: Shelf, id: string) {
+    if (!this.here(c) || price(shelf, id) === null) return;
+    if (id === OFF) return this.fit(c, shelf, id);
+    if (isOn(c.mods ?? {}, shelf, id)) this.stopTrying();
+    else {
+      this.trying = { car: c, shelf, id };
+      this.g.changed(c, withPart(c.mods ?? {}, shelf, id));
+    }
+    this.shelf(c, shelf);
   }
 
   // asked again at the moment of paying, as at Skroten: stars can come while the menu is open, and the car can drive off
   private fit(c: Car, shelf: Shelf, id: string) {
     const { toast, wallet, changed } = this.g;
-    if (!this.here(c)) return;
+    if (!this.here(c)) return this.stopTrying();
     const no = this.refusal(c);
     if (no) {
       toast(no, 3.5);
-      return;
+      return this.stopTrying();
     }
-    const mods: CarMods = { ...c.mods },
-      kr = price(shelf, id);
-    if (kr === null || isOn(mods, shelf, id)) return this.shelf(c, shelf);
+    const kr = price(shelf, id);
+    if (kr === null || isOn(c.mods ?? {}, shelf, id)) return this.shelf(c, shelf);
     if (!pay(wallet, kr)) {
       toast(OWNER_SAYS + '”' + fmtKr(kr) + ', sa ja. Kom tebaks när du har pengarna.”', 3.5);
-      return this.shelf(c, shelf);
+      return this.shelf(c, shelf); // still on show, to buy once you have the money
     }
-    if (shelf === 'engine') mods.engine = 1;
-    else if (id === OFF) delete mods[shelf];
-    else Object.assign(mods, { [shelf]: id }); // price() has checked id is on this shelf
-    c.mods = mods;
-    changed(c);
+    c.mods = withPart(c.mods ?? {}, shelf, id);
+    this.trying = null;
+    changed(c, c.mods);
     toast(OWNER_SAYS + (kr ? '”Så där! Snyggt, va?” −' + fmtKr(kr) + '.' : '”Bort mä dä. Ingen kostnad.”'), 3);
     this.shelf(c, shelf);
   }
@@ -159,6 +195,23 @@ function price(shelf: Shelf, id: string): number | null {
   if (id === OFF) return 0;
   const parts: Readonly<Record<string, { kr: number }>> = shelf === 'paint' ? PAINTS : shelf === 'rims' ? RIMS : GLOWS;
   return Object.hasOwn(parts, id) ? parts[id]!.kr : null;
+}
+
+// what a part is called in the garage
+function partName(shelf: Shelf, id: string) {
+  if (shelf === 'engine') return ENGINE_STEP.name;
+  const parts: Readonly<Record<string, { name: string }>> =
+    shelf === 'paint' ? PAINTS : shelf === 'rims' ? RIMS : GLOWS;
+  return parts[id]?.name ?? id;
+}
+
+// mods with this part on, or with none of its kind for OFF; price() has checked id is on the shelf
+function withPart(mods: CarMods, shelf: Shelf, id: string): CarMods {
+  const out: CarMods = { ...mods };
+  if (shelf === 'engine') out.engine = 1;
+  else if (id === OFF) delete out[shelf];
+  else Object.assign(out, { [shelf]: id });
+  return out;
 }
 
 // the car already has this part, or already has none of this kind
