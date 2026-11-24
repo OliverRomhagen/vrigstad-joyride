@@ -232,7 +232,7 @@ const shake = cameraRig.shake;
 const grainPos = new THREE.Vector3(), grainQuat = new THREE.Quaternion();
 // the driver's view (#473), with ?lab=cockpit: V in a car puts the camera in the driver's seat, after the rig has placed it
 let cockpit: Cockpit | null = null;   // a type-only import: the module itself loads below, only with the flag
-if (lab.on('cockpit')) import('./render/cockpit').then(m => { cockpit = new m.Cockpit({ camera, game, view, profiles: PROFILES, renderer }); $('p-view').hidden = false; }).catch(err => console.warn('Lab: cockpit failed', err));
+if (lab.on('cockpit')) import('./render/cockpit').then(m => { cockpit = new m.Cockpit({ camera, game, view, profiles: PROFILES, renderer, doc: document, get hour() { return dayClock.hour; } }); $('p-view').hidden = false; }).catch(err => console.warn('Lab: cockpit failed', err));
 function placeCamera(T: { x: number; z: number }, now: number, dt: number) { cameraRig.update(T, now, dt); cockpit?.update();
   if (filmGrain.enabled) { filmGrain.setMoving(cameraMoved(grainPos, grainQuat, camera.position, camera.quaternion)); grainPos.copy(camera.position); grainQuat.copy(camera.quaternion); } }
 

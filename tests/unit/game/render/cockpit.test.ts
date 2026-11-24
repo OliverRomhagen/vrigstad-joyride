@@ -4,7 +4,7 @@ import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { beforeAll, describe, expect, it } from 'vitest';
 import type { RenderedCar } from '../../../../src/game/render/car-meshes';
-import { Cockpit } from '../../../../src/game/render/cockpit';
+import { Cockpit, needleAngle } from '../../../../src/game/render/cockpit';
 import { BODY_NODE } from '../../../../src/game/render/vehicle-registry';
 
 let template: THREE.Group;
@@ -52,7 +52,10 @@ function cockpit(car: RenderedCar, inCar = true) {
       gw: 1.56,
     },
   };
-  const k = new Cockpit({ camera, game, view, renderer, profiles });
+  // a canvas whose 2D context draws nothing: the dials' drawing is looked at in the game, not here
+  const ctx = new Proxy({}, { get: () => () => {} });
+  const doc = { createElement: () => ({ width: 0, height: 0, getContext: () => ctx }) } as never;
+  const k = new Cockpit({ camera, game, view, renderer, profiles, doc, hour: 13.5 });
   return { k, camera, game, view, renderer };
 }
 
@@ -152,5 +155,12 @@ describe('Cockpit (the driver’s view, lab: cockpit)', () => {
     expect(eye.x).toBeCloseTo(-0.35, 2); // under the simple glass's 1.56 m, the side keeps to 45 % of the half width
     expect(eye.y).toBeCloseTo(1.28, 2); // 0.2 m under its 1.48 m roof
     expect(eye.z).toBeCloseTo(0.1, 2); // 1 m behind its windscreen's foot at -0.9 m
+  });
+
+  it('reads the dials from rest at lower left to full at lower right, and holds them there past the ends', () => {
+    expect(needleAngle(0, 200)).toBeCloseTo((-135 * Math.PI) / 180);
+    expect(needleAngle(100, 200)).toBeCloseTo(0); // half way: straight up
+    expect(needleAngle(250, 200)).toBeCloseTo((135 * Math.PI) / 180);
+    expect(needleAngle(-5, 200)).toBeCloseTo((-135 * Math.PI) / 180); // below 0 holds at rest
   });
 });

@@ -29,14 +29,26 @@ const NEAR_INSIDE_M = 0.05;
 /** the steering wheel's radius, and how far it turns at full lock (rad) */
 const WHEEL_R_M = 0.19;
 const WHEEL_LOCK_RAD = 1.6;
-/** it stands this far in front of the eye and over the belt line, its top leaning this far forward (m, rad) */
-const WHEEL_AHEAD_M = 0.5;
+/** it stands this far in front of the eye and over the belt line, its top leaning this far forward (m, rad): clear of the dashboard */
+const WHEEL_AHEAD_M = 0.42;
 const WHEEL_OVER_BELT_M = 0.04;
 const WHEEL_TILT_RAD = 0.4;
 /** in the driver's seat, the mouse and drag pitch the view from the normal pitch, and the view keeps within these (rad) */
 const PITCH_REST_RAD = 0.34;
 const PITCH_MIN_RAD = -0.6;
 const PITCH_MAX_RAD = 0.5;
+/** at rest the eye looks this far down from level, so the dials show over the bottom of the screen (rad) */
+const LOOK_DOWN_RAD = 0.09;
+
+/** the dials: the speedometer's top (km/h), and how far the turbo gauge reads from the throttle alone (0..1, 1 on boost) */
+const SPEEDO_MAX_KMH = 200;
+const TURBO_ON_THROTTLE = 0.35;
+/** the dial panel's canvas (px) and its size on the instrument hood (m) */
+const DIALS_W_PX = 512;
+const DIALS_H_PX = 160;
+const DIALS_W_M = 0.36;
+/** a needle sweeps this far from its rest, from lower left to lower right (rad) */
+const NEEDLE_SWEEP_RAD = (270 * Math.PI) / 180;
 
 const DASH = '#141516';
 const SEAT = '#3b3530';
@@ -55,6 +67,8 @@ export interface CockpitDeps {
   view: Pick<ViewState, 'lookOff' | 'camPitch'>;
   profiles: Readonly<Record<string, CarProfile>>; // the simple cars' side profiles (models.ts' PROFILES)
   renderer: Pick<THREE.WebGLRenderer, 'localClippingEnabled'>; // clips your own car's body at the belt line
+  doc: Pick<Document, 'createElement'>; // the dials' canvas
+  readonly hour: number; // the clock on the dashboard: the day cycle's hour (DayClock.hour)
 }
 
 /** The part of a simple car's side profile the cabin is read from: its glass, as (z, y) points, and the glass's width (m). */
@@ -125,20 +139,76 @@ function post(mat: THREE.Material, a: THREE.Vector3, b: THREE.Vector3, thickM: n
   return m;
 }
 
+/** A needle's angle on its dial for `value` of `max`, clockwise from straight up (rad): from -135° at 0 to 135° at max. */
+export const needleAngle = (value: number, max: number) =>
+  (Math.min(Math.max(value / max, 0), 1) - 0.5) * NEEDLE_SWEEP_RAD;
+
+/** The dial panel: the speedometer (km/h), the turbo gauge (0..1) and a clock (hours), white on black. */
+function drawDials(ctx: CanvasRenderingContext2D, kmh: number, turbo: number, hour: number) {
+  ctx.fillStyle = '#0b0c0d';
+  ctx.fillRect(0, 0, DIALS_W_PX, DIALS_H_PX);
+  const dial = (cx: number, r: number, label: string, marks: number, needles: [angle: number, length: number][]) => {
+    ctx.strokeStyle = '#d9d4c4';
+    ctx.fillStyle = '#d9d4c4';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(cx, 80, r, 0, Math.PI * 2);
+    ctx.stroke();
+    for (let i = 0; i < marks; i++) {
+      const a = marks === 12 ? (i / 12) * Math.PI * 2 : needleAngle(i, marks - 1);
+      const [sx, sy] = [Math.sin(a), -Math.cos(a)];
+      ctx.beginPath();
+      ctx.moveTo(cx + sx * r * 0.78, 80 + sy * r * 0.78);
+      ctx.lineTo(cx + sx * r * 0.92, 80 + sy * r * 0.92);
+      ctx.stroke();
+    }
+    ctx.font = `${Math.round(r * 0.28)}px sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.fillText(label, cx, 80 + r * 0.55);
+    ctx.strokeStyle = '#ff7a2f';
+    for (const [a, length] of needles) {
+      ctx.lineWidth = length < 0.7 ? 5 : 3;
+      ctx.beginPath();
+      ctx.moveTo(cx, 80);
+      ctx.lineTo(cx + Math.sin(a) * r * length, 80 - Math.cos(a) * r * length);
+      ctx.stroke();
+    }
+  };
+  dial(115, 70, 'TURBO', 5, [[needleAngle(turbo, 1), 0.85]]);
+  dial(256, 76, 'km/h', 11, [[needleAngle(kmh, SPEEDO_MAX_KMH), 0.85]]);
+  const minutes = hour * 60;
+  dial(397, 70, '', 12, [
+    [(minutes / 720) * Math.PI * 2, 0.55],
+    [((minutes % 60) / 60) * Math.PI * 2, 0.85],
+  ]);
+}
+
 /**
  * The interior for one cabin: the dashboard, steering wheel, seats and floor below the belt line, and above it the
  * frame the clipped body no longer draws: window sills, pillars and the headliner. `spin` turns the wheel.
  */
-function buildInterior(cabin: Cabin, eye: THREE.Vector3) {
+function buildInterior(cabin: Cabin, eye: THREE.Vector3, doc: Pick<Document, 'createElement'>) {
   const { halfW, belt, roof, front, rear } = cabin;
-  const mats = [DASH, SEAT, HEADLINER, PILLAR].map(c => new THREE.MeshLambertMaterial({ color: c }));
-  const [dash, seat, headliner, pillar] = mats;
+  const lit = [DASH, SEAT, HEADLINER, PILLAR].map(c => new THREE.MeshLambertMaterial({ color: c }));
+  const [dash, seat, headliner, pillar] = lit;
+  const canvas = doc.createElement('canvas');
+  canvas.width = DIALS_W_PX;
+  canvas.height = DIALS_H_PX;
+  const dialsTex = new THREE.CanvasTexture(canvas);
+  dialsTex.colorSpace = THREE.SRGBColorSpace;
+  const dialsMat = new THREE.MeshBasicMaterial({ map: dialsTex }); // unlit: the dials glow, as at night
+  const mats: THREE.Material[] = [...lit, dialsMat];
   const g = new THREE.Group();
   const w = halfW * 2 - 0.04;
   const length = rear - front;
   const middle = (front + rear) / 2;
   g.add(box(dash, w, 0.3, 0.55, 0, belt - 0.11, front + 0.22)); // its top a little over the belt line, against the windscreen
-  g.add(box(dash, 0.42, 0.09, 0.22, eye.x, belt + 0.06, front + 0.4)); // the hood over the dials, in front of the driver
+  // the hood over the dials, in front of the driver and ahead of the wheel, and the dials on its face, tilted up to the eye
+  g.add(box(dash, 0.42, 0.14, 0.22, eye.x, belt + 0.06, front + 0.33));
+  const dials = new THREE.Mesh(new THREE.PlaneGeometry(DIALS_W_M, (DIALS_W_M * DIALS_H_PX) / DIALS_W_PX), dialsMat);
+  dials.position.set(eye.x, belt + 0.06, front + 0.46); // clear of the hood's face, whose top it leans towards
+  dials.rotation.x = -0.25;
+  g.add(dials);
   g.add(box(dash, w, 0.03, length, 0, belt - 0.55, middle)); // the floor, over the hollow under the cut
   g.add(box(headliner, w, 0.03, 0.4, 0, belt - 0.02, rear - 0.2)); // the parcel shelf under the rear window
   for (const s of [-1, 1]) g.add(box(pillar, 0.1, 0.04, length, s * (halfW - 0.05), belt + 0.01, middle)); // the sills
@@ -175,7 +245,7 @@ function buildInterior(cabin: Cabin, eye: THREE.Vector3) {
   spin.add(box(dash, 0.1, 0.1, 0.05, 0, 0, 0.01)); // the hub
   tilt.add(spin);
   g.add(tilt);
-  return { group: g, spin, mats };
+  return { group: g, spin, mats, dials: canvas.getContext('2d'), dialsTex };
 }
 
 /** The driver's view: `toggle` switches it, `update` puts the camera in the seat while you drive and it's on. */
@@ -191,6 +261,7 @@ export class Cockpit {
   private readonly beltPlane = new THREE.Plane(); // in the body's frame: keeps what is under the belt line
   private readonly clip = new THREE.Plane(); // the same in the world, every frame
   private normalNear = 0;
+  private shown = ''; // what the dials show, so they're drawn again only when it changes
 
   constructor(g: CockpitDeps) {
     this.g = g;
@@ -234,7 +305,8 @@ export class Cockpit {
     const cabin = body === car.body ? profileCabin(this.g.profiles[car.type]) : modelCabin(body);
     if (!cabin) return;
     this.eye.copy(eyeIn(cabin));
-    this.interior = buildInterior(cabin, this.eye);
+    this.interior = buildInterior(cabin, this.eye, this.g.doc);
+    this.shown = '';
     body.add(this.interior.group);
     body.traverse(o => {
       if (o instanceof THREE.Mesh && o.name.startsWith('glass') && o.visible) {
@@ -274,6 +346,7 @@ export class Cockpit {
         if (o instanceof THREE.Mesh) o.geometry.dispose();
       });
       for (const m of this.interior.mats) m.dispose();
+      this.interior.dialsTex.dispose();
       this.interior = null;
     }
     const { camera } = this.g;
@@ -283,13 +356,29 @@ export class Cockpit {
     this.body = null;
   }
 
+  // the speed and the turbo as the HUD rounds them, and the clock to the minute: a redraw only when one of them changes
+  private drawDials(car: RenderedCar) {
+    const { dials, dialsTex } = this.interior!;
+    const kmh = Math.round(Math.abs(car.v) * 3.6);
+    const turbo = car.boost > 0 ? 1 : Math.round(Math.max(0, car.thr) * TURBO_ON_THROTTLE * 20) / 20;
+    const hour = Math.floor(this.g.hour * 60) / 60;
+    const now = `${kmh} ${turbo} ${hour}`;
+    if (!dials || now === this.shown) return;
+    this.shown = now;
+    drawDials(dials, kmh, turbo, hour);
+    dialsTex.needsUpdate = true;
+  }
+
   private place(car: RenderedCar, body: THREE.Object3D) {
     const { camera, view } = this.g;
-    if (this.interior) this.interior.spin.rotation.z = -car.st * WHEEL_LOCK_RAD; // st > 0 steers right: clockwise
+    if (this.interior) {
+      this.interior.spin.rotation.z = -car.st * WHEEL_LOCK_RAD; // st > 0 steers right: clockwise
+      this.drawDials(car);
+    }
     body.updateWorldMatrix(true, false);
     this.clip.copy(this.beltPlane).applyMatrix4(body.matrixWorld);
     camera.position.copy(this.eye).applyMatrix4(body.matrixWorld);
-    const pitch = Math.min(PITCH_MAX_RAD, Math.max(PITCH_MIN_RAD, PITCH_REST_RAD - view.camPitch));
+    const pitch = Math.min(PITCH_MAX_RAD, Math.max(PITCH_MIN_RAD, PITCH_REST_RAD - view.camPitch - LOOK_DOWN_RAD));
     _e.set(pitch, -view.lookOff, 0);
     body.getWorldQuaternion(camera.quaternion).multiply(_q.setFromEuler(_e));
   }
