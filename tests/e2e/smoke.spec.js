@@ -716,7 +716,9 @@ test.describe('game (index.html)', () => {
     expect(errors).toEqual([]);
   });
 
-  test('with ?lab=garage, the lift opens the garage, where one bill mends and tunes the car', async ({ page }, testInfo) => {
+  test('with ?lab=garage, the lift opens the garage, where one bill mends and tunes the car', async ({
+    page,
+  }, testInfo) => {
     const errors = watchErrors(page);
     await page.setViewportSize({ width: 640, height: 360 });
     await page.goto('/index.html?dev&lab=garage');
@@ -744,7 +746,11 @@ test.describe('game (index.html)', () => {
     await page.screenshot({ path: testInfo.outputPath('game-garage.png') });
     await page.keyboard.press('Enter');
     await expect(page.locator('#garage .g-kr')).toHaveText('2 360 riksdaler');
-    expect(await state(page)).toMatchObject({ inCar: true, carDmg: 0, carMods: { engine: true, springs: false, body: false } });
+    expect(await state(page)).toMatchObject({
+      inCar: true,
+      carDmg: 0,
+      carMods: { engine: true, springs: false, body: false },
+    });
     await page.keyboard.press('Escape');
     await expect(page.locator('#garage')).toBeHidden();
     expect(errors).toEqual([]);
