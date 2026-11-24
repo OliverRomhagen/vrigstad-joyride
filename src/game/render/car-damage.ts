@@ -119,6 +119,13 @@ function smokeTexture() {
   return new THREE.CanvasTexture(cv);
 }
 
+// whole glass again: the crack meshes stay on the car, hidden, for the next crash
+function mendGlass(v: DamageView) {
+  if (v.crackMesh) v.crackMesh.visible = false;
+  for (const m of v.modelCrack ?? []) m.visible = false;
+  v.crack = 0;
+}
+
 /** The cracks in every car's glass, and the smoke from the bonnets of the damaged cars near the camera. */
 export class CarDamageFx {
   private readonly g: CarDamageFxDeps;
@@ -256,7 +263,12 @@ export class CarDamageFx {
         c.body.add(v.crackMesh);
       }
       v.crackMesh.material = this.crackMats[lv]!;
-      if (v.modelCrack) for (const m of v.modelCrack) m.material = this.crackMats[lv]!;
+      v.crackMesh.visible = true;
+      if (v.modelCrack)
+        for (const m of v.modelCrack) {
+          m.material = this.crackMats[lv]!;
+          m.visible = true;
+        }
       v.crack = lv;
     }
     if (!v.modelCrack && vehicleVisuals.loaded(c) && c.mesh.getObjectByName('glass_envelope')) {
@@ -286,6 +298,9 @@ export class CarDamageFx {
       if (cl) {
         const v = this.view(c);
         if (v.crack !== cl || (!v.modelCrack && vehicleVisuals.loaded(c))) this.crackGlass(c, v); // after a crash, and once its model loads; one that failed never does
+      } else {
+        const v = this.views.get(c);
+        if (v?.crack) mendGlass(v); // mended on Plåt-Pelle's lift
       }
       const lv = smokeLevel(c.dmg);
       if (!lv || c.wet || Math.abs(c.x - T.x) > SMOKE_NEAR_M || Math.abs(c.z - T.z) > SMOKE_NEAR_M) continue;
