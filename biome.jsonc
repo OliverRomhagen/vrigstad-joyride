@@ -26,6 +26,17 @@
   ],
   "overrides": [
     {
+      // Biome reads only the script of a .svelte file, so a name used in the markup looks unused (Biome's Svelte docs).
+      // The wiki's CSS is one stylesheet ordered by page section, not by specificity.
+      "includes": ["wiki/**/*.svelte", "wiki/**/*.css"],
+      "linter": {
+        "rules": {
+          "correctness": { "noUnusedVariables": "off", "noUnusedImports": "off" },
+          "style": { "noDescendingSpecificity": "off" }
+        }
+      }
+    },
+    {
       // The two page scripts keep their dense style, so only formatting is off: reformatting the game's main.ts is its own
       // PR now that #177 has split it. These rules still run: the map's @ts-nocheck hides undeclared names from tsc, and a
       // move that takes a name out of a main.ts while another branch still uses it would otherwise only fail at runtime.

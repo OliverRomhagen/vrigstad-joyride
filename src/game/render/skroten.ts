@@ -76,11 +76,13 @@ export interface SkrotenMeshDeps {
   coarse: boolean; // a phone: the cars keep their simple shapes, the models cost too many triangles, and nothing casts a shadow
   /** A car model's loaded scene, shared with the cars on the road (VehicleVisuals.template); read, never changed. */
   carModel(definition: { id: string; url: string }): Promise<THREE.Object3D>;
+  /** Plåt-Pelle stands by his ring; false leaves him out, as the wiki's garage does, so the car on the ring has the stage. */
+  showOwner?: boolean;
 }
 
 /** The yard and Plåt-Pelle; `update` turns him towards you. */
 export class SkrotenMeshes {
-  private readonly owner: Person;
+  private readonly owner: Person | null = null;
   private ownerH = 0;
   private readonly middle = yardToWorld(0, YARD.depth / 2);
   private farCars: THREE.Mesh | null = null; // the detailed cars' simple shapes, until the models load and while you are far
@@ -324,14 +326,16 @@ export class SkrotenMeshes {
         });
     scene.add(...built);
 
-    const owner = platPelle();
-    const at = yardToWorld(OWNER_UV.u, OWNER_UV.v);
-    owner.position.set(at.x, heightAt(at.x, at.z), at.z);
-    const road = yardToWorld(OWNER_UV.u, OWNER_UV.v - 1);
-    this.ownerH = Math.atan2(road.x - at.x, at.z - road.z); // looks towards the road until you come
-    owner.rotation.y = -this.ownerH;
-    scene.add(owner);
-    this.owner = owner;
+    if (g.showOwner !== false) {
+      const owner = platPelle();
+      const at = yardToWorld(OWNER_UV.u, OWNER_UV.v);
+      owner.position.set(at.x, heightAt(at.x, at.z), at.z);
+      const road = yardToWorld(OWNER_UV.u, OWNER_UV.v - 1);
+      this.ownerH = Math.atan2(road.x - at.x, at.z - road.z); // looks towards the road until you come
+      owner.rotation.y = -this.ownerH;
+      scene.add(owner);
+      this.owner = owner;
+    }
   }
 
   // the game's car models for the cars standing alone: one model loaded per kind, its paint and the rest each drawn as one instanced
@@ -381,7 +385,7 @@ export class SkrotenMeshes {
     this.nearCars = group;
   }
 
-  /** Turns Plåt-Pelle towards you while you are near. */
+  /** Turns Plåt-Pelle towards you while you are near, and swaps the yard's cars for their models as you come. */
   update(dt: number, you: { x: number; z: number }) {
     const fromMiddle = Math.hypot(you.x - this.middle.x, you.z - this.middle.z);
     if (this.loadNear && fromMiddle < CAR_LOAD_M) {
@@ -393,8 +397,9 @@ export class SkrotenMeshes {
       this.nearCars.visible = near;
       this.farCars.visible = !near;
     }
-    const n = this.owner,
-      dx = you.x - n.position.x,
+    const n = this.owner;
+    if (!n) return;
+    const dx = you.x - n.position.x,
       dz = you.z - n.position.z;
     if (Math.hypot(dx, dz) > OWNER_SEES_M) return;
     let d = Math.atan2(dx, -dz) - this.ownerH;
@@ -405,7 +410,7 @@ export class SkrotenMeshes {
 }
 
 /** Plåt-Pelle: blue overalls, a red cap with a peak, and a grey beard. Standing at the origin, facing −z. */
-function platPelle(): Person {
+export function platPelle(): Person {
   const owner = personParts('#2f4f7f', '#2f4f7f', '#b8322a');
   owner.add(
     new THREE.Mesh(

@@ -10,7 +10,7 @@ import { Sky } from './sky';
 const HORIZON = 0xd6e4e6,
   FOG_PER_M = 0.0007; // FogExp2 density: about 40% haze at 1 km
 /** Half the width of the box the game's sun shadow covers, around the player (m). */
-const GAME_SHADOW_M = 110;
+export const GAME_SHADOW_M = 110;
 export const SUN_DIR = new THREE.Vector3(-0.55, 0.75, 0.37).normalize();
 // sky: a gradient dome with the sun's glow and drifting fair-weather clouds (src/game/render/sky.ts); it follows the camera
 // and fades into the fog at the horizon. ?clouds=clear|scattered|partly|mostly|off, cloudSeed, wind=from°,m/s (see clouds.ts)
@@ -29,7 +29,7 @@ export function setUpRenderer(renderer: THREE.WebGLRenderer, coarse: boolean) {
  * The game's lights: the sky's and the ground's, and the sun, casting the shadow. Where the sun stands and the box its shadow
  * covers are the caller's: the game's follows the player, the wiki's frames one scene.
  */
-function gameLights() {
+export function gameLights() {
   const hemi = new THREE.HemisphereLight(0xffffff, col(0x9aa58a), 0.62 * LEGACY_LIGHT);
   const sun = new THREE.DirectionalLight(col(0xfff4dd), 0.95 * LEGACY_LIGHT); // intensity: the time of day's (Daylight.sunIntensity), times the clouds' sunFactor
   sun.castShadow = true;

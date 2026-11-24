@@ -9,7 +9,7 @@ import type { GameState } from './state';
 
 type Point = { x: number; z: number };
 /** How many cat treats a bag from the kiosk holds. */
-const TREAT_BAG = 3;
+export const TREAT_BAG = 3;
 const TREAT_MAX = 9; // how many treats fit in your pockets
 
 /** What the menus read from the rest of the game. */
