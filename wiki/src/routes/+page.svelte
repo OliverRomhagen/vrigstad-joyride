@@ -101,8 +101,10 @@ h2 {
   color: var(--cream);
   text-decoration: none;
 }
-.cards a:hover {
-  border-color: var(--gold);
+@media (hover: hover) {
+  .cards a:hover {
+    border-color: var(--gold);
+  }
 }
 .cards strong {
   font: 700 1.625rem var(--font);

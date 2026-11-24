@@ -1,4 +1,7 @@
 <script lang="ts">
+import ArrowRight from '@lucide/svelte/icons/arrow-right';
+import Menu from '@lucide/svelte/icons/menu';
+import X from '@lucide/svelte/icons/x';
 import { MediaQuery } from 'svelte/reactivity';
 import Nightfall from '#lib/Nightfall.svelte';
 import { GAME_URL } from '#lib/site';
@@ -94,9 +97,12 @@ function drawer(dialog: HTMLDialogElement) {
           aria-controls="wiki-drawer"
           onclick={openMenu}
         >
+          <Menu size="1em" strokeWidth={2.5} />
           Menu
         </button>
-        <a class="play" rel="external" href={GAME_URL}>Play <span class="play-long">the game</span> →</a>
+        <a class="play" rel="external" href={GAME_URL}
+          ><span>Play <span class="play-long">the game</span></span> <ArrowRight size="1em" strokeWidth={2.5} /></a
+        >
       </header>
       <nav class="side" aria-label="Wiki">{@render links()}</nav>
       <!-- tabindex: so the skip link can move the keyboard's focus here -->
@@ -128,7 +134,7 @@ function drawer(dialog: HTMLDialogElement) {
     <!-- data-sveltekit-replacestate: a link in the drawer takes the drawer's place in the history, so going back from the
        next page doesn't open the drawer again -->
     <nav class="drawer-panel" aria-label="Wiki" data-sveltekit-replacestate>
-      <button type="button" class="drawer-close" onclick={closeMenu}>Close</button>
+      <button type="button" class="drawer-close" onclick={closeMenu}><X size="1em" strokeWidth={2.5} /> Close</button>
       {@render links()}
     </nav>
   </dialog>
@@ -207,18 +213,41 @@ function drawer(dialog: HTMLDialogElement) {
   border-radius: 4px;
   margin-left: 2px;
 }
+/* a control with an icon beside its words: the two on one line, their middles level */
+.menu,
+.play,
+.drawer-close {
+  align-items: center;
+  gap: 6px;
+}
 .play {
+  display: inline-flex;
   margin-left: auto;
   font: 600 1.125rem var(--font);
   text-transform: uppercase;
   color: var(--road);
   background: var(--gold);
-  padding: 8px 14px;
+  padding: 8px 11px 8px 14px; /* less on the icon's side, so the two sides look alike */
   border-radius: 6px;
   text-decoration: none;
 }
-.play:hover {
-  filter: brightness(1.08);
+@media (hover: hover) {
+  .play:hover {
+    filter: brightness(1.08);
+  }
+  .side a:hover {
+    color: var(--gold);
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .play,
+  .menu,
+  .drawer-close {
+    transition: scale 200ms ease-out;
+  }
+  :is(.play, .menu, .drawer-close):active {
+    scale: 0.97;
+  }
 }
 
 .side {
@@ -246,9 +275,6 @@ function drawer(dialog: HTMLDialogElement) {
   margin-left: -10px;
   color: var(--cream);
   text-decoration: none;
-}
-.side a:hover {
-  color: var(--gold);
 }
 /* the page you're on: gold, with a gold edge like a road's centre line, and no block behind it */
 :is(.side, .drawer) a[aria-current="page"] {
@@ -300,7 +326,7 @@ footer p {
     padding: 7px 10px;
   }
   .menu {
-    display: block;
+    display: inline-flex;
   }
   .play-long {
     display: none;
@@ -350,7 +376,7 @@ footer p {
   font-size: 1rem;
 }
 .drawer-close {
-  display: block;
+  display: flex;
   margin-left: auto;
   font: 600 1.125rem var(--font);
   text-transform: uppercase;

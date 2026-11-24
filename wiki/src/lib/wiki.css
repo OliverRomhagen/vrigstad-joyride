@@ -15,6 +15,8 @@
   --sign-blue: #0b5aa2; /* a Swedish place-name sign: white letters and border on blue */
   --glass: #1d1f24cc; /* a dark pane over the sky or a scene */
   --hairline: #ffffff2a; /* a pane's edge */
+  /* a pane lifted off what is behind it: a hair of light round its edge, a tight shadow and a wide soft one */
+  --lift: 0 0 0 1px #ffffff1f, 0 1px 2px #0004, 0 10px 30px #0005;
   --font: "Barlow Condensed", "Avenir Next Condensed", "Arial Narrow", system-ui, sans-serif;
   /* hand-painted signs, such as Skroten's gate: the display font until the game has a handwritten one */
   --hand: var(--font);
@@ -29,6 +31,9 @@ html {
 }
 body {
   margin: 0;
+  /* thinner, evener letters on a dark page (macOS draws light text on dark too heavy otherwise) */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   color: var(--cream);
   /* 17px at the browser's usual size: reference text beside a sidebar and tables, in a wide system font, about 70 letters a line */
   font: 1.0625rem / 1.6 var(--body);
@@ -55,6 +60,9 @@ body {
 }
 a {
   color: var(--gold);
+  /* the underline where the font wants it, and not through a g's or a y's tail */
+  text-underline-position: from-font;
+  text-decoration-skip-ink: auto;
 }
 code {
   font-size: 0.9em;
@@ -67,6 +75,7 @@ h2,
 h3 {
   font-family: var(--font);
   line-height: 1.1;
+  text-wrap: balance; /* a heading on two lines breaks into two alike */
 }
 h1 {
   font-size: clamp(2.5rem, 7vw, 4rem);
@@ -102,6 +111,7 @@ h2 {
   margin: 0;
 }
 .summary {
+  text-wrap: pretty; /* no last line of one word */
   font-size: 1.25rem;
   color: var(--muted);
   margin-top: 0;
@@ -112,6 +122,11 @@ h2 {
   font-size: 0.9375rem;
 }
 .button {
+  /* its words and an icon beside them on one line, their middles level */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   font: 600 1.125rem var(--font);
   text-transform: uppercase;
   text-align: center;
@@ -121,8 +136,20 @@ h2 {
   border-radius: 6px;
   text-decoration: none;
 }
-.button:hover {
-  filter: brightness(1.08);
+/* a finger leaves :hover stuck on after a tap: only for a pointer that can hover */
+@media (hover: hover) {
+  .button:hover {
+    filter: brightness(1.08);
+  }
+}
+/* a button gives a little under the finger, for those who haven't asked for less motion */
+@media (prefers-reduced-motion: no-preference) {
+  .button {
+    transition: scale 200ms ease-out;
+  }
+  .button:active {
+    scale: 0.97;
+  }
 }
 
 /* ---------- tables: the game's numbers, and any table a page writes in Markdown ---------- */

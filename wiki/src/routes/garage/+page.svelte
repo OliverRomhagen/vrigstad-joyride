@@ -1,4 +1,9 @@
 <script lang="ts">
+import ArrowLeft from '@lucide/svelte/icons/arrow-left';
+import ChevronLeft from '@lucide/svelte/icons/chevron-left';
+import ChevronRight from '@lucide/svelte/icons/chevron-right';
+import FileText from '@lucide/svelte/icons/file-text';
+import X from '@lucide/svelte/icons/x';
 import { onMount } from 'svelte';
 import { VEHICLES } from '#game/render/vehicle-registry';
 import { type CarType, VEHICLE_SPECS } from '#game/sim/vehicle-spec';
@@ -103,13 +108,15 @@ function steer(e: KeyboardEvent) {
   />
 
   <header bind:this={topEl} bind:offsetHeight={topHeight}>
-    <a class="pane" href={resolve('/')}>← Wiki</a>
+    <a class="pane" href={resolve('/')}><ArrowLeft size="1em" strokeWidth={2.5} /> Wiki</a>
     <!-- the yard's gate sign, in Swedish as it hangs there: the page's heading -->
     <div class="sign" lang="sv">
       <h1>Skroten</h1>
       <p>Plåt-Pelles garage · Stockarydsvägen</p>
     </div>
-    <button type="button" class="pane" aria-haspopup="dialog" onclick={() => papers?.showModal()}>The papers</button>
+    <button type="button" class="pane" aria-haspopup="dialog" onclick={() => papers?.showModal()}>
+      <FileText size="1em" strokeWidth={2.5} /> The papers
+    </button>
   </header>
 
   {#if saying}
@@ -121,7 +128,9 @@ function steer(e: KeyboardEvent) {
   {/if}
 
   <section class="card" aria-label="The car on the ring" bind:this={cardEl} bind:offsetHeight={cardHeight}>
-    <button type="button" class="step" onclick={() => step(-1)} aria-label="Previous car">‹</button>
+    <button type="button" class="step" onclick={() => step(-1)} aria-label="Previous car">
+      <ChevronLeft size="1em" strokeWidth={3} />
+    </button>
     {#snippet about(c: (typeof cars)[number], i: number)}
       <p class="kind">{i + 1} / {cars.length} on the ring</p>
       <h2>{c.name}</h2>
@@ -173,7 +182,9 @@ function steer(e: KeyboardEvent) {
         {/if}
       {/each}
     </div>
-    <button type="button" class="step" onclick={() => step(1)} aria-label="Next car">›</button>
+    <button type="button" class="step" onclick={() => step(1)} aria-label="Next car">
+      <ChevronRight size="1em" strokeWidth={3} />
+    </button>
   </section>
   <!-- the wiki's footer isn't drawn here, and the hall and carport are OSM outlines, so their credit stays in sight
        (AGENTS.md, Data and coordinates): a quiet line along the window's foot, as on a map. The car models' credit is in
@@ -203,7 +214,9 @@ function steer(e: KeyboardEvent) {
     onclick={e => e.target === e.currentTarget && papers?.close()}
   >
     <div class="papers-panel">
-      <button type="button" class="pane" onclick={() => papers?.close()}>Close</button>
+      <button type="button" class="pane" onclick={() => papers?.close()}>
+        <X size="1em" strokeWidth={2.5} /> Close
+      </button>
       <h2 id="papers-title">The papers</h2>
       <p class="muted">The numbers the game drives each type of car by.</p>
       <SpecTable />
@@ -237,16 +250,21 @@ header > * {
 }
 /* a dark pane over the scene: the way back, and the papers */
 .pane {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font: 600 1.125rem var(--font);
   text-transform: uppercase;
   color: var(--cream);
   background: var(--glass);
-  border: 1px solid var(--hairline);
-  padding: 8px 14px;
+  border: 0;
+  padding: 8px 14px 8px 11px; /* less on the icon's side, so the two sides look alike */
+  white-space: nowrap;
   border-radius: 8px;
+  box-shadow: var(--lift);
   text-decoration: none;
   cursor: pointer;
-  backdrop-filter: blur(6px);
+  backdrop-filter: blur(10px);
 }
 /* the yard's gate sign: cream boards, dark letters */
 .sign {
@@ -282,11 +300,16 @@ header > * {
   max-width: min(35rem, calc(100% - 32px));
   margin: 0;
   padding: 10px 16px;
-  background: #fffaf0;
+  background: #fffaf0d1; /* paper, with the yard just showing through it */
   color: var(--road);
   border-radius: 14px;
   font-size: 1rem;
-  box-shadow: 0 8px 24px #0004;
+  text-wrap: pretty;
+  box-shadow:
+    0 0 0 1px #ffffff40,
+    0 1px 2px #0002,
+    0 8px 24px #0003;
+  backdrop-filter: blur(10px) saturate(1.3);
 }
 @media (prefers-reduced-motion: no-preference) {
   .says {
@@ -317,10 +340,10 @@ header > * {
   align-items: center;
   gap: 8px;
   padding: 14px 10px;
-  background: #1d1f24e0;
-  border: 1px solid var(--hairline);
+  background: #1d1f24a6; /* smoked glass: the yard shows through, blurred, and the text still reads */
   border-radius: 16px;
-  backdrop-filter: blur(8px);
+  box-shadow: var(--lift);
+  backdrop-filter: blur(16px) saturate(1.3);
 }
 .info {
   min-width: 0;
@@ -337,6 +360,7 @@ header > * {
   visibility: hidden;
 }
 .info h2 {
+  text-wrap: balance;
   font-size: clamp(1.75rem, 6vw, 2.75rem);
   text-transform: uppercase;
   margin: 2px 0 0;
@@ -347,17 +371,22 @@ header > * {
   font-size: 1rem;
 }
 .step {
+  display: grid;
+  place-items: center;
   width: 48px;
   height: 64px;
-  font: 700 2.5rem / 1 var(--font);
+  padding: 0;
+  font-size: 2rem; /* the chevron's size */
   color: var(--road);
   background: var(--gold);
   border: 0;
-  border-radius: 10px;
+  border-radius: 6px; /* the card's 16px less the 10px between them: the two corners run side by side */
   cursor: pointer;
 }
-.step:hover {
-  filter: brightness(1.1);
+@media (hover: hover) {
+  .step:hover {
+    filter: brightness(1.1);
+  }
 }
 dl {
   display: grid;
@@ -416,6 +445,20 @@ dd i {
 .credit a {
   color: inherit;
 }
+/* a button gives a little under the finger, for those who haven't asked for less motion */
+@media (prefers-reduced-motion: no-preference) {
+  .pane,
+  .step,
+  .paints button {
+    transition: scale 200ms ease-out;
+  }
+  :is(.pane, .step):active {
+    scale: 0.97;
+  }
+  .paints button:active {
+    scale: 0.92;
+  }
+}
 /* a message over the scene, not a cover: the car buttons under it still work */
 .notice {
   position: absolute;
@@ -457,7 +500,7 @@ dd i {
   padding: 16px 24px 24px;
 }
 .papers-panel .pane {
-  display: block;
+  display: flex;
   margin-left: auto;
 }
 .papers h2 {
@@ -467,6 +510,14 @@ dd i {
 @media (width <= 35em) {
   .sign p {
     display: none;
+  }
+  /* three things share a phone's width: the panes give a little */
+  header {
+    gap: 8px;
+  }
+  .pane {
+    font-size: 1rem;
+    padding: 8px 10px 8px 8px;
   }
   .says {
     top: 84px;
@@ -479,7 +530,7 @@ dd i {
   .step {
     width: 36px;
     height: 52px;
-    font-size: 2rem;
+    font-size: 1.625rem;
   }
   dl {
     gap: 6px;

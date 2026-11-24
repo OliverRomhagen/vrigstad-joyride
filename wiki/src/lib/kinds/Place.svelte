@@ -1,5 +1,6 @@
 <!-- A place's infobox: the 3D map focused on it, where it is, and a link to drive there. -->
 <script lang="ts">
+import ArrowRight from '@lucide/svelte/icons/arrow-right';
 import MapView from '../MapView.svelte';
 import { GAME_URL } from '../site';
 import { whereabouts } from '../whereabouts';
@@ -17,7 +18,9 @@ const at = $derived(start ?? position);
     <dd>{whereabouts(position)}</dd>
   </div>
 </dl>
-<a class="button" rel="external" href="{GAME_URL}?at={at[0]},{at[1]}">Drive here →</a>
+<a class="button" rel="external" href="{GAME_URL}?at={at[0]},{at[1]}"
+  >Drive here <ArrowRight size="1em" strokeWidth={2.5} /></a
+>
 
 <style>
 dl {

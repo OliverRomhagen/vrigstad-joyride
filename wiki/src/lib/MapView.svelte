@@ -1,6 +1,8 @@
 <!-- The game's 3D map of Vrigstad (map.html, built from src/map/), embedded from where it is served next to the wiki.
      With a focus it opens close in over that spot, with a pin. -->
 <script lang="ts">
+import ExternalLink from '@lucide/svelte/icons/external-link';
+import Hand from '@lucide/svelte/icons/hand';
 import { on } from 'svelte/events';
 import { MAP_URL } from './site';
 
@@ -65,9 +67,11 @@ const load = (frame: HTMLIFrameElement) => {
   {#if !loaded}
     <p class="loading-3d" role="status">Unfolding the map…</p>
   {:else if !inUse}
-    <button type="button" class="use" onclick={useMap}><span>Tap to move the map</span></button>
+    <button type="button" class="use" onclick={useMap}>
+      <span><Hand size="1em" /> Tap to move the map</span>
+    </button>
   {/if}
-  <a class="open" href={full} target="_blank" rel="external noopener">Open full screen ↗</a>
+  <a class="open" href={full} target="_blank" rel="external noopener">Open full screen <ExternalLink size="1em" /></a>
 </div>
 
 <style>
@@ -123,6 +127,9 @@ iframe {
 }
 .use span,
 .open {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font: 0.875rem var(--body);
   background: #000a;
   color: var(--cream);
