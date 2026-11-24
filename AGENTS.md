@@ -93,6 +93,42 @@ An experiment is work that ships switched off for everyone, until a player opts 
 - **Its issue and PR:** label the issue `lab`. The PR gets the label too when it references the issue (`Closes #n` or `Part of #n`) or its branch name starts with the issue number. Put the preview link with `?lab=<id>` in the PR, and say in the issue what would decide the experiment.
 - **Leaving the lab:** an experiment that works graduates in its own PR: delete its `LAB_EXPERIMENTS` entry, and turn each gate into ordinary wiring (a static import or a direct call, without the check). If a smoke test used its flag, keep one step that checks the old flag is now ignored, as the ragdolls' does. One that doesn't work is dropped: delete its files, its tests, its gates and its entry.
 
+### Reviewing PRs
+
+Claude Code's built-in `/code-review` checks a change against this file, so these rules apply to it as much as to a review by hand:
+
+- Start with the problem the PR solves, in one line, and ask whether this is the best way to solve it. A better alternative is the first finding: what it is, why it's better, and the rough cost to switch. If the approach holds, say so in one line. An alternative that widens the issue's scope is a follow-up.
+- Read the earlier reviews first. A point stays open until the current head fixes it; credit the fix when it's there.
+- Every finding has its file:line and the code or input that triggers it. A claim you couldn't confirm is marked **unverified**, or dropped; a check you couldn't run (not playable headless, code not on the branch) is **not assessed**, never passed.
+- Split the findings into **before merging** and **follow-ups**. A one-line fix goes inline as a suggestion block.
+- An agent posts the review only when asked.
+
+The automated review on each PR (Workflow, above) follows `.github/claude-review.md` instead where the two differ: it posts by itself, reports only findings and a short summary, and labels each finding by its kind rather than splitting them.
+
+### Claude Code in this repo
+
+Shared agents (`.claude/agents/`) and skills (`.claude/skills/`) come with the repo, so every collaborator's Claude Code has them. Agents advise; none edits tracked files, and `performance-analyst` runs commands to build and measure, in a scratch worktree. Some are adapted from [Claude Code Game Studios](https://github.com/donchitos/claude-code-game-studios) (MIT, see `LICENSE`). Each holds only its own expertise and points here for the rules, so a refactor doesn't make it wrong. Try one on a real task before relying on it, and drop one nobody reaches for (#255 lists what was left out). Claude can start any of them on its own when a request matches its description.
+
+| Reach for | When |
+|---|---|
+| `threejs-specialist` | Rendering code; three.js changes after r176 are in [docs/threejs.md](docs/threejs.md) |
+| `performance-analyst`, `/perf-profile` | Low fps, stutter, a performance regression |
+| `/balance-check` | Whether the numbers are balanced, e.g. before merging a tuning change |
+| `writer` | What people in the game say, in local Swedish |
+| `game-designer`, `/quick-design` | Shaping a feature from the player's side; a short spec for a small change |
+| `systems-designer`, `economy-designer` | The maths behind a mechanic; money, prices and payouts |
+| `ai-programmer` | How police, traffic, pedestrians and animals decide and move |
+| `level-designer` | Choosing and laying out a real place for play |
+| `technical-artist` | Art styles, post-processing, effects, model and texture budgets |
+| `ux-designer`, `ui-programmer`, `accessibility-specialist` | Flows, controls and the HUD; reviewing UI code; barriers for disabled players |
+| `sound-designer` | Specifying sounds and the mix before they're made |
+| `network-programmer`, `security-engineer` | Multiplayer sync; strings into HTML, saved data, CI permissions, privacy |
+| `/playtest-report` | Turning playtest notes on a preview into one shape |
+| `/test-flakiness` | Flaky or slow smoke tests in CI |
+| `/asset-audit` | Every model, image, sound and font has a licence, is used and fits a budget |
+| `/onboard` | A guide for a new collaborator's area |
+| `ticket-triage`, `/new-ticket` | Checking and filing issues (Tickets, above) |
+
 ## Code style
 
 - **Match the surrounding code.** Same naming, comment density and idiom as the file you're in.
