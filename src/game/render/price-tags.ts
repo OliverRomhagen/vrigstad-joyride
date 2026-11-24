@@ -3,7 +3,6 @@
 // and the simple shapes alike.
 import * as THREE from 'three';
 import { makeRnd } from '../../world/random';
-import { lotPrice } from '../economy';
 import type { RenderedCar } from './car-meshes';
 
 const CARD_W_M = 0.58,
@@ -70,7 +69,7 @@ export class PriceTags {
     for (const c of this.g.cars) {
       if (!c.saleKr) continue;
       const shape = this.g.visibleModel(c) ?? c.body,
-        kr = lotPrice(c.saleKr, c.dmg) ?? 0, // a wreck isn't for sale: no card
+        kr = c.saleKr,
         tag = this.tags.get(c);
       if (tag?.on === shape && tag.kr === kr) continue;
       const cards = tag?.cards ?? ENDS.map(() => new THREE.Mesh(this.geo)),

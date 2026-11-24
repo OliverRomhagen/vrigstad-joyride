@@ -75,7 +75,9 @@ export function trissPrize(r: number): number {
 /** What Skroten pays for a car of this type and model at this much damage, in round tens; null when it won't buy it. */
 export function carPrice(type: string, model: string | undefined, dmg: number): number | null {
   const base = wholeKr(type, model);
-  return base ? Math.round(byWholeness(base, dmg) / 10) * 10 : null;
+  if (!base) return null;
+  const whole = 1 - Math.min(Math.max(dmg, 0), DMG_MAX) / DMG_MAX;
+  return Math.round((SCRAP_KR + (base - SCRAP_KR) * whole) / 10) * 10;
 }
 
 /** What Plåt-Pelle asks for a car of this type and model on Skroten's lot, in round hundreds; null for one he would never buy. */
@@ -83,21 +85,6 @@ export function salePrice(type: string, model: string | undefined): number | nul
   const base = wholeKr(type, model);
   return base ? Math.round((base * SALE_MARKUP) / 100) * 100 : null;
 }
-
-/**
- * What Plåt-Pelle asks for a car on his lot that has been knocked about: priced by how whole it is, the way carPrice pays, but rounded up
- * to hundreds. That rounding, with his higher base, keeps his price above Skroten's at every damage, so a dented car is never bought
- * and sold back at a profit. Null for a wreck, which he won't sell.
- */
-export function lotPrice(saleKr: number, dmg: number): number | null {
-  if (dmg >= DMG_MAX) return null;
-  if (dmg <= 0) return saleKr;
-  return Math.ceil(byWholeness(saleKr, dmg) / 100) * 100;
-}
-
-// scrap, plus the rest of `base` by how whole the car is: base undamaged, SCRAP_KR as a wreck; unrounded
-const byWholeness = (base: number, dmg: number) =>
-  SCRAP_KR + (base - SCRAP_KR) * (1 - Math.min(Math.max(dmg, 0), DMG_MAX) / DMG_MAX);
 
 // what Skroten pays for an undamaged car: by its model, else by its type; undefined for a police car
 const wholeKr = (type: string, model: string | undefined): number | undefined =>

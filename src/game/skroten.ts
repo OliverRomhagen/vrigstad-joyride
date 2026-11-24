@@ -2,7 +2,7 @@
 // He also sells the cars on his lot: press E by one for his price. Neither with the police after you, and he never buys a police car.
 // On foot you can talk to him. main.ts passes in the menu plate, the wallet and what happens to the car. No three.js or DOM here.
 import type { Car, CarForSale } from './cars';
-import { carPrice, earn, fmtKr, lotPrice, pay, salePrice, type Wallet } from './economy';
+import { carPrice, earn, fmtKr, pay, salePrice, type Wallet } from './economy';
 import type { MenuItem } from './pets';
 import { tooFastToGetOut } from './player';
 import type { CarType } from './sim/vehicle-spec';
@@ -13,7 +13,6 @@ const OWNER_SAYS = 'Plåt-Pelle: ';
 const OWNER_AT = yardToWorld(OWNER_UV.u, OWNER_UV.v);
 const TALK_M = 3; // how close you stand to talk to him
 const SALE_REACH_M = 5; // his price stays on the plate while you stand this close to the car; a little over the reach to get in
-const LOT_WRECK = OWNER_SAYS + '”Den där ä ju kaputt! Den får ja laga först. Kom tebaks sen.”';
 const CHASED = OWNER_SAYS + '”Inte mä snuten i hälarna! Kom tebaks när du ä av mä dom.”';
 /** What he says when you talk to him on foot, one after the other. */
 export const OWNER_LINES = [
@@ -121,13 +120,12 @@ export class Skroten {
 
   /** E by a car on his lot: his price on the menu plate, or a word about the police. */
   offerCar = (c: Car) => {
-    const { openMenu, toast, carName } = this.g;
-    const no = this.refusal(c);
-    if (no) {
-      toast(no, 3.5);
+    const { stars, openMenu, toast, carName } = this.g;
+    if (stars) {
+      toast(CHASED, 3.5);
       return;
     }
-    const kr = lotPrice(c.saleKr, c.dmg)!; // refusal() turned a wreck away
+    const kr = c.saleKr;
     openMenu(
       'skrot-buy',
       OWNER_SAYS + '”Den där ' + carName(c) + '? ' + fmtKr(kr) + ', å den ä din.”',
@@ -142,12 +140,6 @@ export class Skroten {
     );
   };
 
-  // why he won't sell c now, or null when he will
-  private refusal(c: Car): string | null {
-    if (this.g.stars) return CHASED;
-    return lotPrice(c.saleKr, c.dmg) === null ? LOT_WRECK : null;
-  }
-
   // you stand on foot by the car for sale, with no police after you: what keeps his menu open
   private standsByCar(c: Car) {
     const { game, player, stars } = this.g;
@@ -159,12 +151,11 @@ export class Skroten {
     const { stars, toast, wallet } = this.g;
     if (!c.saleKr) return;
     if (!stars && !this.standsByCar(c)) return; // walked off or got in: no sale, and no word
-    const no = this.refusal(c); // a crash can come while the menu is open
-    if (no) {
-      toast(no, 3.5);
+    if (stars) {
+      toast(CHASED, 3.5);
       return;
     }
-    const kr = lotPrice(c.saleKr, c.dmg)!; // refusal() turned a wreck away
+    const kr = c.saleKr;
     if (!pay(wallet, kr)) toast(OWNER_SAYS + '”' + fmtKr(kr) + ', sa ja. Kom tebaks när du har pengarna.”', 3.5);
     else {
       c.saleKr = 0;

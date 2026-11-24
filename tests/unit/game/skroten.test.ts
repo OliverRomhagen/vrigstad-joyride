@@ -162,20 +162,6 @@ describe('Skroten sells the cars on its lot', () => {
     return { ...t, car };
   }
 
-  it('asks less for a car that got knocked about, and sells no wreck', () => {
-    const dented = lot();
-    dented.car.dmg = 30;
-    dented.s.offerCar(dented.car);
-    dented.choose('buy');
-    expect(dented.wallet.kr).toBe(5000 - 1500);
-    const wreck = lot();
-    wreck.car.dmg = 100;
-    wreck.s.offerCar(wreck.car);
-    expect(wreck.menu()).toBeNull();
-    expect(wreck.calls.at(-1)).toContain('kaputt');
-    expect(wreck.car.owned).toBe(false);
-  });
-
   it('sells nothing to someone who walked off, and closes the menu once the police are after you', () => {
     const away = lot();
     away.s.offerCar(away.car);
