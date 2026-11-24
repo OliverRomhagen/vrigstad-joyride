@@ -17,7 +17,6 @@ import type { GameState, ViewState } from './state';
 type Point = { x: number; z: number };
 const _onCar = { x: 0, z: 0 }; // nearestOnSpine writes here: no allocation per car per frame
 const SIGN_S = 0.25; // the street sign, the prompt and the speed plate redraw this often (s)
-const LOT_S = 1; // Plåt-Pelle checks his lot this often (s): a rule of its own, apart from how often the HUD redraws
 const BLINK_S = 0.22; // the police lights change colour this often (s)
 const START_LINE = 'Find a car and press E to take it. Occupied cars always get you a wanted star.';
 
@@ -74,7 +73,6 @@ export interface GameLoopDeps {
   catRideLines(): void;
   closeMenuIfLeft(): void;
   updatePrompt(): void;
-  restockLot(): void; // Plåt-Pelle refills Skroten's lot, out of sight
   drawHealth(): void;
   timeFrame(workStart: number): void; // after drawing: the frame's work began at workStart (ms, performance.now)
 }
@@ -85,7 +83,6 @@ export class GameLoop {
   private last = performance.now();
   private runOverAt = -9; // the player's own cooldown for being run over, apart from the cars' crash cooldowns
   private signT = 0;
-  private lotT = 0;
   private blinkT = 0;
   private laterLine: string | null = null;
   /** the police lights' phase, so the minimap blinks with them */
@@ -221,11 +218,6 @@ export class GameLoop {
     g.updateBanknotes(dt);
     g.updateConfetti(dt);
     for (const c of cars) if (c.mode === 'ai') g.updateTraffic(c as TrafficCar, dt); // spawnTraffic gives every 'ai' car its place on the road
-    this.lotT -= dt;
-    if (this.lotT <= 0) {
-      this.lotT = LOT_S;
-      g.restockLot();
-    }
     g.updateNpcs(T, dt);
     g.updateCats(T, dt);
     if (g.wanted.update(dt, T, player.speed)) {
