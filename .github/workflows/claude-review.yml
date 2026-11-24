@@ -203,15 +203,21 @@ jobs:
             exit 0
           fi
 
-          git diff "$from..HEAD" >.claude-review/diff.patch
-          # A push that only moved the PR onto a new base leaves nothing to review: record it and skip the review.
-          if [ "$mode" = incremental ] && [ ! -s .claude-review/diff.patch ]; then
+          # Generated files are left out of the patches and the line count: data/vrigstad.json is one line of about
+          # 200 KB, so a data PR would hand Claude 400 KB of diff while counting as 2 changed lines. Their sources
+          # (tools/process.py, package.json) are reviewed.
+          generated=(':(exclude)data/vrigstad.json' ':(exclude)package-lock.json')
+          git diff "$from..HEAD" -- . "${generated[@]}" >.claude-review/diff.patch
+          # A push that only moved the PR onto a new base, or a PR or push that only changes generated files, leaves
+          # nothing to review: record it and skip the review.
+          if [ ! -s .claude-review/diff.patch ]; then
             echo "nothing=true" >>"$GITHUB_OUTPUT"
             echo "since=$since" >>"$GITHUB_OUTPUT"
+            echo "mode=$mode" >>"$GITHUB_OUTPUT"
             echo "Nothing new to review since $since." >>"$GITHUB_STEP_SUMMARY"
             exit 0
           fi
-          git diff "$merge_base..HEAD" >.claude-review/full.patch
+          git diff "$merge_base..HEAD" -- . "${generated[@]}" >.claude-review/full.patch
           # Claude gets no shell (a git command can write files, `git grep -O` runs a program), so what it would ask
           # git for is written out here.
           git log --format='%h %an: %s' "$merge_base..HEAD" >.claude-review/commits.txt
@@ -228,7 +234,7 @@ jobs:
             jq ".[] | $trusted | {user: .user.login, body}" "$RUNNER_TEMP/issue-comments.json"
           } | jq -s . >.claude-review/comments.json
 
-          changed=$(git diff --numstat "$from" HEAD | awk '{ n += $1 + $2 } END { print n + 0 }')
+          changed=$(git diff --numstat "$from" HEAD -- . "${generated[@]}" | awk '{ n += $1 + $2 } END { print n + 0 }')
           if [ "$mode" = full ] || [ "$changed" -gt "$OPUS_ABOVE_LINES" ]; then model=claude-opus-5-5; else model=claude-sonnet-5-5; fi
           if [ "$mode" = full ]; then turns=40; else turns=20; fi
           {
@@ -301,7 +307,11 @@ jobs:
           if [ "$MODE" = full ]; then scope="the whole PR"; else scope="the commits since \`${FROM:0:7}\`"; fi
           subtype=$(jq -r '[.[] | select(.type == "result")] | last | .subtype // ""' "$EXECUTION_FILE" 2>/dev/null || true)
           if [ "$NOTHING" = true ]; then
-            summary="Nothing new to review: the push only moved the PR onto a new base."
+            if [ "$MODE" = full ]; then
+              summary="Nothing to review: the PR only changes generated files (\`data/vrigstad.json\`, \`package-lock.json\`)."
+            else
+              summary="Nothing new to review: the push only moved the PR onto a new base, or only changed generated files."
+            fi
             sha=$HEAD_SHA
           elif [ "$WORKFLOW_CHANGED" = true ]; then
             summary="Not reviewed: this PR changes the review workflow, and the action only runs the workflow as it is on main."
