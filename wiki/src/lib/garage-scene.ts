@@ -22,8 +22,8 @@ const MAX_DIST_M = 26; // how far you can zoom out, unless the window needs more
 const ZOOM_OUT = 1.4; // and then this much past the fitted distance
 const VIEW_MIN = 0.35; // the share of the window's height the scene keeps however tall the header and card are
 const LOOK_AT_M = 0.8; // the height above the ring the camera looks at
-const ARRIVE_S = 1.8; // how long the camera takes to ease in on the first car, as the yard fades in
-const ARRIVE_ZOOM = 0.84; // how wide it starts, as a share of its zoom once it has arrived
+const ARRIVE_S = 1.4; // how long the camera takes to ease in on the first car, as the yard fades in
+const ARRIVE_ZOOM = 0.93; // how wide it starts, as a share of its zoom once it has arrived
 
 /** How much of the window the page's header covers at the top and its card at the bottom (px): the scene is framed in between. */
 export type Margins = { top: number; bottom: number };

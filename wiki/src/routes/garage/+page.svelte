@@ -52,11 +52,14 @@ const car = $derived(cars[index]);
 const clock: Clock = { now: () => performance.now() };
 let talk: PelleTalk | undefined;
 let saying = $state<{ line: string; n: number }>();
+// he is saying it just now: the bubble stays in the page once he has, so it can fade out, out of sight and out of reach
+let speaking = $state(false);
 let saidAt = 0;
 let bubble = $state<HTMLElement>();
 function say(line: string | undefined) {
   if (!line) return;
   saying = { line, n: (saying?.n ?? 0) + 1 };
+  speaking = true;
   saidAt = clock.now();
 }
 onMount(() => {
@@ -70,7 +73,7 @@ onMount(() => {
     if (status !== 'ready' || car.police) pelle.lookAway(); // nothing on the ring to stare at, or nothing he'd buy
     say(pelle.tick());
     // a line stays while the pointer or focus is on it, so its link doesn't vanish from under either
-    if (saying && clock.now() - saidAt > SAY_FOR_MS && !bubble?.matches(':hover, :focus-within')) saying = undefined;
+    if (speaking && clock.now() - saidAt > SAY_FOR_MS && !bubble?.matches(':hover, :focus-within')) speaking = false;
   };
   listen();
   const timer = setInterval(listen, LISTEN_MS);
@@ -122,7 +125,7 @@ function steer(e: KeyboardEvent) {
 
   {#if saying}
     {#key saying.n}
-      <p class="says" lang="sv" bind:this={bubble}>
+      <p class={['says', { quiet: !speaking }]} lang="sv" bind:this={bubble}>
         <a href={resolve('/[...slug]', { slug: 'characters/plat-pelle' })}>Plåt-Pelle</a> ”{saying.line}”
       </p>
     {/key}
@@ -300,34 +303,102 @@ header > * {
   translate: -50% 0;
   max-width: min(35rem, calc(100% - 32px));
   margin: 0;
-  padding: 10px 16px;
-  background: #fffaf0d1; /* paper, with the yard just showing through it */
+  padding: 16px 18px 11px;
+  --paper: #fffaf0d6; /* paper, with the yard just showing through it */
+  background: var(--paper);
   color: var(--road);
-  border-radius: 14px;
+  border-radius: 16px 16px 16px 4px; /* squarer where its tail leaves it */
   font-size: 1rem;
   text-wrap: pretty;
+  rotate: 0.6deg; /* pinned up by hand, like the gate's sign */
   box-shadow:
-    0 0 0 1px #ffffff40,
     0 1px 2px #0002,
     0 8px 24px #0003;
   backdrop-filter: blur(10px) saturate(1.3);
+  /* it grows out of its tail, where the words come from */
+  transform-origin: 22px calc(100% + 12px);
+}
+/* the tail: down and to the left, to where he stands behind the camera */
+.says::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 12px;
+  width: 20px;
+  height: 13px;
+  background: var(--paper);
+  clip-path: polygon(0 0, 100% 0, 15% 100%);
+  backdrop-filter: blur(10px) saturate(1.3);
+}
+/* his name on a tab in his cap's red, stuck over the bubble's top edge */
+.says a {
+  position: absolute;
+  top: -0.7em;
+  left: 14px;
+  padding: 1px 8px;
+  font: 700 0.8125rem / 1.4 var(--font);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #fffaf0;
+  background: #b8322a;
+  border-radius: 4px;
+  text-decoration: none;
+  rotate: -2deg;
+  box-shadow: 0 1px 2px #0003;
+}
+/* he has said it: gone from sight, and from the keyboard and a screen reader with it */
+.quiet {
+  visibility: hidden;
+  opacity: 0;
 }
 @media (prefers-reduced-motion: no-preference) {
+  /* in with a little spring; out quicker and plainer than it came, a fade and a blur */
   .says {
-    animation: pop 0.35s ease-out;
+    animation: say 320ms cubic-bezier(0.34, 1.4, 0.64, 1) both;
+  }
+  .says.quiet {
+    filter: blur(4px);
+    transition:
+      opacity 160ms ease-in,
+      filter 160ms ease-in,
+      visibility 0s 160ms;
   }
 }
-.says a {
-  font: 700 1rem var(--font);
-  text-transform: uppercase;
-  color: #b8322a; /* his cap */
-  text-decoration: none;
-  margin-right: 4px;
-}
-@keyframes pop {
+@keyframes say {
   from {
     opacity: 0;
-    translate: -50% 6px;
+    scale: 0.85;
+  }
+}
+
+/* arriving: the header, the card and the credit step in one after another, a short beat apart, as the yard fades in */
+@media (prefers-reduced-motion: no-preference) {
+  header {
+    animation: step-down 360ms 120ms ease-out both;
+  }
+  .card {
+    animation: step-up 360ms 220ms ease-out both;
+  }
+  .credit {
+    animation: step-fade 360ms 320ms ease-out both;
+  }
+}
+@keyframes step-down {
+  from {
+    opacity: 0;
+    translate: 0 -8px;
+  }
+}
+/* the card is centred by its own translate: it rises into that */
+@keyframes step-up {
+  from {
+    opacity: 0;
+    translate: -50% 10px;
+  }
+}
+@keyframes step-fade {
+  from {
+    opacity: 0;
   }
 }
 .card {
@@ -516,6 +587,45 @@ dd i {
 }
 .papers::backdrop {
   background: #0006;
+}
+/* in from the right edge; out quicker and only a short way, fading. `display` and `overlay` wait for the way out to end
+   (allow-discrete), and @starting-style is where the way in starts. A browser without these opens and shuts it at once. */
+@media (prefers-reduced-motion: no-preference) {
+  .papers {
+    translate: 32px 0;
+    opacity: 0;
+    transition:
+      translate 170ms ease-in,
+      opacity 170ms ease-in,
+      display 170ms allow-discrete,
+      overlay 170ms allow-discrete;
+  }
+  .papers[open] {
+    translate: 0 0;
+    opacity: 1;
+    transition-duration: 300ms;
+    transition-timing-function: cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  .papers::backdrop {
+    background: #0000;
+    transition:
+      background 170ms ease-in,
+      display 170ms allow-discrete,
+      overlay 170ms allow-discrete;
+  }
+  .papers[open]::backdrop {
+    background: #0006;
+    transition-duration: 300ms;
+  }
+  @starting-style {
+    .papers[open] {
+      translate: 100% 0;
+      opacity: 1;
+    }
+    .papers[open]::backdrop {
+      background: #0000;
+    }
+  }
 }
 .papers-panel {
   min-height: 100%;

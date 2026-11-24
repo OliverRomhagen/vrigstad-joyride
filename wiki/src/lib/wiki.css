@@ -89,12 +89,12 @@ h2 {
 
 /* ---------- into the garage and out of it (routes/+layout.svelte starts it) ---------- */
 /* the page you leave fades and softens, quickly; the one you come to fades up a moment later, from a little closer in, as
-   if stepping through the gate. Browsers without view transitions never match these, and change page at once. */
+   if stepping through the gate. Out is shorter and plainer than in, here and wherever something leaves. Browsers without view transitions never match these, and change page at once. */
 :root[data-transition="garage"]::view-transition-old(root) {
-  animation: 220ms ease-in both garage-leave;
+  animation: 160ms ease-in both garage-leave;
 }
 :root[data-transition="garage"]::view-transition-new(root) {
-  animation: 420ms 80ms ease-out both garage-arrive;
+  animation: 380ms 60ms ease-out both garage-arrive;
 }
 @keyframes garage-leave {
   to {
@@ -105,7 +105,7 @@ h2 {
 @keyframes garage-arrive {
   from {
     opacity: 0;
-    scale: 1.03;
+    scale: 1.015;
   }
 }
 
