@@ -21,6 +21,7 @@ export interface TestHookDeps {
   health: Health;
   cars: readonly Car[];
   labs: readonly string[]; // the lab experiments switched on
+  readonly remotePlayers: number; // other players shown (lab: multiplayer)
   readonly ragdolls: number; // people knocked over right now
   readonly stars: number;
   readonly cats: number;
@@ -156,6 +157,7 @@ export function installTestHook(g: TestHookDeps) {
       return {
         started: game.started,
         lab: g.labs,
+        remotePlayers: g.remotePlayers,
         ragdolls: g.ragdolls,
         x: player.x,
         z: player.z,
@@ -189,6 +191,8 @@ export function installTestHook(g: TestHookDeps) {
         activeVehicle: game.pcar ? vehicleVisuals.state(game.pcar) : null,
         body: game.pcar ? bodyMotion.state(game.pcar) : null,
         wheelbase: (game.pcar || displayCar)?.T.handling.wheelbaseM ?? 0,
+        carCount: cars.length,
+        remoteCars: cars.filter(c => c.mode === 'remote').map(c => ({ x: c.x, z: c.z })),
         startGapM,
         traffic: cars.filter(c => c.mode === 'ai').map(c => ({ type: c.type, vehicle: vehicleVisuals.state(c) })),
         clouds: skyDome.state(),

@@ -17,6 +17,11 @@
     "src/game/prompt.ts",
     "src/game/test-hook.ts",
     "src/game/devconsole.ts",
-    "src/game/confetti.ts"
+    "src/game/confetti.ts",
+    "src/game/net/tabs-transport.ts",
+    "src/game/net/connectors.ts",
+    "src/game/net/webrtc-transport.ts",
+    "src/game/net/invite-panel.ts",
+    "src/game/net/start.ts"
   ]
 }
