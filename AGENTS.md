@@ -30,7 +30,7 @@ Live site: https://oliverromhagen.github.io/vrigstad-joyride/ (GitHub Pages, fro
 
 - Work on a branch and open a PR; don't push to `main`. For work on an issue, start the branch with `gh issue develop <n> --checkout`: GitHub then links the branch, and the PR made from it, to the issue. For work that only does part of an issue, make the branch yourself (see **Link** below).
 - A `feat` PR gets a playable preview link commented on it; add the `preview` label to get one for any other PR (see "Preview links" in the README).
-- A PR into `main` that changes code, or AGENTS.md, gets a review by Claude once it's out of draft ([#469](https://github.com/OliverRomhagen/vrigstad-joyride/issues/469), an experiment), posted as inline comments with a summary comment that shows what it cost.
+- A PR into `main` that changes code, a workflow or AGENTS.md gets a review by Claude once it's out of draft ([#469](https://github.com/OliverRomhagen/vrigstad-joyride/issues/469), an experiment), posted as inline comments with a summary comment that shows what it cost.
   - PRs from forks aren't reviewed. Nor are the upper PRs of a stack until they're retargeted to `main`, when the one below them merges.
   - What the review looks for is in `.github/claude-review.md`. Change it there.
   - The workflow, `.github/workflows/claude-review.yml`, runs from `main`, and so does the instructions file. A change to either takes effect once it merges, not in its own PR.
