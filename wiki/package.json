@@ -1,7 +1,7 @@
 {
   "name": "vrigstad-joyride-wiki",
   "private": true,
-  "description": "Proof of concept: the docs/ folder as a wiki, with SvelteKit and mdsvex",
+  "description": "The players' wiki: docs/lore/ as a prerendered site, with SvelteKit and mdsvex",
   "type": "module",
   "imports": {
     "#lib/*": "./src/lib/*"

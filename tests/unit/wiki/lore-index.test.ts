@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { type LoreFile, LoreIndex, parseEntry } from '../../../wiki/src/lib/lore-index';
+import { hasInfobox, kindLabel, type LoreFile, LoreIndex, parseEntry } from '../../../wiki/src/lib/lore-index';
 
 const rules = { models: new Set(['plat-pelle', 'cat']), tables: new Set(['kiosk']) };
 const file = (slug: string, meta: Record<string, unknown>, source = ''): LoreFile => ({ slug, meta, source });
@@ -67,6 +67,25 @@ describe('parseEntry', () => {
     );
     expect(() => parseEntry(file('x', { title: 7 }), rules)).toThrow('`title` should be text');
     expect(() => parseEntry(file('x', {}, '# A heading\n'), rules)).toThrow('docs/lore/x.md: needs a `title`');
+  });
+
+  it('refuses a page more than one folder deep', () => {
+    expect(() => parseEntry(file('places/lakes/slattsjon', { title: 'X' }), rules)).toThrow(
+      'more than one folder deep',
+    );
+  });
+
+  it("knows each kind's label, and whether an entry has what its infobox shows", () => {
+    const entry = (slug: string) => index.get(slug) ?? expect.fail(`no ${slug}`);
+    expect(kindLabel(entry('places/torget'))).toBe('Place');
+    expect(kindLabel(entry('about'))).toBeUndefined();
+    expect(hasInfobox(entry('places/torget'))).toBe(true);
+    expect(hasInfobox(entry('characters/plat-pelle'))).toBe(true);
+    expect(hasInfobox(entry('about'))).toBe(false);
+    expect(hasInfobox(parseEntry(file('places/nowhere', { title: 'Nowhere', kind: 'place' }), rules))).toBe(false);
+    expect(hasInfobox(parseEntry(file('characters/nobody', { title: 'Nobody', kind: 'character' }), rules))).toBe(
+      false,
+    );
   });
 });
 

@@ -1,4 +1,7 @@
-/* The poster's look, as on the marketing page (#171): sky over a dark road, cream and gold. */
+/* What every page of the wiki shares: the colours and fonts, the page's ground, text, and the few classes more than one
+   component uses. A component's own look is in its own <style>, which Svelte keeps to that component.
+   The poster's look, as on the marketing page (#171): sky over a dark road, cream and gold.
+   Sizes of text are in rem, so they follow the size the reader has set in their browser. */
 :root {
   --sky-1: #f3c98b;
   --sky-2: #e58a5c;
@@ -9,6 +12,8 @@
   --muted: #b8b09c;
   --gold: #e8b44a;
   --sign-blue: #0b5aa2; /* a Swedish place-name sign: white letters and border on blue */
+  --glass: #1d1f24cc; /* a dark pane over the sky or a scene */
+  --hairline: #ffffff2a; /* a pane's edge */
   --font: "Barlow Condensed", "Avenir Next Condensed", "Arial Narrow", system-ui, sans-serif;
   /* hand-painted signs, such as Skroten's gate: the display font until the game has a handwritten one */
   --hand: var(--font);
@@ -24,7 +29,7 @@ html {
 body {
   margin: 0;
   color: var(--cream);
-  font: 18px / 1.6 var(--body);
+  font: 1.125rem / 1.6 var(--body);
   /* the sky fades into the road on an eased curve, many stops so it has no visible edge, with a dusk tint that lingers. From
      the sidebar's first heading (about 115px) down it is dark enough for small muted text at WCAG AA (4.5:1) */
   background:
@@ -55,152 +60,6 @@ code {
   padding: 0.1em 0.35em;
   border-radius: 4px;
 }
-
-.shell {
-  display: grid;
-  grid-template: "top top" auto "side main" 1fr "foot foot" auto / 220px minmax(0, 1fr);
-  gap: 0 40px;
-  max-width: 1100px;
-  margin: 0 auto;
-  padding: 0 16px;
-}
-.top {
-  grid-area: top;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 20px 0 48px;
-}
-.top .play {
-  margin-left: auto;
-}
-/* the phone's menu button; the sidebar is always there on a wider screen */
-.menu {
-  display: none;
-  font: 600 18px var(--font);
-  text-transform: uppercase;
-  color: var(--cream);
-  background: #1d1f2499;
-  border: 1px solid #ffffff2a;
-  padding: 7px 12px;
-  border-radius: 6px;
-  cursor: pointer;
-}
-.brand {
-  font: 700 28px / 1 var(--font);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--cream);
-  text-decoration: none;
-  white-space: nowrap;
-}
-.brand span {
-  color: var(--road);
-}
-/* "wiki" as a small dark sign on the sky: cream straight on the orange reads at only 2.2:1 */
-.brand b {
-  font-weight: inherit;
-  color: var(--cream);
-  background: var(--road);
-  padding: 2px 7px 1px;
-  border-radius: 4px;
-  margin-left: 2px;
-}
-.play {
-  font: 600 18px var(--font);
-  text-transform: uppercase;
-  color: var(--road);
-  background: var(--gold);
-  padding: 8px 14px;
-  border-radius: 6px;
-  text-decoration: none;
-}
-
-.side {
-  grid-area: side;
-  font-size: 17px;
-}
-.side h2 {
-  font: 600 14px var(--font);
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  color: var(--muted);
-  margin: 24px 0 6px;
-}
-.side h2:first-child {
-  margin-top: 0;
-}
-.side ul {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-.side a {
-  display: block;
-  padding: 3px 10px;
-  margin-left: -10px;
-  color: var(--cream);
-  text-decoration: none;
-}
-.side a:hover {
-  color: var(--gold);
-}
-/* the page you're on: gold, with a gold edge like a road's centre line, and no block behind it */
-.side a[aria-current="page"] {
-  color: var(--gold);
-  font-weight: 600;
-  box-shadow: inset 3px 0 var(--gold);
-}
-
-main {
-  grid-area: main;
-  min-width: 0;
-  padding-bottom: 64px;
-}
-footer {
-  grid-area: foot;
-  border-top: 1px solid var(--line);
-  padding: 16px 0 32px;
-  font-size: 14px;
-  color: var(--muted);
-}
-/* Vrigstad at nightfall under the footer (Nightfall.svelte), the window's full width */
-.nightfall {
-  display: block;
-  width: 100%;
-  /* the drawing's own shape (1600 × 200, Nightfall.svelte) on a window wider than 1440px, so the church's spire stays in */
-  height: max(180px, 12.5vw);
-  margin-top: -24px;
-  pointer-events: none;
-}
-.nightfall-sign {
-  font: 700 24px var(--font);
-}
-@media (max-width: 760px) {
-  /* shorter, so a phone shows the village and the sign across (Nightfall.svelte) */
-  .nightfall {
-    height: 120px;
-  }
-}
-
-.crumbs {
-  font-size: 14px;
-  color: var(--cream); /* the muted grey reads at only 4:1 this near the sky */
-  display: flex;
-  gap: 6px;
-  margin-bottom: 8px;
-}
-/* cream too: on a phone the crumbs sit higher, where the gold reads at only 4.3:1 */
-.crumbs a {
-  color: var(--cream);
-}
-.kind {
-  font: 600 15px var(--font);
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
-  color: var(--gold);
-  margin: 0;
-}
 h1,
 h2,
 h3 {
@@ -208,82 +67,50 @@ h3 {
   line-height: 1.1;
 }
 h1 {
-  font-size: clamp(40px, 7vw, 64px);
+  font-size: clamp(2.5rem, 7vw, 4rem);
   text-transform: uppercase;
   margin: 4px 0 8px;
 }
 h2 {
-  font-size: 28px;
+  font-size: 1.75rem;
   margin-top: 40px;
 }
+
+/* for a screen reader only: text that says what the page shows another way */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* ---------- text ---------- */
+/* a page's prose, written in Markdown: a line no longer than reads well */
+.prose {
+  max-width: 68ch;
+}
+/* the small gold line over a title: what kind of page this is */
+.kind {
+  font: 600 0.9375rem var(--font);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--gold);
+  margin: 0;
+}
 .summary {
-  font-size: 20px;
+  font-size: 1.25rem;
   color: var(--muted);
   margin-top: 0;
   max-width: 60ch;
 }
-.tags {
-  display: flex;
-  gap: 8px;
-  margin: 0;
-  font-size: 15px;
+.muted {
   color: var(--muted);
-}
-.prose {
-  max-width: 68ch;
-}
-
-/* a page with an infobox: the box beside the prose, as on any wiki; stacked above it on a narrow screen */
-.page.has-box {
-  display: grid;
-  grid-template: "head head" auto "prose box" 1fr / minmax(0, 1fr) 300px;
-  gap: 0 36px;
-  align-items: start;
-}
-.page-head {
-  grid-area: head;
-  margin-bottom: 20px;
-}
-.page.has-box .prose {
-  grid-area: prose;
-}
-.page.has-box .prose > :first-child {
-  margin-top: 0;
-}
-.infobox {
-  grid-area: box;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 10px 10px 14px;
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 12px;
-}
-.facts {
-  margin: 0;
-  padding: 0 4px;
-  font-size: 15px;
-}
-.facts div {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 6px 0;
-  border-bottom: 1px solid var(--line);
-}
-.facts dt {
-  font: 600 14px var(--font);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--muted);
-}
-.facts dd {
-  margin: 0;
-  font-variant-numeric: tabular-nums;
+  font-size: 0.9375rem;
 }
 .button {
-  font: 600 18px var(--font);
+  font: 600 1.125rem var(--font);
   text-transform: uppercase;
   text-align: center;
   background: var(--gold);
@@ -292,318 +119,44 @@ h2 {
   border-radius: 6px;
   text-decoration: none;
 }
-.button:hover,
-.play:hover {
+.button:hover {
   filter: brightness(1.08);
 }
 
-.backlinks {
-  margin-top: 48px;
-  padding: 12px 16px;
-  background: var(--panel);
-  border-radius: 10px;
-  max-width: 68ch;
-}
-.backlinks h2 {
-  font-size: 16px;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  color: var(--muted);
-  margin: 0 0 4px;
-}
-.backlinks ul {
-  margin: 0;
-  padding-left: 18px;
-}
-
-.hero {
-  margin-bottom: 16px;
-}
-/* the sign at the edge of the village: blue, a white border inside its edge, the name in white */
-.road-sign {
-  display: inline-block;
-  margin: 0 0 14px;
-  padding: 6px 22px 4px;
-  font: 700 clamp(28px, 5vw, 38px) / 1.1 var(--font);
-  letter-spacing: 0.03em;
-  color: #fff;
-  background: var(--sign-blue);
-  border-radius: 6px;
-  box-shadow:
-    inset 0 0 0 3px var(--sign-blue),
-    inset 0 0 0 5px #fff,
-    0 8px 24px #0005;
-}
-.home-section h2 {
-  font-size: 16px;
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
-  color: var(--gold);
-  margin: 36px 0 10px;
-}
-.home-section .cards {
-  margin: 0;
-}
-.cards {
-  list-style: none;
-  padding: 0;
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-  gap: 14px;
-}
-.cards a {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  height: 100%;
-  padding: 16px;
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  color: var(--cream);
-  text-decoration: none;
-}
-.cards a:hover {
-  border-color: var(--gold);
-}
-.cards strong {
-  font: 700 26px var(--font);
-  text-transform: uppercase;
-}
-.cards span:last-child {
-  color: var(--muted);
-  font-size: 16px;
-}
-
+/* ---------- tables: the game's numbers, and any table a page writes in Markdown ---------- */
 .table-wrap {
   overflow-x: auto;
   margin: 24px 0;
 }
-.data-table {
+.data-table,
+.prose table {
   border-collapse: collapse;
   width: 100%;
-  font-size: 16px;
+  font-size: 1rem;
 }
-.data-table th,
-.data-table td {
+:is(.data-table, .prose table) :is(th, td) {
   text-align: left;
   padding: 8px 10px;
   border-bottom: 1px solid var(--line);
   white-space: nowrap;
 }
-.data-table td.models {
+/* the last column is the one with a sentence in it: it wraps, so a phone shows the table whole */
+:is(.data-table, .prose table) td:last-child {
   white-space: normal;
-  min-width: 160px;
+  min-width: 6rem;
 }
-.data-table thead th {
-  font: 600 14px var(--font);
+:is(.data-table, .prose table) thead th {
+  font: 600 0.875rem var(--font);
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--muted);
 }
-.data-table tbody th {
-  font: 700 19px var(--font);
+:is(.data-table, .prose table) tbody th {
+  font: 700 1.1875rem var(--font);
   text-transform: uppercase;
 }
-.data-table small {
-  display: block;
-  font: 13px var(--body);
-  color: var(--muted);
-  text-transform: none;
-}
-.data-table .num {
-  font-variant-numeric: tabular-nums;
-}
-.swatches {
-  display: flex;
-  gap: 3px;
-}
-.swatches i {
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  border: 1px solid #fff3;
-}
 
-@media (max-width: 1100px) {
-  .page.has-box {
-    grid-template: "head" auto "box" auto "prose" 1fr / minmax(0, 1fr);
-  }
-  .infobox {
-    margin-bottom: 24px;
-    max-width: 68ch;
-  }
-}
-@media (max-width: 760px) {
-  .shell {
-    grid-template: "top" auto "side" auto "main" 1fr "foot" auto / minmax(0, 1fr);
-  }
-  .top {
-    padding-bottom: 24px;
-  }
-  /* a phone without a condensed font (the wiki doesn't load Barlow yet) would push the header wider than the screen: the
-     brand gives way first */
-  .top {
-    gap: 8px;
-  }
-  .brand {
-    font-size: 22px;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    padding-block: 4px; /* room for the "wiki" sign's own padding, which overflow: hidden would cut */
-  }
-  .menu,
-  .play {
-    flex-shrink: 0;
-    white-space: nowrap;
-    padding: 7px 10px;
-  }
-  .menu {
-    display: block;
-  }
-  .play-long {
-    display: none;
-  }
-  /* the drawer (below) takes the sidebar's place */
-  .side {
-    display: none;
-  }
-}
-
-/* ---------- the phone's menu: a drawer from the right, over the page ---------- */
-.drawer {
-  margin: 0 0 0 auto;
-  width: min(320px, 86vw);
-  height: 100dvh;
-  max-height: none;
-  padding: 0;
-  border: 0;
-  border-left: 1px solid var(--line);
-  background: var(--panel);
-  color: var(--cream);
-  overscroll-behavior: contain;
-}
-.drawer[open] {
-  animation: drawer-in 0.2s ease-out;
-}
-.drawer::backdrop {
-  background: #0009;
-}
-@keyframes drawer-in {
-  from {
-    translate: 100% 0;
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .drawer[open] {
-    animation: none;
-  }
-}
-/* the page behind an open drawer stays put */
-html:has(.drawer[open]) {
-  overflow: hidden;
-}
-.drawer-panel {
-  min-height: 100%;
-  padding: 16px 20px 32px;
-  font-size: 17px;
-}
-.drawer-close {
-  display: block;
-  margin-left: auto;
-  font: 600 18px var(--font);
-  text-transform: uppercase;
-  color: var(--cream);
-  background: none;
-  border: 1px solid #ffffff2a;
-  padding: 6px 12px;
-  border-radius: 6px;
-  cursor: pointer;
-}
-.drawer h2 {
-  font: 600 14px var(--font);
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  color: var(--muted);
-  margin: 20px 0 4px;
-}
-.drawer ul {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-.drawer a {
-  display: block;
-  padding: 9px 10px;
-  margin-left: -10px;
-  color: var(--cream);
-  text-decoration: none;
-}
-.drawer a[aria-current="page"] {
-  color: var(--gold);
-  font-weight: 600;
-  box-shadow: inset 3px 0 var(--gold);
-}
-
-.muted {
-  color: var(--muted);
-  font-size: 15px;
-}
-.swatches.pick {
-  margin-top: 8px;
-  gap: 6px;
-}
-.swatches.pick button {
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  border: 2px solid #fff3;
-  padding: 0;
-  cursor: pointer;
-}
-.swatches.pick button[aria-pressed="true"] {
-  border-color: var(--gold);
-  box-shadow: 0 0 0 2px var(--road);
-}
-.credit {
-  font-size: 14px;
-  color: var(--muted);
-}
-
-.map-embed {
-  position: relative;
-  margin: 16px 0 24px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  overflow: hidden;
-  aspect-ratio: 16 / 10;
-  background: var(--panel);
-}
-.map-embed.tall {
-  aspect-ratio: auto;
-  height: min(75vh, 720px);
-}
-.map-embed iframe {
-  width: 100%;
-  height: 100%;
-  border: 0;
-  display: block;
-}
-/* the map or the model at the top of an infobox: inside its frame, so no frame of their own */
-.infobox .map-embed {
-  margin: 0;
-  aspect-ratio: 1;
-  border-radius: 8px;
-  border: 0;
-}
-.npc-preview {
-  margin: 0;
-}
-.scene-frame {
-  position: relative;
-}
-/* over a map or a model while it loads: a turning wheel and what is coming, in the frame's middle */
+/* ---------- over a map or a model while it loads: a turning wheel and what is coming, in the frame's middle ---------- */
 .loading-3d {
   position: absolute;
   inset: 0;
@@ -613,7 +166,7 @@ html:has(.drawer[open]) {
   justify-content: center;
   gap: 10px;
   margin: 0;
-  font: 600 16px var(--font);
+  font: 600 1rem var(--font);
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--cream);
@@ -638,281 +191,5 @@ html:has(.drawer[open]) {
 @keyframes spin {
   to {
     rotate: 1turn;
-  }
-}
-.npc-scene {
-  overflow: hidden;
-  aspect-ratio: 4 / 5; /* a standing person */
-  max-height: 60vh;
-  border-radius: 8px;
-  background: linear-gradient(#cfe0e4, #8ea3a8);
-  touch-action: none;
-}
-@media (max-width: 1100px) {
-  .infobox .map-embed {
-    aspect-ratio: 16 / 10;
-  }
-  .npc-scene {
-    aspect-ratio: 4 / 3;
-  }
-}
-.npc-scene canvas {
-  width: 100%;
-  height: 100%;
-  display: block;
-}
-.npc-preview figcaption {
-  font-size: 14px;
-  color: var(--muted);
-  margin: 8px 4px 0;
-}
-/* top left: the map's tools are top right, and its OpenStreetMap credit bottom right */
-.map-open {
-  position: absolute;
-  left: 10px;
-  top: 10px;
-  font-size: 14px;
-  background: #000a;
-  color: var(--cream);
-  padding: 4px 10px;
-  border-radius: 6px;
-  text-decoration: none;
-}
-
-/* ---------- the garage: Skroten, full page ---------- */
-.skroten {
-  position: fixed;
-  inset: 0;
-  overflow: hidden;
-  background: linear-gradient(180deg, #e58a5c 0%, #f3c98b 38%, #d9a27a 52%, #6b7a48 52.1%);
-}
-.skroten-scene {
-  position: absolute;
-  inset: 0;
-  touch-action: none;
-}
-.skroten-scene canvas {
-  display: block;
-  width: 100%;
-  height: 100%;
-  cursor: grab;
-}
-.skroten-scene canvas:active {
-  cursor: grabbing;
-}
-.sk-top {
-  position: absolute;
-  inset: 16px 16px auto;
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-  pointer-events: none;
-}
-.sk-top > * {
-  pointer-events: auto;
-}
-.sk-back,
-.sk-papers {
-  font: 600 18px var(--font);
-  text-transform: uppercase;
-  color: var(--cream);
-  background: #1d1f24cc;
-  border: 1px solid #ffffff22;
-  padding: 8px 14px;
-  border-radius: 8px;
-  text-decoration: none;
-  cursor: pointer;
-  backdrop-filter: blur(6px);
-}
-/* the yard's gate sign: cream boards, dark letters */
-.sk-sign {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  background: var(--cream);
-  color: var(--road);
-  padding: 6px 18px 8px;
-  border-radius: 4px;
-  box-shadow:
-    0 3px 0 #8a4a2a,
-    0 10px 30px #0005;
-  transform: rotate(-1.2deg);
-}
-.sk-sign strong {
-  font: 700 clamp(26px, 5vw, 40px) / 1 var(--hand);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-}
-.sk-sign span {
-  font: 600 13px var(--font);
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  color: #6b4a32;
-}
-.sk-says {
-  position: absolute;
-  top: 96px;
-  left: 50%;
-  translate: -50% 0;
-  max-width: min(560px, calc(100% - 32px));
-  margin: 0;
-  padding: 10px 16px;
-  background: #fffaf0;
-  color: var(--road);
-  border-radius: 14px;
-  font-size: 16px;
-  box-shadow: 0 8px 24px #0004;
-}
-@media (prefers-reduced-motion: no-preference) {
-  .sk-says {
-    animation: sk-pop 0.35s ease-out;
-  }
-}
-.sk-says a {
-  font: 700 16px var(--font);
-  text-transform: uppercase;
-  color: #b8322a;
-  text-decoration: none;
-  margin-right: 4px;
-}
-@keyframes sk-pop {
-  from {
-    opacity: 0;
-    translate: -50% 6px;
-  }
-}
-.sk-card {
-  position: absolute;
-  left: 50%;
-  bottom: 20px;
-  translate: -50% 0;
-  width: min(640px, calc(100% - 32px));
-  display: grid;
-  grid-template-columns: auto 1fr auto;
-  align-items: center;
-  gap: 8px;
-  padding: 14px 10px;
-  background: #1d1f24e0;
-  border: 1px solid #ffffff1a;
-  border-radius: 16px;
-  backdrop-filter: blur(8px);
-}
-.sk-info {
-  min-width: 0;
-  text-align: center;
-}
-.sk-info h1 {
-  font-size: clamp(28px, 6vw, 44px);
-  margin: 2px 0 0;
-}
-.sk-spoken {
-  margin: 2px 0 10px;
-  color: var(--muted);
-  font-size: 16px;
-}
-.sk-step {
-  width: 48px;
-  height: 64px;
-  font: 700 40px / 1 var(--font);
-  color: var(--road);
-  background: var(--gold);
-  border: 0;
-  border-radius: 10px;
-  cursor: pointer;
-}
-.sk-step:hover {
-  filter: brightness(1.1);
-}
-.sk-stats {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 10px;
-  margin: 0 0 10px;
-  text-align: left;
-}
-.sk-stats dt {
-  font: 600 13px var(--font);
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  color: var(--muted);
-}
-.sk-stats dd {
-  margin: 2px 0 0;
-  font-size: 15px;
-  font-variant-numeric: tabular-nums;
-}
-.sk-stats i {
-  display: block;
-  height: 6px;
-  margin-bottom: 4px;
-  border-radius: 3px;
-  background: linear-gradient(90deg, var(--gold) calc(var(--v) * 100%), #ffffff1a 0);
-}
-.sk-credit {
-  grid-column: 1 / -1;
-  margin: 4px 0 0;
-  text-align: center;
-  font-size: 12px;
-  color: var(--muted);
-}
-.sk-credit a {
-  color: inherit;
-}
-.sk-card .swatches.pick {
-  justify-content: center;
-  margin: 0;
-}
-.sk-loading {
-  position: absolute;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  align-content: center; /* the dev hint stays right under the message */
-  gap: 8px;
-  margin: 0;
-  font: 600 24px var(--font);
-  text-transform: uppercase;
-  color: var(--road);
-  pointer-events: none; /* a message over the scene, not a cover: the car buttons under it still work */
-}
-.sk-loading small {
-  font: 500 15px var(--font);
-  text-transform: none;
-}
-.sk-drawer {
-  position: absolute;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  width: min(720px, 100%);
-  overflow-y: auto;
-  padding: 80px 24px 24px;
-  background: #1d1f24f2;
-  border-left: 1px solid var(--line);
-  box-shadow: -20px 0 40px #0006;
-}
-.sk-drawer h2 {
-  margin-top: 0;
-}
-@media (max-width: 560px) {
-  .sk-sign span {
-    display: none;
-  }
-  .sk-says {
-    top: 84px;
-    font-size: 15px;
-  }
-  .sk-card {
-    bottom: 12px;
-    padding: 10px 6px;
-  }
-  .sk-step {
-    width: 36px;
-    height: 52px;
-    font-size: 32px;
-  }
-  .sk-stats {
-    gap: 6px;
   }
 }

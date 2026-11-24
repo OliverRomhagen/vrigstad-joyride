@@ -91,3 +91,23 @@ const SIGN = { x: 944, y: GROUND - 72 }; // where the village ends, the far side
   </g>
 </svg>
 
+<style>
+/* the window's full width, under the footer */
+.nightfall {
+  display: block;
+  width: 100%;
+  /* the drawing's own shape (1600 × 200) on a window wider than 1440px, so the church's spire stays in */
+  height: max(180px, 12.5vw);
+  margin-top: -24px;
+  pointer-events: none;
+}
+.nightfall-sign {
+  font: 700 24px var(--font); /* in the drawing's own units, not the page's */
+}
+@media (width <= 47.5em) {
+  /* shorter, so a phone shows the village and the sign across */
+  .nightfall {
+    height: 120px;
+  }
+}
+</style>

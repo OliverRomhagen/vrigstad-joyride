@@ -24,18 +24,11 @@
     // Rule 5: seeded randomness in the game and the world. The map page isn't gameplay, and neither are tools and tests.
     { "path": "./tools/biome/no-math-random.grit", "includes": ["src/**", "!src/map/**"] }
   ],
+  // The wiki's Svelte files whole, markup and styles too, not only the script: Biome formats them (a block's clauses each on
+  // a line of their own) and sees a name the markup uses. Experimental in Biome, so the wiki's own check and build are what
+  // say a formatted component still works.
+  "html": { "experimentalFullSupportEnabled": true, "formatter": { "enabled": true } },
   "overrides": [
-    {
-      // Biome reads only the script of a .svelte file, so a name used in the markup looks unused (Biome's Svelte docs).
-      // The wiki's CSS is one stylesheet ordered by page section, not by specificity.
-      "includes": ["wiki/**/*.svelte", "wiki/**/*.css"],
-      "linter": {
-        "rules": {
-          "correctness": { "noUnusedVariables": "off", "noUnusedImports": "off" },
-          "style": { "noDescendingSpecificity": "off" }
-        }
-      }
-    },
     {
       // The two page scripts keep their dense style, so only formatting is off: reformatting the game's main.ts is its own
       // PR now that #177 has split it. These rules still run: the map's @ts-nocheck hides undeclared names from tsc, and a

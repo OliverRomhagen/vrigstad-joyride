@@ -30,10 +30,47 @@ function scene(host: HTMLDivElement) {
 }
 </script>
 
-<figure class="npc-preview">
-  <div class="scene-frame">
-    <div class="npc-scene" {@attach scene} role="img" aria-label="{label} in 3D: drag to look around"></div>
-    {#if !ready && !failed}<p class="loading-3d" role="status">Fetching {label}…</p>{/if}
+<figure>
+  <div class="frame">
+    <div class="scene" {@attach scene} role="img" aria-label="{label} in 3D: drag to look around"></div>
+    {#if !ready && !failed}
+      <p class="loading-3d" role="status">Fetching {label}…</p>
+    {/if}
   </div>
   <figcaption>{failed ? "The 3D model didn't load." : 'As the game draws them. Drag to look around.'}</figcaption>
 </figure>
+
+<style>
+figure {
+  margin: 0;
+}
+.frame {
+  position: relative;
+}
+/* no touch-action here: on a phone a finger moving up or down scrolls the page past the model (game-look.ts) */
+.scene {
+  overflow: hidden;
+  aspect-ratio: 4 / 5; /* a standing person */
+  max-height: 60vh;
+  border-radius: 8px;
+  /* the sky at the top of the page, behind the model */
+  background: linear-gradient(var(--sky-2), var(--sky-1));
+}
+/* the infobox lies across the page from here down (routes/[...slug]) */
+@media (width <= 68.75em) {
+  .scene {
+    aspect-ratio: 4 / 3;
+  }
+}
+/* the canvas is the scene's own, added when it starts */
+.scene :global(canvas) {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+figcaption {
+  font-size: 0.875rem;
+  color: var(--muted);
+  margin: 8px 4px 0;
+}
+</style>

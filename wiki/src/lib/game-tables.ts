@@ -41,7 +41,7 @@ export const GAME_TABLES: Record<string, () => GameTable> = {
     // the names as the kiosk's menu shows them (src/game/kiosk-cat-menus.ts), in Swedish. Not all of it: what the menu
     // holds besides is for the player to find at the counter (docs/README.md, what the wiki leaves out)
     rows: [
-      ['Trisslott', fmtKr(TRISS_KR), 'A scratch card: see below'],
+      ['Trisslott', fmtKr(TRISS_KR), 'A scratch card: its prizes are below'],
       [`Kattgodis (${TREAT_BAG} st)`, fmtKr(TREATS_KR), 'For the cats'],
       ['Korv me brö', fmtKr(KORV_KR), `+${KORV_HP} health`],
       ['Smålandsrulle', fmtKr(RULLE_KR), `+${RULLE_HP} health`],
