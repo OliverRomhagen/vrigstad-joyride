@@ -71,6 +71,7 @@ jobs:
           SENDER: ${{ github.event.sender.login }}
           SENDER_TYPE: ${{ github.event.sender.type }}
           PR: ${{ github.event.pull_request.number }}
+          COMMITS: ${{ github.event.pull_request.commits }}
           APPROVAL_ENV: claude-review-approval # also named in the approve job's environment
         run: |
           set -euo pipefail
@@ -113,6 +114,8 @@ jobs:
               *) known "$a" || unknown+=("$a") ;;
             esac
           done < <(sort -u <<<"$authors")
+          # The list stops at 250 commits, oldest first, so a later one's author would go unchecked.
+          [ "${COMMITS:-0}" -le 250 ] || unknown+=("the commits after the first 250")
           if [ ${#unknown[@]} -eq 0 ]; then
             echo "run=true" >>"$GITHUB_OUTPUT"
             echo "approval=false" >>"$GITHUB_OUTPUT"
@@ -190,7 +193,8 @@ jobs:
       # A longer line is cut short in the patches, and a file whose patch is larger isn't reviewed: minified code,
       # one-line JSON, data dumps. The longest line in the repo's source is about 500 characters, and its largest
       # source file 62 KB.
-      MAX_LINE_CHARS: 5000
+      # Below 2000, where Claude Code's Read tool cuts a line itself without saying where, with room for the marker.
+      MAX_LINE_CHARS: 1900
       MAX_PATCH_KB: 256
       # How long Claude may take, below the job's limit, so a review that runs long fails rather than cancelling the
       # job: the summary step still runs and records it.
@@ -220,6 +224,14 @@ jobs:
           # follow them out of the checkout, onto the claude binary say, which then runs with the secret.
           rm -rf .claude-review
           mkdir .claude-review
+          # Every git command here reads .gitattributes from main, not from the checkout: the PR's own (or a nested
+          # one) could mark its source -diff or binary, and its patch would show only that the file differs, or set a
+          # merge driver for merge-tree. Git before 2.42 ignores the variable without a word, so check.
+          export GIT_ATTR_SOURCE=origin/main
+          if ! printf '2.42\n%s\n' "$(git version | awk '{ print $3 }')" | sort -V -C; then
+            echo "::error::$(git version) can't read .gitattributes from main (GIT_ATTR_SOURCE needs 2.42)."
+            exit 1
+          fi
 
           # The PR's top-level comments, read once: the marker and comments.json both come from them.
           gh api "repos/$GH_REPO/issues/$PR/comments" --paginate --jq '.[]' | jq -s . >"$RUNNER_TEMP/issue-comments.json"
@@ -258,10 +270,6 @@ jobs:
             mode=full from=$merge_base since=$merge_base
           fi
 
-          # Every git command below reads .gitattributes from main, not from the checkout: the PR's own (or a nested
-          # one) could mark its source -diff or binary, and its patch would show only that the file differs.
-          export GIT_ATTR_SOURCE=origin/main
-
           # Leave out of the patches and the line count what nobody reads line by line, so it can't fill Claude's
           # context: data/vrigstad.json is one line of about 200 KB, and would count as 2 changed lines. Left out are
           # files that .gitattributes marks linguist-generated or linguist-vendored, files whose patch is over
@@ -292,7 +300,10 @@ jobs:
             fi
             if [ -n "$reason" ]; then
               pathspec+=(":(exclude,literal)$f")
-              printf '%s\t%s\n' "$f" "$reason" >>.claude-review/skipped.txt
+              # A tab or newline in the name would split the line wrongly, or pass a binary file off as a generated
+              # one: write them as \t and \n.
+              shown=${f//$'\t'/\\t}
+              printf '%s\t%s\n' "${shown//$'\n'/\\n}" "$reason" >>.claude-review/skipped.txt
             fi
           done < <({
             git -c core.quotePath=false diff --name-only --no-renames -z "$merge_base" HEAD
@@ -334,9 +345,10 @@ jobs:
           # Inline comments, review summaries and top-level comments: findings are raised in all three. Only those by
           # people with write access and the PR's author (known, or approved by a maintainer): anyone can comment on a
           # public repo's PR, and Claude reads these, so an outsider's comment could steer the review. The bot's inline
-          # comments and reviews are earlier reviews' findings, there so they aren't repeated; its top-level ones
-          # aren't (the summary, other workflows' notices), as any workflow can post as the bot, one running the PR's
-          # code included. A login is only letters, digits and hyphens, so it is safe inside the filter.
+          # comments and reviews are earlier reviews' findings, there so they aren't repeated; its top-level ones are
+          # only the summary and other workflows' notices, so they're left out. Anything the bot posts could also come
+          # from another workflow, preview.yml running the PR's code say, but only for someone with write access, whose
+          # own comments are read anyway. A login is only letters, digits and hyphens, so it is safe in the filter.
           people="(.author_association | IN(\"OWNER\", \"MEMBER\", \"COLLABORATOR\")) or .user.login == \"$AUTHOR\""
           reviews="select($people or .user.login == \"github-actions[bot]\")"
           {
@@ -564,7 +576,7 @@ jobs:
             # In the open, what a PR could use to hide code: files left out for their size or as binary, and lines
             # cut short. Folded away, the files .gitattributes on main marks generated or vendored.
             byhand=$(
-              [ ! -s .claude-review/skipped.txt ] || jq -Rr "$name"' split("\t") | select(.[1] | startswith("marked ") | not)
+              [ ! -s .claude-review/skipped.txt ] || jq -Rr "$name"' split("\t") | select(.[1] // "" | startswith("marked ") | not)
                 | "- `\(.[0] | name)`: \(.[1]), so not reviewed"' .claude-review/skipped.txt
               [ ! -s .claude-review/cut.txt ] || jq -Rrs --arg max "$MAX_LINE_CHARS" "$name"' split("\n") | map(select(. != "") | split("\t"))
                 | group_by(.[0])[] | "- `\(.[0][0] | name)`: \(length) \(if length == 1 then "line" else "lines" end) over \($max) characters, from line \(.[0][1]), cut short, so not reviewed past that"' \
@@ -576,7 +588,7 @@ jobs:
               echo "$byhand"
               echo
             fi
-            marked=$([ ! -s .claude-review/skipped.txt ] || jq -Rr "$name"' split("\t") | select(.[1] | startswith("marked "))
+            marked=$([ ! -s .claude-review/skipped.txt ] || jq -Rr "$name"' split("\t") | select(.[1] // "" | startswith("marked "))
               | "- `\(.[0] | name)`: \(.[1])"' .claude-review/skipped.txt)
             if [ -n "$marked" ]; then
               n=$(wc -l <<<"$marked" | tr -d ' ')
