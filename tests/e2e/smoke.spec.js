@@ -857,4 +857,16 @@ test.describe('map (map.html)', () => {
     await page.screenshot({ path: testInfo.outputPath('map.png') });
     expect(errors).toEqual([]);
   });
+
+  // the wiki's place pages embed the map this way: a small frame over Slättsjön, with only the map and its credit
+  test('embeds focused on a place, without its tools', async ({ page }, testInfo) => {
+    await page.setViewportSize({ width: 640, height: 360 });
+    const errors = watchErrors(page);
+    await page.goto('/map.html?focus=-433,-835&embed');
+    await expectWebGL(page);
+    for (const id of ['#title', '#tools', '#legend']) await expect(page.locator(id)).toBeHidden();
+    await expect(page.locator('#credit')).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath('map-embed.png') });
+    expect(errors).toEqual([]);
+  });
 });
