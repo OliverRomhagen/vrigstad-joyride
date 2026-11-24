@@ -114,7 +114,10 @@ jobs:
         if: steps.ctx.outputs.skip != 'true'
         uses: anthropics/claude-code-action@eb56b6666facdbd501035f4a0269d8caee2e7a8b # v1.0.289
         with:
+          # An API key when the repo has one, else a Claude subscription's token (`claude setup-token`), which uses
+          # that plan's limits instead of credits. Only one is passed, so it's always clear which one pays.
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_code_oauth_token: ${{ secrets.ANTHROPIC_API_KEY == '' && secrets.CLAUDE_CODE_OAUTH_TOKEN || '' }}
           display_report: true
           prompt: |
             REPO: ${{ github.repository }}
@@ -140,6 +143,8 @@ jobs:
           MODE: ${{ steps.ctx.outputs.mode }}
           FROM: ${{ steps.ctx.outputs.since }}
           MODEL: ${{ steps.ctx.outputs.model }}
+          # On a subscription nothing is billed per review: Claude Code's figure is what it would have cost on the API.
+          COST_NOTE: ${{ secrets.ANTHROPIC_API_KEY == '' && ' (API price estimate; paid by a subscription)' || '' }}
           RUNS: ${{ steps.ctx.outputs.runs }}
           TOTAL: ${{ steps.ctx.outputs.total }}
         run: |
@@ -169,7 +174,7 @@ jobs:
             echo "<!-- claude-review: sha=${sha:-none} runs=$runs cost=$total -->"
             echo "**Claude review** ($name) of $scope, up to \`${HEAD_SHA:0:7}\`: $summary"
             echo
-            echo "<sub>This review: \$$cost · this PR so far: \$$total over $runs reviews.</sub>"
+            echo "<sub>This review: \$$cost · this PR so far: \$$total over $runs reviews$COST_NOTE.</sub>"
           } >"$RUNNER_TEMP/comment.md"
 
           if [ -n "$COMMENT_ID" ]; then
@@ -177,4 +182,4 @@ jobs:
           else
             gh api "repos/$GH_REPO/issues/$PR/comments" -F body=@"$RUNNER_TEMP/comment.md" --silent
           fi
-          echo "Review cost: \$$cost (PR total \$$total over $runs reviews)" >>"$GITHUB_STEP_SUMMARY"
+          echo "Review cost: \$$cost (PR total \$$total over $runs reviews)$COST_NOTE" >>"$GITHUB_STEP_SUMMARY"
