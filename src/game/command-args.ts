@@ -39,11 +39,12 @@ export function int<N extends string>(name: N, range: { min?: number; max?: numb
   return arg(name, w => {
     if (!/^[+-]?\d+$/.test(w)) throw new UsageError(`${name} is a whole number.`);
     const v = Number(w);
-    // Past 2^53 a number can't be told from its neighbours, so it's out of range, whatever range was asked for.
+    // From 2^53 on a number can't be told from its neighbours, so it's out of range, whatever range was asked for. Name
+    // the range only when the number is past a bound it sets: past an open end, "from 0 to …" would be untrue.
     if (!Number.isSafeInteger(v))
-      throw range.min === undefined && range.max === undefined
-        ? new UsageError(`${name} is out of range.`)
-        : rangeError(name, range);
+      throw (range.min !== undefined && v < range.min) || (range.max !== undefined && v > range.max)
+        ? rangeError(name, range)
+        : new UsageError(`${name} is out of range.`);
     // -0 passes { min: 0 } but prints as 0 and divides into -Infinity: hand on 0.
     return inRange(name, v === 0 ? 0 : v, range, 'a whole number');
   });

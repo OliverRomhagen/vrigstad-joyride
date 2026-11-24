@@ -162,6 +162,10 @@ describe('argument types', () => {
     expect(() => read(int('n'), '-12345678901234567890')).toThrow('n is out of range.');
     expect(read(int('n'), '1234567890123456')).toBe(1234567890123456);
     expect(() => read(int('stars', { min: 0, max: 3 }), '99999999999999999999')).toThrow('stars is from 0 to 3.');
+    // Past an open end the range isn't broken, so it isn't named.
+    expect(() => read(int('n', { min: 0 }), '99999999999999999999')).toThrow('n is out of range.');
+    expect(() => read(int('n', { max: 3 }), '-99999999999999999999')).toThrow('n is out of range.');
+    expect(() => read(int('n', { min: 0 }), '-99999999999999999999')).toThrow('n is from 0 to ….');
   });
 
   it('num: decimals, with a point or a Swedish comma', () => {
