@@ -69,9 +69,22 @@ controls.target.set(0, centerY, 0);
 controls.maxPolarAngle = Math.PI * 0.47;
 controls.minDistance = 120; controls.maxDistance = 5200;
 controls.screenSpacePanning = false;
+// ?focus=x,z (metres from Torget) starts the view close in over that spot, with a pin: the wiki's place pages embed it
+const focusParts = (new URLSearchParams(location.search).get('focus') || '').split(',');
+// Number('') is 0, so an empty part ("500,") would pass as a coordinate: ask for two non-empty numbers
+const focus = focusParts.map(part => (part.trim() === '' ? NaN : Number(part)));
+const hasFocus = focus.length === 2 && focus.every(Number.isFinite);
+const FOCUS_ZOOM = 0.3;   // share of the overview's camera distance for a focused view
+let focused = hasFocus;   // the first view only: Reset and Top go back to the whole village, the pin stays
 function setView(top) {
-  controls.target.set(0, centerY, 0);
-  if (top) camera.position.set(0, 3400, 0.5); else camera.position.set(-1300, 1550, 2650);
+  if (!focused) {
+    controls.target.set(0, centerY, 0);
+    if (top) camera.position.set(0, 3400, 0.5); else camera.position.set(-1300, 1550, 2650);
+  } else {
+    const [fx, fz] = focus, fy = hAt(fx, fz), k = FOCUS_ZOOM;
+    controls.target.set(fx, fy, fz);
+    if (top) camera.position.set(fx, fy + 3400 * k, fz + 0.5); else camera.position.set(fx - 1300 * k, fy + 1550 * k, fz + 2650 * k);
+  }
   controls.update(); requestRender();
 }
 
@@ -247,6 +260,12 @@ const TREE_M2_PER_TRY = 95;   // one try at a tree per this much of a wood's bou
 })();
 
 // ---- place-name labels ----
+if (hasFocus) {   // the pin for ?focus: a gold post with a ball on top, 60 m tall so it shows from the focused view
+  const pin = new THREE.Group(), gold = new THREE.MeshLambertMaterial({ color: 0xe8b44a, emissive: 0x4a3000 });
+  const post = new THREE.Mesh(new THREE.CylinderGeometry(2, 2, 60, 8), gold); post.position.y = 30;
+  const ball = new THREE.Mesh(new THREE.SphereGeometry(9, 16, 12), gold); ball.position.y = 64;
+  pin.add(post, ball); pin.position.set(focus[0], hAt(focus[0], focus[1]), focus[1]); scene.add(pin);
+}
 const labelBox = document.getElementById('labels');
 const labels = D.labels.map(l => { const el = document.createElement('div');
   el.className = 'lbl ' + l.k; el.textContent = l.t; if (l.k !== 'w') el.appendChild(document.createElement('i'));
@@ -308,14 +327,17 @@ matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyTheme
 new MutationObserver(applyTheme).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
 if (document.fonts && document.fonts.ready) document.fonts.ready.then(applyTheme);
 
-document.getElementById('b-reset').onclick = () => setView(false);
-document.getElementById('b-top').onclick = () => setView(true);
+document.getElementById('b-reset').onclick = () => { focused = false; setView(false); };
+document.getElementById('b-top').onclick = () => { focused = false; setView(true); };
 function zoom(f) { const d = camera.position.clone().sub(controls.target);
   d.setLength(Math.min(controls.maxDistance, Math.max(controls.minDistance, d.length() * f)));
   camera.position.copy(controls.target).add(d); controls.update(); requestRender(); }
 document.getElementById('b-in').onclick = () => zoom(0.7);
 document.getElementById('b-out').onclick = () => zoom(1 / 0.7);
 document.getElementById('c-labels').onchange = e => { labelBox.hidden = !e.target.checked; requestRender(); };
+// ?embed (the wiki's infoboxes): a small frame, so only the map and its credit stay; the wiki's "Open full screen" opens it without
+const embedded = new URLSearchParams(location.search).has('embed');
+if (embedded) for (const id of ['title', 'tools', 'legend']) document.getElementById(id).hidden = true;
 if (innerWidth < 700) document.getElementById('legend').open = false;
 
 resize(); applyTheme(); setView(false);
