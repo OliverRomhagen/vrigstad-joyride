@@ -711,6 +711,8 @@ test.describe('game (index.html)', () => {
     await expect(page.locator('#kr')).toHaveText('710 riksdaler');
     expect((await state(page)).carColor).not.toBe(carColor);
     await page.screenshot({ path: testInfo.outputPath('game-skroten-resprayed.png') });
+    await page.locator('#kmenu button', { hasText: 'Kliv ur' }).click(); // E on the lift opens the menu, so getting out is on it
+    await expect.poll(async () => (await state(page)).inCar).toBe(false);
     expect(errors).toEqual([]);
   });
 

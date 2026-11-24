@@ -18,10 +18,10 @@ export const noMods = (): CarMods => ({ engine: false, springs: false, body: fal
 // What each upgrade does, in one object so the tunables registry can change it (car-tunables.ts holds the units and ranges).
 export const UPGRADES = {
   ENGINE_TOP: 1.15, // enough to feel on Växjövägen; the police still catch a tuned Volvo in the bends
-  ENGINE_ACC: 1.3,
-  SPRINGS_GRIP: 1.4,
-  SPRINGS_STEER: 0.7, // a share of the steering's response time: lower answers sooner
-  BODY_DAMAGE: 0.5,
+  ENGINE_ACC: 1.3, // more than the top speed's gain: in the village you feel the pull out of every junction, long before the top speed
+  SPRINGS_GRIP: 1.4, // enough to feel in the first bend; well short of a doubling, which would hold a car like rails
+  SPRINGS_STEER: 0.7, // with the grip: a car that grips more but turns in as late would feel the same
+  BODY_DAMAGE: 0.5, // half: twice the crashes before it's wrecked (eight at ~70 km/h instead of four)
   EPA_TOP_MS: 13.9, // a tuned EPA-traktor's top speed with its limiter on: 50 km/h; the switch gives it a Volvo's
 };
 

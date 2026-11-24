@@ -9,6 +9,10 @@ import { tooFastToGetOut } from './player';
 import { hasLimiterSwitch } from './sim/upgrades';
 import type { GameState } from './state';
 
+// a tuned EPA's limiter on the speed plate, with the key that flips it; a touch screen shows the Limiter button instead
+const limiterNote = (c: Car, coarse: boolean) =>
+  hasLimiterSwitch(c) ? (c.limiterOff ? ' · limiter off' : ' · limiter on') + (coarse ? '' : ' (T)') : '';
+
 /** What the prompt reads from the rest of the game. The getters are read every time it is drawn. */
 export interface ActionPromptDeps {
   $(id: string): HTMLElement;
@@ -19,7 +23,7 @@ export interface ActionPromptDeps {
   coarse: boolean; // a touch screen: no "Get out" prompt, the E button says it
   nearPlace(): Place | null;
   skrotenBuys(): boolean; // the car you drive stands on Skroten's ring, and Skroten would buy it
-  skrotenLift(): number | null; // the car you drive stands on the workshop's lift: what Plåt-Pelle asks to mend it (0 for a whole car); null when he wouldn't work on it
+  skrotenLiftRepairKr(): number | null; // the car you drive stands on the workshop's lift: what Plåt-Pelle asks to mend it (0 for a whole car); null when he wouldn't work on it
   nearOwner(): boolean; // you stand on foot next to Plåt-Pelle
   nearCat(): Cat | null;
   nearestCar(): Car | null;
@@ -45,7 +49,7 @@ export class ActionPrompt {
       coarse,
       nearPlace,
       skrotenBuys,
-      skrotenLift,
+      skrotenLiftRepairKr,
       nearOwner,
       nearCat,
       nearestCar,
@@ -57,7 +61,7 @@ export class ActionPrompt {
       pl = game.started && !places.inside ? nearPlace() : null,
       kt = game.started ? nearCat() : null,
       c = game.started && !game.inCar && !places.inside ? nearestCar() : null,
-      liftKr = game.inCar ? skrotenLift() : null;
+      liftKr = game.inCar ? skrotenLiftRepairKr() : null;
     $('hide').hidden = !places.inside;
     if (places.inside) {
       $('hide').innerHTML = wanted.stars
@@ -105,7 +109,7 @@ export class ActionPrompt {
     if (game.inCar && game.pcar) {
       $('kmh').textContent = String(Math.round(Math.abs(game.pcar.v) * 3.6));
       $('carname').textContent =
-        carName(game.pcar) + (wrecked(game.pcar) ? ' · wrecked' : game.pcar.limiterOff ? ' · limiter off' : '');
+        carName(game.pcar) + (wrecked(game.pcar) ? ' · wrecked' : limiterNote(game.pcar, coarse));
     }
     $('p-limiter').hidden = !(game.inCar && game.pcar && hasLimiterSwitch(game.pcar));
   }

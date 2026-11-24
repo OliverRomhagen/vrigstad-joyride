@@ -63,7 +63,7 @@ function input(opts: { coarse?: boolean; started?: boolean; menuKey?: (e: Keyboa
     rain: () => {
       calls.push('rain');
     },
-    limiter: () => {
+    flipLimiter: () => {
       calls.push('limiter');
     },
     jump: () => {

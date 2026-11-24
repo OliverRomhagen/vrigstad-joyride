@@ -28,7 +28,7 @@ const UPGRADE_DONE: Readonly<Record<Upgrade, string>> = {
   body: '”Ja har svetsat in lite extra plåt. Nu tål ho en smäll.”',
 };
 const EPA_TUNED =
-  '”En trimmad EPA? Dä har ja aldrig gjort förut. Aldrig nånsin. Å knappen under ratten har du inte fått av mej.” Press T (or Limiter) to flip it.';
+  '”En trimmad EPA? Dä har ja aldrig gjort förut. Aldrig nånsin. Å knappen under ratten har du inte fått av mej.”'; // the key for the switch is on the speed plate (prompt.ts)
 /** What he says when you talk to him on foot, one after the other. */
 export const OWNER_LINES = [
   '”Tjena! Har du nån bil du vill bli av mä? Kör in den på ringen.”',
@@ -60,6 +60,7 @@ export interface SkrotenDeps {
   carName(c: Car): string;
   wallet: Wallet; // the HUD shows whatever it holds
   sellCar(c: Car): void; // puts you on foot beside the car, and takes the car away
+  getOut(): void; // puts you on foot beside the car you drive
 }
 
 /** Skroten's offer and the sale. */
@@ -158,7 +159,7 @@ export class Skroten {
       if (!c.mods[u])
         items.push([u, UPGRADE_NAMES[u] + ' <small>' + fmtKr(UPGRADE_KR[u]) + ' · ' + upgradeHelp(u, c) + '</small>']);
     if (otherPaints(c).length) items.push(['paint', 'Lacka om <small>' + fmtKr(RESPRAY_KR) + '</small>']);
-    items.push(['no', 'Nä, dä får va']);
+    items.push(['out', 'Kliv ur'], ['no', 'Nä, dä får va']); // E on the lift opens this menu, so getting out is on it
     openMenu(
       'skrot-lift',
       OWNER_SAYS +
@@ -168,7 +169,9 @@ export class Skroten {
       items,
       k => {
         if (k === 'paint') this.openPaint(c);
-        else if (k === 'fix' ? this.repair(c, fix) : isUpgrade(k) && this.upgrade(c, k)) this.openLift(c);
+        else if (k === 'out') {
+          if (this.onLift(c) && !tooFastToGetOut(c)) this.g.getOut(); // as E asks: the menu's stay() runs only now and then
+        } else if (k === 'fix' ? this.repair(c, fix) : isUpgrade(k) && this.upgrade(c, k)) this.openLift(c);
       },
       () => this.onLift(c) && !tooFastToGetOut(c),
     );
@@ -245,7 +248,7 @@ export class Skroten {
   }
 
   /** The car you drive stands on the lift, and Plåt-Pelle would work on it: his price to mend it (0 for a whole car), else null. */
-  lift(): number | null {
+  liftRepairKr(): number | null {
     const c = this.g.game.pcar;
     return this.onLift(c) && !this.refusesLift(c) ? this.repairKr(c) : null;
   }
