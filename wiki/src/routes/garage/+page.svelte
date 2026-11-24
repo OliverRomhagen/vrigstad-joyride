@@ -102,6 +102,7 @@ function steer(e: KeyboardEvent) {
     {index}
     paint={paints[car.id]}
     {margins}
+    shown={status === 'ready' || status === 'failed'}
     carShown={() => (status = 'ready')}
     carFailed={() => (status = 'failed')}
     sceneFailed={() => (status = 'down')}

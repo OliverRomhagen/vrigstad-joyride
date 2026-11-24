@@ -5,7 +5,7 @@ import X from '@lucide/svelte/icons/x';
 import { MediaQuery } from 'svelte/reactivity';
 import Nightfall from '#lib/Nightfall.svelte';
 import { GAME_URL } from '#lib/site';
-import { goto } from '$app/navigation';
+import { goto, onNavigate } from '$app/navigation';
 import { resolve } from '$app/paths';
 import { page } from '$app/state';
 import '#lib/wiki.css';
@@ -29,6 +29,25 @@ const closeMenu = () => history.back();
 // a window wider than a phone's shows the sidebar instead: the same width as in the styles below. Read in the browser only
 // (the drawer's effect), never while prerendering, where no width is known.
 const wide = new MediaQuery('width > 47.5em');
+
+// Going into the garage and coming out of it, the page changes whole, from a page of text to a yard that fills the window:
+// the browser's view transition carries one into the other (the animation itself is in wiki.css). A browser without view
+// transitions, or a visitor who asks for less motion, gets the plain change of page; so does every other navigation, which
+// stays instant, and the drawer, which isn't a change of page.
+onNavigate(navigation => {
+  const garage = navigation.to?.route.id === '/garage' || navigation.from?.route.id === '/garage';
+  if (!garage || navigation.shallow || !document.startViewTransition) return;
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const root = document.documentElement;
+  return new Promise<void>(resolve => {
+    root.dataset.transition = 'garage';
+    const transition = document.startViewTransition(async () => {
+      resolve();
+      await navigation.complete;
+    });
+    transition.finished.finally(() => delete root.dataset.transition);
+  });
+});
 
 // the dialog follows page.state; its own Escape (cancel) goes back instead of closing it behind the history's back
 function drawer(dialog: HTMLDialogElement) {

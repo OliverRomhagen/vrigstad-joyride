@@ -8,12 +8,15 @@ let {
   index,
   paint,
   margins,
+  shown,
   carShown,
   carFailed,
   sceneFailed,
 }: {
   footprints: { p: number[] }[];
   index: number;
+  /** the first car stands on the ring: the scene fades in over the page's sky, where it would otherwise pop in */
+  shown: boolean;
   paint?: string;
   margins: Margins;
   /** the picked car stands on the ring */
@@ -62,7 +65,7 @@ function start(host: HTMLDivElement) {
 </script>
 
 <div
-  class="skroten-scene"
+  class={['skroten-scene', { shown }]}
   {@attach start}
   role="img"
   aria-label="Skroten, the scrapyard, in 3D: drag to look around"
@@ -74,6 +77,16 @@ function start(host: HTMLDivElement) {
   position: absolute;
   inset: 0;
   touch-action: none;
+  opacity: 0;
+}
+.shown {
+  opacity: 1;
+}
+/* the yard comes out of the evening sky behind it; at once for those who ask for less motion */
+@media (prefers-reduced-motion: no-preference) {
+  .skroten-scene {
+    transition: opacity 600ms ease-out;
+  }
 }
 /* the canvas is the scene's own, added when it starts */
 .skroten-scene :global(canvas) {
