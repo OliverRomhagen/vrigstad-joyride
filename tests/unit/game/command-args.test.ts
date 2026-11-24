@@ -177,6 +177,11 @@ describe('argument types', () => {
     expect(() => read(g, '1e3')).toThrow('gravity is a number.');
   });
 
+  it('num: -0 comes through as 0', () => {
+    const g = num('gravity', { min: 0 });
+    for (const w of ['-0', '-0.0', '-0,0']) expect(Object.is(read(g, w), 0)).toBe(true);
+  });
+
   it('toggle: on and off in English or Swedish', () => {
     const t = toggle('god');
     for (const w of ['on', 'TRUE', '1', 'ja']) expect(read(t, w)).toBe(true);

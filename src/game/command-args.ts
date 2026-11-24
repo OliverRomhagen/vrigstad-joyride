@@ -42,11 +42,8 @@ export function int<N extends string>(name: N, range: { min?: number; max?: numb
     // From 2^53 on a number can't be told from its neighbours, so it's out of range, whatever range was asked for. Name
     // the range only when the number is past a bound it sets: past an open end, "from 0 to …" would be untrue.
     if (!Number.isSafeInteger(v))
-      throw (range.min !== undefined && v < range.min) || (range.max !== undefined && v > range.max)
-        ? rangeError(name, range)
-        : new UsageError(`${name} is out of range.`);
-    // -0 passes { min: 0 } but prints as 0 and divides into -Infinity: hand on 0.
-    return inRange(name, v === 0 ? 0 : v, range, 'a whole number');
+      throw outside(v, range) ? rangeError(name, range) : new UsageError(`${name} is out of range.`);
+    return inRange(name, v, range, 'a whole number');
   });
 }
 
@@ -121,10 +118,15 @@ export function optional<N extends string, T>(a: Arg<N, T>): Arg<N, T> & { reado
   return { ...a, optional: true };
 }
 
-function inRange(name: string, v: number, { min, max }: { min?: number; max?: number }, kind: string) {
+function inRange(name: string, v: number, range: { min?: number; max?: number }, kind: string) {
   if (!Number.isFinite(v)) throw new UsageError(`${name} is ${kind}.`);
-  if ((min !== undefined && v < min) || (max !== undefined && v > max)) throw rangeError(name, { min, max });
-  return v;
+  if (outside(v, range)) throw rangeError(name, range);
+  // -0 passes { min: 0 } but prints as 0 and divides into -Infinity: hand on 0.
+  return v === 0 ? 0 : v;
+}
+
+function outside(v: number, { min, max }: { min?: number; max?: number }) {
+  return (min !== undefined && v < min) || (max !== undefined && v > max);
 }
 
 function rangeError(name: string, { min, max }: { min?: number; max?: number }) {
