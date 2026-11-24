@@ -5,8 +5,9 @@ name: Claude review
 # - The first review covers the whole PR. Later pushes get a review of only the commits since the last one, which a
 #   marker in the summary comment records. After a merge from main, a rebase (gh stack sync) or an amend, that is
 #   only what changed besides the new base; a push that only moved the PR onto a new base isn't reviewed. Files nobody
-#   reads line by line are left out of every review: those .gitattributes marks generated or vendored, and any other
-#   file with a very long line or a very large patch. The summary comment lists them.
+#   reads line by line are left out of every review: those .gitattributes on main marks generated or vendored, binary
+#   files and files with a very large patch, and very long lines are cut short. The summary comment lists them, and
+#   all but the marked files as ones to read by hand.
 # - Opus does the full review; Sonnet, which costs less, reviews later pushes, unless one changes more than
 #   OPUS_ABOVE_LINES lines: that is as much as a new PR, so it gets Opus too.
 # - Drafts are skipped until they're ready for review, and so are PRs from forks. So are PRs into another branch than
@@ -94,6 +95,24 @@ jobs:
           # A bot pushing to a person's PR (a merge from main, an autofix) isn't a new collaborator, and the search
           # can't take a bot's login anyway.
           [ "$SENDER" = "$AUTHOR" ] || [ "$SENDER_TYPE" = Bot ] || known "$SENDER" || unknown+=("$SENDER")
+          # And whoever wrote the PR's commits: on ready_for_review or reopened the sender is whoever clicked, and a
+          # draft's pushes aren't reviewed, so a new collaborator's commits could otherwise go through unapproved. The
+          # login is the one GitHub matched to each commit's author email; a commit whose email is on no account, or a
+          # failed lookup, counts as unknown. An email can be forged, so this catches a new collaborator's own
+          # commits, not one who signs them as someone else.
+          if ! authors=$(gh api "repos/$GH_REPO/pulls/$PR/commits" --paginate \
+            --jq '.[] | if .author == null then "?" elif .author.type == "Bot" then empty else .author.login end'); then
+            echo "::warning::Couldn't list the PR's commits, so counting their authors as new."
+            authors='!'
+          fi
+          while IFS= read -r a; do
+            case "$a" in
+              '' | "$AUTHOR" | "$SENDER") ;;
+              '?') unknown+=("a commit author with no GitHub account") ;;
+              '!') unknown+=("the commits' authors") ;;
+              *) known "$a" || unknown+=("$a") ;;
+            esac
+          done < <(sort -u <<<"$authors")
           if [ ${#unknown[@]} -eq 0 ]; then
             echo "run=true" >>"$GITHUB_OUTPUT"
             echo "approval=false" >>"$GITHUB_OUTPUT"
@@ -168,8 +187,9 @@ jobs:
       AUTHOR: ${{ github.event.pull_request.user.login }}
       BASE_REF: ${{ github.event.pull_request.base.ref }}
       OPUS_ABOVE_LINES: 400 # added plus removed lines in a later push
-      # A file whose patch has a longer line, or is larger, isn't reviewed: minified code, one-line JSON, data dumps.
-      # The longest line in the repo's source is about 500 characters, and its largest source file 62 KB.
+      # A longer line is cut short in the patches, and a file whose patch is larger isn't reviewed: minified code,
+      # one-line JSON, data dumps. The longest line in the repo's source is about 500 characters, and its largest
+      # source file 62 KB.
       MAX_LINE_CHARS: 5000
       MAX_PATCH_KB: 256
       # How long Claude may take, below the job's limit, so a review that runs long fails rather than cancelling the
@@ -238,13 +258,17 @@ jobs:
             mode=full from=$merge_base since=$merge_base
           fi
 
+          # Every git command below reads .gitattributes from main, not from the checkout: the PR's own (or a nested
+          # one) could mark its source -diff or binary, and its patch would show only that the file differs.
+          export GIT_ATTR_SOURCE=origin/main
+
           # Leave out of the patches and the line count what nobody reads line by line, so it can't fill Claude's
           # context: data/vrigstad.json is one line of about 200 KB, and would count as 2 changed lines. Left out are
-          # files that .gitattributes marks linguist-generated or linguist-vendored, read from main so a PR can't hide
-          # its own code by marking it, and any other file whose patch is over MAX_LINE_CHARS wide or MAX_PATCH_KB in
-          # size. Binary files need nothing: git diff shows only that they differ. What makes the generated files
-          # (tools/, package.json) is reviewed. skipped.txt lists what was left out and why (path, tab, reason), for
-          # Claude and the summary.
+          # files that .gitattributes marks linguist-generated or linguist-vendored, files whose patch is over
+          # MAX_PATCH_KB, and binary files, which git shows only as differing (a NUL byte makes a .ts file one).
+          # What makes the generated files (tools/, package.json) is reviewed. skipped.txt lists what was left out and
+          # why (path, tab, reason), for Claude and the summary, which shows all but the marked ones as files to read
+          # by hand: a PR can pad its own source to be left out, but not to be left out unnoticed.
           # File names are read NUL-separated and unquoted, so a name with å, ä or ö, a space or a colon still matches;
           # without renames, so a moved file's old path is checked too.
           : >.claude-review/skipped.txt
@@ -258,12 +282,11 @@ jobs:
             done
             if [ -n "$marked" ]; then
               reason="marked $marked in .gitattributes"
+            elif [ "$(git diff --numstat "$merge_base" HEAD -- ":(literal)$f" | cut -f1)" = - ]; then
+              reason="binary"
             else
-              read -r widest kb < <(git diff "$merge_base" HEAD -- ":(literal)$f" |
-                awk '{ if (length > w) w = length; b += length + 1 } END { print w + 0, int(b / 1024) }')
-              if [ "$widest" -gt "$MAX_LINE_CHARS" ]; then
-                reason="a line of $widest characters"
-              elif [ "$kb" -gt "$MAX_PATCH_KB" ]; then
+              kb=$(git diff "$merge_base" HEAD -- ":(literal)$f" | awk '{ b += length + 1 } END { print int(b / 1024) }')
+              if [ "$kb" -gt "$MAX_PATCH_KB" ]; then
                 reason="a $kb KB patch"
               fi
             fi
@@ -288,6 +311,20 @@ jobs:
             exit 0
           fi
           git -c core.quotePath=false diff "$merge_base..HEAD" -- "${pathspec[@]}" >.claude-review/full.patch
+          # A line over MAX_LINE_CHARS (minified code, a one-line JSON) is cut short in both patches rather than its
+          # file left out, so one long line can't hide the rest of a file. cut.txt (path, line, length) lists the
+          # PR's cut lines on the new side, which the summary shows to read by hand: code can sit past the cut.
+          awk -v max="$MAX_LINE_CHARS" '
+            /^diff --git / { header = 1; path = ""; next }
+            header && /^\+\+\+ / { p = substr($0, 5); sub(/\t$/, "", p); path = (p == "/dev/null") ? "" : substr(p, 3); next }
+            /^@@ / { header = 0; match($0, /\+[0-9]+/); n = substr($0, RSTART + 1, RLENGTH - 1) + 0; next }
+            !header && path != "" && /^[ +]/ { if (/^\+/ && length > max + 1) print path "\t" n "\t" length - 1; n++ }
+          ' .claude-review/full.patch >.claude-review/cut.txt
+          for patch in diff full; do
+            awk -v max="$MAX_LINE_CHARS" '{ if (length > max + 1) print substr($0, 1, max + 1) " [… cut: " length - 1 " characters in all]"; else print }' \
+              ".claude-review/$patch.patch" >"$RUNNER_TEMP/cut.patch"
+            mv "$RUNNER_TEMP/cut.patch" ".claude-review/$patch.patch"
+          done
           # Claude gets no shell (a git command can write files, `git grep -O` runs a program), so what it would ask
           # git for is written out here.
           git log --format='%h %an: %s' "$merge_base..HEAD" >.claude-review/commits.txt
@@ -295,14 +332,17 @@ jobs:
           git show "origin/main:AGENTS.md" >.claude-review/AGENTS.md
           gh pr view "$PR" --json title,body,author,labels >.claude-review/pr.json
           # Inline comments, review summaries and top-level comments: findings are raised in all three. Only those by
-          # people with write access, the PR's author (known, or approved by a maintainer) and the review's own bot:
-          # anyone can comment on a public repo's PR, and Claude reads these, so an outsider's comment could steer the
-          # review. A login is only letters, digits and hyphens, so it is safe inside the filter.
-          trusted="select((.author_association | IN(\"OWNER\", \"MEMBER\", \"COLLABORATOR\")) or (.user.login | IN(\"$AUTHOR\", \"github-actions[bot]\")))"
+          # people with write access and the PR's author (known, or approved by a maintainer): anyone can comment on a
+          # public repo's PR, and Claude reads these, so an outsider's comment could steer the review. The bot's inline
+          # comments and reviews are earlier reviews' findings, there so they aren't repeated; its top-level ones
+          # aren't (the summary, other workflows' notices), as any workflow can post as the bot, one running the PR's
+          # code included. A login is only letters, digits and hyphens, so it is safe inside the filter.
+          people="(.author_association | IN(\"OWNER\", \"MEMBER\", \"COLLABORATOR\")) or .user.login == \"$AUTHOR\""
+          reviews="select($people or .user.login == \"github-actions[bot]\")"
           {
-            gh api "repos/$GH_REPO/pulls/$PR/comments" --paginate --jq ".[] | $trusted | {user: .user.login, path, line, body}"
-            gh api "repos/$GH_REPO/pulls/$PR/reviews" --paginate --jq ".[] | select(.body != \"\") | $trusted | {user: .user.login, body}"
-            jq ".[] | $trusted | {user: .user.login, body}" "$RUNNER_TEMP/issue-comments.json"
+            gh api "repos/$GH_REPO/pulls/$PR/comments" --paginate --jq ".[] | $reviews | {user: .user.login, path, line, body}"
+            gh api "repos/$GH_REPO/pulls/$PR/reviews" --paginate --jq ".[] | select(.body != \"\") | $reviews | {user: .user.login, body}"
+            jq ".[] | select($people) | {user: .user.login, body}" "$RUNNER_TEMP/issue-comments.json"
           } | jq -s . >.claude-review/comments.json
 
           changed=$(git diff --numstat "$from" HEAD -- "${pathspec[@]}" | awk '{ n += $1 + $2 } END { print n + 0 }')
@@ -313,10 +353,12 @@ jobs:
             echo "since=$since"
             echo "model=$model"
             echo "turns=$turns"
-            # From main, like this file, so a PR can't change the instructions it's reviewed by.
-            echo 'instructions<<CLAUDE_REVIEW_EOF'
+            # From main, like this file, so a PR can't change the instructions it's reviewed by. A random delimiter, so
+            # no line in the file can end the value early and set the outputs above.
+            delim="CLAUDE_REVIEW_$(openssl rand -hex 16)"
+            echo "instructions<<$delim"
             git show "origin/main:.github/claude-review.md"
-            echo 'CLAUDE_REVIEW_EOF'
+            echo "$delim"
           } >>"$GITHUB_OUTPUT"
 
       - name: Review
@@ -517,12 +559,30 @@ jobs:
               jq -r '.[] | select(.inline | not) | "- `\(.path)` line \(.line): \(.body | gsub("\\s*\n\\s*"; " "))"' "$findings"
               echo
             fi
-            if [ -s .claude-review/skipped.txt ]; then
-              n=$(wc -l <.claude-review/skipped.txt | tr -d ' ')
-              echo "<details><summary>Not reviewed: $n $([ "$n" = 1 ] && echo file || echo files) nobody reads line by line</summary>"
+            # The names are the PR's: a backtick in one would end the code span and let the rest render.
+            name="$clean"' def name: gsub("`"; "") | clean(300);'
+            # In the open, what a PR could use to hide code: files left out for their size or as binary, and lines
+            # cut short. Folded away, the files .gitattributes on main marks generated or vendored.
+            byhand=$(
+              [ ! -s .claude-review/skipped.txt ] || jq -Rr "$name"' split("\t") | select(.[1] | startswith("marked ") | not)
+                | "- `\(.[0] | name)`: \(.[1]), so not reviewed"' .claude-review/skipped.txt
+              [ ! -s .claude-review/cut.txt ] || jq -Rrs --arg max "$MAX_LINE_CHARS" "$name"' split("\n") | map(select(. != "") | split("\t"))
+                | group_by(.[0])[] | "- `\(.[0][0] | name)`: \(length) \(if length == 1 then "line" else "lines" end) over \($max) characters, from line \(.[0][1]), cut short, so not reviewed past that"' \
+                .claude-review/cut.txt
+            )
+            if [ -n "$byhand" ]; then
+              echo '**Read by hand:** the review didn'"'"'t see all of these.'
               echo
-              # The names are the PR's: a backtick in one would end the code span and let the rest render.
-              jq -Rr "$clean"' split("\t") | "- `\(.[0] | gsub("`"; "") | clean(300))`: \(.[1])"' .claude-review/skipped.txt
+              echo "$byhand"
+              echo
+            fi
+            marked=$([ ! -s .claude-review/skipped.txt ] || jq -Rr "$name"' split("\t") | select(.[1] | startswith("marked "))
+              | "- `\(.[0] | name)`: \(.[1])"' .claude-review/skipped.txt)
+            if [ -n "$marked" ]; then
+              n=$(wc -l <<<"$marked" | tr -d ' ')
+              echo "<details><summary>Not reviewed: $n generated or vendored $([ "$n" = 1 ] && echo file || echo files)</summary>"
+              echo
+              echo "$marked"
               echo
               echo '</details>'
               echo
