@@ -18,11 +18,16 @@ export interface Bounds {
   z1: number;
 }
 
-/** The middle of a polygon's vertices (not its area's centroid), flat [x, z, ...]. */
+/**
+ * The middle of a polygon's vertices (not its area's centroid), flat [x, z, ...]. A closed ring, whose last vertex
+ * repeats its first, counts that vertex once.
+ */
 export function vertexCentre(p: readonly number[]) {
+  const closed = p.length >= 4 && p[0] === p[p.length - 2] && p[1] === p[p.length - 1];
+  const end = closed ? p.length - 2 : p.length;
   let x = 0;
   let z = 0;
-  for (let i = 0; i < p.length; i += 2) {
+  for (let i = 0; i < end; i += 2) {
     x += p[i];
     z += p[i + 1];
   }
