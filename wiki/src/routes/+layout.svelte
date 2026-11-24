@@ -80,30 +80,37 @@ function drawer(dialog: HTMLDialogElement) {
   {@render children()}
 {:else}
   <a class="skip" href="#main">Skip to the page</a>
-  <div class="shell">
-    <header class="top">
-      <a class="brand" href={resolve('/')}><span>Vrigstad</span> <b>wiki</b></a>
-      <button
-        type="button"
-        class="menu"
-        aria-haspopup="dialog"
-        aria-expanded={menuOpen}
-        aria-controls="wiki-drawer"
-        onclick={openMenu}
-      >
-        Menu
-      </button>
-      <a class="play" rel="external" href={GAME_URL}>Play <span class="play-long">the game</span> →</a>
-    </header>
-    <nav class="side" aria-label="Wiki">{@render links()}</nav>
-    <!-- tabindex: so the skip link can move the keyboard's focus here -->
-    <main id="main" tabindex="-1">{@render children()}</main>
+  <!-- the page is at least as tall as the window: the shell takes what room there is, so the village at nightfall stands at
+       the window's bottom on a short page too -->
+  <div class="page">
+    <div class="shell">
+      <header class="top">
+        <a class="brand" href={resolve('/')}><span>Vrigstad</span> <b>wiki</b></a>
+        <button
+          type="button"
+          class="menu"
+          aria-haspopup="dialog"
+          aria-expanded={menuOpen}
+          aria-controls="wiki-drawer"
+          onclick={openMenu}
+        >
+          Menu
+        </button>
+        <a class="play" rel="external" href={GAME_URL}>Play <span class="play-long">the game</span> →</a>
+      </header>
+      <nav class="side" aria-label="Wiki">{@render links()}</nav>
+      <!-- tabindex: so the skip link can move the keyboard's focus here -->
+      <main id="main" tabindex="-1">{@render children()}</main>
+    </div>
+    <!-- the credit is written on the dark ground the village stands on -->
     <footer>
-      Map data © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>. Vrigstad is a real
-      village in Småland; the game and this wiki are made with affection for it.
+      <Nightfall />
+      <p>
+        Map data © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>. Vrigstad is a real
+        village in Småland; the game and this wiki are made with affection for it.
+      </p>
     </footer>
   </div>
-  <Nightfall />
 
   <!-- a click on the backdrop lands on the dialog itself, outside the panel inside it -->
   <!-- biome-ignore lint/a11y/useKeyWithClickEvents: the keyboard closes the dialog with Escape (oncancel) and its Close button -->
@@ -146,10 +153,17 @@ function drawer(dialog: HTMLDialogElement) {
   top: 12px;
 }
 
+.page {
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+}
 .shell {
+  flex: 1;
   display: grid;
-  grid-template: "top top" auto "side main" 1fr "foot foot" auto / 13.75rem minmax(0, 1fr);
+  grid-template: "top top" auto "side main" 1fr / 13.75rem minmax(0, 1fr);
   gap: 0 40px;
+  width: 100%;
   max-width: 1100px;
   margin: 0 auto;
   padding: 0 16px;
@@ -252,18 +266,20 @@ main {
 main:focus {
   outline: none;
 }
-footer {
-  grid-area: foot;
-  border-top: 1px solid var(--line);
-  padding: 16px 0 32px;
+/* the drawing, and under it more of its ground, the window's full width, with the credit on it */
+footer p {
+  margin: 0;
+  padding: 4px 16px 24px;
+  background: var(--ground);
   font-size: 0.875rem;
   color: var(--muted);
+  text-align: center;
 }
 
 /* a phone: the same width as `wide` in the script above */
 @media (width <= 47.5em) {
   .shell {
-    grid-template: "top" auto "side" auto "main" 1fr "foot" auto / minmax(0, 1fr);
+    grid-template: "top" auto "side" auto "main" 1fr / minmax(0, 1fr);
   }
   /* a narrow header mustn't push the page wider than the screen: the brand gives way first */
   .top {

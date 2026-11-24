@@ -77,16 +77,17 @@ const SIGN = { x: 944, y: GROUND - 72 }; // by the road, the far side of the las
   <rect width={W} height={H} fill="url(#nightfall-sky)" />
   <path d={forest} fill="#221f28" />
   <rect y={GROUND - 10} width={W} height={H - GROUND + 10} fill="#221f28" />
-  <path d={village} fill="#101116" />
-  <rect y={GROUND} width={W} height={H - GROUND} fill="#101116" />
+  <path d={village} class="ground" />
+  <rect y={GROUND} width={W} height={H - GROUND} class="ground" />
   {#each windows as lit (lit.x)}
     <rect x={lit.x} y={lit.y} width="7" height="8" fill="#f3c98b" opacity="0.55" />
   {/each}
-  <!-- the village's name on a blue Swedish place-name sign; dimmed, as by dusk -->
-  <g opacity="0.55">
-    <rect x={SIGN.x + 57} y={SIGN.y + 40} width="4" height={GROUND - SIGN.y - 40} fill="#3a3d44" />
-    <rect x={SIGN.x} y={SIGN.y} width="118" height="42" rx="4" fill="#123a63" stroke="#aeb7c0" stroke-width="2.5" />
-    <text x={SIGN.x + 59} y={SIGN.y + 29} text-anchor="middle" fill="#c3cbd3" class="nightfall-sign">Vrigstad</text>
+  <!-- the village's name on a blue Swedish place-name sign. Solid, so the forest doesn't show through it, in colours
+       already dimmed by the dusk: a sign's blue, white and grey, each mixed about half and half with the evening behind -->
+  <g>
+    <rect x={SIGN.x + 57} y={SIGN.y + 40} width="4" height={GROUND - SIGN.y - 40} fill="#313239" />
+    <rect x={SIGN.x} y={SIGN.y} width="118" height="42" rx="4" fill="#1b304a" stroke="#71747d" stroke-width="2.5" />
+    <text x={SIGN.x + 59} y={SIGN.y + 29} text-anchor="middle" fill="#7c8088" class="nightfall-sign">Vrigstad</text>
   </g>
 </svg>
 
@@ -97,8 +98,11 @@ const SIGN = { x: 944, y: GROUND - 72 }; // by the road, the far side of the las
   width: 100%;
   /* the drawing's own shape (1600 × 200) on a window wider than 1440px, so the church's spire stays in */
   height: max(180px, 12.5vw);
-  margin-top: -24px;
   pointer-events: none;
+}
+/* the village and the ground it stands on, which the footer goes on with under the drawing */
+.ground {
+  fill: var(--ground);
 }
 .nightfall-sign {
   font: 700 24px var(--font); /* in the drawing's own units, not the page's */
