@@ -8,6 +8,9 @@ name: Claude review
 # - Opus does the full review; Sonnet, which costs less, reviews later pushes, unless one changes more than
 #   OPUS_ABOVE_LINES lines: that is as much as a new PR, so it gets Opus too.
 # - Drafts are skipped until they're ready for review, and so are PRs from forks: their runs get no secrets.
+# - A PR by someone with no merged PR here yet waits for approval: its review runs in the APPROVAL_ENV environment,
+#   whose required reviewers approve each run on the run's page. If that environment has no required reviewers, such a
+#   PR isn't reviewed at all, so a missing environment can't let it through.
 # - The summary comment shows what each review cost, and the total so far on the PR.
 on:
   pull_request:
@@ -25,11 +28,65 @@ permissions:
   contents: read
 
 jobs:
-  review:
-    name: Claude review
+  gate:
+    name: Who may run the review
     if: >-
       !github.event.pull_request.draft &&
       github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read # to read the approval environment's protection rules
+    outputs:
+      run: ${{ steps.gate.outputs.run }}
+      approval: ${{ steps.gate.outputs.approval }}
+    steps:
+      - id: gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          AUTHOR: ${{ github.event.pull_request.user.login }}
+          AUTHOR_TYPE: ${{ github.event.pull_request.user.type }}
+          SENDER: ${{ github.event.sender.login }}
+          APPROVAL_ENV: claude-review-approval # also named in the review job's environment
+        run: |
+          set -euo pipefail
+          # The action doesn't review bots' PRs, so don't make them wait for approval either.
+          if [ "$AUTHOR_TYPE" = Bot ]; then
+            echo "run=false" >>"$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Known: has a merged PR here. Both the PR's author and whoever pushed must be, so a new collaborator pushing
+          # to a known author's PR still needs approval.
+          known() { [ "$(gh api -X GET search/issues -f q="repo:$GH_REPO is:pr is:merged author:$1" --jq .total_count 2>/dev/null || echo 0)" -gt 0 ]; }
+          unknown=()
+          known "$AUTHOR" || unknown+=("$AUTHOR")
+          [ "$SENDER" = "$AUTHOR" ] || known "$SENDER" || unknown+=("$SENDER")
+          if [ ${#unknown[@]} -eq 0 ]; then
+            echo "run=true" >>"$GITHUB_OUTPUT"
+            echo "approval=false" >>"$GITHUB_OUTPUT"
+            exit 0
+          fi
+          who=$(IFS=,; echo "${unknown[*]}")
+          # On any error this reads as no reviewers, so the review doesn't run unapproved.
+          reviewers=$(gh api "repos/$GH_REPO/environments/$APPROVAL_ENV" \
+            --jq '[.protection_rules[]? | select(.type == "required_reviewers")] | length' 2>/dev/null || echo 0)
+          if [ "$reviewers" -gt 0 ]; then
+            echo "run=true" >>"$GITHUB_OUTPUT"
+            echo "approval=true" >>"$GITHUB_OUTPUT"
+            echo "No merged PR here yet by $who: the review waits for a maintainer to approve it." >>"$GITHUB_STEP_SUMMARY"
+          else
+            echo "run=false" >>"$GITHUB_OUTPUT"
+            echo "::warning::No merged PR here yet by $who, and the $APPROVAL_ENV environment has no required reviewers: not reviewing."
+          fi
+
+  review:
+    name: Claude review
+    needs: gate
+    if: needs.gate.outputs.run == 'true'
+    # A run that needs approval waits here until one of the environment's required reviewers approves it. An empty
+    # name means no environment.
+    environment: ${{ needs.gate.outputs.approval == 'true' && 'claude-review-approval' || '' }}
     # A new push cancels the review of the previous one. A cancelled review records no marker, so the next one also
     # covers the commits it missed. On the job, not the workflow, so a run the job's condition skips, such as a draft's,
     # doesn't cancel a review.
@@ -97,6 +154,15 @@ jobs:
             mode=full from=$merge_base since=$merge_base
           fi
 
+          # The action refuses to run a workflow that differs from main's, so don't start it for a PR that changes this
+          # one: the summary comment says why it wasn't reviewed.
+          if ! git diff --quiet "origin/main" HEAD -- .github/workflows/claude-review.yml; then
+            echo "workflow_changed=true" >>"$GITHUB_OUTPUT"
+            echo "since=$since" >>"$GITHUB_OUTPUT"
+            echo "mode=$mode" >>"$GITHUB_OUTPUT"
+            exit 0
+          fi
+
           git diff "$from..HEAD" >.claude-review/diff.patch
           # A push that only moved the PR onto a new base leaves nothing to review: record it and skip the review.
           if [ "$mode" = incremental ] && [ ! -s .claude-review/diff.patch ]; then
@@ -136,7 +202,7 @@ jobs:
 
       - name: Review
         id: claude
-        if: steps.ctx.outputs.skip != 'true' && steps.ctx.outputs.nothing != 'true'
+        if: steps.ctx.outputs.skip != 'true' && steps.ctx.outputs.nothing != 'true' && steps.ctx.outputs.workflow_changed != 'true'
         uses: anthropics/claude-code-action@eb56b6666facdbd501035f4a0269d8caee2e7a8b # v1.0.289
         with:
           # An API key when the repo has one, else a Claude subscription's token (`claude setup-token`), which uses
@@ -167,6 +233,7 @@ jobs:
           COMMENT_ID: ${{ steps.ctx.outputs.comment_id }}
           LAST_SHA: ${{ steps.ctx.outputs.last_sha }}
           NOTHING: ${{ steps.ctx.outputs.nothing }}
+          WORKFLOW_CHANGED: ${{ steps.ctx.outputs.workflow_changed }}
           MODE: ${{ steps.ctx.outputs.mode }}
           FROM: ${{ steps.ctx.outputs.since }}
           MODEL: ${{ steps.ctx.outputs.model }}
@@ -182,7 +249,8 @@ jobs:
             cost=$(jq '[.[] | select(.type == "result")] | last | .total_cost_usd // 0' "$EXECUTION_FILE")
           fi
           runs=$(( ${RUNS:-0} + 1 ))
-          [ "$NOTHING" != true ] || runs=${RUNS:-0}
+          [ "$NOTHING" != true ] && [ "$WORKFLOW_CHANGED" != true ] || runs=${RUNS:-0}
+          reviews=$([ "$runs" = 1 ] && echo review || echo reviews)
           total=$(awk -v a="${TOTAL:-0}" -v b="$cost" 'BEGIN { printf "%.2f", a + b }')
           cost=$(awk -v c="$cost" 'BEGIN { printf "%.2f", c }')
 
@@ -190,6 +258,9 @@ jobs:
           if [ "$NOTHING" = true ]; then
             summary="Nothing new to review: the push only moved the PR onto a new base."
             sha=$HEAD_SHA
+          elif [ "$WORKFLOW_CHANGED" = true ]; then
+            summary="Not reviewed: this PR's copy of the review workflow differs from main's, and the action only runs the workflow as it is on main. If the PR is only behind main, merging main in fixes it."
+            sha=$LAST_SHA
           # A review that ran out of turns has posted what it found, and spent the money: record it too, or every later
           # push would start another full review that runs out the same way.
           elif [ "$CONCLUSION" = success ] || [ "$subtype" = error_max_turns ]; then
@@ -203,14 +274,18 @@ jobs:
             sha=$LAST_SHA
           fi
           if [ "$MODE" = full ]; then scope="the whole PR"; else scope="the commits since \`${FROM:0:7}\`"; fi
-          name=$([ "$MODEL" = claude-opus-5-5 ] && echo Opus || echo Sonnet)
+          # Name the model only when one ran.
+          name=
+          if [ "$NOTHING" != true ] && [ "$WORKFLOW_CHANGED" != true ]; then
+            name=$([ "$MODEL" = claude-opus-5-5 ] && echo ' (Opus)' || echo ' (Sonnet)')
+          fi
 
           {
             echo '<!-- claude-review -->'
             echo "<!-- claude-review: sha=${sha:-none} runs=$runs cost=$total -->"
-            echo "**Claude review** ($name) of $scope, up to \`${HEAD_SHA:0:7}\`: $summary"
+            echo "**Claude review**$name of $scope, up to \`${HEAD_SHA:0:7}\`: $summary"
             echo
-            echo "<sub>This review: \$$cost · this PR so far: \$$total over $runs reviews$COST_NOTE.</sub>"
+            echo "<sub>This review: \$$cost · this PR so far: \$$total over $runs $reviews$COST_NOTE.</sub>"
           } >"$RUNNER_TEMP/comment.md"
 
           if [ -n "$COMMENT_ID" ]; then
@@ -218,4 +293,4 @@ jobs:
           else
             gh api "repos/$GH_REPO/issues/$PR/comments" -F body=@"$RUNNER_TEMP/comment.md" --silent
           fi
-          echo "Review cost: \$$cost (PR total \$$total over $runs reviews)$COST_NOTE" >>"$GITHUB_STEP_SUMMARY"
+          echo "Review cost: \$$cost (PR total \$$total over $runs $reviews)$COST_NOTE" >>"$GITHUB_STEP_SUMMARY"

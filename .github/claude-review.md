@@ -5,7 +5,7 @@ Instructions for the Claude review that `.github/workflows/claude-review.yml` ru
 You are reviewing a pull request to Vrigstad Joyride. The workflow has already written the context to `.claude-review/`:
 
 - `pr.json`: the PR's title, body, author and labels.
-- `diff.patch`: what to review. On the first review it is the whole PR (`git diff <merge base>..<head>`). On later pushes it is only the commits since the last review.
+- `diff.patch`: what to review. On the first review it is the whole PR (`git diff <merge base>..<head>`). On later pushes it is only what changed since the last review; after a merge from main or a rebase, what changed besides the new base.
 - `full.patch`: the whole PR, for context on a later push. Don't comment on lines that are only in `full.patch` and not in `diff.patch`: they were reviewed before.
 - `commits.txt`: the PR's commits, oldest last.
 - `AGENTS.md`: the repo's rules, from main, so the PR can't change the rules it's reviewed by. If the PR changes `AGENTS.md`, review that change too.
