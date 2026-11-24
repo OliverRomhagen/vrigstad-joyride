@@ -18,7 +18,8 @@ const JUMP_V_MS = 5.2,
 const MANTLE_M = 0.75, // in the air, a car's top this far above your feet is in reach: a roof from the ground at the hop's top, a cab from a bonnet
   CLIMB_MS = 5, // how fast you pull yourself up (m/s)
   EDGE_IN_M = 0.25, // pulling up onto a car puts your middle this far in from its side
-  LAND_M = 0.05; // a top this little above your feet still takes you as you come down onto it
+  LAND_M = 0.05, // a top this little above your feet still takes you as you come down onto it
+  TOUCH_M = 0.05; // standing this close to a car's side counts as touching it: where loop.ts's push out leaves you
 const EDGE_M = 2; // you stay this far inside the map's edge
 const REACH_M = 4.4; // a car closer than this is one you can get into
 const GET_OUT_MAX_MS = 3,
@@ -151,10 +152,16 @@ export function carTopAt(c: CarToStandOn, x: number, z: number) {
 const _spine = { x: 0, z: 0 };
 /**
  * What you stand on this frame, written to `p.floor`: the top of a car you're over and up on, or, in the air, a car whose
- * top is within reach, which moves you in over it to pull yourself up. 0 for the ground. Walking from a bonnet into the
- * roof stops you at the windscreen. Returns the car you stand on or climb, so the push out of cars leaves it alone.
+ * top is within reach, which you pull yourself up onto and in over, over the climb. 0 for the ground. `left` is the car you
+ * last stepped off: you don't climb straight back onto it before you've landed. Walking from a bonnet into the roof stops
+ * you at the windscreen. Returns the car you stand on or climb, so the push out of cars leaves it alone.
  */
-export function standOn<C extends CarToStandOn>(p: PlayerState, cars: readonly C[]): C | null {
+export function standOn<C extends CarToStandOn>(
+  p: PlayerState,
+  cars: readonly C[],
+  dt: number,
+  left: C | null = null,
+): C | null {
   const airborne = p.y !== p.floor || p.vy > 0; // jumping, falling, or already pulling yourself up
   let on: C | null = null,
     floor = 0;
@@ -166,7 +173,7 @@ export function standOn<C extends CarToStandOn>(p: PlayerState, cars: readonly C
       dz = p.z - _spine.z,
       d = Math.hypot(dx, dz),
       r = bodyRadius(c);
-    if (d >= r + PERSON_RADIUS_M) continue; // not touching it
+    if (d >= r + PERSON_RADIUS_M + TOUCH_M) continue; // not touching it
     let top = carTopAt(c, p.x, p.z);
     if (d <= r && p.y < top - LAND_M && p.y >= c.T.deckM - LAND_M && !airborne) {
       // on its bonnet or boot, walking into the roof: the windscreen stops you, and you stay on the deck
@@ -178,11 +185,14 @@ export function standOn<C extends CarToStandOn>(p: PlayerState, cars: readonly C
       top = c.T.deckM;
     }
     const standing = d <= r && p.y >= top - LAND_M,
-      climbing = airborne && top > p.y && top - p.y <= MANTLE_M;
+      climbing = airborne && c !== left && top > p.y && top - p.y <= MANTLE_M;
     if ((!standing && !climbing) || top <= floor) continue;
     if (climbing && d > r - EDGE_IN_M && d > 1e-6) {
-      p.x = _spine.x + (dx / d) * (r - EDGE_IN_M); // in over its side, where your feet can be
-      p.z = _spine.z + (dz / d) * (r - EDGE_IN_M);
+      // in over its side, where your feet can be: a step at a time, so you get there as hop() gets you up to its top
+      const k = Math.min(1, (CLIMB_MS * dt) / (top - p.y)),
+        to = d + (r - EDGE_IN_M - d) * k;
+      p.x = _spine.x + (dx / d) * to;
+      p.z = _spine.z + (dz / d) * to;
     }
     on = c;
     floor = top;

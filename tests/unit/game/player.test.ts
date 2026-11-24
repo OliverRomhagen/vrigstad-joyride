@@ -102,10 +102,16 @@ describe('player', () => {
 const volvo = (): CarToStandOn => ({ x: 0, z: 0, h: 0, T: specFor('volvo') });
 const DT = 1 / 60;
 // one frame on foot, as loop.ts runs it: you move, find what you stand on, then hop; `step` is how far you move this frame
-function frame(p: PlayerState, cars: CarToStandOn[], jump: boolean, step = { x: 0, z: 0 }) {
+function frame(
+  p: PlayerState,
+  cars: CarToStandOn[],
+  jump: boolean,
+  step = { x: 0, z: 0 },
+  left: CarToStandOn | null = null,
+) {
   p.x += step.x;
   p.z += step.z;
-  const on = standOn(p, cars);
+  const on = standOn(p, cars, DT, left);
   hop(p, DT, jump);
   return on;
 }
@@ -127,6 +133,40 @@ describe('standing on cars (#451)', () => {
     expect(p.floor).toBe(1.54);
     expect(p.y).toBe(1.54);
     expect(Math.abs(p.x)).toBeLessThan(0.87); // in over the car, not floating beside it
+  });
+
+  it('pulls you in over its side a little at a time, not in one jump', () => {
+    const c = volvo(),
+      p = you(0.87 + 0.35, 1);
+    let most = 0;
+    for (let i = 0; i < 60; i++) {
+      const x = p.x,
+        z = p.z;
+      frame(p, [c], i === 0);
+      most = Math.max(most, Math.hypot(p.x - x, p.z - z));
+    }
+    expect(p.floor).toBe(1.54);
+    expect(most).toBeLessThan(0.15); // a walking frame is 0.077 m; it was 0.65 m at once
+  });
+
+  it("doesn't climb straight back onto the car you stepped off", () => {
+    const c = volvo(),
+      p = you(0.87 + 0.3, 1); // just off its side, still touching it, a little under its roof
+    p.y = 1.5;
+    for (let i = 0; i < 60; i++) frame(p, [c], false, { x: 0, z: 0 }, c);
+    expect(p.y).toBe(0); // fell to the ground
+    const again = you(0.87 + 0.35, 1);
+    frame(again, [c], true); // a fresh jump at it, having landed, climbs it again
+    for (let i = 0; i < 60; i++) frame(again, [c], false);
+    expect(again.floor).toBe(1.54);
+  });
+
+  it('climbs from standing against its side, where the push out of cars leaves you, with a jump alone', () => {
+    const c = volvo(),
+      p = you(0.87 + 0.4, 1); // exactly at its side: the body's radius and a person's
+    frame(p, [c], true);
+    for (let i = 0; i < 60; i++) frame(p, [c], false);
+    expect(p.floor).toBe(1.54);
   });
 
   it("doesn't climb a car you only walk into", () => {
