@@ -107,8 +107,14 @@ describe('Cockpit (the driver’s view, lab: cockpit)', () => {
     expect(glass.visible).toBe(false);
     const own = (body as THREE.Mesh).material as THREE.Material;
     expect(own).not.toBe(paint); // a clone: other cars that share the paint keep their roofs
-    expect(own.clippingPlanes).toHaveLength(1);
     expect(paint.clippingPlanes).toBeNull();
+    // cut away where every plane says so: the cabin over the belt line, not the bonnet, which rises over it at the windscreen
+    const cut = (x: number, y: number, z: number) =>
+      own.clipIntersection && own.clippingPlanes!.every(p => p.distanceToPoint(new THREE.Vector3(x, y, z)) < 0);
+    expect(cut(0, 1.3, 0)).toBe(true); // the roof over the seats (the Volvo's glass: y 0.94 to 1.43, z -0.85 to 1.36)
+    expect(cut(0, 1.0, -1.0)).toBe(false); // the bonnet just ahead of the windscreen, 6 cm over the belt line
+    expect(cut(0, 1.0, 1.6)).toBe(false); // the boot lid behind the rear window
+    expect(cut(0, 0.8, 0)).toBe(false); // the doors under the belt line
     expect(camera.near).toBeLessThan(0.1);
     k.toggle();
     k.update();

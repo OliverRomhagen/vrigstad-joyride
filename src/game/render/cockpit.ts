@@ -1,7 +1,7 @@
 // The driver's view (#473, lab: cockpit): the camera in the driver's seat of the car you drive, over a simple interior
 // that every car shares, scaled to its cabin. The models are solid shells with no interiors yet, their glass an opaque
-// envelope over the body, so while you sit in your own car its glass is hidden and its body clipped at the belt line;
-// the interior builds the cabin's frame above it. Reads the car and the view, never changes them.
+// envelope over the body, so while you sit in your own car its glass is hidden and its body clipped above the belt line
+// between the windscreen and the rear window; the interior builds the cabin's frame there. Reads the car and the view, never changes them.
 import * as THREE from 'three';
 import type { GameState, ViewState } from '../state';
 import type { RenderedCar } from './car-meshes';
@@ -258,8 +258,10 @@ export class Cockpit {
   private readonly eye = new THREE.Vector3();
   private readonly hiddenGlass: THREE.Object3D[] = [];
   private readonly clipped: { mesh: THREE.Mesh; material: THREE.Material | THREE.Material[] }[] = []; // and their own materials
-  private readonly beltPlane = new THREE.Plane(); // in the body's frame: keeps what is under the belt line
-  private readonly clip = new THREE.Plane(); // the same in the world, every frame
+  // in the body's frame, what of the body is cut away: what is over the belt line, behind the windscreen's foot and ahead of
+  // the rear window, all three, so the bonnet and the boot lid stay where they rise over the belt line (most cars' do)
+  private readonly cabinPlanes = [new THREE.Plane(), new THREE.Plane(), new THREE.Plane()];
+  private readonly clips = [new THREE.Plane(), new THREE.Plane(), new THREE.Plane()]; // the same in the world, every frame
   private normalNear = 0;
   private shown = ''; // what the dials show, so they're drawn again only when it changes
 
@@ -315,12 +317,16 @@ export class Cockpit {
       }
     });
     // the body, clipped through materials of its own, so other cars that share them keep their roofs
-    this.beltPlane.set(new THREE.Vector3(0, -1, 0), cabin.belt + CLIP_OVER_BELT_M);
+    const [belt, screen, rearWindow] = this.cabinPlanes; // each keeps what lies on its normal's side
+    belt.set(new THREE.Vector3(0, -1, 0), cabin.belt + CLIP_OVER_BELT_M);
+    screen.set(new THREE.Vector3(0, 0, -1), cabin.front);
+    rearWindow.set(new THREE.Vector3(0, 0, 1), -cabin.rear);
     const painted = (o: THREE.Object3D) => o === car.body || o.name === BODY_NODE || o.name.startsWith(BODY_NODE + '_');
     body.traverse(o => {
       if (!(o instanceof THREE.Mesh) || !painted(o)) return;
       this.clipped.push({ mesh: o, material: o.material });
-      const own = (m: THREE.Material) => Object.assign(m.clone(), { clippingPlanes: [this.clip] });
+      const own = (m: THREE.Material) =>
+        Object.assign(m.clone(), { clippingPlanes: this.clips, clipIntersection: true }); // cut only where all three agree
       o.material = Array.isArray(o.material) ? o.material.map(own) : own(o.material);
     });
     const { camera } = this.g;
@@ -376,7 +382,7 @@ export class Cockpit {
       this.drawDials(car);
     }
     body.updateWorldMatrix(true, false);
-    this.clip.copy(this.beltPlane).applyMatrix4(body.matrixWorld);
+    for (let i = 0; i < 3; i++) this.clips[i].copy(this.cabinPlanes[i]).applyMatrix4(body.matrixWorld);
     camera.position.copy(this.eye).applyMatrix4(body.matrixWorld);
     const pitch = Math.min(PITCH_MAX_RAD, Math.max(PITCH_MIN_RAD, PITCH_REST_RAD - view.camPitch - LOOK_DOWN_RAD));
     _e.set(pitch, -view.lookOff, 0);
