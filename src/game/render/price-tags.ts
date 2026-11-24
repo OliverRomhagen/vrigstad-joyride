@@ -129,37 +129,37 @@ export class PriceTags {
       h = Math.round((CARD_PX * CARD_H_M) / CARD_W_M);
     cv.width = w;
     cv.height = h;
-    const x = cv.getContext('2d')!;
-    x.fillStyle = '#f4f1e6';
-    x.fillRect(0, 0, w, h);
+    const c = cv.getContext('2d')!;
+    c.fillStyle = '#f4f1e6';
+    c.fillRect(0, 0, w, h);
     const text = kr.toLocaleString('sv-SE') + ':-';
-    x.fillStyle = x.strokeStyle = '#b3171b';
-    x.textBaseline = 'middle';
-    x.font = `bold 88px ${HAND_FONT}`;
-    const px = Math.floor(88 * Math.min(1, (w - 24) / x.measureText(text).width)); // a long price in a wide hand is written smaller
-    x.font = `bold ${px}px ${HAND_FONT}`;
+    c.fillStyle = c.strokeStyle = '#b3171b';
+    c.textBaseline = 'middle';
+    c.font = `bold 88px ${HAND_FONT}`;
+    const px = Math.floor(88 * Math.min(1, (w - 24) / c.measureText(text).width)); // a long price in a wide hand is written smaller
+    c.font = `bold ${px}px ${HAND_FONT}`;
     // the same wobble for the same price, from the price itself: this is the look, not a gameplay roll
     const rnd = makeRnd(kr),
       wobble = () => rnd() * 2 - 1;
-    let pen = (w - x.measureText(text).width) / 2;
+    let pen = (w - c.measureText(text).width) / 2;
     const line = h * 0.46;
     for (const ch of text) {
-      const cw = x.measureText(ch).width;
-      x.save();
-      x.translate(pen + cw / 2, line + wobble() * BOUNCE_PX);
-      x.rotate(wobble() * WOBBLE_RAD);
-      x.textAlign = 'center';
-      x.fillText(ch, 0, 0);
-      x.restore();
+      const cw = c.measureText(ch).width;
+      c.save();
+      c.translate(pen + cw / 2, line + wobble() * BOUNCE_PX);
+      c.rotate(wobble() * WOBBLE_RAD);
+      c.textAlign = 'center';
+      c.fillText(ch, 0, 0);
+      c.restore();
       pen += cw;
     }
-    x.lineWidth = 6;
-    x.lineCap = 'round';
-    x.beginPath();
+    c.lineWidth = 6;
+    c.lineCap = 'round';
+    c.beginPath();
     const y0 = line + px * 0.52;
-    x.moveTo(w * 0.16, y0 + wobble() * 3);
-    x.quadraticCurveTo(w / 2, y0 + 8 + wobble() * 4, w * 0.84, y0 - 4 + wobble() * 3);
-    x.stroke();
+    c.moveTo(w * 0.16, y0 + wobble() * 3);
+    c.quadraticCurveTo(w / 2, y0 + 8 + wobble() * 4, w * 0.84, y0 - 4 + wobble() * 3);
+    c.stroke();
     const t = new THREE.CanvasTexture(cv);
     t.colorSpace = THREE.SRGBColorSpace;
     m = new THREE.MeshStandardMaterial({ map: t, roughness: 0.9, polygonOffset: true, polygonOffsetFactor: -2 });

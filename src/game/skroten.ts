@@ -121,16 +121,13 @@ export class Skroten {
 
   /** E by a car on his lot: his price on the menu plate, or a word about the police. */
   offerCar = (c: Car) => {
-    const { stars, openMenu, toast, carName } = this.g;
-    if (stars) {
-      toast(CHASED, 3.5);
+    const { openMenu, toast, carName } = this.g;
+    const no = this.refusal(c);
+    if (no) {
+      toast(no, 3.5);
       return;
     }
-    const kr = lotPrice(c.saleKr, c.dmg);
-    if (kr === null) {
-      toast(LOT_WRECK, 3.5);
-      return;
-    }
+    const kr = lotPrice(c.saleKr, c.dmg)!; // refusal() turned a wreck away
     openMenu(
       'skrot-buy',
       OWNER_SAYS + '”Den där ' + carName(c) + '? ' + fmtKr(kr) + ', å den ä din.”',
@@ -141,12 +138,18 @@ export class Skroten {
       k => {
         if (k === 'buy') this.buy(c);
       },
-      () => this.byForSale(c),
+      () => this.standsByCar(c),
     );
   };
 
+  // why he won't sell c now, or null when he will
+  private refusal(c: Car): string | null {
+    if (this.g.stars) return CHASED;
+    return lotPrice(c.saleKr, c.dmg) === null ? LOT_WRECK : null;
+  }
+
   // you stand on foot by the car for sale, with no police after you: what keeps his menu open
-  private byForSale(c: Car) {
+  private standsByCar(c: Car) {
     const { game, player, stars } = this.g;
     return !game.inCar && !stars && c.saleKr > 0 && Math.hypot(player.x - c.x, player.z - c.z) < SALE_REACH_M;
   }
@@ -155,11 +158,14 @@ export class Skroten {
   private buy(c: Car) {
     const { stars, toast, wallet } = this.g;
     if (!c.saleKr) return;
-    if (!stars && !this.byForSale(c)) return; // walked off or got in: no sale, and no word
-    const kr = lotPrice(c.saleKr, c.dmg); // a crash can come while the menu is open
-    if (stars) toast(CHASED, 3.5);
-    else if (kr === null) toast(LOT_WRECK, 3.5);
-    else if (!pay(wallet, kr)) toast(OWNER_SAYS + '”' + fmtKr(kr) + ', sa ja. Kom tebaks när du har pengarna.”', 3.5);
+    if (!stars && !this.standsByCar(c)) return; // walked off or got in: no sale, and no word
+    const no = this.refusal(c); // a crash can come while the menu is open
+    if (no) {
+      toast(no, 3.5);
+      return;
+    }
+    const kr = lotPrice(c.saleKr, c.dmg)!; // refusal() turned a wreck away
+    if (!pay(wallet, kr)) toast(OWNER_SAYS + '”' + fmtKr(kr) + ', sa ja. Kom tebaks när du har pengarna.”', 3.5);
     else {
       c.saleKr = 0;
       c.owned = true;
