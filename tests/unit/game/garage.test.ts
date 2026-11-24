@@ -94,7 +94,7 @@ describe('Garage', () => {
     expect(t.car.mods).toBeUndefined(); // not bought
     expect(t.wallet.kr).toBe(1000);
     expect(t.keys()[0]).toBe('buy');
-    expect(t.menu().items[0]![1]).toBe('Köp Kioskgul <small>300 riksdaler</small>');
+    expect(t.menu().items[0]![1]).toBe('Köp Kioskgul <small>600 riksdaler</small>');
     expect(t.menu().items.find(([k]) => k === 'kiosk-gul')![1]).toContain('provar');
     t.choose('buy');
     expect(t.car.mods).toEqual({ paint: 'kiosk-gul' });

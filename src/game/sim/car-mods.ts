@@ -27,14 +27,17 @@ export interface Glow extends Part {
   readonly hex: string;
 }
 
-// The names are local; the metallic paints cost more.
+// Colours no car in the village drives in, so a painted car is yours at a glance: they cost more than a plain respray
+// would, and the metallic ones more again. A test keeps each at least PAINT_UNIQUE_DE from every colour a car gets in
+// the world (the car types' and Skroten's), so a new traffic colour can't quietly copy one. The names are local.
+export const PAINT_UNIQUE_DE = 25; // CIE76 ΔE: about where two colours stop reading as the same paint
 export const PAINTS = {
-  'vrigstad-rod': { name: 'Vrigstadröd', kr: 300, hex: '#9e1b1b', metallic: false },
-  'ema-gron': { name: 'Emågrön', kr: 300, hex: '#2e6b3f', metallic: false },
-  'kiosk-gul': { name: 'Kioskgul', kr: 300, hex: '#e3b505', metallic: false },
-  'mjolk-vit': { name: 'Mjölkvit', kr: 300, hex: '#eeeae0', metallic: false },
-  'slattsjo-bla': { name: 'Slättsjöblå metallic', kr: 500, hex: '#1f4e8c', metallic: true },
-  'raggar-svart': { name: 'Raggarsvart metallic', kr: 500, hex: '#141518', metallic: true },
+  'kiosk-gul': { name: 'Kioskgul', kr: 600, hex: '#f4d311', metallic: false },
+  'hallon-rosa': { name: 'Hallonrosa', kr: 600, hex: '#e0457b', metallic: false },
+  'ema-turkos': { name: 'Emåturkos', kr: 600, hex: '#11a59b', metallic: false },
+  'bjorklov-gron': { name: 'Björklövsgrön', kr: 600, hex: '#8fcf3c', metallic: false },
+  'slattsjo-bla': { name: 'Slättsjöblå metallic', kr: 900, hex: '#38b4ef', metallic: true },
+  'blabar-lila': { name: 'Blåbärslila metallic', kr: 900, hex: '#5b2a86', metallic: true },
 } as const satisfies Record<string, Paint>;
 export type PaintId = keyof typeof PAINTS;
 

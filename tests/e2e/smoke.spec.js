@@ -725,13 +725,13 @@ test.describe('game (index.html)', () => {
     await expect(page.locator('#kmenu')).toContainText('Köp Slättsjöblå metallic');
     expect(await state(page)).toMatchObject({ carMods: null, kr: 2200 }); // on show, not bought (200 to start with, and 2000 from the console)
     await page.keyboard.press('Digit1'); // Köp
-    await expect(page.locator('#kr')).toHaveText('1 700 riksdaler');
+    await expect(page.locator('#kr')).toHaveText('1 300 riksdaler');
     await expect(page.locator('#kmenu')).toContainText('på bilen'); // the shelf comes back, with the paint on
     await page.keyboard.press('Escape'); // back to the front
     await page.keyboard.press('Digit3'); // Neon under bilen
     await page.keyboard.press('Digit1'); // tries Blått neon on
     await page.keyboard.press('Digit1'); // Köp
-    await expect(page.locator('#kr')).toHaveText('1 300 riksdaler');
+    await expect(page.locator('#kr')).toHaveText('900 riksdaler');
     expect(await state(page)).toMatchObject({ inCar: true, carMods: { paint: 'slattsjo-bla', glow: 'bla' } });
     await page.screenshot({ path: testInfo.outputPath('game-garage.png') });
     expect(errors).toEqual([]);
