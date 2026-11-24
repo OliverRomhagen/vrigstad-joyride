@@ -20,6 +20,7 @@ let { data } = $props();
 
 const SAY_FOR_MS = 6500; // how long one of Plåt-Pelle's lines stays up
 const LISTEN_MS = 500; // how often he gets the chance to speak
+const GREET_AFTER_MS = 2500; // how long after the yard shows he waits to greet you: once you have had a look round
 
 const cars = VEHICLES.map(v => ({ ...v, spec: VEHICLE_SPECS[v.archetype as CarType] }));
 const most = {
@@ -55,6 +56,7 @@ let saying = $state<{ line: string; n: number }>();
 // he is saying it just now: the bubble stays in the page once he has, so it can fade out, out of sight and out of reach
 let speaking = $state(false);
 let saidAt = 0;
+let shownAt: number | undefined; // when the yard first showed, with a car on the ring or word that it wouldn't load
 let bubble = $state<HTMLElement>();
 function say(line: string | undefined) {
   if (!line) return;
@@ -70,6 +72,8 @@ onMount(() => {
   talk = pelle;
   const listen = () => {
     if (document.hidden) return pelle.lookAway();
+    // not a word before the yard is there and you have looked round it
+    if (shownAt === undefined || clock.now() - shownAt < GREET_AFTER_MS) return pelle.lookAway();
     if (status !== 'ready' || car.police) pelle.lookAway(); // nothing on the ring to stare at, or nothing he'd buy
     say(pelle.tick());
     // a line stays while the pointer or focus is on it, so its link doesn't vanish from under either
@@ -80,6 +84,10 @@ onMount(() => {
   return () => clearInterval(timer);
 });
 
+function showed(how: 'ready' | 'failed') {
+  status = how;
+  shownAt ??= clock.now();
+}
 function step(d: number) {
   index = (index + d + cars.length) % cars.length;
   say(talk?.picked());
@@ -106,8 +114,8 @@ function steer(e: KeyboardEvent) {
     paint={paints[car.id]}
     {margins}
     shown={status === 'ready' || status === 'failed'}
-    carShown={() => (status = 'ready')}
-    carFailed={() => (status = 'failed')}
+    carShown={() => showed('ready')}
+    carFailed={() => showed('failed')}
     sceneFailed={() => (status = 'down')}
   />
 
@@ -296,18 +304,19 @@ header > * {
   letter-spacing: 0.1em;
   color: #6b4a32;
 }
+/* to the right under the header, clear of the gate's sign: in the game he stands on that side of the ring, and here he
+   speaks from there, behind the camera */
 .says {
   position: absolute;
-  top: 96px;
-  left: 50%;
-  translate: -50% 0;
-  max-width: min(35rem, calc(100% - 32px));
+  top: 124px;
+  right: max(24px, 7vw);
+  max-width: min(24rem, calc(100% - 48px));
   margin: 0;
   padding: 16px 18px 11px;
   --paper: #fffaf0d6; /* paper, with the yard just showing through it */
   background: var(--paper);
   color: var(--road);
-  border-radius: 16px 16px 16px 4px; /* squarer where its tail leaves it */
+  border-radius: 16px 16px 4px 16px; /* squarer where its tail leaves it */
   font-size: 1rem;
   text-wrap: pretty;
   rotate: 0.6deg; /* pinned up by hand, like the gate's sign */
@@ -316,18 +325,18 @@ header > * {
     0 8px 24px #0003;
   backdrop-filter: blur(10px) saturate(1.3);
   /* it grows out of its tail, where the words come from */
-  transform-origin: 22px calc(100% + 12px);
+  transform-origin: calc(100% - 22px) calc(100% + 12px);
 }
-/* the tail: down and to the left, to where he stands behind the camera */
+/* the tail: down and to the right, to where he stands behind the camera */
 .says::after {
   content: "";
   position: absolute;
   top: 100%;
-  left: 12px;
+  right: 12px;
   width: 20px;
   height: 13px;
   background: var(--paper);
-  clip-path: polygon(0 0, 100% 0, 15% 100%);
+  clip-path: polygon(0 0, 100% 0, 85% 100%);
   backdrop-filter: blur(10px) saturate(1.3);
 }
 /* his name on a tab in his cap's red, stuck over the bubble's top edge */
@@ -652,7 +661,9 @@ dd i {
     padding: 8px 10px 8px 8px;
   }
   .says {
-    top: 84px;
+    top: 104px;
+    right: 16px;
+    max-width: calc(100% - 32px);
     font-size: 0.9375rem;
   }
   .card {
