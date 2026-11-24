@@ -10,4 +10,5 @@
 # folders few.
 data/vrigstad.json linguist-generated=true
 data/raw/** linguist-vendored=true
+# The review still lists a package-lock.json changed without its package.json as one to read by hand.
 package-lock.json linguist-generated=true
