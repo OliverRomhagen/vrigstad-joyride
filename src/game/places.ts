@@ -3,7 +3,8 @@
 import { RoadClass } from '../world/data';
 import { pointInPolygon, segmentDistance } from '../world/polygon';
 import type { RoadLine } from '../world/roads';
-import { type Commands, UsageError } from './commands';
+import { choice, command, described } from './command-args';
+import type { Commands } from './commands';
 import { wrecked } from './health';
 import { HOME } from './player';
 import { RING_UV, yardToWorld } from './skroten-yard';
@@ -111,21 +112,26 @@ export class Places {
   }
 
   /**
-   * go <place>: takes you to Torget or to a place's ring (the kiosk, Skroten, a safehouse by its street), in the car if you are in one.
-   * `goTo` moves you, and says where you are.
+   * go <place> (also tp): takes you to Torget or to a place's ring (the kiosk, Skroten, a safehouse by its street), in the car if you
+   * are in one. `goTo` moves you, and says where you are.
    */
   registerCommands(commands: Pick<Commands, 'register'>, goTo: (x: number, z: number, name: string) => string) {
     const spots = new Map<string, { x: number; z: number; name: string }>([['torget', { ...HOME, name: 'Torget' }]]);
     for (const p of this.list) spots.set(p.kind === 'kiosk' ? 'kiosk' : p.name.toLowerCase(), p);
-    commands.register('go', {
-      usage: '<' + [...spots.keys()].join(' | ') + '>',
-      help: 'go to a place, in the car if you are in one',
-      run: a => {
-        const spot = a[0] && spots.get(a[0].toLowerCase());
-        if (!spot) throw new UsageError(a[0] ? 'No place called ' + a[0] + '.' : '');
-        return goTo(spot.x, spot.z, spot.name);
-      },
-    });
+    const names = [...spots.keys()];
+    commands.register(
+      'go',
+      command({
+        help: 'go to a place, in the car if you are in one',
+        examples: ['go skroten', 'go torget'],
+        aliases: ['tp'],
+        args: [described(choice('place', names), 'Torget, the kiosk, Skroten or a safehouse by its street')],
+        run: ({ place }) => {
+          const spot = spots.get(place)!; // choice() only gives back a name from the list
+          return goTo(spot.x, spot.z, spot.name);
+        },
+      }),
+    );
   }
 
   /** Skroten, if a car stands on its ring here. */
