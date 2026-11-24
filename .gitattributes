@@ -5,8 +5,8 @@
 # Generated and vendored files: GitHub leaves both out of language stats and collapses the generated ones in review
 # diffs, and the Claude review leaves both out (.github/workflows/claude-review.yml, which reads this file from main).
 # data/vrigstad.json is built by tools/process.py, from data/raw/, which tools/fetch.sh downloads.
+# Mark exact paths or folders only: a pattern any file can match, such as *.min.js, would let a PR keep its own code
+# out of the review just by its name.
 data/vrigstad.json linguist-generated=true
 data/raw/** linguist-vendored=true
 package-lock.json linguist-generated=true
-*.min.js linguist-generated=true
-*.min.css linguist-generated=true

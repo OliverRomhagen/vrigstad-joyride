@@ -37,15 +37,16 @@ name: Claude review
 on:
   pull_request_target:
     types: [opened, reopened, ready_for_review, synchronize, edited]
-    # Skip PRs that only change docs, labels, issue forms, agent files or other workflows, as unit.yml does. But not
-    # AGENTS.md: the review checks a change to the rules too.
+    # Skip PRs that only change docs, labels, issue forms or agent files, as unit.yml does. But not AGENTS.md: the
+    # review checks a change to the rules too. Nor the workflows, unlike unit.yml: they hold the repo's tokens, and
+    # preview.yml runs a PR's code, so a change to one is the riskiest kind there is.
     paths:
       - '**'
       - '!**/*.md'
       - '!.claude/**'
       - '!.github/**'
       - 'AGENTS.md'
-      - '.github/workflows/claude-review.yml'
+      - '.github/workflows/**'
       - '.github/claude-review.md'
 
 permissions:
@@ -577,7 +578,8 @@ jobs:
           : >"$needles"
           for s in "$SECRET_API_KEY" "$SECRET_OAUTH_TOKEN"; do
             [ "${#s}" -ge 16 ] || continue
-            for ((i = 0; i + 16 <= ${#s}; i += 8)); do printf '%s\n' "${s:i:16}" >>"$needles"; done
+            # Every 16-character window, so any run of 16 or more trips it, wherever it starts.
+            for ((i = 0; i + 16 <= ${#s}; i++)); do printf '%s\n' "${s:i:16}" >>"$needles"; done
             for k in 0 1 2; do
               b=$(printf '%*s%s' "$k" '' "$s" | base64 -w0)
               printf '%s\n' "${b:4:${#b}-8}" >>"$needles"
