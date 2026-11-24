@@ -61,6 +61,7 @@ const rows = (Object.entries(VEHICLE_SPECS) as [CarType, (typeof VEHICLE_SPECS)[
   list-style: none;
 }
 .swatches li {
+  position: relative; /* holds its hidden name, so that doesn't widen the page */
   width: 14px;
   height: 14px;
   border-radius: 50%;

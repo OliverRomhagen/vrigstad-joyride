@@ -93,14 +93,21 @@ export class GarageScene {
 
     // the yard sets its own shadows, as in the game (none cast on a phone). Plåt-Pelle stands beside the ring, where he would
     // take the stage from the car: he is left out, and talks from behind the camera (the page's bubble)
-    const yard = new SkrotenMeshes({
-      scene,
-      heightAt: flat,
-      layout: yardLayout(g.footprints, flat),
-      coarse: stage.coarse,
-      carModel: def => this.carModel(def),
-      showOwner: false,
-    });
+    let yard: SkrotenMeshes;
+    try {
+      yard = new SkrotenMeshes({
+        scene,
+        heightAt: flat,
+        layout: yardLayout(g.footprints, flat),
+        coarse: stage.coarse,
+        carModel: def => this.carModel(def),
+        showOwner: false,
+      });
+    } catch (err) {
+      // nobody gets this scene to dispose when its constructor throws: give the canvas and its WebGL context back here
+      stage.dispose();
+      throw err;
+    }
 
     const from = yardToWorld(5.5, 2.5);
     camera.position.set(from.x, 2.3, from.z);

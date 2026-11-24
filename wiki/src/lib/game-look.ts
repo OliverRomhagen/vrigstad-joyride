@@ -72,8 +72,13 @@ export class Stage {
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
     this.controls.enableDamping = true;
     this.controls.enablePan = false;
+    // `start` comes with a finger or the pointer going down, before it has moved: a tap, or a finger that goes on to scroll
+    // the page, isn't a drag. The camera moving while it is down is.
     this.controls.addEventListener('start', () => {
-      this.dragging = this.hasDragged = true;
+      this.dragging = true;
+    });
+    this.controls.addEventListener('change', () => {
+      if (this.dragging) this.hasDragged = true;
     });
     this.controls.addEventListener('end', () => {
       this.dragging = false;

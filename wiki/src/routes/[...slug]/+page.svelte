@@ -29,7 +29,8 @@ const entry = $derived(data.entry);
       <data.Page />
     {/if}
     <!-- the game's own numbers, read from its code when the wiki was built: after the prose, each under its own heading
-         (docs/README.md) -->
+         (docs/README.md). A table's headings, rows and cells never change in the page, so their each blocks have no key:
+         nothing in a table is sure to be unique. -->
     {#each data.tables as t (t.title)}
       <section>
         <h2>{t.title}</h2>
@@ -37,16 +38,16 @@ const entry = $derived(data.entry);
           <table class="data-table">
             <thead>
               <tr>
-                {#each t.head as heading (heading)}
+                {#each t.head as heading}
                   <th>{heading}</th>
                 {/each}
               </tr>
             </thead>
             <tbody>
-              {#each t.rows as [name, ...cells] (name)}
+              {#each t.rows as [name, ...cells]}
                 <tr>
                   <th scope="row">{name}</th>
-                  {#each cells as cell, column (t.head[column + 1])}
+                  {#each cells as cell}
                     <td>{cell}</td>
                   {/each}
                 </tr>

@@ -9,6 +9,8 @@ export function whereabouts([x, z]: readonly [number, number]): string {
   if (metres < ON_TORGET_M) return 'On Torget';
   // north is −z; eight winds of 45° each, the first centred on north
   const wind = WINDS[Math.round(Math.atan2(x, -z) / (Math.PI / 4) + 8) % 8];
-  const far = metres < 1000 ? `${Math.round(metres / 10) * 10} m` : `${(metres / 1000).toFixed(1)} km`;
+  // rounded first, so 995 m is 1.0 km and never "1000 m"
+  const tens = Math.round(metres / 10) * 10;
+  const far = tens < 1000 ? `${tens} m` : `${(tens / 1000).toFixed(1)} km`;
   return `${far} ${wind} of Torget`;
 }

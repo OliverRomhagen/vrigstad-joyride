@@ -29,7 +29,14 @@ let loaded = $state(false); // the map's page has loaded in the frame; it draws 
 // On a touch screen the map takes every finger that lands on it, so a page with a map in its text couldn't be scrolled past
 // it: there the map waits under a button until you ask for it (the styles show the button for a coarse pointer only).
 let inUse = $state(false);
+let frameEl: HTMLIFrameElement | undefined;
+// the button goes away with the tap: the focus it had moves on to the map, not back to the top of the page
+const useMap = () => {
+  inUse = true;
+  frameEl?.focus();
+};
 const load = (frame: HTMLIFrameElement) => {
+  frameEl = frame;
   const target = src;
   loaded = false;
   inUse = false;
@@ -58,7 +65,7 @@ const load = (frame: HTMLIFrameElement) => {
   {#if !loaded}
     <p class="loading-3d" role="status">Unfolding the map…</p>
   {:else if !inUse}
-    <button type="button" class="use" onclick={() => (inUse = true)}><span>Tap to move the map</span></button>
+    <button type="button" class="use" onclick={useMap}><span>Tap to move the map</span></button>
   {/if}
   <a class="open" href={full} target="_blank" rel="external noopener">Open full screen ↗</a>
 </div>

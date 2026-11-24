@@ -30,5 +30,6 @@ describe('whereabouts', () => {
     expect(whereabouts([-200, 200])).toBe('280 m south-west of Torget');
     expect(whereabouts([-433, -835])).toBe('940 m north-west of Torget'); // Slättsjön
     expect(whereabouts([0, 1040])).toBe('1.0 km south of Torget');
+    expect(whereabouts([996, 0])).toBe('1.0 km east of Torget'); // not "1000 m"
   });
 });

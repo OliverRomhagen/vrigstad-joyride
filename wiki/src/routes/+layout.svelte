@@ -42,7 +42,7 @@ function drawer(dialog: HTMLDialogElement) {
   <!-- without scripts the Menu button can't open the drawer: a phone shows the sidebar in the page instead -->
   <noscript>
     <style>
-    /* each class twice: to outweigh the component's own rule for a phone, which hides the sidebar */
+    /* each class three times: to outweigh the component's own rule for a phone, which hides the sidebar */
     .side.side.side {
       display: block;
     }
