@@ -121,7 +121,8 @@ function bin(): FurnitureModel {
 const WHEELIE = { green: 0x2f5d3a, black: 0x2a2c2d } as const;
 const WHEEL = 0x1c1c1c;
 // Swedish mailboxes: green, grey or black
-const MAILBOXES = [0x2f4f3a, 0x6b7069, 0x2a2b2c] as const;
+const MAILBOX = { green: 0x2f4f3a, grey: 0x6b7069, black: 0x2a2b2c } as const;
+const MAILBOX_COLOURS = Object.values(MAILBOX);
 const MAILBOX_EDGE = 0x1e2120;
 const WOOD_GREY = 0x7a6a58;
 const CABINET = 0x7d8a80;
@@ -167,7 +168,7 @@ function mailboxStand(n: number): FurnitureModel {
     [box(span + 0.08, 0.06, 0.26, 0, 0.84, 0), WOOD_GREY], // the shelf the boxes sit on
   ];
   for (let i = 0; i < n; i++)
-    parts.push(...mailboxParts(-span / 2 + step * (i + 0.5), MAILBOXES[i % MAILBOXES.length]));
+    parts.push(...mailboxParts(-span / 2 + step * (i + 0.5), MAILBOX_COLOURS[i % MAILBOX_COLOURS.length]));
   return { body: merge(parts) };
 }
 
@@ -190,9 +191,9 @@ export const FURNITURE_MODELS: Readonly<Record<FurnitureModelId, () => Furniture
   'bin-green': bin,
   'wheelie-bin-green': () => wheelieBin(WHEELIE.green),
   'wheelie-bin-black': () => wheelieBin(WHEELIE.black),
-  'mailbox-green': () => mailbox(MAILBOXES[0]),
-  'mailbox-grey': () => mailbox(MAILBOXES[1]),
-  'mailbox-black': () => mailbox(MAILBOXES[2]),
+  'mailbox-green': () => mailbox(MAILBOX.green),
+  'mailbox-grey': () => mailbox(MAILBOX.grey),
+  'mailbox-black': () => mailbox(MAILBOX.black),
   'mailbox-stand-3': () => mailboxStand(3),
   'mailbox-stand-4': () => mailboxStand(4),
   'mailbox-stand-5': () => mailboxStand(5),

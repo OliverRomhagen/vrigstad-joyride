@@ -7,7 +7,7 @@ import { pointInPolygon, polygonBounds, segmentDistance, segmentParam } from '..
 import { arcLengths, pointAtArc } from '../polyline';
 import { fnv1a, hash01 } from '../random';
 import { nodeKey, type Point, type RoadLine } from '../roads';
-import { sidewalkCentreM } from '../streetscape';
+import { type Opening, sidewalkCentreM } from '../streetscape';
 import { type SideSpec, type StreetSides, sideSpecOf } from '../streetscape-rules';
 import { roadContexts, type TorgetArea, torgetArea } from './context';
 import {
@@ -56,7 +56,7 @@ export interface FurnitureInput {
   /** the streetscape's classification and what it reserved (#187) */
   street: {
     readonly sides: readonly StreetSides[];
-    readonly openings: readonly { ri: number; side: -1 | 1; s: number; half: number; kind: string }[];
+    readonly openings: readonly Pick<Opening, 'ri' | 'side' | 's' | 'half' | 'kind'>[];
     readonly lots: readonly { ai: number }[];
   };
   /** game-side objects to keep clear of, such as the kiosk and safehouse doors */
@@ -65,7 +65,7 @@ export interface FurnitureInput {
 }
 
 /** Where a generated object came from: a road's context, one of the places benches go, or a house (homes.ts). */
-export type CandidateOrigin = FurnitureContext | 'bus stop' | 'park' | 'church' | 'house' | 'outskirts' | 'street';
+export type CandidateOrigin = FurnitureContext | 'bus stop' | 'park' | 'church' | 'house';
 
 /** A generated object before it's accepted. */
 export interface Candidate extends FurniturePlacement {
@@ -338,13 +338,26 @@ export class Placer {
     if (spec.vergeM >= LAMP_VERGE_MIN_M) return centre - spec.widthM / 2 - spec.vergeM / 2;
     return centre + spec.widthM / 2 + LAMP_PAST_SIDEWALK_M;
   }
-  /** how far out from road ri's centre line a bench or bin stands on `side`, to its middle (m) */
-  seatOffset(ri: number, side: -1 | 1, kind: FurnitureKind) {
+  /**
+   * how far out from road ri's centre line a bench or bin stands on `side`, to its middle (m): `edgeM` past the
+   * carriageway's edge without a sidewalk, `pastSidewalkM` past the sidewalk's outer edge with one
+   */
+  seatOffset(ri: number, side: -1 | 1, kind: FurnitureKind, edgeM = SEAT_EDGE_M, pastSidewalkM = SEAT_PAST_SIDEWALK_M) {
     const c = this.input.roads.lines[ri].c;
     const halfDepth = FURNITURE[kind].depthM / 2;
-    if (!this.hasSidewalk(ri, side)) return ROAD_WIDTH_M[c] / 2 + SEAT_EDGE_M + halfDepth;
+    if (!this.hasSidewalk(ri, side)) return ROAD_WIDTH_M[c] / 2 + edgeM + halfDepth;
     const spec = this.sideSpec(ri, side);
-    return sidewalkCentreM(spec, c)! + spec.widthM / 2 + SEAT_PAST_SIDEWALK_M + halfDepth;
+    return sidewalkCentreM(spec, c)! + spec.widthM / 2 + pastSidewalkM + halfDepth;
+  }
+  /**
+   * how far either side of `alongM` on road ri's `side` a candidate must stand to clear a driveway's opening within
+   * `matchM` of it, as roadside() reckons it (m); null when there is none
+   */
+  drivewayClearM(ri: number, side: -1 | 1, alongM: number, matchM: number) {
+    const o = this.input.street.openings.find(
+      o => o.kind === 'driveway' && o.ri === ri && o.side === side && Math.abs(o.s - alongM) < matchM,
+    );
+    return o ? o.half + OPENING_MARGIN_M : null;
   }
   private inReservedOpening(ri: number, side: -1 | 1, s: number) {
     return this.input.street.openings.some(

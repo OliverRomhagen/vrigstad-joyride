@@ -2,40 +2,50 @@
 // (#305). Pure: no three.js. The wheelie bins, mailboxes and street cabinets hang off this.
 
 import { HOUSE_MIN_M2 } from '../buildings';
-import { ROAD_WIDTH_M, RoadClass, RoadUse, type WorldData } from '../data';
-import { polygonArea, segmentDistance, segmentParam } from '../polygon';
+import { BuildingKind, ROAD_WIDTH_M, RoadClass, RoadUse, type WorldData } from '../data';
+import { polygonArea, segmentDistance, segmentParam, vertexCentre } from '../polygon';
 import type { RoadLine } from '../roads';
+import type { FurnitureInput } from './placer';
 
 /**
- * a home of its own, with its own mailbox and wheelie bins, is a house (buildings.ts' HOUSE_MIN_M2 up) of at most this
- * (m²): the bigger ones the game also gives house details, up to HOUSE_MAX_M2 there, are blocks, shops and barns, whose
- * bins and mailboxes are shared and not by the street
+ * houses up to this (m²) have their own mailbox and wheelie bins; bigger ones (blocks, shops, barns), which buildings.ts
+ * still gives house details up to its HOUSE_MAX_M2, share theirs away from the street
  */
 const OWN_HOME_MAX_M2 = 400;
 /** a house's middle within this of a street's centre line belongs to it (m) */
 const HOUSE_REACH_M = 35;
-/** a driveway belongs to a house when one end is this close to the street's edge and the other this close to the house (m) */
+/** a driveway's mouth is at most this far past the street's edge (m) */
 const DRIVEWAY_STREET_M = 4;
+/** a driveway's far end is at most this far from the middle of the house it serves (m) */
 const DRIVEWAY_HOUSE_M = 22;
 
 export interface HouseFront {
   /** a stable key from the house's middle, so choices follow the house rather than data order */
   key: string;
-  /** the house's middle, and its outline as flat [x, z, ...] */
+  /** the house's middle */
   x: number;
   z: number;
-  p: readonly number[];
-  /** its street, the side of it the house is on (-1 left, +1 right of the way's direction), and where along it (m) */
+  /** its outline, flat [x, z, ...] */
+  outline: readonly number[];
+  /** its street, and the side of it the house is on (-1 left, +1 right of the street's direction) */
   ri: number;
   side: -1 | 1;
-  s: number;
-  /** true when `s` is where a mapped driveway meets the street, rather than opposite the house's middle */
-  driveway: boolean;
+  /** where along the street the house's front is (m) */
+  alongM: number;
+  /** `alongM` is where a mapped driveway meets the street, rather than opposite the house's middle */
+  atDriveway: boolean;
 }
 
-/** The point on road `p` nearest (x, z): how far along it (m), how far from it, and which side (x east, z south). */
-function project(p: readonly (readonly [number, number])[], x: number, z: number) {
-  let best = { s: 0, d: Infinity, side: 1 as -1 | 1 };
+/** The point on a road nearest a given point: how far along the road (m), how far from it (m), and which side. */
+interface StreetMatch {
+  s: number;
+  d: number;
+  side: -1 | 1;
+}
+
+/** The point on road `p` nearest (x, z) (x east, z south). */
+function project(p: readonly (readonly [number, number])[], x: number, z: number): StreetMatch {
+  let best: StreetMatch = { s: 0, d: Infinity, side: 1 };
   let along = 0;
   for (let i = 1; i < p.length; i++) {
     const [ax, az] = p[i - 1];
@@ -43,7 +53,7 @@ function project(p: readonly (readonly [number, number])[], x: number, z: number
     const len = Math.hypot(bx - ax, bz - az);
     const d = segmentDistance(x, z, ax, az, bx, bz);
     if (d < best.d) {
-      const cross = (bx - ax) * (z - az) - (bz - az) * (x - ax); // > 0: right of the way
+      const cross = (bx - ax) * (z - az) - (bz - az) * (x - ax); // > 0: right of the road's direction
       best = { s: along + segmentParam(x, z, ax, az, bx, bz) * len, d, side: cross > 0 ? 1 : -1 };
     }
     along += len;
@@ -51,76 +61,91 @@ function project(p: readonly (readonly [number, number])[], x: number, z: number
   return best;
 }
 
+/** The nearest eligible street within HOUSE_REACH_M of (x, z): class STREET or bigger, not a sidewalk. */
+function nearestStreet(
+  data: WorldData,
+  roads: FurnitureInput['roads'],
+  eligible: (ri: number) => boolean,
+  x: number,
+  z: number,
+) {
+  let best: (StreetMatch & { ri: number }) | null = null;
+  const seen = new Set<number>(); // each road is measured once, along its whole line
+  roads.forEachSegmentNear(x, z, HOUSE_REACH_M, (_ax, _az, _bx, _bz, ri) => {
+    if (seen.has(ri)) return;
+    seen.add(ri);
+    const road = roads.lines[ri];
+    if (road.c > RoadClass.STREET || data.r[ri].s === RoadUse.SIDEWALK || !eligible(ri)) return;
+    const p = project(road.p, x, z);
+    if (p.d <= HOUSE_REACH_M && (!best || p.d < best.d)) best = { ri, ...p };
+  });
+  // set inside the callback, so TypeScript can't see it change: name the result
+  return best as (StreetMatch & { ri: number }) | null;
+}
+
+/** A driveway that reaches a house: which one, how close its far end is to the house (m), and where its mouth meets the street (m along it). */
+interface DrivewayMatch {
+  di: number;
+  toHouseM: number;
+  alongM: number;
+}
+
+/** The mapped driveway from `street` that ends nearest (x, z), on the house's `side`, within DRIVEWAY_HOUSE_M. */
+function drivewayFront(street: RoadLine, side: -1 | 1, x: number, z: number, driveways: readonly RoadLine[]) {
+  let best: DrivewayMatch | null = null;
+  for (let di = 0; di < driveways.length; di++) {
+    const { p } = driveways[di];
+    for (const [mouth, end] of [
+      [p[0], p[p.length - 1]],
+      [p[p.length - 1], p[0]],
+    ]) {
+      const toHouseM = Math.hypot(end[0] - x, end[1] - z);
+      if (toHouseM >= (best?.toHouseM ?? DRIVEWAY_HOUSE_M)) continue; // most driveways are far: skip the projection
+      const atStreet = project(street.p, mouth[0], mouth[1]);
+      // the mouth at the street's edge, on the house's side (or on the centre line, where the driveway joins it)
+      if (atStreet.d > ROAD_WIDTH_M[street.c] / 2 + DRIVEWAY_STREET_M || (atStreet.side !== side && atStreet.d > 1))
+        continue;
+      best = { di, toHouseM, alongM: atStreet.s };
+    }
+  }
+  return best;
+}
+
 /**
- * Each house with the street it fronts: the nearest street (class STREET or bigger, not a sidewalk) within
- * HOUSE_REACH_M, where `eligible` says the street counts. A mapped driveway from that street to the house moves the
- * front to where the driveway meets it.
+ * Each house with the street it fronts: the nearest street within HOUSE_REACH_M where `eligible` says the street counts.
+ * A mapped driveway from that street to the house moves the front to where the driveway meets it. A driveway that two
+ * houses reach serves the one its far end is nearer; the other keeps its front opposite its middle.
  */
 export function houseFronts(
   data: WorldData,
-  roads: {
-    readonly lines: readonly RoadLine[];
-    forEachSegmentNear(
-      x: number,
-      z: number,
-      reachM: number,
-      visit: (ax: number, az: number, bx: number, bz: number, ri: number) => void,
-    ): void;
-  },
+  roads: FurnitureInput['roads'],
   eligible: (ri: number) => boolean,
 ): HouseFront[] {
   const driveways = roads.lines.flatMap((l, ri) => (data.r[ri].s === RoadUse.DRIVEWAY && l.p.length > 1 ? [l] : []));
-  const out: HouseFront[] = [];
+  const found: { front: HouseFront; driveway: DrivewayMatch | null }[] = [];
   for (const b of data.b) {
     const area = polygonArea(b.p);
-    if (b.k !== 0 || area < HOUSE_MIN_M2 || area > OWN_HOME_MAX_M2) continue;
-    let x = 0;
-    let z = 0;
-    for (let i = 0; i < b.p.length; i += 2) {
-      x += b.p[i];
-      z += b.p[i + 1];
-    }
-    x /= b.p.length / 2;
-    z /= b.p.length / 2;
-    // every road with a segment within the reach; each is measured once, along its whole line
-    let best: { ri: number; s: number; d: number; side: -1 | 1 } | null = null;
-    const seen = new Set<number>();
-    roads.forEachSegmentNear(x, z, HOUSE_REACH_M, (_ax, _az, _bx, _bz, ri) => {
-      if (seen.has(ri)) return;
-      seen.add(ri);
-      const road = roads.lines[ri];
-      if (road.c > RoadClass.STREET || data.r[ri].s === RoadUse.SIDEWALK || !eligible(ri)) return;
-      const p = project(road.p, x, z);
-      if (p.d <= HOUSE_REACH_M && (!best || p.d < best.d)) best = { ri, ...p };
-    });
-    // set inside the callback, so TypeScript can't see it change: name the result
-    const found = best as { ri: number; s: number; d: number; side: -1 | 1 } | null;
-    if (!found) continue;
-    const street = roads.lines[found.ri];
-    const key = `h${Math.round(x * 10)}.${Math.round(z * 10)}`;
-    // a driveway from this street to this house: the end near the street's edge marks the front
-    let front = found.s;
-    let driveway = false;
-    let nearest = DRIVEWAY_HOUSE_M;
-    for (const dw of driveways)
-      for (const [mouth, end] of [
-        [dw.p[0], dw.p[dw.p.length - 1]],
-        [dw.p[dw.p.length - 1], dw.p[0]],
-      ]) {
-        const toHouse = Math.hypot(end[0] - x, end[1] - z);
-        if (toHouse >= nearest) continue; // most driveways are far from this house: skip the projection
-        const atStreet = project(street.p, mouth[0], mouth[1]);
-        // the mouth at the street's edge, on the house's side (or on the centre line, where the driveway joins it)
-        if (
-          atStreet.d > ROAD_WIDTH_M[street.c] / 2 + DRIVEWAY_STREET_M ||
-          (atStreet.side !== found.side && atStreet.d > 1)
-        )
-          continue;
-        nearest = toHouse;
-        front = atStreet.s;
-        driveway = true;
-      }
-    out.push({ key, x, z, p: b.p, ri: found.ri, side: found.side, s: front, driveway });
+    if (b.k !== BuildingKind.OTHER || area < HOUSE_MIN_M2 || area > OWN_HOME_MAX_M2) continue;
+    const { x, z } = vertexCentre(b.p);
+    const street = nearestStreet(data, roads, eligible, x, z);
+    if (!street) continue;
+    const front: HouseFront = {
+      key: `h${Math.round(x * 10)}.${Math.round(z * 10)}`,
+      x,
+      z,
+      outline: b.p,
+      ri: street.ri,
+      side: street.side,
+      alongM: street.s,
+      atDriveway: false,
+    };
+    found.push({ front, driveway: drivewayFront(roads.lines[street.ri], street.side, x, z, driveways) });
   }
-  return out;
+  // the house nearest each driveway's far end, of those it reaches
+  const nearestM = new Map<number, number>();
+  for (const { driveway: m } of found)
+    if (m && m.toHouseM < (nearestM.get(m.di) ?? Infinity)) nearestM.set(m.di, m.toHouseM);
+  return found.map(({ front, driveway: m }) =>
+    m && nearestM.get(m.di) === m.toHouseM ? { ...front, alongM: m.alongM, atDriveway: true } : front,
+  );
 }

@@ -104,7 +104,7 @@ export const FURNITURE: Readonly<Record<FurnitureKind, FurnitureDefinition>> = {
     junctionKeepM: 8,
     maxSlopeDeg: 8,
   },
-  // #305: by the houses, at the property line facing the street
+  // #305: what a house has at its street
   'wheelie-bin': {
     kind: 'wheelie-bin',
     modelId: 'wheelie-bin-green',

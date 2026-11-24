@@ -1,59 +1,81 @@
 // What a house has at its street (#305): a mailbox at the property line, wheelie bins against the wall facing the
 // street, a shared mailbox stand in the outskirts, and a street cabinet in the verge now and then. Pure: no three.js.
 // Artistic values, not a survey of Vrigstad. houses.ts works out which street each house fronts.
-import { ROAD_WIDTH_M } from '../data';
+import { ROAD_WIDTH_M, RoadClass } from '../data';
 import { pointAtArc } from '../polyline';
 import { hash01 } from '../random';
-import { sidewalkCentreM } from '../streetscape';
-import { FURNITURE, type FurnitureKind, type FurnitureModelId } from './definitions';
+import { FURNITURE, type FurnitureModelId } from './definitions';
 import { type HouseFront, houseFronts } from './houses';
 import { byOrder, type Candidate, heading, jitterRad, type Placer } from './placer';
 
-/** the property line: this far past a sidewalk's outer edge, or past the carriageway's edge without one (m) */
+/** the property line, where the mailbox stands: this far past a sidewalk's outer edge (m) */
 const HOUSE_PAST_SIDEWALK_M = 0.3;
+/** ... or, without a sidewalk, this far past the carriageway's edge (m) */
 const HOUSE_LINE_M = 1.4;
-/** without a mapped driveway, the bins and the mailbox stand this far either side of the point opposite the house (m) */
+/** without a mapped driveway, the mailbox stands this far along the street from the point opposite the house (m) */
 const HOUSE_SPLIT_M = 1.2;
 /** a driveway opening this close along the street to a house's front is that house's (m) */
 const DRIVEWAY_MATCH_M = 6;
-/** the wheelie bins stand this far out from the house's wall, about this far along it from the point nearest the street (m) */
+/** a mapped driveway's half width (m), which the wheelie bins keep clear of where it meets the house */
+const DRIVEWAY_HALF_M = ROAD_WIDTH_M[RoadClass.SERVICE] / 2;
+/** ... with this much to spare past the bin's own clearance from a carriageway (m) */
+const BIN_DRIVEWAY_SPARE_M = 0.15;
+/** the wheelie bins stand this far out from the house's wall (m) */
 const BIN_WALL_GAP_M = 0.25;
+/** the first wheelie bin stands this far along the wall from the point nearest the street (m) */
 const BIN_ALONG_WALL_M = 1.2;
-/** ... kept this far in from the wall's ends (m) */
+/** the wheelie bins keep this far in from the wall's ends (m) */
 const BIN_WALL_END_M = 0.4;
-/** a second wheelie bin with this chance, this far along from the first (m) */
+/** a second wheelie bin with this chance */
 const SECOND_BIN_SHARE = 0.6;
-const BIN_GAP_M = 0.75;
+/**
+ * the second wheelie bin stands this far along from the first (m): two bins' width and clearance, turned their
+ * WHEELIE_JITTER_RAD either way, need about 0.87 m, or the placer turns the second one down
+ */
+const BIN_GAP_M = 0.9;
 /** a wheelie bin turns at most this much either way from facing the street (rad) */
 const WHEELIE_JITTER_RAD = (10 * Math.PI) / 180;
 /** a street cabinet after every this many houses along a street, from MIN to MIN + SPREAD - 1, by hash */
 const CABINET_EVERY_MIN = 4;
 const CABINET_EVERY_SPREAD = 3;
-/** in the outskirts, up to STAND_MAX houses this close along a road share one mailbox stand, when there are at least STAND_MIN (m) */
+/** in the outskirts, houses this close along a road share one mailbox stand (m) */
 const STAND_REACH_M = 150;
-const STAND_MIN = 3;
-const STAND_MAX = 6;
+/** the mailbox stand for each number of houses it serves; fewer than the smallest get a mailbox each */
+const STAND_MODELS = {
+  3: 'mailbox-stand-3',
+  4: 'mailbox-stand-4',
+  5: 'mailbox-stand-5',
+  6: 'mailbox-stand-6',
+} as const satisfies Record<number, FurnitureModelId>;
+const STAND_SIZES = Object.keys(STAND_MODELS).map(Number);
+const STAND_MIN = Math.min(...STAND_SIZES);
+const STAND_MAX = Math.max(...STAND_SIZES);
 /** wheelie bins: green or black, by hash */
 const WHEELIE_MODELS = ['wheelie-bin-green', 'wheelie-bin-black'] as const;
 /** mailboxes: green, grey or black, by hash */
 const MAILBOX_MODELS = ['mailbox-green', 'mailbox-grey', 'mailbox-black'] as const;
+// The order the candidates are tried in, lowest first (placer.ts' byOrder): the mailboxes and stands, which a house
+// can't do without, then the bins, and the cabinets last, in whatever room is left.
+const BIN_RANK = 1;
+const CABINET_RANK = 2;
 
-/**
- * The outline's edge nearest (x, z): its start, unit tangent, length, outward normal (towards (x, z)) and how far along
- * it the nearest point is. Null for a degenerate outline.
- */
-function nearestWall(p: readonly number[], x: number, z: number) {
-  let best: {
-    ax: number;
-    az: number;
-    tx: number;
-    tz: number;
-    nx: number;
-    nz: number;
-    len: number;
-    u: number;
-    d: number;
-  } | null = null;
+/** A wall of a house's outline: its start, unit tangent, length, outward normal, and a point on it, `u` m along. */
+interface Wall {
+  ax: number;
+  az: number;
+  tx: number;
+  tz: number;
+  nx: number;
+  nz: number;
+  len: number;
+  u: number;
+  /** how far the point is from the one the wall was looked for from (m) */
+  d: number;
+}
+
+/** The outline's edge nearest (x, z), with its normal towards (x, z) and the nearest point on it; null when degenerate. */
+function nearestWall(p: readonly number[], x: number, z: number): Wall | null {
+  let best: Wall | null = null;
   for (let i = 0, j = p.length - 2; i < p.length; j = i, i += 2) {
     const ax = p[j];
     const az = p[j + 1];
@@ -70,131 +92,180 @@ function nearestWall(p: readonly number[], x: number, z: number) {
   return best;
 }
 
-/** Places each house's mailbox and wheelie bins, the outskirts' mailbox stands and the street cabinets. */
-export function placeHomeItems(placer: Placer) {
-  const { contexts, roadKeys, arcLengthsByRoad } = placer;
-  const { roads, street } = placer.input;
-  // the property line on road ri's `side`, to the middle of `kind`'s footprint (m)
-  const houseLine = (ri: number, side: -1 | 1, kind: FurnitureKind) => {
-    const c = roads.lines[ri].c;
-    const halfDepth = FURNITURE[kind].depthM / 2;
-    if (!placer.hasSidewalk(ri, side)) return ROAD_WIDTH_M[c] / 2 + HOUSE_LINE_M + halfDepth;
-    const spec = placer.sideSpec(ri, side);
-    return sidewalkCentreM(spec, c)! + spec.widthM / 2 + HOUSE_PAST_SIDEWALK_M + halfDepth;
-  };
-  // how far either side of the front the house's things stand: past the driveway's lowered curb when there is one
-  const split = (f: HouseFront) => {
-    const o = street.openings.find(
-      o => o.ri === f.ri && o.side === f.side && Math.abs(o.s - f.s) < DRIVEWAY_MATCH_M && o.kind === 'driveway',
-    );
-    return o ? o.half + 1 : HOUSE_SPLIT_M;
-  };
-  const mailboxModel = (id: string): FurnitureModelId => MAILBOX_MODELS[Math.floor(hash01(id, 'colour') * 3)];
-  const mailbox = (f: HouseFront, alongM: number, origin: 'house' | 'outskirts') => {
-    const c = placer.roadside({
-      kind: 'mailbox',
-      ri: f.ri,
-      side: f.side,
-      alongM,
-      offsetM: houseLine(f.ri, f.side, 'mailbox'),
-      id: `gen:mailbox:${f.key}`,
-      origin,
-      maxJitterRad: 0,
-    });
-    return c && { ...c, modelId: mailboxModel(c.id) };
-  };
+/** One of `list`, picked by the hash of `parts`. */
+const pickByHash = <T>(list: readonly T[], ...parts: string[]) => list[Math.floor(hash01(...parts) * list.length)];
 
-  const fronts = houseFronts(placer.data, roads, ri => contexts[ri] !== 'path');
-  const candidates: Candidate[] = [];
-  const outskirts = new Map<string, HouseFront[]>();
-  for (const f of fronts) {
-    if (contexts[f.ri] === 'outer') {
-      const k = `${f.ri}:${f.side}`;
-      outskirts.set(k, [...(outskirts.get(k) ?? []), f]);
-      continue;
-    }
-    const c = mailbox(f, f.s - split(f) - FURNITURE.mailbox.widthM / 2, 'house');
-    if (c) candidates.push(c);
+/** Adds `item` to `key`'s list in `map`. */
+function push<K, V>(map: Map<K, V[]>, key: K, item: V) {
+  const list = map.get(key);
+  if (list) list.push(item);
+  else map.set(key, [item]);
+}
+
+/** The property line on road ri's `side`, out from its centre line to the middle of `kind`'s footprint (m). */
+const houseLineM = (placer: Placer, ri: number, side: -1 | 1, kind: 'mailbox' | 'mailbox-stand' | 'street-cabinet') =>
+  placer.seatOffset(ri, side, kind, HOUSE_LINE_M, HOUSE_PAST_SIDEWALK_M);
+
+/** A house's own mailbox at the property line, beside its driveway's lowered curb when it has one. */
+function mailbox(placer: Placer, f: HouseFront, origin: 'house' | 'outer'): Candidate | null {
+  const split = placer.drivewayClearM(f.ri, f.side, f.alongM, DRIVEWAY_MATCH_M) ?? HOUSE_SPLIT_M;
+  const c = placer.roadside({
+    kind: 'mailbox',
+    ri: f.ri,
+    side: f.side,
+    alongM: f.alongM - split - FURNITURE.mailbox.widthM / 2,
+    offsetM: houseLineM(placer, f.ri, f.side, 'mailbox'),
+    id: `gen:mailbox:${f.key}`,
+    origin,
+    maxJitterRad: 0,
+  });
+  return c && { ...c, modelId: pickByHash(MAILBOX_MODELS, c.id, 'colour') };
+}
+
+/** Where along `wall` each of `count` bins stands, `startM` from its nearest point and on; past an end, the other way. */
+function binSpots(wall: Wall, alongSign: -1 | 1, startM: number, count: number) {
+  const spots: number[] = [];
+  for (let k = 0; k < count; k++) {
+    const offsetM = startM + k * BIN_GAP_M;
+    const fits = (u: number) => u >= BIN_WALL_END_M && u <= wall.len - BIN_WALL_END_M;
+    const u = [wall.u + alongSign * offsetM, wall.u - alongSign * offsetM].find(fits);
+    if (u !== undefined && !spots.includes(u)) spots.push(u);
   }
-  // the wheelie bins stand at the house, back to the wall that faces the street; they go out to the kerb only on collection day
-  for (const f of fronts) {
-    const at = pointAtArc(roads.lines[f.ri].p, arcLengthsByRoad[f.ri], f.s);
-    const wall = nearestWall(f.p, at.x, at.z);
-    if (!wall) continue;
-    const bins = hash01(f.key, 'bins') < SECOND_BIN_SHARE ? 2 : 1;
-    const way = hash01(f.key, 'bin side') < 0.5 ? -1 : 1;
-    const standOff = BIN_WALL_GAP_M + FURNITURE['wheelie-bin'].depthM / 2;
-    for (let n = 0; n < bins; n++) {
-      const id = `gen:wheelie-bin:${f.key}:${n}`;
-      const u = Math.max(
-        BIN_WALL_END_M,
-        Math.min(wall.len - BIN_WALL_END_M, wall.u + way * (BIN_ALONG_WALL_M + n * BIN_GAP_M)),
-      );
-      candidates.push({
-        id,
-        kind: 'wheelie-bin',
-        modelId: WHEELIE_MODELS[hash01(id, 'colour') < 0.5 ? 0 : 1],
-        x: wall.ax + wall.tx * u + wall.nx * standOff,
-        z: wall.az + wall.tz * u + wall.nz * standOff,
-        rotationY: heading(wall.nx, wall.nz) + jitterRad(id, WHEELIE_JITTER_RAD),
-        scale: 1,
-        source: 'procedural',
-        rank: 1,
-        origin: 'house',
-        ri: f.ri,
+  return spots;
+}
+
+/** A house's wheelie bins, back to the wall that faces the street; they go out to the kerb only on collection day. */
+function binsAt(f: HouseFront, wall: Wall): Candidate[] {
+  const { widthM, depthM, carriagewayClearanceM } = FURNITURE['wheelie-bin'];
+  const count = hash01(f.key, 'bins') < SECOND_BIN_SHARE ? 2 : 1;
+  const alongSign = hash01(f.key, 'bin side') < 0.5 ? -1 : 1;
+  // a driveway reaches the wall near its nearest point, so the bins stand past it
+  const startM = f.atDriveway
+    ? Math.max(BIN_ALONG_WALL_M, DRIVEWAY_HALF_M + carriagewayClearanceM + widthM / 2 + BIN_DRIVEWAY_SPARE_M)
+    : BIN_ALONG_WALL_M;
+  const standOffM = BIN_WALL_GAP_M + depthM / 2;
+  return binSpots(wall, alongSign, startM, count).map((u, k) => {
+    const id = `gen:wheelie-bin:${f.key}:${k}`;
+    return {
+      id,
+      kind: 'wheelie-bin',
+      modelId: pickByHash(WHEELIE_MODELS, id, 'colour'),
+      x: wall.ax + wall.tx * u + wall.nx * standOffM,
+      z: wall.az + wall.tz * u + wall.nz * standOffM,
+      rotationY: heading(wall.nx, wall.nz) + jitterRad(id, WHEELIE_JITTER_RAD),
+      scale: 1,
+      source: 'procedural',
+      rank: BIN_RANK,
+      origin: 'house',
+      ri: f.ri,
+    };
+  });
+}
+
+/** Every house's wheelie bins, against the wall nearest its front on the street. */
+function wheelieBins(placer: Placer, fronts: readonly HouseFront[]) {
+  return fronts.flatMap(f => {
+    const at = pointAtArc(placer.input.roads.lines[f.ri].p, placer.arcLengthsByRoad[f.ri], f.alongM);
+    const wall = nearestWall(f.outline, at.x, at.z);
+    return wall ? binsAt(f, wall) : [];
+  });
+}
+
+/** Houses along one side of a road, in order, split into groups of up to STAND_MAX within STAND_REACH_M of the first. */
+function standGroups(houses: readonly HouseFront[]) {
+  const sorted = [...houses].sort((a, b) => a.alongM - b.alongM);
+  const groups: HouseFront[][] = [];
+  for (const f of sorted) {
+    const group = groups.at(-1);
+    // a full stand ends the group, so the houses after it start the next one rather than going without
+    if (group && group.length < STAND_MAX && f.alongM - group[0].alongM <= STAND_REACH_M) group.push(f);
+    else groups.push([f]);
+  }
+  return groups;
+}
+
+/**
+ * In the outskirts, a stand of mailboxes where a few houses share a stretch of road, and a mailbox each where they
+ * don't. `fallback` holds each stand's houses' own mailboxes, for when the stand can't stand.
+ */
+function outskirtsMailboxes(placer: Placer, byRoadSide: ReadonlyMap<string, HouseFront[]>) {
+  const stands: Candidate[] = [];
+  const mailboxes: Candidate[] = [];
+  const fallback = new Map<string, Candidate[]>();
+  for (const houses of byRoadSide.values())
+    for (const group of standGroups(houses)) {
+      const own = group.flatMap(f => mailbox(placer, f, 'outer') ?? []);
+      if (group.length < STAND_MIN) {
+        mailboxes.push(...own);
+        continue;
+      }
+      const [first] = group;
+      const stand = placer.roadside({
+        kind: 'mailbox-stand',
+        ri: first.ri,
+        side: first.side,
+        alongM: (first.alongM + group[group.length - 1].alongM) / 2, // in the middle of the houses it serves
+        offsetM: houseLineM(placer, first.ri, first.side, 'mailbox-stand'),
+        id: `gen:mailbox-stand:${first.key}`,
+        origin: 'outer',
+        maxJitterRad: 0,
       });
+      if (!stand) {
+        mailboxes.push(...own);
+        continue;
+      }
+      stands.push({ ...stand, modelId: STAND_MODELS[group.length as keyof typeof STAND_MODELS] }); // STAND_MIN..STAND_MAX
+      fallback.set(stand.id, own);
     }
-  }
-  // in the outskirts, a stand of mailboxes where a few houses share a stretch of road; one each where they don't
-  for (const list of outskirts.values()) {
-    list.sort((a, b) => a.s - b.s);
-    for (let i = 0; i < list.length; ) {
-      let j = i;
-      // a full stand ends the group, so the houses after it start the next one rather than going without
-      while (j + 1 < list.length && j + 1 - i < STAND_MAX && list[j + 1].s - list[i].s <= STAND_REACH_M) j++;
-      const group = list.slice(i, j + 1);
-      const f = group[0];
-      if (group.length >= STAND_MIN) {
-        const n = group.length as 3 | 4 | 5 | 6;
-        const c = placer.roadside({
-          kind: 'mailbox-stand',
-          ri: f.ri,
-          side: f.side,
-          alongM: (f.s + group[group.length - 1].s) / 2, // in the middle of the houses it serves
-          offsetM: houseLine(f.ri, f.side, 'mailbox-stand'),
-          id: `gen:mailbox-stand:${f.key}`,
-          origin: 'outskirts',
-          maxJitterRad: 0,
-        });
-        if (c) candidates.push({ ...c, modelId: `mailbox-stand-${n}` });
-      } else
-        for (const g of group) {
-          const c = mailbox(g, g.s - split(g), 'outskirts');
-          if (c) candidates.push(c);
-        }
-      i = j + 1;
-    }
-  }
-  // a street cabinet in the verge after every few houses along a street, between two of them
-  const byStreet = new Map<number, HouseFront[]>();
-  for (const f of fronts) if (contexts[f.ri] !== 'outer') byStreet.set(f.ri, [...(byStreet.get(f.ri) ?? []), f]);
-  for (const [ri, list] of byStreet) {
-    list.sort((a, b) => a.s - b.s);
-    const every = CABINET_EVERY_MIN + Math.floor(hash01(roadKeys[ri], 'cabinets') * CABINET_EVERY_SPREAD);
-    for (let n = every - 1; n + 1 < list.length; n += every) {
-      const a = list[n];
+  return { candidates: [...stands, ...mailboxes], fallback };
+}
+
+/** A street cabinet in the verge after every few houses along a street, between two of them. */
+function streetCabinets(placer: Placer, byStreet: ReadonlyMap<number, HouseFront[]>) {
+  const out: Candidate[] = [];
+  for (const [ri, houses] of byStreet) {
+    const sorted = [...houses].sort((a, b) => a.alongM - b.alongM);
+    const every = CABINET_EVERY_MIN + Math.floor(hash01(placer.roadKeys[ri], 'cabinets') * CABINET_EVERY_SPREAD);
+    for (let h = every - 1; h + 1 < sorted.length; h += every) {
+      const after = sorted[h];
       const c = placer.roadside({
         kind: 'street-cabinet',
         ri,
-        side: a.side,
-        alongM: (a.s + list[n + 1].s) / 2,
-        offsetM: houseLine(ri, a.side, 'street-cabinet'),
-        id: `gen:street-cabinet:${roadKeys[ri]}:${n}`,
-        origin: 'street',
+        side: after.side,
+        alongM: (after.alongM + sorted[h + 1].alongM) / 2,
+        offsetM: houseLineM(placer, ri, after.side, 'street-cabinet'),
+        id: `gen:street-cabinet:${after.key}`, // by the house it follows, so a house mapped upstream doesn't renumber it
+        origin: placer.contexts[ri],
         maxJitterRad: 0,
       });
-      if (c) candidates.push({ ...c, rank: 2 });
+      if (c) out.push({ ...c, rank: CABINET_RANK });
     }
   }
-  for (const c of candidates.sort(byOrder)) placer.tryPlace(c);
+  return out;
+}
+
+/** Places each house's mailbox and wheelie bins, the outskirts' mailbox stands and the street cabinets. */
+export function placeHomeItems(placer: Placer) {
+  const { contexts } = placer;
+  const fronts = houseFronts(placer.data, placer.input.roads, ri => contexts[ri] !== 'path');
+  const village: HouseFront[] = [];
+  const outskirts = new Map<string, HouseFront[]>(); // by road and side
+  const byStreet = new Map<number, HouseFront[]>(); // the village's, by road
+  for (const f of fronts)
+    if (contexts[f.ri] === 'outer') push(outskirts, `${f.ri}:${f.side}`, f);
+    else {
+      village.push(f);
+      push(byStreet, f.ri, f);
+    }
+  const stands = outskirtsMailboxes(placer, outskirts);
+  const candidates = [
+    ...village.flatMap(f => mailbox(placer, f, 'house') ?? []),
+    ...wheelieBins(placer, fronts),
+    ...stands.candidates,
+    ...streetCabinets(placer, byStreet),
+  ];
+  const turnedDown: Candidate[] = [];
+  for (const c of candidates.sort(byOrder)) if (!placer.tryPlace(c)) turnedDown.push(c);
+  // a stand that couldn't stand (a tree, a junction, a slope): its houses get a mailbox each after all
+  for (const c of turnedDown) for (const m of stands.fallback.get(c.id) ?? []) placer.tryPlace(m);
 }

@@ -143,7 +143,7 @@ test.describe('game (index.html)', () => {
     for (const k of ['wheelie-bin', 'mailbox', 'street-cabinet']) expect(f.byKind[k]).toBeGreaterThan(0);
     expect(f.bySource.osm + f.bySource.override + f.bySource.procedural).toBe(f.total);
     expect(f.meshes).toBeGreaterThan(0);
-    expect(f.meshes).toBeLessThanOrEqual(16 * 36); // per 400 m cell at most one per model (14) and per lamp glass (2), and the 2200 m world spans 6 × 6 cells
+    expect(f.meshes).toBeLessThanOrEqual(16 * 36); // per 400 m cell at most one per model (14, FurnitureModelId; raise this with the next model) and per lamp glass (2), and the 2200 m world spans 6 × 6 cells
     expect(f.debug).toBe(true);
     await page.locator('#go').click();
     await frames(page, 5);

@@ -21,10 +21,10 @@ function fronts(b: Building[], r: Road[] = [STREET], eligible = (_ri: number) =>
 describe('houseFronts', () => {
   it('ties a house to its street: the side it is on and how far along, opposite its middle', () => {
     const [south, north] = fronts([house(10, 15), house(60, -25)]);
-    expect(south).toMatchObject({ ri: 0, side: 1, driveway: false });
-    expect(south.s).toBeCloseTo(215, 6); // x = 15 is 215 m from the street's start
+    expect(south).toMatchObject({ ri: 0, side: 1, atDriveway: false });
+    expect(south.alongM).toBeCloseTo(215, 6); // x = 15 is 215 m from the street's start
     expect(north).toMatchObject({ side: -1 });
-    expect(north.s).toBeCloseTo(265, 6);
+    expect(north.alongM).toBeCloseTo(265, 6);
   });
 
   it('skips sheds, big buildings, the church, houses too far away, and streets that are not eligible', () => {
@@ -37,8 +37,18 @@ describe('houseFronts', () => {
   it('moves the front to where a mapped driveway from the street meets it', () => {
     const driveway: Road = { c: RoadClass.SERVICE, n: '', p: [30, 2.75, 30, 14], i: 2, s: RoadUse.DRIVEWAY };
     const [f] = fronts([house(10, 15)], [STREET, driveway]);
-    expect(f.driveway).toBe(true);
-    expect(f.s).toBeCloseTo(230, 6);
+    expect(f.atDriveway).toBe(true);
+    expect(f.alongM).toBeCloseTo(230, 6);
+  });
+
+  it('gives a driveway two houses reach to the one its end is nearer, not to both', () => {
+    // the driveway ends 7.8 m from the first house's middle (15, 20) and 20.9 m from the second's (30, 20): both within reach
+    const driveway: Road = { c: RoadClass.SERVICE, n: '', p: [10, 2.75, 10, 14], i: 2, s: RoadUse.DRIVEWAY };
+    const [own, neighbour] = fronts([house(10, 15), house(25, 15)], [STREET, driveway]);
+    expect(own).toMatchObject({ atDriveway: true });
+    expect(own.alongM).toBeCloseTo(210, 6);
+    expect(neighbour).toMatchObject({ atDriveway: false });
+    expect(neighbour.alongM).toBeCloseTo(230, 6); // opposite its own middle
   });
 
   it('keys a house by where it stands, not by data order', () => {
