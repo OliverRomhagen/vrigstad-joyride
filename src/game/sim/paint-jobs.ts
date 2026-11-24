@@ -7,22 +7,20 @@ const DECALS = { FLAMES: 'flames', STRIPES: 'stripes', RALLY_NUMBER: 'rally-numb
 export type Decal = (typeof DECALS)[keyof typeof DECALS];
 export const DECAL_ORDER: readonly Decal[] = [DECALS.FLAMES, DECALS.STRIPES, DECALS.RALLY_NUMBER]; // as his menu lists them
 
+/** The number he paints on the doors, and names on the menu. */
+export const RALLY_NUMBER = '69';
+
 export const DECAL_NAMES: Readonly<Record<Decal, string>> = {
   flames: 'Flammor',
   stripes: 'Rallyränder',
-  'rally-number': 'Startnummer 69',
+  'rally-number': 'Startnummer ' + RALLY_NUMBER,
 };
 
 /** His special paints, with the names he gives them. None is in any car type's colours. */
 export const WORKSHOP_PAINTS: readonly { readonly paint: string; readonly name: string }[] = [
-  { paint: '#d4a514', name: 'Guldmetallic' },
+  { paint: '#d9c25a', name: 'Guldmetallic' }, // champagne: far from the EPA-traktor's orange-gold #e8a020, which #d4a514 was near
   { paint: '#86c440', name: 'Limegrön' },
   { paint: '#6a3a9e', name: 'Discolila' },
   { paint: '#e86fa6', name: 'Tuggummirosa' },
   { paint: '#f2661c', name: 'Vägverksorange' },
 ];
-
-export const isDecal = (k: string): k is Decal => (DECAL_ORDER as readonly string[]).includes(k);
-
-/** The name of one of his special paints, or undefined for any other paint. */
-export const workshopPaintName = (paint: string) => WORKSHOP_PAINTS.find(p => p.paint === paint)?.name;

@@ -2,9 +2,9 @@
 // with three's DecalGeometry, so they follow the body's curves. The textures are drawn once on a canvas and shared by every car;
 // each car's decal geometry is its own, and disposeDecal frees it.
 import * as THREE from 'three';
-import { DecalGeometry } from 'three/examples/jsm/geometries/DecalGeometry.js';
-import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import type { Decal } from '../sim/paint-jobs';
+import { DecalGeometry } from 'three/addons/geometries/DecalGeometry.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { type Decal, RALLY_NUMBER } from '../sim/paint-jobs';
 
 /** A painted panel, and the matrix that places it in the car's frame (metres; x right, y up, -z forward). */
 export interface Panel {
@@ -253,7 +253,7 @@ function makeTextures() {
     ctx.font = '900 132px "Arial Black", Arial, sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText('69', 128, 136);
+    ctx.fillText(RALLY_NUMBER, 128, 136);
   });
   return { flames, flamesNoseRight, flamesBonnet, rallyNumber };
 }
