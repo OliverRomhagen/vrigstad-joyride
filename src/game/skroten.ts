@@ -48,6 +48,24 @@ const DECAL_DONE: Readonly<Record<Decal, string>> = {
 };
 const EPA_TUNED =
   '”En trimmad EPA? Dä har ja aldrig gjort förut. Aldrig nånsin. Å knappen under ratten har du inte fått av mej.” Press T (or Limiter) to flip it.';
+const RESPRAY_DONE = '”Snyggt! Som från fabriken.”';
+const DECAL_OFF = '”Bort mä den. Dä kostar inget.”';
+const specialDone = (name: string) => '”' + name + '! Den kommer folk å prata om.”';
+
+/** One job on the lift, as the lab garage (#3) asks for it; the lift's menus offer the same jobs. */
+export type LiftJob =
+  | { kind: 'fix' }
+  | { kind: 'upgrade'; upgrade: Upgrade }
+  | { kind: 'paint'; paint: string }
+  | { kind: 'decal'; decal: Decal | null };
+
+/** Everything the lift sells for a car, with its prices, for the lab garage (#3) to draw. */
+export interface LiftOffer {
+  fixKr: number; // what he asks to mend it: 0 for a whole car
+  upgrades: readonly { upgrade: Upgrade; name: string; help: string; kr: number; fitted: boolean }[];
+  paints: readonly { paint: string; name: string; kr: number; special: boolean }[]; // the car type's paints, then his special ones
+  decals: readonly { decal: Decal; name: string; kr: number }[]; // none for a tractor, which has no panels for one
+}
 /** What he says when you talk to him on foot, one after the other. */
 export const OWNER_LINES = [
   '”Tjena! Har du nån bil du vill bli av mä? Kör in den på ringen.”',
@@ -79,6 +97,7 @@ export interface SkrotenDeps {
   carName(c: Car): string;
   wallet: Wallet; // the HUD shows whatever it holds
   sellCar(c: Car): void; // puts you on foot beside the car, and takes the car away
+  garage?(c: Car): boolean; // ?lab=garage: opens the garage instead of the lift's menus; false while its code loads
 }
 
 /** Skroten's offer and the sale. */
@@ -170,6 +189,7 @@ export class Skroten {
       toast(no, 3.5);
       return false;
     }
+    if (this.g.garage?.(c)) return true; // the lab garage (#3) shows the same jobs on its own screen
     const fix = this.repairKr(c),
       items: MenuItem[] = [];
     if (fix) items.push(['fix', 'Laga <small>' + fmtKr(fix) + '</small>']);
@@ -216,7 +236,7 @@ export class Skroten {
         if (
           this.work(c, RESPRAY_KR, () => {
             c.color = p;
-            return '”Snyggt! Som från fabriken.”';
+            return RESPRAY_DONE;
           })
         )
           this.openLift(c);
@@ -240,7 +260,7 @@ export class Skroten {
         }
         const done = () => {
           c.color = p.paint;
-          return '”' + p.name + '! Den kommer folk å prata om.”';
+          return specialDone(p.name);
         };
         if (this.work(c, SPECIAL_PAINT_KR, done)) this.openLift(c);
       },
@@ -267,7 +287,7 @@ export class Skroten {
         }
         const done = () => {
           c.decal = decal;
-          return decal ? DECAL_DONE[decal] : '”Bort mä den. Dä kostar inget.”';
+          return decal ? DECAL_DONE[decal] : DECAL_OFF;
         };
         if (this.work(c, decal ? DECAL_KR : 0, done)) this.openLift(c);
       },
@@ -320,6 +340,48 @@ export class Skroten {
   lift(): number | null {
     const c = this.g.game.pcar;
     return this.onLift(c) && !this.refusesLift(c) ? this.repairKr(c) : null;
+  }
+
+  /** Everything the lift sells for c, or why he won't touch it: for the lab garage (#3). */
+  liftOffer(c: Car): LiftOffer | string {
+    const no = this.refusesLift(c);
+    if (no) return no;
+    return {
+      fixKr: this.repairKr(c),
+      upgrades: UPGRADE_ORDER.map(u => ({
+        upgrade: u,
+        name: UPGRADE_NAMES[u],
+        help: upgradeHelp(u, c),
+        kr: UPGRADE_KR[u],
+        fitted: c.mods[u],
+      })),
+      paints: [
+        ...c.T.cols.map(paint => ({ paint, name: paintName(paint), kr: RESPRAY_KR, special: false })),
+        ...WORKSHOP_PAINTS.map(({ paint, name }) => ({ paint, name, kr: SPECIAL_PAINT_KR, special: true })),
+      ],
+      decals: c.type === 'traktor' ? [] : DECAL_ORDER.map(decal => ({ decal, name: DECAL_NAMES[decal], kr: DECAL_KR })),
+    };
+  }
+
+  /** Does one job on c and takes its price, as the lift's menus do, asked again now: for the lab garage (#3). True when it was done. */
+  liftJob(c: Car, job: LiftJob): boolean {
+    if (job.kind === 'fix') return this.repair(c, this.repairKr(c));
+    if (job.kind === 'upgrade') return this.upgrade(c, job.upgrade);
+    if (job.kind === 'paint') {
+      const { paint } = job,
+        special = WORKSHOP_PAINTS.find(p => p.paint === paint);
+      if (paint === c.color || (!special && !otherPaints(c).includes(paint))) return false;
+      return this.work(c, special ? SPECIAL_PAINT_KR : RESPRAY_KR, () => {
+        c.color = paint;
+        return special ? specialDone(special.name) : RESPRAY_DONE;
+      });
+    }
+    const { decal } = job;
+    if (decal === c.decal || (decal && (c.type === 'traktor' || c.type === 'polis'))) return false;
+    return this.work(c, decal ? DECAL_KR : 0, () => {
+      c.decal = decal;
+      return decal ? DECAL_DONE[decal] : DECAL_OFF;
+    });
   }
 
   /** The car you drive stands on the ring, and Skroten would make an offer for it. */

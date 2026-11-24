@@ -9,6 +9,9 @@ import { SUN_DIR } from './stage';
 
 type Point = { x: number; z: number };
 
+/** ?lab=garage: the camera layer the garage draws on, the showroom, the car on the lift and the lights (render/showroom.ts). */
+export const SHOWROOM_LAYER = 1;
+
 // camera shake on a crash: a jolt that dies away, bigger for a harder hit; none with reduced motion
 const SHAKE_S = 0.45,
   SHAKE_MIN_M = 0.08,
@@ -31,13 +34,20 @@ export interface CameraRigDeps {
   rnd(): number; // the shake's own stream, shared with the smoke, since both roll every frame
   calmMotion: { readonly matches: boolean }; // prefers-reduced-motion
   readonly sunIntensity: number; // the sun's intensity for the time of day under a clear sky (Daylight.sunIntensity)
+  readonly showroom?: boolean; // ?lab=garage: the garage is open (#3); the camera stands still off the car, in the showroom's layer
 }
+const SHOWROOM_DIST_M = 7,
+  SHOWROOM_LOOK_M = -0.4, // aims under the car, which lifts it in the frame, above the stats at the bottom
+  SHOWROOM_SIDE = -Math.PI / 2 - 0.6, // off the car's right front, as it stood when the garage opened: its paint, rims and nose
+  SHOWROOM_PITCH = 0.26; // rad; dragging up and down tilts it a little from here (main.ts)
 
 /** Places the camera every frame; `shake` jolts it after a crash. */
 export class CameraRig {
   private readonly g: CameraRigDeps;
   private shakeT = 0;
   private shakeM = 0;
+  private showing = false; // the garage's camera was on last frame
+  private pitchBefore = 0; // the pitch the garage found, given back when it closes
 
   constructor(g: CameraRigDeps) {
     this.g = g;
@@ -50,6 +60,15 @@ export class CameraRig {
     this.shakeT = SHAKE_S;
   };
 
+  // the garage closed: the whole world in the picture again, behind the car, at the pitch it had
+  private leaveShowroom() {
+    const { camera, view } = this.g;
+    camera.layers.set(0);
+    view.lookOff = 0;
+    view.camPitch = this.pitchBefore;
+    this.showing = false;
+  }
+
   /** Multiplies the camera distance by `factor` (above 1 is further out), within ZOOM_MIN..ZOOM_MAX. */
   zoom = (factor: number) => {
     this.g.view.zoom = clamp(this.g.view.zoom * factor, ZOOM_MIN, ZOOM_MAX);
@@ -59,23 +78,42 @@ export class CameraRig {
   update(T: Point, now: number, dt: number) {
     const { camera, sun, skyDome, game, view, groundAt, heightAt: hAt, rnd: dmgRnd } = this.g;
     let dist: number,
+      lookY = 1.5, // m over the ground the camera aims at
       ty = groundAt(T.x, T.z);
     if (!game.started) {
       view.camYaw = wrap(view.camYaw + dt * 0.07);
       dist = 46;
       view.camPitch = 0.42;
+    } else if (game.inCar && game.pcar && this.g.showroom) {
+      // the camera comes round to the car's front corner as the garage opens and stays there: dragging turns the car on its
+      // turntable instead (render/showroom.ts), and only tilts the camera
+      if (!this.showing) {
+        this.pitchBefore = view.camPitch;
+        view.camPitch = SHOWROOM_PITCH;
+        view.lookOff = 0;
+        camera.layers.set(SHOWROOM_LAYER);
+      }
+      view.camYaw += wrap(game.pcar.h + SHOWROOM_SIDE - view.camYaw) * Math.min(1, dt * 4);
+      dist = SHOWROOM_DIST_M;
+      lookY = SHOWROOM_LOOK_M;
+      this.showing = true;
     } else if (game.inCar && game.pcar) {
+      if (this.showing) this.leaveShowroom();
+      view.lookIdle += dt;
       view.lookIdle += dt;
       if (view.lookIdle > 1.2 && !this.g.dragging) view.lookOff *= 0.02 ** dt;
       view.camYaw += wrap(game.pcar.h - game.pcar.slip * 0.6 + view.lookOff - view.camYaw) * Math.min(1, dt * 4.5);
       dist = 10 + Math.abs(game.pcar.v) * 0.09;
-    } else dist = this.g.inside ? 15 : 6.2;
+    } else {
+      if (this.showing) this.leaveShowroom(); // out of the car with the garage open, as a sale or a respawn does
+      dist = this.g.inside ? 15 : 6.2;
+    }
     if (game.started) dist *= view.zoom;
     const cp = Math.cos(view.camPitch),
       cx = T.x - Math.sin(view.camYaw) * dist * cp,
       cz = T.z + Math.cos(view.camYaw) * dist * cp;
     camera.position.set(cx, Math.max(ty + 1.5 + dist * Math.sin(view.camPitch), hAt(cx, cz) + 0.8), cz);
-    camera.lookAt(T.x, ty + 1.5, T.z);
+    camera.lookAt(T.x, ty + lookY, T.z);
     if (this.shakeT > 0) {
       this.shakeT -= dt;
       const k = Math.max(0, this.shakeT / SHAKE_S) ** 2 * this.shakeM * 2; // eases out, so the jolt fades instead of stopping dead
