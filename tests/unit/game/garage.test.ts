@@ -154,6 +154,22 @@ describe("Plåt-Pelle's garage (?lab=garage)", () => {
     expect(crash).toMatchObject({ from: '100 %', to: '50 %', better: true });
   });
 
+  it('turns the car’s model on the turntable as you drag, but not the car, and faces it the way it came when it closes', () => {
+    const t = onLift({ car: { h: 1 } });
+    t.garage.spin(100); // nothing to turn before it opens
+    expect(t.garage.turn).toBe(0);
+    t.skroten.open();
+    t.garage.spin(100);
+    expect(t.garage.turn).toBeGreaterThan(0.5);
+    expect(t.car.h).toBe(1);
+    t.garage.spin(-100);
+    expect(t.garage.turn).toBeCloseTo(0);
+    t.garage.spin(1000); // past a full round, it stays an angle
+    expect(Math.abs(t.garage.turn)).toBeLessThanOrEqual(Math.PI);
+    t.garage.close();
+    expect(t.garage.turn).toBe(0);
+  });
+
   it('tells a tuned EPA-traktor about its limiter switch', () => {
     const t = onLift({ type: 'epa' });
     t.skroten.open();

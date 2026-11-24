@@ -1,6 +1,8 @@
 // Plåt-Pelle's garage (#3), the lab experiment ?lab=garage: the lift's jobs on one screen, where what you pick shows on the car
 // before you pay, and one bill pays for it all. Skroten (skroten.ts) still prices, refuses and does each job; this keeps the
 // choices and the try-on. garage-hud.ts draws it. No three.js or DOM here.
+
+import { wrap } from '../world/math';
 import type { Car } from './cars';
 import { fmtKr, type Wallet } from './economy';
 import { tooFastToGetOut } from './player';
@@ -34,6 +36,7 @@ export const CAT_LABELS: Readonly<Record<GarageCat, string>> = {
 };
 const MANY_DONE = '”Klart! Den känner du knappt igen. Snuten inte heller, hoppas ja.”';
 const KMH_PER_MS = 3.6;
+const SPIN_RAD_PER_PX = 0.009; // a drag across a 700 px wide middle turns the car a full round
 // where each stat's bar is full: a little over the best a car on the lift gets to
 const BAR_TOP_KMH = 200,
   BAR_ACC = 14,
@@ -83,6 +86,7 @@ export class Garage {
   tab: GarageTab = 'work';
   cat: GarageCat = 'fix';
   version = 0; // goes up whenever what the HUD draws changes
+  turn = 0; // rad: how far the turntable has turned the car's model from the way the car faces; the car itself doesn't turn
 
   constructor(g: GarageDeps) {
     this.g = g;
@@ -104,17 +108,24 @@ export class Garage {
     this.tab = 'work';
     this.cat = offer.fixKr ? 'fix' : 'engine';
     this.said = null;
+    this.turn = 0;
     this.version++;
     return true;
   }
 
-  /** Closes, and puts the car's own look back on it. */
+  /** Closes, and puts the car's own look back on it, facing the way it drove in. */
   close() {
     if (!this.c) return;
     this.tryOn(this.own.color, this.own.decal);
+    this.turn = 0;
     this.c = null;
     this.offer = null;
     this.version++;
+  }
+
+  /** Dragging across the screen turns the car on the turntable: `px` pixels, right turns it clockwise seen from above. */
+  spin(px: number) {
+    if (this.c) this.turn = wrap(this.turn + px * SPIN_RAD_PER_PX);
   }
 
   /** Every frame: closes once the car leaves the lift, drives off, or the police come (he won't work then). */

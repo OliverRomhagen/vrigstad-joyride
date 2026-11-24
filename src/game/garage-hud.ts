@@ -11,10 +11,12 @@ export interface GarageHudDeps {
   garage: Garage;
   wallet: Wallet;
   carName(): string; // the car on the lift
+  freeCursor(): boolean; // lets go of a locked mouse, so you can click round the screen; true when it was locked
+  lockCursor(): void; // takes the mouse back
 }
 
 const KEYS =
-  '<span><kbd>← →</kbd>Tab</span><span><kbd>↑ ↓</kbd>Shelf</span><span><kbd>1–9</kbd>Pick</span><span><kbd>Enter</kbd>Betala</span><span><kbd>Esc</kbd>Nä, dä får va</span><span>Drag to look round</span>';
+  '<span><kbd>← →</kbd>Tab</span><span><kbd>↑ ↓</kbd>Shelf</span><span><kbd>1–9</kbd>Pick</span><span><kbd>Enter</kbd>Betala</span><span><kbd>Esc</kbd>Nä, dä får va</span><span>Drag to spin the car</span>';
 
 /** Draws the garage while it's open, and takes its clicks and keys. */
 export class GarageHud {
@@ -22,6 +24,7 @@ export class GarageHud {
   private drawn = -1; // the Garage version drawn
   private drawnKr = -1;
   private wasOpen = false;
+  private relock = false; // the mouse was locked when the garage opened: take it back when it closes
 
   constructor(g: GarageHudDeps) {
     this.g = g;
@@ -33,6 +36,11 @@ export class GarageHud {
     const { garage, root, body, wallet } = this.g,
       open = garage.isOpen;
     if (open !== this.wasOpen) {
+      if (open) this.relock = this.g.freeCursor();
+      else if (this.relock) {
+        this.relock = false;
+        this.g.lockCursor();
+      }
       root.hidden = !open;
       body.classList.toggle('in-garage', open);
       this.wasOpen = open;

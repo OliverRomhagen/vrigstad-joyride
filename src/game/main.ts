@@ -56,6 +56,7 @@ import { newWallet, registerWalletCommands } from './economy';
 import { carsForSale, Skroten } from './skroten';
 import type { Garage } from './garage';
 import type { GarageHud } from './garage-hud';
+import type { Showroom } from './render/showroom';
 import { SKROT_CARPORT, SKROT_HALL, yardFloorAt, yardLayout } from './skroten-yard';
 import { SkrotenMeshes } from './render/skroten';
 import { PriceTags } from './render/price-tags';
@@ -317,13 +318,17 @@ const skroten = new Skroten({ game, player, get stars() { return wanted.stars; }
   modelId: c => vehicleVisuals.definition(meshed(c))?.id, carName, wallet,
   sellCar: c => { colony.hopOffCar(meshed(c)); actions.getOut(); removeCar(c); fleet.replaceSold(c, player); },
   garage: lab.on('garage') ? c => !!garage?.open(c) : undefined });
-// ---------- lab garage (#3): the lift's jobs on one screen, the camera round the car (src/game/garage.ts, garage-hud.ts) ----------
-let garage: Garage | null = null, garageHud: GarageHud | null = null;
-const inGarage = () => !!garage?.isOpen;   // the car stands still and the camera is free
-if (lab.on('garage')) Promise.all([import('./garage'), import('./garage-hud')]).then(([g, h]) => {
+// ---------- lab garage (#3): the lift's jobs on one screen, the car on a turntable in its own showroom (src/game/garage.ts, garage-hud.ts, render/showroom.ts) ----------
+let garage: Garage | null = null, garageHud: GarageHud | null = null, showroom: Showroom | null = null;
+const inGarage = () => !!garage?.isOpen;   // the car stands still, the cursor is free, and dragging turns the car
+if (lab.on('garage')) Promise.all([import('./garage'), import('./garage-hud'), import('./render/showroom')]).then(([g, h, s]) => {
   const opened = garage = new g.Garage({ skroten, game, wallet, carName });
-  garageHud = new h.GarageHud({ root: $('garage'), body: document.body, garage: opened, wallet, carName: () => (opened.car ? carName(opened.car) : '') });
+  garageHud = new h.GarageHud({ root: $('garage'), body: document.body, garage: opened, wallet, carName: () => (opened.car ? carName(opened.car) : ''),
+    freeCursor: () => { const was = input.locked(); if (was) document.exitPointerLock(); return was; }, lockCursor: () => input.lockMouse() });
+  showroom = new s.Showroom({ scene, groundAt });
 }).catch(err => console.warn('Lab: garage failed', err));
+// every frame, after the car is driven (held still): the turntable turns its model, and the showroom stands round it
+function placeGarage() { const c = garage?.car; if (c) placeCar(meshed(c), garage!.turn); showroom?.update(c ? meshed(c).mesh : null, c ? c.h + garage!.turn : 0); }
 function nearPlace() { return game.inCar ? null : places.nearest(player.x, player.z); }
 function enterHouse(p: Place) { if (places.enter(p, player)) player.mesh.visible = false; }
 function leaveHouse() { if (!places.leave()) return; player.mesh.visible = true; $('hide').hidden = true; }
@@ -367,10 +372,11 @@ debugOverlay?.registerCommands(commands);
 // ---------- input: keys, mouse look and the touch controls (src/game/input.ts) ----------
 // the dev console sees each key first, then the menus (src/game/menu.ts)
 const input = new Input({ win: window, doc: document, canvas, $, coarse, menuKey: e => devcon.takeKey(e) || !!garageHud?.key(e) || menuKey(e),
-  get started() { return game.started; }, get menuOpen() { return !kmenu.hidden; },
+  get started() { return game.started; }, get menuOpen() { return !kmenu.hidden || inGarage(); },   // the garage needs the cursor too
   action: () => action(), respawn: () => respawn(), rain: () => cashRain.makeItRain(), limiter: flipLimiterSwitch,
   jump: () => { if (jumpOk()) game.jumpQ = true; },   // queue only where a jump can start (see jumpOk)
-  look: (dx, dy) => { if (game.inCar) { view.lookOff = wrap(view.lookOff + dx * 0.006); view.lookIdle = 0; } else view.camYaw = wrap(view.camYaw + dx * 0.006);
+  look: (dx, dy) => { if (inGarage()) { garage!.spin(dx); view.camPitch = clamp(view.camPitch + dy * 0.002, 0.1, 0.5); return; }   // ?lab=garage: turn the car, tilt the camera a little
+    if (game.inCar) { view.lookOff = wrap(view.lookOff + dx * 0.006); view.lookIdle = 0; } else view.camYaw = wrap(view.camYaw + dx * 0.006);
     view.camPitch = clamp(view.camPitch + dy * 0.004, 0.06, 1.25); },
   zoom: f => cameraRig.zoom(f),
   lockLost: () => { if (!devcon.isOpen && !hud.toasting) toast('Click the game to look around with the mouse again.', 3); } });
@@ -407,7 +413,7 @@ const prompt = new ActionPrompt({ $, game, places, wanted, get menuOpen() { retu
 // ---------- main loop (src/game/loop.ts) ----------
 const loop = new GameLoop({ $, renderer, scene, camera, canvas, coarse, half: HALF, game, view, player, health, input, places, wanted, cars, startCam: START_CAM, barMat, barColours: [BAR_BLUE, BAR_RED], cameraRig: { update: placeCamera },
   get toasting() { return hud.toasting; }, inWater, collide, groundAt, drive: lab.on('garage') ? (c, thr, steer, brake, dt, canDrift) => (inGarage() ? drive(c, 0, 0, true, dt, canDrift) : drive(c, thr, steer, brake, dt, canDrift)) : drive, updateTraffic, knockedOut, hurtPlayer, shake, toast, hideTitleCard: () => hud.hideTitleCard(),
-  updateTrisslott: dt => trisslott.update(dt), updatePlaces: dt => { placeMeshes.update(dt); skrotenMeshes.update(dt, player); }, updateDriftFx, updateVehicles: (T, dt) => { vehicleVisuals.update(T, dt); priceTags.update(dt); garage?.settle(); garageHud?.update(); }, updateSmoke, updateBanknotes: dt => banknotes.update(dt), updateConfetti: dt => confetti.update(dt), updateNpcs: (T, dt) => { updateNpcs(T, dt); ragdolls.update(dt); ragdollMeshes.update(); }, updateCats,
+  updateTrisslott: dt => trisslott.update(dt), updatePlaces: dt => { placeMeshes.update(dt); skrotenMeshes.update(dt, player); }, updateDriftFx, updateVehicles: (T, dt) => { vehicleVisuals.update(T, dt); priceTags.update(dt); garage?.settle(); placeGarage(); garageHud?.update(); }, updateSmoke, updateBanknotes: dt => banknotes.update(dt), updateConfetti: dt => confetti.update(dt), updateNpcs: (T, dt) => { updateNpcs(T, dt); ragdolls.update(dt); ragdollMeshes.update(); }, updateCats,
   updateDrivers: (T, dt) => drivers.update(T, dt), updateBodies: (T, dt) => bodyMotion.update(T, dt), updateDaylight, drawHearts, updateHud: dt => hud.update(dt), drawMini,
   updateSign, catRideLines: () => crashes.catRideLines(), closeMenuIfLeft: () => menuPlate.closeIfLeft(), updatePrompt: () => prompt.update(), drawHealth, restockLot: () => fleet.restockLot(player, game.clockS),
   timeFrame: workStart => { if (!debugOverlay) return; const t = performance.now(); debugOverlay.frame(t, t - workStart, renderer.info); } });

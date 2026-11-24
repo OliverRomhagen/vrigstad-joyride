@@ -50,10 +50,11 @@ export class CarMeshes {
     this.g = g;
   }
 
-  placeCar(c: RenderedCar) {
+  /** Puts the car's mesh where the car is; `turn` (rad) turns the mesh further than the car faces, as the lab garage's turntable does. */
+  placeCar(c: RenderedCar, turn = 0) {
     const { groundAt, normalAt, vehicleVisuals } = this.g;
     const n = normalAt(c.x, c.z);
-    _f.set(Math.sin(c.h), 0, -Math.cos(c.h));
+    _f.set(Math.sin(c.h + turn), 0, -Math.cos(c.h + turn));
     _f.addScaledVector(n, -_f.dot(n)).normalize();
     _r.crossVectors(_f, n);
     _m.makeBasis(_r, n, _f.negate());
