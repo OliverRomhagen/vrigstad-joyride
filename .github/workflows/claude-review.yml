@@ -220,11 +220,6 @@ jobs:
       # module in the checkout (a PR's hmac.py) is imported.
       MARKER_HMAC: "import hashlib, hmac, os, sys; print(hmac.new(os.environb[b'MARKER_KEY'], sys.stdin.buffer.read(), hashlib.sha256).hexdigest())"
     steps:
-      # Before the checkout, and outside it, so nothing in the PR (an .npmrc) can change what is installed.
-      - name: Install Claude Code
-        working-directory: ${{ runner.temp }}
-        run: npm install -g --no-fund --no-audit "@anthropic-ai/claude-code@$CLAUDE_CODE_VERSION"
-
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.pull_request.head.sha }}
@@ -242,7 +237,8 @@ jobs:
         run: |
           set -euo pipefail
           # From an empty directory: a PR can commit .claude-review/ with symlinks in it, and the writes below would
-          # follow them out of the checkout, onto the claude binary say, which then runs with the secret.
+          # follow them out of the checkout, onto ~/.npmrc say, which the install then reads, or a file a later step
+          # trusts.
           rm -rf .claude-review
           mkdir .claude-review
           # Every git command here reads .gitattributes from main, not from the checkout: the PR's own (or a nested
@@ -455,6 +451,17 @@ jobs:
             echo "$delim"
           } >>"$GITHUB_OUTPUT"
 
+      # Only for a run that reviews, so one that ends as already reviewed, nothing to review or too large doesn't pay
+      # for it. From an empty directory outside the checkout, so nothing in the PR (an .npmrc, a package.json) can
+      # change what is installed; npm looks for those from where it runs, never in the checkout.
+      - name: Install Claude Code
+        if: steps.ctx.outputs.skip != 'true' && steps.ctx.outputs.nothing != 'true' && steps.ctx.outputs.too_large == ''
+        run: |
+          set -euo pipefail
+          dir=$(mktemp -d "$RUNNER_TEMP/install.XXXXXX")
+          cd "$dir"
+          npm install -g --no-fund --no-audit "@anthropic-ai/claude-code@$CLAUDE_CODE_VERSION"
+
       - name: Review
         id: claude
         if: steps.ctx.outputs.skip != 'true' && steps.ctx.outputs.nothing != 'true' && steps.ctx.outputs.too_large == ''
@@ -589,7 +596,9 @@ jobs:
           done
           # Through a file, not a pipe: with pipefail, grep -q stopping at the first match could fail the writer and
           # read as no match.
-          { printf '%s\n' "$summary"; jq -r '.[] | .path, .body' "$findings"; } >"$RUNNER_TEMP/outgoing.txt"
+          # The path also as it will be shown, backticks stripped: a backtick every 15 characters would otherwise
+          # split the secret past every window.
+          { printf '%s\n' "$summary"; jq -r '.[] | .path, (.path | gsub("`"; "")), .body' "$findings"; } >"$RUNNER_TEMP/outgoing.txt"
           leaked=false
           if [ -s "$needles" ] && grep -qF -f "$needles" "$RUNNER_TEMP/outgoing.txt"; then
             leaked=true
@@ -621,7 +630,7 @@ jobs:
           if [ "$subtype" = success ] && [ "$leaked" = false ]; then
             summary=$(jq -rn --arg s "$summary" "$clean"' $s | clean(2000)')
           fi
-          jq --argjson max "$MAX_BODY_CHARS" "$clean"' map(.body |= body($max) | .path |= (gsub("`"; "") | clean(300)))' \
+          jq --argjson max "$MAX_BODY_CHARS" "$clean"' map(.body |= body($max) | .shown = (.path | gsub("`"; "") | clean(300)))' \
             "$findings" >"$findings.tmp" && mv "$findings.tmp" "$findings"
 
           # All the inline findings as one review, so the author gets one notification.
@@ -651,7 +660,7 @@ jobs:
             if [ "$(jq '[.[] | select(.inline | not)] | length' "$findings")" -gt 0 ]; then
               echo 'Findings not on a line of the diff:'
               echo
-              jq -r '.[] | select(.inline | not) | "- `\(.path)` line \(.line): \(.body | gsub("\\s*\n\\s*"; " "))"' "$findings"
+              jq -r '.[] | select(.inline | not) | "- `\(.shown)` line \(.line): \(.body | gsub("\\s*\n\\s*"; " "))"' "$findings"
               echo
             fi
             # The names are the PR's: a backtick in one would end the code span and let the rest render.
