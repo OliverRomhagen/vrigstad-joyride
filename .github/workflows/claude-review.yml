@@ -193,10 +193,12 @@ jobs:
       HEAD_SHA: ${{ github.event.pull_request.head.sha }}
       AUTHOR: ${{ github.event.pull_request.user.login }}
       BASE_REF: ${{ github.event.pull_request.base.ref }}
+      OPUS_MODEL: claude-opus-5-5 # the full review, and a later push past OPUS_ABOVE_LINES
+      SONNET_MODEL: claude-sonnet-5-5 # other later pushes
       OPUS_ABOVE_LINES: 400 # added plus removed lines in a later push
       # A longer line is cut short in the patches (minified code, one-line JSON), and a file whose patch is still
-      # larger after that isn't reviewed (data dumps). The longest line in the repo's source is 513 characters (src/game/main.ts), and
-      # its largest source file 61 KB (src/world/streetscape.ts).
+      # larger after that isn't reviewed (data dumps). The longest line in the repo's source is 513 characters
+      # (src/game/main.ts), and its largest source file 61 KB (src/world/streetscape.ts).
       # Below 2000, where Claude Code's Read tool cuts a line itself without saying where, with room for the marker.
       MAX_LINE_CHARS: 1900
       MAX_PATCH_KB: 256
@@ -280,7 +282,8 @@ jobs:
           # Leave out of the patches and the line count what nobody reads line by line, so it can't fill Claude's
           # context: data/vrigstad.json is one line of about 200 KB, and would count as 2 changed lines. Left out are
           # files that .gitattributes marks linguist-generated or linguist-vendored, files whose patch is over
-          # MAX_PATCH_KB with its long lines cut, and binary files, which git shows only as differing (a NUL byte makes a .ts file one).
+          # MAX_PATCH_KB with its long lines cut, and binary files, which git shows only as differing (a NUL byte makes
+          # a .ts file one).
           # What makes the generated files (tools/, package.json) is reviewed. skipped.txt lists what was left out and
           # why (path, tab, reason), for Claude and the summary, which shows all but the marked ones as files to read
           # by hand: a PR can pad its own source to be left out, but not to be left out unnoticed.
@@ -355,11 +358,20 @@ jobs:
           # A line over MAX_LINE_CHARS (minified code, a one-line JSON) is cut short in both patches rather than its
           # file left out, so one long line can't hide the rest of a file. cut.txt (path, line, length) lists the
           # PR's cut lines on the new side, which the summary shows to read by hand: code can sit past the cut.
-          awk -v max="$MAX_LINE_CHARS" '
+          # The same pass writes lines.txt (path, line): the lines a review comment can go on, the new side of the
+          # PR's diff, context included. The summary step puts a finding elsewhere in its comment instead, as GitHub
+          # would refuse the whole review over it. Made empty first, as awk creates it only when it prints a line.
+          : >"$RUNNER_TEMP/lines.txt"
+          awk -v max="$MAX_LINE_CHARS" -v lines="$RUNNER_TEMP/lines.txt" '
             /^diff --git / { header = 1; path = ""; next }
+            # git ends the name with a tab when it holds a space.
             header && /^\+\+\+ / { p = substr($0, 5); sub(/\t$/, "", p); path = (p == "/dev/null") ? "" : substr(p, 3); next }
             /^@@ / { header = 0; match($0, /\+[0-9]+/); n = substr($0, RSTART + 1, RLENGTH - 1) + 0; next }
-            !header && path != "" && /^[ +]/ { if (/^\+/ && length > max + 1) print path "\t" n "\t" length - 1; n++ }
+            !header && path != "" && /^[ +]/ {
+              print path "\t" n >lines
+              if (/^\+/ && length > max + 1) print path "\t" n "\t" length - 1
+              n++
+            }
           ' .claude-review/full.patch >.claude-review/cut.txt
           for patch in diff full; do
             awk -v max="$MAX_LINE_CHARS" '{ if (length > max + 1) print substr($0, 1, max + 1) " [… cut: " length - 1 " characters in all]"; else print }' \
@@ -393,12 +405,17 @@ jobs:
           } | jq -s . >.claude-review/comments.json
 
           changed=$(git diff --numstat "$from" HEAD -- "${pathspec[@]}" | awk '{ n += $1 + $2 } END { print n + 0 }')
-          if [ "$mode" = full ] || [ "$changed" -gt "$OPUS_ABOVE_LINES" ]; then model=claude-opus-5-5; else model=claude-sonnet-5-5; fi
+          if [ "$mode" = full ] || [ "$changed" -gt "$OPUS_ABOVE_LINES" ]; then
+            model=$OPUS_MODEL model_label=Opus
+          else
+            model=$SONNET_MODEL model_label=Sonnet
+          fi
           if [ "$mode" = full ]; then turns=40; else turns=20; fi
           {
             echo "mode=$mode"
             echo "since=$since"
             echo "model=$model"
+            echo "model_label=$model_label"
             echo "turns=$turns"
             # From main, like this file, so a PR can't change the instructions it's reviewed by. A random delimiter, so
             # no line in the file can end the value early and set the outputs above.
@@ -456,7 +473,7 @@ jobs:
           TOO_LARGE: ${{ steps.ctx.outputs.too_large }}
           MODE: ${{ steps.ctx.outputs.mode }}
           FROM: ${{ steps.ctx.outputs.since }}
-          MODEL: ${{ steps.ctx.outputs.model }}
+          MODEL_LABEL: ${{ steps.ctx.outputs.model_label }}
           # On a subscription nothing is billed per review: Claude Code's figure is what it would have cost on the API.
           COST_NOTE: ${{ secrets.ANTHROPIC_API_KEY == '' && ' (API price estimate; paid by a subscription)' || '' }}
           RUNS: ${{ steps.ctx.outputs.runs }}
@@ -470,43 +487,40 @@ jobs:
           set -euo pipefail
           # Claude Code's output is one result message: the run's cost in US dollars, how it ended, and the findings.
           result=$RUNNER_TEMP/claude.json
-          cost=0 subtype= out='{}'
+          cost=0 subtype='' out='{}'
           if [ -s "$result" ] && jq -e 'type == "object"' "$result" >/dev/null 2>&1; then
             cost=$(jq '.total_cost_usd // 0' "$result")
             subtype=$(jq -r '.subtype // ""' "$result")
             out=$(jq -c '.structured_output // {} | if type == "object" then . else {} end' "$result")
           fi
-          runs=$(( ${RUNS:-0} + 1 ))
-          [ "$NOTHING" != true ] && [ -z "$TOO_LARGE" ] || runs=${RUNS:-0}
-          reviews=$([ "$runs" = 1 ] && echo review || echo reviews)
+          # plural 2 file files: "2 files".
+          plural() { if [ "$1" = 1 ]; then echo "$1 $2"; else echo "$1 $3"; fi; }
+          # Only a run in which Claude reviewed counts, and only then is its model named.
+          ran=false
+          [ "$NOTHING" = true ] || [ -n "$TOO_LARGE" ] || ran=true
+          runs=${RUNS:-0} model_name=
+          if [ "$ran" = true ]; then runs=$(( runs + 1 )) model_name=" ($MODEL_LABEL)"; fi
           total=$(awk -v a="${TOTAL:-0}" -v b="$cost" 'BEGIN { printf "%.2f", a + b }')
           cost=$(awk -v c="$cost" 'BEGIN { printf "%.2f", c }')
 
           if [ "$MODE" = full ]; then scope="the whole PR"; else scope="the commits since \`${FROM:0:7}\`"; fi
           findings=$RUNNER_TEMP/findings.json
           echo '[]' >"$findings"
+          # The commit the marker records as reviewed. A review that didn't finish, or whose output is withheld below,
+          # keeps the last one, so the next push reviews these commits again.
+          sha=$HEAD_SHA
           if [ "$NOTHING" = true ]; then
             if [ "$MODE" = full ]; then
               summary="Nothing to review: the PR changes nothing outside the files left out below."
             else
               summary="Nothing new to review: the push only moved the PR onto a new base, or only changed files left out of the review."
             fi
-            sha=$HEAD_SHA
-          # Recorded as done, so the next push gets a review of only what it changes, which may fit.
+          # Recorded as done all the same, so the next push gets a review of only what it changes, which may fit.
           elif [ -n "$TOO_LARGE" ]; then
             summary="Not reviewed: its patch is $TOO_LARGE KB, more than the $MAX_REVIEW_KB KB one review reads, and a later run won't review these commits either. Split the PR, or review it by hand."
-            sha=$HEAD_SHA
           elif [ "$subtype" = success ]; then
             summary=$(jq -r '(.summary // "") | tostring | if . == "" then "No summary returned." else . end' <<<"$out")
-            # Lines a review comment can go on: the new side of the PR's diff, context included. A finding elsewhere
-            # goes in the summary comment instead, as GitHub would refuse the whole review over it.
-            awk '
-              /^diff --git / { header = 1; path = ""; next }
-              # git ends the name with a tab when it holds a space.
-              header && /^\+\+\+ / { p = substr($0, 5); sub(/\t$/, "", p); path = (p == "/dev/null") ? "" : substr(p, 3); next }
-              /^@@ / { header = 0; match($0, /\+[0-9]+/); n = substr($0, RSTART + 1, RLENGTH - 1) + 0; next }
-              !header && path != "" && /^[ +]/ { print path "\t" n++ }
-            ' .claude-review/full.patch >"$RUNNER_TEMP/lines.txt"
+            # lines.txt, from the context step: the lines a finding can be posted on inline.
             jq -c --arg ws "$GITHUB_WORKSPACE/" --rawfile lines "$RUNNER_TEMP/lines.txt" --argjson max "$MAX_FINDINGS" '
               ($lines | split("\n") | map(select(. != "") | {key: ., value: true}) | from_entries) as $ok
               | [(.findings // [])[]? | select(type == "object")
@@ -515,16 +529,12 @@ jobs:
                      body: ((.body // "") | tostring)}
                   | select(.path != "" and .body != "")][:$max]
               | map(. + {inline: ($ok[.path + "\t" + (.line | tostring)] == true)})' <<<"$out" >"$findings"
-            # Only a review that ran moves the marker, so a failed one is retried in full on the next push.
-            sha=$HEAD_SHA
           # A review that ran out of turns or time spent the money: record it, or every later push would start another
           # one that ends the same way. It returns its findings only at the end, so it has none: say so plainly.
           elif [ "$subtype" = error_max_turns ]; then
             summary="It ran out of turns before it finished, so it has no findings to post. Review this by hand: a later run won't review these commits again."
-            sha=$HEAD_SHA
           elif [ "$STATUS" = 124 ]; then
             summary="It ran out of time ($REVIEW_MINUTES minutes) before it finished, so it has no findings to post. Review this by hand: a later run won't review these commits again. Its cost isn't counted."
-            sha=$HEAD_SHA
           else
             summary="The review didn't finish ([run log]($GITHUB_SERVER_URL/$GH_REPO/actions/runs/$GITHUB_RUN_ID)); the next push reviews these commits again."
             sha=$LAST_SHA
@@ -585,7 +595,7 @@ jobs:
           inline=$(jq -c '[.[] | select(.inline) | {path, line, side: "RIGHT", body}]' "$findings")
           n=$(jq length <<<"$inline")
           if [ "$n" -gt 0 ]; then
-            body="**Claude review**: $n $([ "$n" = 1 ] && echo finding || echo findings) on the lines below."
+            body="**Claude review**: $(plural "$n" finding findings) on the lines below."
             if ! jq -n --arg sha "$HEAD_SHA" --arg body "$body" --argjson c "$inline" \
               '{commit_id: $sha, event: "COMMENT", body: $body, comments: $c}' |
               gh api "repos/$GH_REPO/pulls/$PR/reviews" --input - --silent; then
@@ -594,16 +604,10 @@ jobs:
             fi
           fi
 
-          # Name the model only when one ran.
-          name=
-          if [ "$NOTHING" != true ] && [ -z "$TOO_LARGE" ]; then
-            name=$([ "$MODEL" = claude-opus-5-5 ] && echo ' (Opus)' || echo ' (Sonnet)')
-          fi
-
           {
             echo '<!-- claude-review -->'
             echo "<!-- claude-review: sha=${sha:-none} runs=$runs cost=$total -->"
-            echo "**Claude review**$name of $scope, up to \`${HEAD_SHA:0:7}\`: $summary"
+            echo "**Claude review**$model_name of $scope, up to \`${HEAD_SHA:0:7}\`: $summary"
             echo
             if [ "$(jq '[.[] | select(.inline | not)] | length' "$findings")" -gt 0 ]; then
               echo 'Findings not on a line of the diff:'
@@ -612,13 +616,13 @@ jobs:
               echo
             fi
             # The names are the PR's: a backtick in one would end the code span and let the rest render.
-            name="$clean"' def name: gsub("`"; "") | clean(300);'
+            name_def="$clean"' def name: gsub("`"; "") | clean(300);'
             # In the open, what a PR could use to hide code: files left out for their size or as binary, and lines
             # cut short. Folded away, the files .gitattributes on main marks generated or vendored.
             byhand=$(
-              [ ! -s .claude-review/skipped.txt ] || jq -Rr "$name"' split("\t") | select(.[1] // "" | startswith("marked ") | not)
+              [ ! -s .claude-review/skipped.txt ] || jq -Rr "$name_def"' split("\t") | select(.[1] // "" | startswith("marked ") | not)
                 | "- `\(.[0] | name)`: \(.[1]), so not reviewed"' .claude-review/skipped.txt
-              [ ! -s .claude-review/cut.txt ] || jq -Rrs --arg max "$MAX_LINE_CHARS" "$name"' split("\n") | map(select(. != "") | split("\t"))
+              [ ! -s .claude-review/cut.txt ] || jq -Rrs --arg max "$MAX_LINE_CHARS" "$name_def"' split("\n") | map(select(. != "") | split("\t"))
                 | group_by(.[0])[] | "- `\(.[0][0] | name)`: \(length) \(if length == 1 then "line" else "lines" end) over \($max) characters, from line \(.[0][1]), cut short, so not reviewed past that"' \
                 .claude-review/cut.txt
             )
@@ -628,18 +632,18 @@ jobs:
               echo "$byhand"
               echo
             fi
-            marked=$([ ! -s .claude-review/skipped.txt ] || jq -Rr "$name"' split("\t") | select(.[1] // "" | startswith("marked "))
+            marked=$([ ! -s .claude-review/skipped.txt ] || jq -Rr "$name_def"' split("\t") | select(.[1] // "" | startswith("marked "))
               | "- `\(.[0] | name)`: \(.[1])"' .claude-review/skipped.txt)
             if [ -n "$marked" ]; then
               n=$(wc -l <<<"$marked" | tr -d ' ')
-              echo "<details><summary>Not reviewed: $n generated or vendored $([ "$n" = 1 ] && echo file || echo files)</summary>"
+              echo "<details><summary>Not reviewed: $(plural "$n" 'generated or vendored file' 'generated or vendored files')</summary>"
               echo
               echo "$marked"
               echo
               echo '</details>'
               echo
             fi
-            echo "<sub>This review: \$$cost · this PR so far: \$$total over $runs $reviews$COST_NOTE.</sub>"
+            echo "<sub>This review: \$$cost · this PR so far: \$$total over $(plural "$runs" review reviews)$COST_NOTE.</sub>"
           } >"$RUNNER_TEMP/comment.md"
 
           # A new comment when there is none, or when someone deleted it since it was read.
@@ -647,5 +651,5 @@ jobs:
             ! gh api -X PATCH "repos/$GH_REPO/issues/comments/$COMMENT_ID" -F body=@"$RUNNER_TEMP/comment.md" --silent; then
             gh api "repos/$GH_REPO/issues/$PR/comments" -F body=@"$RUNNER_TEMP/comment.md" --silent
           fi
-          echo "Review cost: \$$cost (PR total \$$total over $runs $reviews)$COST_NOTE" >>"$GITHUB_STEP_SUMMARY"
+          echo "Review cost: \$$cost (PR total \$$total over $(plural "$runs" review reviews))$COST_NOTE" >>"$GITHUB_STEP_SUMMARY"
           [ "$leaked" = false ]
