@@ -99,7 +99,9 @@ jobs:
       contents: read
       pull-requests: write
       id-token: write # the action exchanges it for the Claude GitHub app's token
-    # No GH_TOKEN here: the two steps that call gh get it, the review step doesn't, so Claude's tools never hold it.
+    # No GH_TOKEN here: only the two steps that call gh get the job's token. The review step still holds a token: the
+    # action puts the Claude app's token in its own env, which Claude's process inherits and its Read tool could reach
+    # (/proc/self/environ). That is why Claude gets no shell, and why the comments it reads are only the maintainers'.
     env:
       GH_REPO: ${{ github.repository }}
       PR: ${{ github.event.pull_request.number }}
@@ -111,6 +113,9 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
+          # Don't leave the job's token in the git config, where Claude's Read tool could reach it. The repo is public,
+          # so the later fetch needs no token.
+          persist-credentials: false
 
       - name: Gather the review's context
         id: ctx
@@ -155,8 +160,9 @@ jobs:
           fi
 
           # The action refuses to run a workflow that differs from main's, so don't start it for a PR that changes this
-          # one: the summary comment says why it wasn't reviewed.
-          if ! git diff --quiet "origin/main" HEAD -- .github/workflows/claude-review.yml; then
+          # one: the summary comment says why it wasn't reviewed. The run uses the PR merged into main, so a PR that is
+          # only behind main runs main's copy: compare with the merge base, not with main.
+          if ! git diff --quiet "$merge_base" HEAD -- .github/workflows/claude-review.yml; then
             echo "workflow_changed=true" >>"$GITHUB_OUTPUT"
             echo "since=$since" >>"$GITHUB_OUTPUT"
             echo "mode=$mode" >>"$GITHUB_OUTPUT"
@@ -177,11 +183,14 @@ jobs:
           git log --format='%h %an: %s' "$merge_base..HEAD" >.claude-review/commits.txt
           git show "origin/main:AGENTS.md" >.claude-review/AGENTS.md 2>/dev/null || cp AGENTS.md .claude-review/AGENTS.md
           gh pr view "$PR" --json title,body,author,labels >.claude-review/pr.json
-          # Inline comments, review summaries and top-level comments: findings are raised in all three.
+          # Inline comments, review summaries and top-level comments: findings are raised in all three. Only those by
+          # people with write access and by the review's own bots: anyone can comment on a public repo's PR, and Claude
+          # reads these, so an outsider's comment could steer the review.
+          trusted='select((.author_association | IN("OWNER", "MEMBER", "COLLABORATOR")) or (.user.login | IN("github-actions[bot]", "claude[bot]")))'
           {
-            gh api "repos/$GH_REPO/pulls/$PR/comments" --paginate --jq '.[] | {user: .user.login, path, line, body}'
-            gh api "repos/$GH_REPO/pulls/$PR/reviews" --paginate --jq '.[] | select(.body != "") | {user: .user.login, body}'
-            gh api "repos/$GH_REPO/issues/$PR/comments" --paginate --jq '.[] | {user: .user.login, body}'
+            gh api "repos/$GH_REPO/pulls/$PR/comments" --paginate --jq ".[] | $trusted | {user: .user.login, path, line, body}"
+            gh api "repos/$GH_REPO/pulls/$PR/reviews" --paginate --jq ".[] | select(.body != \"\") | $trusted | {user: .user.login, body}"
+            gh api "repos/$GH_REPO/issues/$PR/comments" --paginate --jq ".[] | $trusted | {user: .user.login, body}"
           } | jq -s . >.claude-review/comments.json
 
           changed=$(git diff --numstat "$from" HEAD | awk '{ n += $1 + $2 } END { print n + 0 }')
@@ -254,18 +263,20 @@ jobs:
           total=$(awk -v a="${TOTAL:-0}" -v b="$cost" 'BEGIN { printf "%.2f", a + b }')
           cost=$(awk -v c="$cost" 'BEGIN { printf "%.2f", c }')
 
+          if [ "$MODE" = full ]; then scope="the whole PR"; else scope="the commits since \`${FROM:0:7}\`"; fi
           subtype=$(jq -r '[.[] | select(.type == "result")] | last | .subtype // ""' "$EXECUTION_FILE" 2>/dev/null || true)
           if [ "$NOTHING" = true ]; then
             summary="Nothing new to review: the push only moved the PR onto a new base."
             sha=$HEAD_SHA
           elif [ "$WORKFLOW_CHANGED" = true ]; then
-            summary="Not reviewed: this PR's copy of the review workflow differs from main's, and the action only runs the workflow as it is on main. If the PR is only behind main, merging main in fixes it."
+            summary="Not reviewed: this PR changes the review workflow, and the action only runs the workflow as it is on main."
             sha=$LAST_SHA
           # A review that ran out of turns has posted what it found, and spent the money: record it too, or every later
-          # push would start another full review that runs out the same way.
+          # push would start another full review that runs out the same way. The summary says plainly that the rest
+          # wasn't reviewed, so the maintainer knows to read it more closely.
           elif [ "$CONCLUSION" = success ] || [ "$subtype" = error_max_turns ]; then
             fallback="No summary returned."
-            [ "$subtype" != error_max_turns ] || fallback="It ran out of turns; what it found so far is posted inline."
+            [ "$subtype" != error_max_turns ] || fallback="It ran out of turns before it finished: what it found is posted inline, and the rest of $scope isn't reviewed, by this run or a later one."
             summary=$(jq -r --arg f "$fallback" '.summary // $f' <<<"${STRUCTURED:-"{}"}")
             # Only a review that ran moves the marker, so a failed one is retried in full on the next push.
             sha=$HEAD_SHA
@@ -273,7 +284,6 @@ jobs:
             summary="The review didn't finish ([run log]($GITHUB_SERVER_URL/$GH_REPO/actions/runs/$GITHUB_RUN_ID)); the next push reviews these commits again."
             sha=$LAST_SHA
           fi
-          if [ "$MODE" = full ]; then scope="the whole PR"; else scope="the commits since \`${FROM:0:7}\`"; fi
           # Name the model only when one ran.
           name=
           if [ "$NOTHING" != true ] && [ "$WORKFLOW_CHANGED" != true ]; then
