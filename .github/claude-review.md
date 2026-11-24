@@ -45,4 +45,4 @@ Check every finding against the code before you post it: open the file and confi
 - One inline comment per finding, with `mcp__github_inline_comment__create_inline_comment`, on the line in `diff.patch` where the problem is (the new side of the diff). Start it with the severity in bold, **Bug**, **Rule**, **Test**, **Convention** or **Claim**, then say what breaks and when, in a sentence or two. Add a suggestion block only when the fix is short and you're sure of it.
 - A finding that isn't on a changed line (a counterpart that's missing elsewhere) goes on the nearest changed line it relates to, naming the file and line it is about.
 - Write in English, plainly, to the PR's author.
-- Don't post a top-level comment yourself. When you're done, return the structured output: a summary of at most three sentences (what you found, or that you found nothing), and the number of inline comments you posted. The workflow posts it with the cost.
+- Don't post a top-level comment yourself. When you're done, return the structured output: a summary of at most three sentences (what you found, or that you found nothing). The workflow posts it with the cost.

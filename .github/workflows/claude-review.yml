@@ -37,6 +37,7 @@ jobs:
     timeout-minutes: 5
     permissions:
       actions: read # to read the approval environment's protection rules
+      pull-requests: write # to say on the PR when it isn't reviewed for want of an approver
     outputs:
       run: ${{ steps.gate.outputs.run }}
       approval: ${{ steps.gate.outputs.approval }}
@@ -48,6 +49,8 @@ jobs:
           AUTHOR: ${{ github.event.pull_request.user.login }}
           AUTHOR_TYPE: ${{ github.event.pull_request.user.type }}
           SENDER: ${{ github.event.sender.login }}
+          SENDER_TYPE: ${{ github.event.sender.type }}
+          PR: ${{ github.event.pull_request.number }}
           APPROVAL_ENV: claude-review-approval # also named in the review job's environment
         run: |
           set -euo pipefail
@@ -58,10 +61,20 @@ jobs:
           fi
           # Known: has a merged PR here. Both the PR's author and whoever pushed must be, so a new collaborator pushing
           # to a known author's PR still needs approval.
-          known() { [ "$(gh api -X GET search/issues -f q="repo:$GH_REPO is:pr is:merged author:$1" --jq .total_count 2>/dev/null || echo 0)" -gt 0 ]; }
+          # A failed search counts as unknown, so the review doesn't run unapproved, but says why in the log.
+          known() {
+            local n
+            if ! n=$(gh api -X GET search/issues -f q="repo:$GH_REPO is:pr is:merged author:$1" --jq .total_count 2>&1); then
+              echo "::warning::Couldn't look up $1's merged PRs, so counting them as new: $n"
+              return 1
+            fi
+            [ "$n" -gt 0 ]
+          }
           unknown=()
           known "$AUTHOR" || unknown+=("$AUTHOR")
-          [ "$SENDER" = "$AUTHOR" ] || known "$SENDER" || unknown+=("$SENDER")
+          # A bot pushing to a person's PR (a merge from main, an autofix) isn't a new collaborator, and the search
+          # can't take a bot's login anyway.
+          [ "$SENDER" = "$AUTHOR" ] || [ "$SENDER_TYPE" = Bot ] || known "$SENDER" || unknown+=("$SENDER")
           if [ ${#unknown[@]} -eq 0 ]; then
             echo "run=true" >>"$GITHUB_OUTPUT"
             echo "approval=false" >>"$GITHUB_OUTPUT"
@@ -78,6 +91,13 @@ jobs:
           else
             echo "run=false" >>"$GITHUB_OUTPUT"
             echo "::warning::No merged PR here yet by $who, and the $APPROVAL_ENV environment has no required reviewers: not reviewing."
+            # Say so on the PR once, so a missing review doesn't look like a broken workflow.
+            mark='<!-- claude-review-unapproved -->'
+            bodies=$(gh api "repos/$GH_REPO/issues/$PR/comments" --paginate --jq '.[].body')
+            if ! grep -qF "$mark" <<<"$bodies"; then
+              printf '%s\n**Claude review:** not run. No merged PR here yet by %s, and nobody is set up to approve a review for a new contributor (the `%s` environment has no required reviewers).\n' \
+                "$mark" "$who" "$APPROVAL_ENV" | gh api "repos/$GH_REPO/issues/$PR/comments" -F body=@- --silent
+            fi
           fi
 
   review:
@@ -88,7 +108,8 @@ jobs:
     # name means no environment.
     environment: ${{ needs.gate.outputs.approval == 'true' && 'claude-review-approval' || '' }}
     # A new push cancels the review of the previous one. A cancelled review records no marker, so the next one also
-    # covers the commits it missed. On the job, not the workflow, so a run the job's condition skips, such as a draft's,
+    # covers the commits it missed. Nor does it record its cost: the action is killed before it writes its log, so
+    # what a cancelled review spent is missing from the PR's total. On the job, not the workflow, so a run the job's condition skips, such as a draft's,
     # doesn't cancel a review.
     concurrency:
       group: claude-review-${{ github.event.pull_request.number }}
@@ -126,10 +147,11 @@ jobs:
           event() { jq -r "$1" "$GITHUB_EVENT_PATH"; }
           mkdir -p .claude-review
 
+          # The PR's top-level comments, read once: the marker and comments.json both come from them.
+          gh api "repos/$GH_REPO/issues/$PR/comments" --paginate --jq '.[]' | jq -s . >"$RUNNER_TEMP/issue-comments.json"
           # The summary comment from the last review, and the commit and costs it recorded.
-          marker=$(gh api "repos/$GH_REPO/issues/$PR/comments" --paginate \
-            --jq '.[] | select(.user.login == "github-actions[bot]" and (.body | contains("<!-- claude-review -->"))) | {id, body}' |
-            jq -s 'last // {}')
+          marker=$(jq '[.[] | select(.user.login == "github-actions[bot]" and (.body | contains("<!-- claude-review -->"))) | {id, body}] | last // {}' \
+            "$RUNNER_TEMP/issue-comments.json")
           field() { jq -r '.body // ""' <<<"$marker" | grep -oE "$1=[^ ]+" | head -1 | cut -d= -f2 || true; }
           last_sha=$(field sha)
           echo "last_sha=$last_sha" >>"$GITHUB_OUTPUT"
@@ -190,7 +212,7 @@ jobs:
           {
             gh api "repos/$GH_REPO/pulls/$PR/comments" --paginate --jq ".[] | $trusted | {user: .user.login, path, line, body}"
             gh api "repos/$GH_REPO/pulls/$PR/reviews" --paginate --jq ".[] | select(.body != \"\") | $trusted | {user: .user.login, body}"
-            gh api "repos/$GH_REPO/issues/$PR/comments" --paginate --jq ".[] | $trusted | {user: .user.login, body}"
+            jq ".[] | $trusted | {user: .user.login, body}" "$RUNNER_TEMP/issue-comments.json"
           } | jq -s . >.claude-review/comments.json
 
           changed=$(git diff --numstat "$from" HEAD | awk '{ n += $1 + $2 } END { print n + 0 }')
@@ -230,7 +252,7 @@ jobs:
             --max-turns ${{ steps.ctx.outputs.turns }}
             --permission-mode default
             --allowedTools "Read,Grep,Glob,mcp__github_inline_comment__create_inline_comment"
-            --json-schema '{"type":"object","properties":{"summary":{"type":"string"},"comments":{"type":"integer"}},"required":["summary","comments"]}'
+            --json-schema '{"type":"object","properties":{"summary":{"type":"string"}},"required":["summary"]}'
 
       - name: Post the summary and cost
         if: ${{ !cancelled() && steps.ctx.outputs.skip != 'true' && steps.ctx.conclusion == 'success' }}
