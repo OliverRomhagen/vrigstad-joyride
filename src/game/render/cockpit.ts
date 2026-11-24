@@ -292,7 +292,7 @@ export class Cockpit {
       this.leave();
       this.enter(car, body);
     }
-    this.place(car, body);
+    if (this.car) this.place(car, body); // else no cabin to sit in: the view stays behind the car
   }
 
   // the part of the car that shows and rides its springs: the loaded model's, else the simple car

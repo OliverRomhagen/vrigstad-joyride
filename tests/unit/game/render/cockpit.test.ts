@@ -169,4 +169,20 @@ describe('Cockpit (the driver’s view, lab: cockpit)', () => {
     expect(needleAngle(250, 200)).toBeCloseTo((135 * Math.PI) / 180);
     expect(needleAngle(-5, 200)).toBeCloseTo((-135 * Math.PI) / 180); // below 0 holds at rest
   });
+
+  it('stays behind a car it has no cabin for, rather than in the last car’s seat', () => {
+    const volvoCar = volvo().car;
+    const tractor = volvo().car;
+    tractor.mesh.children[1].visible = false; // no model, and its type has no profile: nothing to sit in
+    tractor.body.visible = true;
+    (tractor as { type: string }).type = 'traktor';
+    const { k, camera, game } = cockpit(volvoCar);
+    k.toggle();
+    k.update();
+    game.pcar = tractor;
+    camera.position.set(1, 2, 3); // where the rig put it, behind the tractor
+    k.update();
+    expect(k.inside).toBe(false);
+    expect(camera.position.toArray()).toEqual([1, 2, 3]);
+  });
 });
