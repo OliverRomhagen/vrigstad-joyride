@@ -195,11 +195,14 @@ jobs:
       BASE_REF: ${{ github.event.pull_request.base.ref }}
       OPUS_ABOVE_LINES: 400 # added plus removed lines in a later push
       # A longer line is cut short in the patches, and a file whose patch is larger isn't reviewed: minified code,
-      # one-line JSON, data dumps. The longest line in the repo's source is about 500 characters, and its largest
-      # source file 62 KB.
+      # one-line JSON, data dumps. The longest line in the repo's source is 513 characters (src/game/main.ts), and
+      # its largest source file 61 KB (src/world/streetscape.ts).
       # Below 2000, where Claude Code's Read tool cuts a line itself without saying where, with room for the marker.
       MAX_LINE_CHARS: 1900
       MAX_PATCH_KB: 256
+      # A larger patch to review isn't reviewed at all: Claude would run out of turns before it finished, and it
+      # returns its findings only at the end. A first guess, to tune with real reviews.
+      MAX_REVIEW_KB: 400
       # How long Claude may take, below the job's limit, so a review that runs long fails rather than cancelling the
       # job: the summary step still runs and records it.
       REVIEW_MINUTES: 15
@@ -283,24 +286,44 @@ jobs:
           # by hand: a PR can pad its own source to be left out, but not to be left out unnoticed.
           # File names are read NUL-separated and unquoted, so a name with å, ä or ö, a space or a colon still matches;
           # without renames, so a moved file's old path is checked too.
+          # One git call each for the names, their attributes, which are binary and how large their patches are,
+          # rather than three or four per file: a PR touching 300 files would run a thousand.
           : >.claude-review/skipped.txt
           pathspec=(.) # what to review: everything, minus what is left out below
+          names=$RUNNER_TEMP/names
+          {
+            git -c core.quotePath=false diff --name-only --no-renames -z "$merge_base" HEAD
+            git -c core.quotePath=false diff --name-only --no-renames -z "$from" HEAD
+          } | sort -zu >"$names"
+          declare -A marked=() binary=() patch_kb=()
+          # -z prints path, attribute and value NUL-separated, three fields per file and attribute.
+          while IFS= read -r -d '' path && IFS= read -r -d '' attr && IFS= read -r -d '' value; do
+            if [ "$value" = true ] || [ "$value" = set ]; then marked["$path"]=${marked["$path"]:+${marked["$path"]},}${attr#linguist-}; fi
+          done < <(git check-attr -z --stdin --source=origin/main linguist-generated linguist-vendored <"$names")
+          # -z prints added, tab, removed, tab, path, NUL; a binary file's counts are -.
+          while IFS=$'\t' read -r -d '' added _ path; do
+            [ "$added" != - ] || binary["$path"]=1
+          done < <(git -c core.quotePath=false diff --numstat --no-renames -z "$merge_base" HEAD)
+          # Each file's patch as Claude will read it, with long lines cut (see below). A name git still quotes (one
+          # with a tab, a newline, a quote or a backslash) isn't matched, so its file is reviewed whatever its size.
+          while IFS=$'\t' read -r path kb; do
+            patch_kb["$path"]=$kb
+          done < <(git -c core.quotePath=false diff --no-renames "$merge_base" HEAD | awk -v max="$MAX_LINE_CHARS" '
+            function flush() { if (path != "") kb[path] += b; b = 0 }
+            /^diff --git / { flush(); path = ""; old = ""; header = 1 }
+            header && /^--- / { p = substr($0, 5); sub(/\t$/, "", p); old = (p == "/dev/null") ? "" : substr(p, 3) }
+            header && /^\+\+\+ / { p = substr($0, 5); sub(/\t$/, "", p); path = (p == "/dev/null") ? old : substr(p, 3) }
+            /^@@ / { header = 0 }
+            { n = length; if (n > max + 40) n = max + 40; b += n + 1 }
+            END { flush(); for (p in kb) printf "%s\t%d\n", p, int(kb[p] / 1024) }')
           while IFS= read -r -d '' f; do
-            reason= marked=
-            for attr in generated vendored; do
-              # -z prints path, attribute and value NUL-separated: the value is the last field, whatever the name.
-              value=$(git check-attr -z --source=origin/main "linguist-$attr" -- "$f" | tr '\0' '\n' | tail -1)
-              if [ "$value" = true ] || [ "$value" = set ]; then marked=${marked:+$marked,}$attr; fi
-            done
-            if [ -n "$marked" ]; then
-              reason="marked $marked in .gitattributes"
-            elif [ "$(git diff --numstat "$merge_base" HEAD -- ":(literal)$f" | cut -f1)" = - ]; then
+            reason=
+            if [ -n "${marked["$f"]:-}" ]; then
+              reason="marked ${marked["$f"]} in .gitattributes"
+            elif [ -n "${binary["$f"]:-}" ]; then
               reason="binary"
-            else
-              kb=$(git diff "$merge_base" HEAD -- ":(literal)$f" | awk '{ b += length + 1 } END { print int(b / 1024) }')
-              if [ "$kb" -gt "$MAX_PATCH_KB" ]; then
-                reason="a $kb KB patch"
-              fi
+            elif [ "${patch_kb["$f"]:-0}" -gt "$MAX_PATCH_KB" ]; then
+              reason="a ${patch_kb["$f"]} KB patch"
             fi
             if [ -n "$reason" ]; then
               pathspec+=(":(exclude,literal)$f")
@@ -309,10 +332,7 @@ jobs:
               shown=${f//$'\t'/\\t}
               printf '%s\t%s\n' "${shown//$'\n'/\\n}" "$reason" >>.claude-review/skipped.txt
             fi
-          done < <({
-            git -c core.quotePath=false diff --name-only --no-renames -z "$merge_base" HEAD
-            git -c core.quotePath=false diff --name-only --no-renames -z "$from" HEAD
-          } | sort -zu)
+          done <"$names"
 
           # Unquoted names here too, so the summary step can match a finding's path with a patch's.
           git -c core.quotePath=false diff "$from..HEAD" -- "${pathspec[@]}" >.claude-review/diff.patch
@@ -340,6 +360,11 @@ jobs:
               ".claude-review/$patch.patch" >"$RUNNER_TEMP/cut.patch"
             mv "$RUNNER_TEMP/cut.patch" ".claude-review/$patch.patch"
           done
+          # Too much to review in one pass: say so on the PR instead of spending the turns.
+          review_kb=$(( $(wc -c <.claude-review/diff.patch) / 1024 ))
+          if [ "$review_kb" -gt "$MAX_REVIEW_KB" ]; then
+            echo "too_large=$review_kb" >>"$GITHUB_OUTPUT"
+          fi
           # Claude gets no shell (a git command can write files, `git grep -O` runs a program), so what it would ask
           # git for is written out here.
           git log --format='%h %an: %s' "$merge_base..HEAD" >.claude-review/commits.txt
@@ -379,7 +404,7 @@ jobs:
 
       - name: Review
         id: claude
-        if: steps.ctx.outputs.skip != 'true' && steps.ctx.outputs.nothing != 'true'
+        if: steps.ctx.outputs.skip != 'true' && steps.ctx.outputs.nothing != 'true' && steps.ctx.outputs.too_large == ''
         env:
           # An API key when there is one, else a Claude subscription's token (`claude setup-token`), which uses that
           # plan's limits instead of credits. Only one is passed, so it's always clear which one pays.
@@ -422,6 +447,7 @@ jobs:
           COMMENT_ID: ${{ steps.ctx.outputs.comment_id }}
           LAST_SHA: ${{ steps.ctx.outputs.last_sha }}
           NOTHING: ${{ steps.ctx.outputs.nothing }}
+          TOO_LARGE: ${{ steps.ctx.outputs.too_large }}
           MODE: ${{ steps.ctx.outputs.mode }}
           FROM: ${{ steps.ctx.outputs.since }}
           MODEL: ${{ steps.ctx.outputs.model }}
@@ -445,7 +471,7 @@ jobs:
             out=$(jq -c '.structured_output // {} | if type == "object" then . else {} end' "$result")
           fi
           runs=$(( ${RUNS:-0} + 1 ))
-          [ "$NOTHING" != true ] || runs=${RUNS:-0}
+          [ "$NOTHING" != true ] && [ -z "$TOO_LARGE" ] || runs=${RUNS:-0}
           reviews=$([ "$runs" = 1 ] && echo review || echo reviews)
           total=$(awk -v a="${TOTAL:-0}" -v b="$cost" 'BEGIN { printf "%.2f", a + b }')
           cost=$(awk -v c="$cost" 'BEGIN { printf "%.2f", c }')
@@ -459,6 +485,10 @@ jobs:
             else
               summary="Nothing new to review: the push only moved the PR onto a new base, or only changed files left out of the review."
             fi
+            sha=$HEAD_SHA
+          # Recorded as done, so the next push gets a review of only what it changes, which may fit.
+          elif [ -n "$TOO_LARGE" ]; then
+            summary="Not reviewed: its patch is $TOO_LARGE KB, more than the $MAX_REVIEW_KB KB one review reads, and a later run won't review these commits either. Split the PR, or review it by hand."
             sha=$HEAD_SHA
           elif [ "$subtype" = success ]; then
             summary=$(jq -r '(.summary // "") | tostring | if . == "" then "No summary returned." else . end' <<<"$out")
@@ -560,7 +590,7 @@ jobs:
 
           # Name the model only when one ran.
           name=
-          if [ "$NOTHING" != true ]; then
+          if [ "$NOTHING" != true ] && [ -z "$TOO_LARGE" ]; then
             name=$([ "$MODEL" = claude-opus-5-5 ] && echo ' (Opus)' || echo ' (Sonnet)')
           fi
 
