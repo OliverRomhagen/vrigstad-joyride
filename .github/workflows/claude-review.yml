@@ -28,6 +28,12 @@ name: Claude review
 #   none of the PR's settings, hooks, MCP servers or CLAUDE.md. It has no GitHub token and no way to post: it
 #   returns its findings, and the last step breaks images, HTML and @-mentions in them, checks them for the secret,
 #   and posts them.
+# - What it reads from main, it reads by SHA: a bare origin/main also names a tag refs/tags/origin/main, which git
+#   prefers and anyone with push access can push.
+# - The marker that records what was reviewed is signed with an HMAC keyed by the review's secret. Any workflow can
+#   post as github-actions[bot], preview.yml with the PR's own code running, so an unsigned marker could say a commit
+#   was reviewed and keep it from ever being reviewed. A marker that doesn't verify is ignored. A new secret
+#   invalidates every marker, so each PR's next review covers the whole PR.
 on:
   pull_request_target:
     types: [opened, reopened, ready_for_review, synchronize, edited]
@@ -209,6 +215,9 @@ jobs:
       # job: the summary step still runs and records it.
       REVIEW_MINUTES: 15
       CLAUDE_CODE_VERSION: 2.1.325
+      # Signs and checks the marker: HMAC-SHA256 of stdin keyed by MARKER_KEY, in hex. Run with python3 -I, so no
+      # module in the checkout (a PR's hmac.py) is imported.
+      MARKER_HMAC: "import hashlib, hmac, os, sys; print(hmac.new(os.environb[b'MARKER_KEY'], sys.stdin.buffer.read(), hashlib.sha256).hexdigest())"
     steps:
       # Before the checkout, and outside it, so nothing in the PR (an .npmrc) can change what is installed.
       - name: Install Claude Code
@@ -227,6 +236,8 @@ jobs:
         id: ctx
         env:
           GH_TOKEN: ${{ github.token }}
+          # Only to check the marker's signature.
+          MARKER_KEY: ${{ secrets.ANTHROPIC_API_KEY || secrets.CLAUDE_CODE_OAUTH_TOKEN }}
         run: |
           set -euo pipefail
           # From an empty directory: a PR can commit .claude-review/ with symlinks in it, and the writes below would
@@ -236,21 +247,38 @@ jobs:
           # Every git command here reads .gitattributes from main, not from the checkout: the PR's own (or a nested
           # one) could mark its source -diff or binary, and its patch would show only that the file differs, or set a
           # merge driver for merge-tree. Git before 2.42 ignores the variable without a word, so check.
-          export GIT_ATTR_SOURCE=origin/main
           if ! printf '2.42\n%s\n' "$(git version | awk '{ print $3 }')" | sort -V -C; then
             echo "::error::$(git version) can't read .gitattributes from main (GIT_ATTR_SOURCE needs 2.42)."
             exit 1
           fi
+          # main by SHA, resolved once from its full ref name: a bare origin/main would also match a tag named
+          # origin/main, which git prefers, and anyone with push access can push one.
+          main=$(git rev-parse --verify 'refs/remotes/origin/main^{commit}')
+          export GIT_ATTR_SOURCE=$main
 
           # The PR's top-level comments, read once: the marker and comments.json both come from them.
           gh api "repos/$GH_REPO/issues/$PR/comments" --paginate --jq '.[]' | jq -s . >"$RUNNER_TEMP/issue-comments.json"
-          # The summary comment from the last review, and the commit and costs it recorded.
-          marker=$(jq '[.[] | select(.user.login == "github-actions[bot]" and (.body | contains("<!-- claude-review -->"))) | {id, body}] | last // {}' \
-            "$RUNNER_TEMP/issue-comments.json")
-          # Any workflow can post as github-actions[bot], preview.yml with the PR's own code running, so a marker can be
-          # forged: a field that isn't the shape this workflow writes counts as missing. Unchecked, runs=PR[$(cmd)]
-          # would run cmd in the summary step's arithmetic, and sha= reaches git.
-          field() { jq -r '.body // ""' <<<"$marker" | grep -oE "$1=[^ ]+" | head -1 | cut -d= -f2 | grep -xE "$2" || true; }
+          # The summary comment from the last review, and the commit and costs it recorded: the newest one whose
+          # marker this workflow signed. Any workflow can post as github-actions[bot], preview.yml with the PR's own
+          # code running, so a marker can be forged; an unsigned one could hide commits from every later review.
+          sign() { printf 'claude-review/v1 %s#%s %s' "$GH_REPO" "$PR" "$1" | python3 -I -c "$MARKER_HMAC"; }
+          jq -c '[.[] | select(.user.login == "github-actions[bot]" and (.body | contains("<!-- claude-review -->"))) | {id, body}] | reverse | .[]' \
+            "$RUNNER_TEMP/issue-comments.json" >"$RUNNER_TEMP/markers.jsonl"
+          marker='{}' fields=''
+          if [ -n "$MARKER_KEY" ]; then
+            while IFS= read -r candidate; do
+              line=$(jq -r '.body // ""' <<<"$candidate" |
+                sed -nE 's/^<!-- claude-review: (sha=[^ ]+ runs=[^ ]+ cost=[^ ]+) sig=([0-9a-f]{64}) -->$/\1 \2/p' | head -1)
+              [ -n "$line" ] || continue
+              if [ "$(sign "${line% *}")" = "${line##* }" ]; then
+                marker=$candidate fields=${line% *}
+                break
+              fi
+            done <"$RUNNER_TEMP/markers.jsonl"
+          fi
+          # Signed or not, a field that isn't the shape this workflow writes counts as missing: unchecked,
+          # runs=PR[$(cmd)] would run cmd in the summary step's arithmetic, and sha= reaches git.
+          field() { tr ' ' '\n' <<<"$fields" | sed -n "s/^$1=//p" | head -1 | grep -xE "$2" || true; }
           last_sha=$(field sha '[0-9a-f]{40}')
           echo "last_sha=$last_sha" >>"$GITHUB_OUTPUT"
           echo "comment_id=$(jq -r '.id // "" | tostring | select(test("^[0-9]+$")) // ""' <<<"$marker")" >>"$GITHUB_OUTPUT"
@@ -258,7 +286,7 @@ jobs:
           echo "runs=$(field runs '(0|[1-9][0-9]{0,5})')" >>"$GITHUB_OUTPUT"
           echo "total=$(field cost '[0-9]{1,6}(\.[0-9]{1,2})?')" >>"$GITHUB_OUTPUT"
 
-          merge_base=$(git merge-base "origin/$BASE_REF" HEAD)
+          merge_base=$(git merge-base "refs/remotes/origin/$BASE_REF" HEAD)
           # After a force push the last reviewed commit is on no branch, but GitHub still serves it by its SHA.
           if [ -n "$last_sha" ] && ! git cat-file -e "$last_sha^{commit}" 2>/dev/null; then
             git fetch -q origin "$last_sha" 2>/dev/null || true
@@ -302,7 +330,7 @@ jobs:
           declare -A marked=() binary=() patch_kb=()
           # Each call writes a file first, so a failing one fails the step, as it wouldn't inside < <(...).
           # -z prints path, attribute and value NUL-separated, three fields per file and attribute.
-          git check-attr -z --stdin --source=origin/main linguist-generated linguist-vendored <"$names" >"$RUNNER_TEMP/attrs"
+          git check-attr -z --stdin --source="$main" linguist-generated linguist-vendored <"$names" >"$RUNNER_TEMP/attrs"
           while IFS= read -r -d '' path && IFS= read -r -d '' attr && IFS= read -r -d '' value; do
             if [ "$value" = true ] || [ "$value" = set ]; then marked["$path"]=${marked["$path"]:+${marked["$path"]},}${attr#linguist-}; fi
           done <"$RUNNER_TEMP/attrs"
@@ -388,7 +416,7 @@ jobs:
           # git for is written out here.
           git log --format='%h %an: %s' "$merge_base..HEAD" >.claude-review/commits.txt
           # From main only: the PR's copy could be a symlink to anything on the runner.
-          git show "origin/main:AGENTS.md" >.claude-review/AGENTS.md
+          git show "$main:AGENTS.md" >.claude-review/AGENTS.md
           gh pr view "$PR" --json title,body,author,labels >.claude-review/pr.json
           # Inline comments, review summaries and top-level comments: findings are raised in all three. Only those by
           # people with write access and the PR's author (known, or approved by a maintainer): anyone can comment on a
@@ -422,7 +450,7 @@ jobs:
             # no line in the file can end the value early and set the outputs above.
             delim="CLAUDE_REVIEW_$(openssl rand -hex 16)"
             echo "instructions<<$delim"
-            git show "origin/main:.github/claude-review.md"
+            git show "$main:.github/claude-review.md"
             echo "$delim"
           } >>"$GITHUB_OUTPUT"
 
@@ -482,6 +510,8 @@ jobs:
           # Only to check that Claude's output doesn't contain them.
           SECRET_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           SECRET_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # To sign the marker, as the context step checks it.
+          MARKER_KEY: ${{ secrets.ANTHROPIC_API_KEY || secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           MAX_FINDINGS: 50
           MAX_BODY_CHARS: 4000
         run: |
@@ -607,7 +637,13 @@ jobs:
 
           {
             echo '<!-- claude-review -->'
-            echo "<!-- claude-review: sha=${sha:-none} runs=$runs cost=$total -->"
+            fields="sha=${sha:-none} runs=$runs cost=$total"
+            # Without a key, unsigned: the next review then covers the whole PR.
+            sig=none
+            if [ -n "$MARKER_KEY" ]; then
+              sig=$(printf 'claude-review/v1 %s#%s %s' "$GH_REPO" "$PR" "$fields" | python3 -I -c "$MARKER_HMAC")
+            fi
+            echo "<!-- claude-review: $fields sig=$sig -->"
             echo "**Claude review**$model_name of $scope, up to \`${HEAD_SHA:0:7}\`: $summary"
             echo
             if [ "$(jq '[.[] | select(.inline | not)] | length' "$findings")" -gt 0 ]; then
