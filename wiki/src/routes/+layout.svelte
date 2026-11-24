@@ -223,7 +223,7 @@ function drawer(dialog: HTMLDialogElement) {
 
 .side {
   grid-area: side;
-  font-size: 1.0625rem;
+  font-size: 1rem;
 }
 :is(.side, .drawer) h2 {
   font: 600 0.875rem var(--font);
@@ -347,7 +347,7 @@ footer p {
 .drawer-panel {
   min-height: 100%;
   padding: 16px 20px 32px;
-  font-size: 1.0625rem;
+  font-size: 1rem;
 }
 .drawer-close {
   display: block;

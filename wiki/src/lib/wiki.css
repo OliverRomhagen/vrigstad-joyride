@@ -30,7 +30,8 @@ html {
 body {
   margin: 0;
   color: var(--cream);
-  font: 1.125rem / 1.6 var(--body);
+  /* 17px at the browser's usual size: reference text beside a sidebar and tables, in a wide system font, about 70 letters a line */
+  font: 1.0625rem / 1.6 var(--body);
   /* the sky fades into the road on an eased curve, many stops so it has no visible edge, with a dusk tint that lingers. From
      the sidebar's first heading (about 115px) down it is dark enough for small muted text at WCAG AA (4.5:1) */
   background:
