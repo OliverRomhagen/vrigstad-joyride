@@ -4,8 +4,9 @@ name: Claude review
 # already had a thorough pass. What the review looks for is in .github/claude-review.md, read from main.
 # - The first review covers the whole PR. Later pushes get a review of only the commits since the last one, which a
 #   marker in the summary comment records. After a merge from main, a rebase (gh stack sync) or an amend, that is
-#   only what changed besides the new base; a push that only moved the PR onto a new base isn't reviewed. Generated
-#   and downloaded data (data/vrigstad.json, data/raw/, package-lock.json) is left out of every review.
+#   only what changed besides the new base; a push that only moved the PR onto a new base isn't reviewed. Files nobody
+#   reads line by line are left out of every review: those .gitattributes marks generated or vendored, and any other
+#   file with a very long line or a very large patch. The summary comment lists them.
 # - Opus does the full review; Sonnet, which costs less, reviews later pushes, unless one changes more than
 #   OPUS_ABOVE_LINES lines: that is as much as a new PR, so it gets Opus too.
 # - Drafts are skipped until they're ready for review, and so are PRs from forks: their runs get no secrets.
@@ -135,6 +136,13 @@ jobs:
       AUTHOR: ${{ github.event.pull_request.user.login }}
       BASE_REF: ${{ github.event.pull_request.base.ref }}
       OPUS_ABOVE_LINES: 400 # added plus removed lines in a later push
+      # A file whose patch has a longer line, or is larger, isn't reviewed: minified code, one-line JSON, data dumps.
+      # The longest line in the repo's source is about 500 characters, and its largest source file 62 KB.
+      MAX_LINE_CHARS: 5000
+      MAX_PATCH_KB: 256
+      # The Review step's own limit, below the job's, so a review that runs long fails rather than cancelling the job:
+      # the summary step still runs and records it.
+      REVIEW_MINUTES: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -187,22 +195,46 @@ jobs:
             mode=full from=$merge_base since=$merge_base
           fi
 
-          # Generated and downloaded files are left out of the patches and the line count: data/vrigstad.json is one
-          # line of about 200 KB, so a data PR would hand Claude 400 KB of diff while counting as 2 changed lines, and
-          # an OSM refresh adds thousands of lines of data/raw/osm.json. What makes them (tools/, package.json) is
-          # reviewed.
-          generated=(':(exclude)data/vrigstad.json' ':(exclude)data/raw/' ':(exclude)package-lock.json')
-          git diff "$from..HEAD" -- . "${generated[@]}" >.claude-review/diff.patch
-          # A push that only moved the PR onto a new base, or a PR or push that only changes generated files, leaves
+          # Leave out of the patches and the line count what nobody reads line by line, so it can't fill Claude's
+          # context: data/vrigstad.json is one line of about 200 KB, and would count as 2 changed lines. Left out are
+          # files that .gitattributes marks linguist-generated or linguist-vendored, read from main so a PR can't hide
+          # its own code by marking it, and any other file whose patch is over MAX_LINE_CHARS wide or MAX_PATCH_KB in
+          # size. Binary files need nothing: git diff shows only that they differ. What makes the generated files
+          # (tools/, package.json) is reviewed. skipped.txt lists what was left out and why, for Claude and the summary.
+          : >.claude-review/skipped.txt
+          pathspec=(.) # what to review: everything, minus what is left out below
+          while IFS= read -r f; do
+            reason=
+            marked=$(git check-attr --source=origin/main linguist-generated linguist-vendored -- "$f" |
+              awk -F': ' '$3 == "true" || $3 == "set" { sub("linguist-", "", $2); print $2 }' | paste -sd, -)
+            if [ -n "$marked" ]; then
+              reason="marked $marked in .gitattributes"
+            else
+              read -r widest kb < <(git diff "$merge_base" HEAD -- "$f" |
+                awk '{ if (length > w) w = length; b += length + 1 } END { print w + 0, int(b / 1024) }')
+              if [ "$widest" -gt "$MAX_LINE_CHARS" ]; then
+                reason="a line of $widest characters"
+              elif [ "$kb" -gt "$MAX_PATCH_KB" ]; then
+                reason="a $kb KB patch"
+              fi
+            fi
+            if [ -n "$reason" ]; then
+              pathspec+=(":(exclude,literal)$f")
+              echo "$f: $reason" >>.claude-review/skipped.txt
+            fi
+          done < <({ git diff --name-only "$merge_base" HEAD; git diff --name-only "$from" HEAD; } | sort -u)
+
+          git diff "$from..HEAD" -- "${pathspec[@]}" >.claude-review/diff.patch
+          # A push that only moved the PR onto a new base, or a PR or push that only changes files left out, leaves
           # nothing to review: record it and skip the review.
           if [ ! -s .claude-review/diff.patch ]; then
             echo "nothing=true" >>"$GITHUB_OUTPUT"
             echo "since=$since" >>"$GITHUB_OUTPUT"
             echo "mode=$mode" >>"$GITHUB_OUTPUT"
-            echo "Nothing to review in $mode mode since $since: no changes outside generated files." >>"$GITHUB_STEP_SUMMARY"
+            echo "Nothing to review in $mode mode since $since: no changes outside the files left out." >>"$GITHUB_STEP_SUMMARY"
             exit 0
           fi
-          git diff "$merge_base..HEAD" -- . "${generated[@]}" >.claude-review/full.patch
+          git diff "$merge_base..HEAD" -- "${pathspec[@]}" >.claude-review/full.patch
           # Claude gets no shell (a git command can write files, `git grep -O` runs a program), so what it would ask
           # git for is written out here.
           git log --format='%h %an: %s' "$merge_base..HEAD" >.claude-review/commits.txt
@@ -219,7 +251,7 @@ jobs:
             jq ".[] | $trusted | {user: .user.login, body}" "$RUNNER_TEMP/issue-comments.json"
           } | jq -s . >.claude-review/comments.json
 
-          changed=$(git diff --numstat "$from" HEAD -- . "${generated[@]}" | awk '{ n += $1 + $2 } END { print n + 0 }')
+          changed=$(git diff --numstat "$from" HEAD -- "${pathspec[@]}" | awk '{ n += $1 + $2 } END { print n + 0 }')
           if [ "$mode" = full ] || [ "$changed" -gt "$OPUS_ABOVE_LINES" ]; then model=claude-opus-5-5; else model=claude-sonnet-5-5; fi
           if [ "$mode" = full ]; then turns=40; else turns=20; fi
           {
@@ -227,6 +259,7 @@ jobs:
             echo "since=$since"
             echo "model=$model"
             echo "turns=$turns"
+            echo "started=$(date +%s)"
             # From main, so an edit to the instructions takes effect once it merges; until this file is on main, the PR's
             # copy. A PR that edits this workflow runs its own copy, as with any workflow, so this only keeps the
             # instructions from changing by accident: the people whose PRs run it can already push workflows.
@@ -238,6 +271,7 @@ jobs:
       - name: Review
         id: claude
         if: steps.ctx.outputs.skip != 'true' && steps.ctx.outputs.nothing != 'true'
+        timeout-minutes: ${{ fromJSON(env.REVIEW_MINUTES) }}
         uses: anthropics/claude-code-action@eb56b6666facdbd501035f4a0269d8caee2e7a8b # v1.0.289
         with:
           # An API key when the repo has one, else a Claude subscription's token (`claude setup-token`), which uses
@@ -267,6 +301,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           CONCLUSION: ${{ steps.claude.outputs.conclusion }}
           EXECUTION_FILE: ${{ steps.claude.outputs.execution_file }}
+          OUTCOME: ${{ steps.claude.outcome }}
+          STARTED: ${{ steps.ctx.outputs.started }}
           STRUCTURED: ${{ steps.claude.outputs.structured_output }}
           COMMENT_ID: ${{ steps.ctx.outputs.comment_id }}
           LAST_SHA: ${{ steps.ctx.outputs.last_sha }}
@@ -295,9 +331,9 @@ jobs:
           subtype=$(jq -r '[.[] | select(.type == "result")] | last | .subtype // ""' "$EXECUTION_FILE" 2>/dev/null || true)
           if [ "$NOTHING" = true ]; then
             if [ "$MODE" = full ]; then
-              summary="Nothing to review: the PR changes nothing outside generated and downloaded data (\`data/vrigstad.json\`, \`data/raw/\`, \`package-lock.json\`)."
+              summary="Nothing to review: the PR changes nothing outside the files left out below."
             else
-              summary="Nothing new to review: the push only moved the PR onto a new base, or only changed generated files."
+              summary="Nothing new to review: the push only moved the PR onto a new base, or only changed files left out of the review."
             fi
             sha=$HEAD_SHA
           # A review that ran out of turns has posted what it found, and spent the money: record it too, or every later
@@ -308,6 +344,12 @@ jobs:
             [ "$subtype" != error_max_turns ] || fallback="It ran out of turns before it finished: what it found is posted inline, and what it didn't reach isn't reviewed, by this run or a later one."
             summary=$(jq -r --arg f "$fallback" '.summary // $f' <<<"${STRUCTURED:-"{}"}")
             # Only a review that ran moves the marker, so a failed one is retried in full on the next push.
+            sha=$HEAD_SHA
+          # A review that ran out of time spent the money too, and the next one would run as long: record it as done.
+          # The action is stopped before it writes its log, so its cost isn't known, and comments it had found but not
+          # yet posted are lost.
+          elif [ "$OUTCOME" = failure ] && [ -n "$STARTED" ] && [ $(( $(date +%s) - STARTED )) -ge $(( REVIEW_MINUTES * 60 )) ]; then
+            summary="It ran out of time ($REVIEW_MINUTES minutes) before it finished: what it posted inline is all it found, and what it didn't reach isn't reviewed, by this run or a later one. Its cost isn't counted."
             sha=$HEAD_SHA
           else
             summary="The review didn't finish ([run log]($GITHUB_SERVER_URL/$GH_REPO/actions/runs/$GITHUB_RUN_ID)); the next push reviews these commits again."
@@ -324,6 +366,14 @@ jobs:
             echo "<!-- claude-review: sha=${sha:-none} runs=$runs cost=$total -->"
             echo "**Claude review**$name of $scope, up to \`${HEAD_SHA:0:7}\`: $summary"
             echo
+            if [ -s .claude-review/skipped.txt ]; then
+              echo "<details><summary>Not reviewed: $(wc -l <.claude-review/skipped.txt | tr -d ' ') files nobody reads line by line</summary>"
+              echo
+              sed 's/^\([^:]*\): /- `\1`: /' .claude-review/skipped.txt
+              echo
+              echo '</details>'
+              echo
+            fi
             echo "<sub>This review: \$$cost · this PR so far: \$$total over $runs $reviews$COST_NOTE.</sub>"
           } >"$RUNNER_TEMP/comment.md"
 
