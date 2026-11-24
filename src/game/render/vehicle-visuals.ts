@@ -42,15 +42,19 @@ export class VehicleVisuals {
     private readonly coarse: boolean,
     private readonly onBody?: (car: Car, body: THREE.Object3D) => void,
   ) {}
+  /** A model's loaded scene, fetched and parsed once and shared: clone it, or read it without changing it. */
+  template(definition: { id: string; url: string }) {
+    let task = this.templates.get(definition.id);
+    if (!task) {
+      task = this.loader.loadAsync(definition.url).then(g => g.scene);
+      this.templates.set(definition.id, task);
+    }
+    return task;
+  }
   private loadModel(view: View) {
     if (view.status !== 'idle') return;
     view.status = 'loading';
-    let task = this.templates.get(view.definition.id);
-    if (!task) {
-      task = this.loader.loadAsync(view.definition.url).then(g => g.scene);
-      this.templates.set(view.definition.id, task);
-    }
-    task
+    this.template(view.definition)
       .then(template => {
         if (view.removed) return;
         const root = template.clone(true);

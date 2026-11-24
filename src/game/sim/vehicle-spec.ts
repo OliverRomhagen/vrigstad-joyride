@@ -30,12 +30,16 @@ export type VehicleSpec = {
   off: number;
   /** Paint colours a car of this type is picked from. */
   cols: readonly string[];
+  /** The body's length and width (m, no mirrors): its hitbox (sim/car-body.ts). */
+  lengthM: number;
+  widthM: number;
   handling: Handling;
   /** How the body moves on its springs; only rendering reads it. */
   suspension: Suspension;
 };
 
-// Wheelbase and rear axle are where the procedural model draws its wheels; a GLB model brings its own measured ones.
+// Wheelbase and rear axle are where the procedural model draws its wheels, and length and width its body (render/models.ts;
+// the tractor's from its rear wheels to its bonnet); a GLB model brings its own measured ones.
 // Response times: the civilian cars answer a little late, so they feel some weight; the police stay sharp for the chase.
 // The tunables registry (car-tunables.ts) changes the numbers in each spec while the game runs; a type's spec is never replaced.
 export const VEHICLE_SPECS: Readonly<Record<CarType, VehicleSpec>> = {
@@ -45,6 +49,8 @@ export const VEHICLE_SPECS: Readonly<Record<CarType, VehicleSpec>> = {
     acc: 7,
     off: 0.5,
     cols: ['#27406b', '#7a2530', '#c9bd9c', '#e6e4dc', '#2f5a41', '#8a8f93'],
+    lengthM: 4.8,
+    widthM: 1.74,
     handling: { wheelbaseM: 2.95, rearAxleM: 1.45, steerResponseS: 0.13, throttleResponseS: 0.25 },
     suspension: {
       freqHz: 1.3,
@@ -63,6 +69,8 @@ export const VEHICLE_SPECS: Readonly<Record<CarType, VehicleSpec>> = {
     acc: 8.5,
     off: 0.5,
     cols: ['#1d1d1f', '#8c1c1c', '#3d5a80', '#d8d4c8', '#55606a'],
+    lengthM: 4.6,
+    widthM: 1.7,
     handling: { wheelbaseM: 2.8, rearAxleM: 1.35, steerResponseS: 0.1, throttleResponseS: 0.18 },
     suspension: {
       freqHz: 1.6,
@@ -81,6 +89,8 @@ export const VEHICLE_SPECS: Readonly<Record<CarType, VehicleSpec>> = {
     acc: 4,
     off: 0.7,
     cols: ['#c8372d', '#2a2a2c', '#e8a020', '#3f6b8a'],
+    lengthM: 4.8,
+    widthM: 1.74,
     handling: { wheelbaseM: 2.9, rearAxleM: 1.4, steerResponseS: 0.16, throttleResponseS: 0.37 },
     suspension: {
       freqHz: 1.2,
@@ -99,6 +109,8 @@ export const VEHICLE_SPECS: Readonly<Record<CarType, VehicleSpec>> = {
     acc: 3.5,
     off: 1,
     cols: ['#2f7a3a', '#b5302a', '#2a5fa0'],
+    lengthM: 3.8,
+    widthM: 1.9,
     handling: { wheelbaseM: 2.4, rearAxleM: 0.9, steerResponseS: 0.26, throttleResponseS: 0.5 },
     suspension: {
       freqHz: 2.2,
@@ -117,6 +129,8 @@ export const VEHICLE_SPECS: Readonly<Record<CarType, VehicleSpec>> = {
     acc: 9,
     off: 0.6,
     cols: ['#f1f1ee'],
+    lengthM: 4.8,
+    widthM: 1.74,
     handling: { wheelbaseM: 2.95, rearAxleM: 1.45, steerResponseS: 0.08, throttleResponseS: 0.14 },
     suspension: {
       freqHz: 1.8,
@@ -131,10 +145,12 @@ export const VEHICLE_SPECS: Readonly<Record<CarType, VehicleSpec>> = {
   },
 };
 
-/** What a model can change about its type: its measured axles in metres, how it answers the controls and how it rides. */
+/** What a model can change about its type: its measured axles and body in metres, how it answers the controls and how it rides. */
 export type ModelOverrides = {
   wheelbase?: number;
   rearAxle?: number;
+  length?: number;
+  width?: number;
   handling?: Partial<Pick<Handling, 'steerResponseS' | 'throttleResponseS'>>;
   suspension?: Partial<Suspension>;
 };
@@ -152,7 +168,15 @@ const tunedResponse: Partial<Record<CarType, Partial<Response>>> = {};
 export function specFor(type: CarType, model?: ModelOverrides): VehicleSpec {
   const base = VEHICLE_SPECS[type];
   if (!base) throw new Error(`unknown car type: ${type}`);
-  if (!model?.wheelbase && !model?.rearAxle && !model?.handling && !model?.suspension) return base;
+  if (
+    !model?.wheelbase &&
+    !model?.rearAxle &&
+    !model?.length &&
+    !model?.width &&
+    !model?.handling &&
+    !model?.suspension
+  )
+    return base;
   const ofType = copies.get(type) ?? [];
   const known = ofType.find(c => c.model === model);
   if (known) return known.spec;
@@ -184,6 +208,8 @@ export function tuneResponse(type: CarType, field: keyof Response, value: number
 function mergeModel(type: CarType, base: VehicleSpec, model: ModelOverrides): VehicleSpec {
   return {
     ...base,
+    lengthM: model.length ?? base.lengthM,
+    widthM: model.width ?? base.widthM,
     handling: {
       ...base.handling,
       ...model.handling,

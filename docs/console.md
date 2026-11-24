@@ -23,9 +23,120 @@ registers against, what is built, and what comes next. The player-facing story i
   or a server, and it knows nothing about the box you type into.
 - **`DevConsole`** (`src/game/devconsole.ts`) is page code: the DOM box, its keys, history and focus. It sends lines
   to the registry and prints what comes back. Svelte replaces it after #51; the registry doesn't change.
-- **Modules own their commands.** Each module that has some exports a function or a method that takes
-  `Pick<Commands, 'register'>`, and `main.ts` calls it once: `registerWalletCommands` in `src/game/economy.ts`, and
-  `registerCommands` on the pets.
+- **Modules own their commands.** A command is registered in the module that owns the state it changes, next to the
+  rule it calls, and `main.ts` calls the module's register function once. It takes `Pick<Commands, 'register'>`:
+  - a class registers its own with a `registerCommands` method (`Pets`, `Wanted`);
+  - a module of plain data and functions exports `register<Area>Commands` (`registerWalletCommands` in
+    `src/game/economy.ts`, `registerHealthCommands` in `src/game/health.ts`).
+
+  The one exception is an adapter that makes commands for every entry of a registry, such as the tunables' `set` and
+  `get` (#357): it gets a `*-commands.ts` file of its own beside the registry, since no one entry owns those commands.
+
+## A walkthrough
+
+The console is the "commands in" door of [Commands in, events out](../ARCHITECTURE.md#commands-in-events-out): a
+typed line, a panel's slider, a link's `?cmd=`, a replay and, later, another player all reach the game the same way,
+as a line through `Commands.run`. So most new systems meet it: they register a few commands, and the tools around
+the registry (help, Tab, the Log, Record) work for them without changes. This section follows real lines through it.
+
+```mermaid
+flowchart LR
+  subgraph page["page code (DOM)"]
+    box["DevConsole<br/>typed line, Tab, hint"]
+    url["?cmd= · binds · panels<br/>(not built yet)"]
+  end
+  subgraph sim["sim code (no DOM, no three.js)"]
+    run["Commands.run(line, source)"]
+    gate{"known?<br/>allowed?"}
+    descend["descend<br/>tune → set"]
+    helpq{"--help?"}
+    hooks["hooks, outermost first<br/>Log · Record · Network"]
+    cmd["Command.run<br/>typed args from command()"]
+    subgraph owners["modules that own the state"]
+      health["health.ts<br/>Health.god"]
+      wanted["police.ts<br/>Wanted"]
+      tunables["sim/tunables.ts<br/>Tunables"]
+    end
+  end
+  tests["unit and smoke tests"]
+  caller(["the caller<br/>the box shows the line,<br/>a test reads it"])
+  box -- console --> run
+  url -. url · script · panel .-> run
+  tests -- test --> run
+  run --> gate
+  gate -- "no: one line back" --> caller
+  gate -- yes --> descend --> helpq
+  helpq -- "yes: its help" --> caller
+  helpq -- no --> hooks --> cmd
+  cmd --> health & wanted & tunables
+  cmd -- "one line back" --> caller
+  classDef pageCode fill:#fde8d8,stroke:#c96,color:#000
+  classDef simCode fill:#dceefb,stroke:#69c,color:#000
+  class box,url pageCode
+  class run,gate,descend,helpq,hooks,cmd,health,wanted,tunables simCode
+```
+
+Orange is page code, blue is sim code: the line between them is [the layers in
+ARCHITECTURE.md](../ARCHITECTURE.md), and Fallow keeps it (`fallow.toml`). The registry, the commands and the state
+they change never touch the DOM, so every step below runs in a unit test.
+
+### `tune set driving.grip 8`: a group over a registry
+
+1. **The box** (`src/game/devconsole.ts`) sends the line to `commands.run(line)`, with source `console`.
+2. **`Commands.run`** (`src/game/commands.ts`) splits it into words, finds `tune` (an alias would resolve to it
+   here), and checks its access. Then `descend` follows the words that name subcommands: `tune` is a `group()`, so
+   `set` picks its `set`, and `driving.grip 8` is left as the arguments.
+3. **The hooks** each get the call, `{ name: 'tune', args: ['set', 'driving.grip', '8'], source: 'console' }`, and
+   call `next()` to go on.
+4. **`command()`** (`src/game/command-args.ts`) parses the arguments it was built with:
+   `choice('tunable', () => tunables.keys())` accepts `driving.grip`, and `num('value')` reads `8` (`8,5` works too).
+   A word that doesn't parse throws a `UsageError`, which comes back as the error and the usage line, so `run` only
+   ever sees good values.
+5. **The adapter's `run`** (`src/game/sim/tunable-commands.ts`) calls `tunables.set('driving.grip', 8)`. The
+   registry (`src/game/sim/tunables.ts`) checks the range and writes the number into the `DRIVING` object in
+   `src/game/cars.ts`, which `addFields` connected it to.
+6. **The next frame**, `Fleet.drive` reads `DRIVING.GRIP` as always: the car corners differently, and nothing in the
+   driving model knows a console exists. The box shows `driving.grip = 8 1/s (was 12)`.
+
+### `god`: one flag, three rules
+
+1. `registerHealthCommands` (`src/game/health.ts`) registered `god` with one optional argument, `toggle('mode')`, so
+   `god`, `god on` and `god nej` all parse, and Tab offers `on` and `off`.
+2. Its `run` sets `Health.god`, fills the health up when it switches on, and redraws the health bar. That is all
+   the command does.
+3. Three rules read the flag, each in its own module: `canHurt` in `health.ts` takes no health, `crashCars` spares the
+   car you drive (`crashes.ts` passes it in), and `Wanted.update` in `police.ts` never starts a catch. `main.ts` hands
+   the flag to the last two as `get god()`, so neither reads the `Health` state itself.
+
+A command stays thin: the rules, and their unit tests, live in the modules. Another source that sets god mode, such
+as a cheat code or a lab flag, sets the same field and gets the same three rules.
+
+### A hook: the Log, in a few lines
+
+```ts
+const lines: { text: string; source: CallSource }[] = [];
+const stop = commands.use((call, next) => {
+  const answer = next(); // runs the command, and any hooks inside this one
+  lines.push({ text: `${[call.name, ...call.args].join(' ')} → ${answer}`, source: call.source });
+  return answer;
+});
+```
+
+The hook never names a command, yet it sees `tune set`, `god`, `kr` and every command still to be written. The Log
+tab (step 4 of [What comes next](#what-comes-next)) and replays (Record, #49) are hooks like this one. A hook sees
+`tune` as the name and `set` as the first argument, so this one joins the name and every argument back into the
+line.
+
+### Adding a command
+
+1. Put it in the module that owns the state: a `registerCommands` method on a class, or a `register<Area>Commands`
+   function beside the rule (see [The shape](#the-shape)).
+2. Build it with `command()`: a `help` line of up to 80 characters, `examples` that start with its name, and typed
+   `args`, so parsing, the usage line and Tab come for free.
+3. Keep `run` to reading its values and calling the module's API, and return one line to show.
+4. Call the register function in the module's unit test: a missing help line or a bad example fails there, in
+   seconds, rather than when the page starts.
+5. Call it once from `src/game/main.ts`, next to the others. `help` lists the command; nothing else needs to change.
 
 ## The contract
 
@@ -44,11 +155,18 @@ commands.register('go', command({
 - `command()` (`src/game/command-args.ts`) builds a `Command` from typed arguments: `int`, `num` (a Swedish comma
   works), `word`, `toggle` (on/off, ja/nej), `choice` and `rest`, each `optional()` at the end. From that one list come
   the parsing, the usage line (`<place> [speed]`), the error lines (`No place called gnosjö. Usage: go <place>
-  [speed]`) and Tab completion. `run` gets the values by name, typed: a choice is its own union of words.
+  [speed]`) and Tab completion. `run` gets the values by name, typed: a choice is its own union of words. A choice of
+  up to 8 words lists them in its error (`Pick one of: kiosk, skroten, torget.`), since the console on a phone has no
+  Tab; a longer one, such as the tunables' keys, keeps the short line.
 - A `choice` given a function reads it on every use, so a list that grows while the game runs (car models, unlocked
   places) completes and parses without registering again.
 - The plain shape still works: `register(name, { usage, help, run(words) })`, throwing `UsageError` for bad
   arguments. The existing commands (`kr`, `mynt`, `adopt`, `clear`) use it, and move over when someone touches them.
+- **A group** holds commands under one name: `group({ help, subcommands: { set, get } })` registers `tune`, and
+  `tune set driving.grip 8` runs its `set`. Use one for a family of commands with names that other areas could want
+  (`list`, `reset`). The registry follows the subcommands for help, `--help`, Tab and the usage line, so
+  `tune set --help` and `help tune set` both work; hooks see the group's name, with the subcommand as the first
+  argument. A subcommand's examples start with the whole path (`tune set …`).
 - **Every command explains itself.** `help` is required: one line of up to 80 characters (`HELP_MAX`) saying what it
   does, and `register` refuses a command without it. Commands register at start-up, so a refused one stops the whole
   page: a module that registers commands calls its register function in a unit test (`registerWalletCommands` in
@@ -148,8 +266,8 @@ const stop = consoleUi.addPanel({
 ```
 
 - **A panel changes the game only through commands or the tunables registry** (#217), never by reaching into game
-  objects (Architecture rule 4). A slider runs `set vehicle.volvo.grip 0.8` with source `panel`; Copy reads `list
-  vehicle.volvo`. So the hooks see every change: the Log shows it, and the Record hook can replay a tuning session.
+  objects (Architecture rule 4). A slider runs `tune set vehicle.volvo.grip 0.8` with source `panel`; Copy reads
+  `tune list vehicle.volvo`. So the hooks see every change: the Log shows it, and the Record hook can replay a tuning session.
 - **A panel reads** through the registry too, or through a store the page already has, so it works the same when the
   sim runs in a worker (#49) or on a host (#1).
 - **A plugin is a bundle** of commands, hooks and a panel, all optional, installed and taken out as one:
@@ -173,11 +291,15 @@ Each step is a PR of its own, in this order; the first two are what #218 asks fo
 
 1. **Tab and a hint in the box.** Tab completes from `complete()` (twice shows the choices), and the input shows the
    usage line of the command being typed. Page code in `devconsole.ts`; a smoke step types a command and checks it ran.
-2. **The core dev commands**, each in the module that owns the state, with `command()`: `god`, `stars <0-3>` (police),
-   `go <place>` (from #346's spots), `car <model>`, `fps`. Each one's rule gets a unit test in its module.
-3. **Tunables** (#217). One adapter turns the registry's entries into `set <key> <value>`, `get <key>`, `list
-   [prefix]` and `reset [key]`, with the key as a `choice` and the value as a `num` with the entry's range and unit. A
-   tunable never registers a command of its own.
+2. **The core dev commands** (#356), each in the module that owns the state, with `command()`: `god [mode]`
+   (`health.ts`), `stars <0-3>` (`police.ts`), `go <place>` (also `tp`, `places.ts`), `car <model>` (`cars.ts`), and
+   `fps [on]` and `errors clear` (the dev overlay, `presentation/debug-overlay.ts`) are built. Each one's rule gets a
+   unit test in its module.
+3. **Tunables** (#217, built in #357). `src/game/sim/tunable-commands.ts` turns the registry's entries into
+   `tune set <tunable> <value>`, `tune get <tunable>`, `tune list [prefix]` and `tune reset [tunable]`, with the key as
+   a `choice` and the value as a `num` that the registry checks against the entry's range. They sit under `tune`, so
+   `list` and `reset` stay free for other areas. A tunable never registers a command of its own. `?tune=` sets the same
+   numbers at load, in dev mode only.
 4. **Tabs, panels and the Log tab.** The console box gets the panel contract (see [Panels and
    plugins](#panels-and-plugins)), and the Dev tab and a Log tab are its first two panels. The Log is a small `Log` in
    sim code (a ring buffer of `{ level, text, at }`) that any module writes to; warnings that go to `console.warn`

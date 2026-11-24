@@ -67,6 +67,13 @@ export function toggle<N extends string>(name: N): Arg<N, boolean> {
   );
 }
 
+// a choice with this many options or fewer lists them when a word doesn't match: the console on a phone has no Tab
+const CHOICES_LISTED = 8;
+const pickOneOf = (all: readonly string[]) =>
+  all.length > 0 && all.length <= CHOICES_LISTED
+    ? ` Pick one of: ${[...all].sort((a, b) => a.localeCompare(b, 'sv')).join(', ')}.`
+    : '';
+
 /**
  * One of a set of words, in any case: `choice('place', () => [...places.keys()])`. A function is read on every use, so
  * the set can change while the game runs (a new car model, a place unlocked).
@@ -79,8 +86,9 @@ export function choice<N extends string, C extends string>(
   return arg(
     name,
     w => {
-      const found = list().find(o => o.toLowerCase() === w.toLowerCase());
-      if (found === undefined) throw new UsageError(`No ${name} called ${w}.`);
+      const all = list(),
+        found = all.find(o => o.toLowerCase() === w.toLowerCase());
+      if (found === undefined) throw new UsageError(`No ${name} called ${w}.${pickOneOf(all)}`);
       return found;
     },
     list,
@@ -162,6 +170,36 @@ export function command<const A extends readonly AnyArg[]>(spec: TypedCommand<A>
       const last = args[args.length - 1];
       if (words.length > args.length && !last?.rest) throw new UsageError('Too many words.');
       return spec.run(values as ArgValues<A>, call);
+    },
+  };
+}
+
+export interface GroupSpec {
+  help: string;
+  details?: string;
+  examples?: readonly string[];
+  access?: Access;
+  aliases?: readonly string[];
+  /** the commands under it, by the word that picks one: `{ set: command({ … }) }` */
+  subcommands: Readonly<Record<string, Command>>;
+}
+
+/**
+ * A command that only holds others: `tune set driving.grip 8` runs the `set` under `tune`. Typed on its own, or with a
+ * word that names none of them, it shows its usage line, which lists them.
+ */
+export function group(spec: GroupSpec): Command {
+  const names = Object.keys(spec.subcommands).sort();
+  return {
+    help: spec.help,
+    details: spec.details,
+    examples: spec.examples,
+    access: spec.access,
+    aliases: spec.aliases,
+    subcommands: spec.subcommands,
+    usage: `<${names.join('|')}> …`,
+    run: words => {
+      throw new UsageError(words[0] ? `No subcommand called ${words[0]}.` : '');
     },
   };
 }

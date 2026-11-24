@@ -46,9 +46,16 @@ export class RoadNetwork {
   readonly driveable: number[] = [];
   private readonly heightfield: Pick<Heightfield, 'heightAt'>;
   private readonly near: NearestRoad = { d: 1e9, ri: -1 };
+  private readonly bridges: { deckAt(x: number, z: number): number | null } | null;
 
-  constructor(data: WorldData, heightfield: Pick<Heightfield, 'heightAt'>) {
+  /** with `bridges`, a deck is the ground within its footprint (#238): there is nothing under a bridge to stand on */
+  constructor(
+    data: WorldData,
+    heightfield: Pick<Heightfield, 'heightAt'>,
+    bridges: { deckAt(x: number, z: number): number | null } | null = null,
+  ) {
     this.heightfield = heightfield;
+    this.bridges = bridges;
     this.lines = data.r.map(r => {
       const p: Point[] = [];
       for (let i = 0; i < r.p.length; i += 2) p.push([r.p[i], r.p[i + 1]]);
@@ -132,8 +139,10 @@ export class RoadNetwork {
       }
   }
 
-  /** Terrain plus the highest road ribbon at (x, z), eased out over the metre past its edge so nothing snaps at the kerb. */
+  /** A bridge deck, or terrain plus the highest road ribbon at (x, z), eased out over the metre past its edge so nothing snaps at the kerb. */
   groundAt(x: number, z: number) {
+    const deck = this.bridges?.deckAt(x, z) ?? null;
+    if (deck !== null) return deck;
     let lift = 0;
     const list = this.grid.get(cellKey(x, z));
     if (list) {
