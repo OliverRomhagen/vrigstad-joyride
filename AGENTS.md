@@ -103,6 +103,8 @@ Claude Code's built-in `/code-review` checks a change against this file, so thes
 - Split the findings into **before merging** and **follow-ups**. A one-line fix goes inline as a suggestion block.
 - An agent posts the review only when asked.
 
+The automated review on each PR (Workflow, above) follows `.github/claude-review.md` instead where the two differ: it posts by itself, reports only findings and a short summary, and labels each finding by its kind rather than splitting them.
+
 ### Claude Code in this repo
 
 Shared agents (`.claude/agents/`) and skills (`.claude/skills/`) come with the repo, so every collaborator's Claude Code has them. Agents advise; none edits tracked files, and `performance-analyst` runs commands to build and measure, in a scratch worktree. Some are adapted from [Claude Code Game Studios](https://github.com/donchitos/claude-code-game-studios) (MIT, see `LICENSE`). Each holds only its own expertise and points here for the rules, so a refactor doesn't make it wrong. Try one on a real task before relying on it, and drop one nobody reaches for (#255 lists what was left out). Claude can start any of them on its own when a request matches its description.
