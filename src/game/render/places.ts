@@ -2,6 +2,7 @@
 // and Skroten's ring, wide enough for a car (its yard is render/skroten.ts).
 // Moved from src/game/main.ts (#177); main.ts passes in the scene, the height lookup and the shared box geometry and paint.
 import * as THREE from 'three';
+import type { BoxPart } from '../box-part';
 import { type Door, KIOSK, type Places } from '../places';
 
 const SAFE_COLOUR = 0x4fd27a,
@@ -12,9 +13,6 @@ const GEM_SPIN = 1.6; // rad/s
 const WHITE = '#e8e2d2',
   RED = '#c8372d',
   YELLOW = '#f2c230';
-
-/** One box of a model: size, position and colour, as `boxGeo` in models.ts takes it. */
-type BoxPart = [sx: number, sy: number, sz: number, x: number, y: number, z: number, colour: string];
 
 /** What the places' meshes read from the rest of the game. */
 export interface PlaceMeshDeps {

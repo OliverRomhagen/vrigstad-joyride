@@ -5,6 +5,7 @@ import { BUILDING_CELL_M as BC, type BuildingIndex } from '../world/buildings';
 import { clamp, wrap } from '../world/math';
 import { pointInPolygon as inPoly } from '../world/polygon';
 import { makeRnd } from '../world/random';
+import type { BoxPart } from './box-part';
 
 const CAT_NEAR = 150,
   CAT_FAR = 210; // spawn / despawn radius around the player (m)
@@ -44,8 +45,8 @@ const CAT_FOLLOW_M = 2.5,
 const CAT_CATCH_UP_M = 6,
   CAT_CALL_M = 20; // a lost cat catching up shows up this far from you (m); a called one comes running from this far (m)
 const CAT_NEW_M = 1.5; // a cat made on the spot (the dev console's adopt) appears this far from you (m)
-// [coat, ears and paws, chest and muzzle (optional)]
-const CAT_COLS = [
+/** The cats' coats, as [coat, ears and paws, chest and muzzle (optional)]: each cat gets one of them. */
+export const CAT_COLS = [
   ['#d9822b', '#f0e0c8'],
   ['#1e1e20', '#1e1e20'],
   ['#7d7f84', '#e8e4dc'],
@@ -53,6 +54,55 @@ const CAT_COLS = [
   ['#8a6a48', '#3f3226'],
   ['#1e1e20', '#ece9e2', '#ece9e2'],
 ];
+
+/**
+ * A cat as boxes for boxGeo, each [width, height, depth, x, y, z, colour] in metres: standing on y = 0, facing −z. `c` is
+ * one of CAT_COLS. Plain data, so the wiki builds the same cat as the game.
+ */
+export function catParts(c: readonly string[]): BoxPart[] {
+  // a white chest and muzzle, for the coats that have one
+  const chest: BoxPart[] = c[2]
+    ? [
+        [0.14, 0.12, 0.02, 0, 0.21, -0.215, c[2]], // chest
+        [0.09, 0.05, 0.01, 0, 0.27, -0.33, c[2]], // muzzle
+      ]
+    : [];
+  return [
+    [0.2, 0.17, 0.42, 0, 0.2, 0, c[0]], // body
+    [0.17, 0.15, 0.15, 0, 0.31, -0.25, c[0]], // head
+    [0.05, 0.06, 0.03, -0.05, 0.41, -0.26, c[1]], // ears
+    [0.05, 0.06, 0.03, 0.05, 0.41, -0.26, c[1]],
+    [0.03, 0.03, 0.01, -0.04, 0.33, -0.33, '#c8d24a'], // eyes
+    [0.03, 0.03, 0.01, 0.04, 0.33, -0.33, '#c8d24a'],
+    [0.05, 0.13, 0.05, -0.07, 0.06, -0.15, c[1]], // front legs
+    [0.05, 0.13, 0.05, 0.07, 0.06, -0.15, c[1]],
+    [0.05, 0.13, 0.05, -0.07, 0.06, 0.15, c[1]], // hind legs
+    [0.05, 0.13, 0.05, 0.07, 0.06, 0.15, c[1]],
+    [0.04, 0.3, 0.04, 0, 0.4, 0.22, c[0]], // tail, straight up
+    ...chest,
+  ];
+}
+
+const CAT_SIZE_MIN = 1.1,
+  CAT_SIZE_SPREAD = 0.25; // each stray is 1.1–1.35 times its parts' size, rolled when it appears
+
+/**
+ * A cat in coat `c` (one of CAT_COLS), `scale` times its parts' size, with its soft shadow: how the colony makes each stray,
+ * and the wiki its cat. `scale` defaults to the middle of the strays' sizes; `geometry` to a new one from catParts.
+ */
+export function catMesh(
+  c: readonly string[],
+  g: Pick<CatDeps, 'boxGeo' | 'paintMat' | 'blob'>,
+  scale = CAT_SIZE_MIN + CAT_SIZE_SPREAD / 2,
+  geometry = g.boxGeo(catParts(c)),
+) {
+  const mesh = new THREE.Mesh(geometry, g.paintMat);
+  mesh.castShadow = true;
+  mesh.rotation.order = 'YXZ';
+  mesh.scale.setScalar(scale);
+  g.blob(mesh, 0.32, 0.55);
+  return mesh;
+}
 const CAT_PET_OK = 0.5,
   CAT_PET_TREAT_OK = 0.75; // chance a pet goes well, without / with a treat
 const CAT_SCRATCH_S = 5,
@@ -143,7 +193,7 @@ export interface CatDeps {
   half: number; // half the playable square's side (m)
   coarse: boolean; // touch screen: fewer cats
   geoCache: Record<string, THREE.BufferGeometry>;
-  boxGeo(parts: (number | string)[][]): THREE.BufferGeometry;
+  boxGeo(parts: BoxPart[]): THREE.BufferGeometry;
   paintMat: THREE.Material;
   blob(parent: THREE.Object3D, w: number, l: number): void;
   cars: readonly CatCar[];
@@ -400,25 +450,7 @@ export class CatColony {
   private geo(c: string[]) {
     const { geoCache, boxGeo } = this.g;
     const key = 'cat' + c;
-    geoCache[key] ||= boxGeo([
-      [0.2, 0.17, 0.42, 0, 0.2, 0, c[0]],
-      [0.17, 0.15, 0.15, 0, 0.31, -0.25, c[0]],
-      [0.05, 0.06, 0.03, -0.05, 0.41, -0.26, c[1]],
-      [0.05, 0.06, 0.03, 0.05, 0.41, -0.26, c[1]],
-      [0.03, 0.03, 0.01, -0.04, 0.33, -0.33, '#c8d24a'],
-      [0.03, 0.03, 0.01, 0.04, 0.33, -0.33, '#c8d24a'],
-      [0.05, 0.13, 0.05, -0.07, 0.06, -0.15, c[1]],
-      [0.05, 0.13, 0.05, 0.07, 0.06, -0.15, c[1]],
-      [0.05, 0.13, 0.05, -0.07, 0.06, 0.15, c[1]],
-      [0.05, 0.13, 0.05, 0.07, 0.06, 0.15, c[1]],
-      [0.04, 0.3, 0.04, 0, 0.4, 0.22, c[0]],
-      ...(c[2]
-        ? [
-            [0.14, 0.12, 0.02, 0, 0.21, -0.215, c[2]],
-            [0.09, 0.05, 0.01, 0, 0.27, -0.33, c[2]],
-          ]
-        : []),
-    ]);
+    geoCache[key] ||= boxGeo(catParts(c));
     return geoCache[key];
   }
 
@@ -468,13 +500,10 @@ export class CatColony {
 
   // a new random stray at (x, z) facing h, in the scene and the colony
   private make(x: number, z: number, h: number) {
-    const { paintMat, blob, scene } = this.g,
+    const { scene } = this.g,
       rnd = this.rnd;
-    const mesh = new THREE.Mesh(this.geo(this.pick(CAT_COLS)), paintMat);
-    mesh.castShadow = true;
-    mesh.rotation.order = 'YXZ';
-    mesh.scale.setScalar(1.1 + rnd() * 0.25);
-    blob(mesh, 0.32, 0.55);
+    const coat = this.pick(CAT_COLS);
+    const mesh = catMesh(coat, this.g, CAT_SIZE_MIN + rnd() * CAT_SIZE_SPREAD, this.geo(coat));
     const k: Cat = {
       name: CAT_NAME,
       x,

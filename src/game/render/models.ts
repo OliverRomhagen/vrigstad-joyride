@@ -2,11 +2,10 @@
 // Moved from src/game/main.ts (#177); main.ts hands these to the modules that build the cars, people, cats and places.
 import * as THREE from 'three';
 import { col } from '../../world/three-legacy';
+import type { BoxPart } from '../box-part';
 
 /** One part of a model: a geometry and its sRGB colour; the colour attribute is left out when the parts have none. */
 type Part = [geometry: THREE.BufferGeometry, colour?: string];
-/** One box of a model: size, position and colour. */
-type BoxPart = [sx: number, sy: number, sz: number, x: number, y: number, z: number, colour: string];
 type Profile = {
   body: number[][];
   glass: number[][];

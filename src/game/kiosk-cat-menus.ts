@@ -8,8 +8,9 @@ import type { Place } from './places';
 import type { GameState } from './state';
 
 type Point = { x: number; z: number };
-const TREAT_BAG = 3,
-  TREAT_MAX = 9; // treats per bag from the kiosk; how many fit in your pockets
+/** How many cat treats a bag from the kiosk holds. */
+const TREAT_BAG = 3;
+const TREAT_MAX = 9; // how many treats fit in your pockets
 
 /** What the menus read from the rest of the game. */
 export interface KioskCatMenusDeps {
@@ -51,7 +52,7 @@ export class KioskCatMenus {
       '”Va ska dä va?”',
       [
         ['triss', 'Trisslott <small>' + fmtKr(TRISS_KR) + '</small>'],
-        ['treats', 'Kattgodis (3 st) <small>' + fmtKr(TREATS_KR) + '</small>'],
+        ['treats', 'Kattgodis (' + TREAT_BAG + ' st) <small>' + fmtKr(TREATS_KR) + '</small>'],
         ['korv', 'Korv me brö <small>' + fmtKr(KORV_KR) + ' · +' + KORV_HP + ' health</small>'],
         ['vego', 'Vegokorv me brö <small>' + fmtKr(KORV_KR) + '</small>'],
         ['rulle', 'Smålandsrulle <small>' + fmtKr(RULLE_KR) + ' · +' + RULLE_HP + ' health</small>'],

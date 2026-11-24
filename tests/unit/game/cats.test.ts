@@ -1,6 +1,16 @@
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
-import { type Cat, type CatCar, CatColony, type CatDeps, canTend } from '../../../src/game/cats';
+import type { BoxPart } from '../../../src/game/box-part';
+import {
+  CAT_COLS,
+  type Cat,
+  type CatCar,
+  CatColony,
+  type CatDeps,
+  canTend,
+  catMesh,
+  catParts,
+} from '../../../src/game/cats';
 import type { BuildingIndex } from '../../../src/world/buildings';
 
 // A colony with no houses (so nothing spawns), flat dry ground and the player at the origin, walking.
@@ -470,5 +480,39 @@ describe("a cat's menu", () => {
   it('closes when the cat bolts or you get in a car', () => {
     expect(canTend({ x: 1, z: 0, state: 'flee' }, player, false)).toBe(false);
     expect(canTend({ x: 1, z: 0, state: 'sit' }, player, true)).toBe(false);
+  });
+});
+
+describe('catParts', () => {
+  it('builds every coat standing on the ground, with a chest and muzzle only for the coats that have one', () => {
+    for (const coat of CAT_COLS) {
+      const parts = catParts(coat);
+      expect(parts).toHaveLength(coat[2] ? 13 : 11);
+      // no box reaches more than a centimetre below y = 0: the paws sink 5 mm in, so no gap shows under them
+      for (const [, h, , , y] of parts) expect(y - h / 2).toBeGreaterThanOrEqual(-0.01);
+      expect(parts.map(p => p[6])).toContain(coat[0]);
+    }
+  });
+});
+
+describe('catMesh', () => {
+  it('builds the cat from its parts, at the middle of the strays’ sizes, with its soft shadow', () => {
+    const built: unknown[] = [];
+    const shadows: THREE.Object3D[] = [];
+    const deps = {
+      boxGeo: (parts: BoxPart[]) => {
+        built.push(parts);
+        return new THREE.BufferGeometry();
+      },
+      paintMat: new THREE.MeshBasicMaterial(),
+      blob: (parent: THREE.Object3D) => {
+        shadows.push(parent);
+      },
+    };
+    const cat = catMesh(CAT_COLS[0], deps);
+    expect(built).toEqual([catParts(CAT_COLS[0])]);
+    expect(cat.scale.x).toBeCloseTo(1.225);
+    expect(cat.material).toBe(deps.paintMat);
+    expect(shadows).toEqual([cat]);
   });
 });
