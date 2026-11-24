@@ -93,10 +93,14 @@ jobs:
             echo "::warning::No merged PR here yet by $who, and the $APPROVAL_ENV environment has no required reviewers: not reviewing."
             # Say so on the PR once, so a missing review doesn't look like a broken workflow.
             mark='<!-- claude-review-unapproved -->'
-            bodies=$(gh api "repos/$GH_REPO/issues/$PR/comments" --paginate --jq '.[].body')
-            if ! grep -qF "$mark" <<<"$bodies"; then
+            # Only the bot's own comment counts, and a failed call only warns: the notice isn't worth a red check.
+            if ! bodies=$(gh api "repos/$GH_REPO/issues/$PR/comments" --paginate \
+              --jq '.[] | select(.user.login == "github-actions[bot]") | .body'); then
+              echo "::warning::Couldn't read the PR's comments, so not saying why on the PR."
+            elif ! grep -qF "$mark" <<<"$bodies"; then
               printf '%s\n**Claude review:** not run. No merged PR here yet by %s, and nobody is set up to approve a review for a new contributor (the `%s` environment has no required reviewers).\n' \
-                "$mark" "$who" "$APPROVAL_ENV" | gh api "repos/$GH_REPO/issues/$PR/comments" -F body=@- --silent
+                "$mark" "$who" "$APPROVAL_ENV" | gh api "repos/$GH_REPO/issues/$PR/comments" -F body=@- --silent ||
+                echo "::warning::Couldn't comment on the PR to say why it isn't reviewed."
             fi
           fi
 
@@ -108,9 +112,9 @@ jobs:
     # name means no environment.
     environment: ${{ needs.gate.outputs.approval == 'true' && 'claude-review-approval' || '' }}
     # A new push cancels the review of the previous one. A cancelled review records no marker, so the next one also
-    # covers the commits it missed. Nor does it record its cost: the action is killed before it writes its log, so
-    # what a cancelled review spent is missing from the PR's total. On the job, not the workflow, so a run the job's condition skips, such as a draft's,
-    # doesn't cancel a review.
+    # covers the commits it missed. Nor does it record its cost: the summary step doesn't run on a cancelled job, so
+    # what a cancelled review spent is missing from the PR's total. On the job, not the workflow, so a run the job's
+    # condition skips, such as a draft's, doesn't cancel a review.
     concurrency:
       group: claude-review-${{ github.event.pull_request.number }}
       cancel-in-progress: true
@@ -127,6 +131,7 @@ jobs:
       GH_REPO: ${{ github.repository }}
       PR: ${{ github.event.pull_request.number }}
       HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      AUTHOR: ${{ github.event.pull_request.user.login }}
       BASE_REF: ${{ github.event.pull_request.base.ref }}
       OPUS_ABOVE_LINES: 400 # added plus removed lines in a later push
     steps:
@@ -182,9 +187,16 @@ jobs:
           fi
 
           # The action refuses to run a workflow that differs from main's, so don't start it for a PR that changes this
-          # one: the summary comment says why it wasn't reviewed. The run uses the PR merged into main, so a PR that is
-          # only behind main runs main's copy: compare with the merge base, not with main.
-          if ! git diff --quiet "$merge_base" HEAD -- .github/workflows/claude-review.yml; then
+          # one: the summary comment says why it wasn't reviewed. The run uses the PR merged into its base, so compare
+          # that merge commit's copy: a PR that is only behind main runs main's copy, and one stacked on a PR that
+          # changes the workflow runs that PR's. If the merge commit can't be fetched, compare the PR's own changes.
+          wf=.github/workflows/claude-review.yml
+          if git fetch -q origin "$GITHUB_SHA" 2>/dev/null; then
+            git diff --quiet origin/main "$GITHUB_SHA" -- "$wf" && wf_changed=false || wf_changed=true
+          else
+            git diff --quiet "$merge_base" HEAD -- "$wf" && wf_changed=false || wf_changed=true
+          fi
+          if [ "$wf_changed" = true ]; then
             echo "workflow_changed=true" >>"$GITHUB_OUTPUT"
             echo "since=$since" >>"$GITHUB_OUTPUT"
             echo "mode=$mode" >>"$GITHUB_OUTPUT"
@@ -206,9 +218,10 @@ jobs:
           git show "origin/main:AGENTS.md" >.claude-review/AGENTS.md 2>/dev/null || cp AGENTS.md .claude-review/AGENTS.md
           gh pr view "$PR" --json title,body,author,labels >.claude-review/pr.json
           # Inline comments, review summaries and top-level comments: findings are raised in all three. Only those by
-          # people with write access and by the review's own bots: anyone can comment on a public repo's PR, and Claude
-          # reads these, so an outsider's comment could steer the review.
-          trusted='select((.author_association | IN("OWNER", "MEMBER", "COLLABORATOR")) or (.user.login | IN("github-actions[bot]", "claude[bot]")))'
+          # people with write access, the PR's author (known, or approved by a maintainer) and the review's own bots:
+          # anyone can comment on a public repo's PR, and Claude reads these, so an outsider's comment could steer the
+          # review. A login is only letters, digits and hyphens, so it is safe inside the filter.
+          trusted="select((.author_association | IN(\"OWNER\", \"MEMBER\", \"COLLABORATOR\")) or (.user.login | IN(\"$AUTHOR\", \"github-actions[bot]\", \"claude[bot]\")))"
           {
             gh api "repos/$GH_REPO/pulls/$PR/comments" --paginate --jq ".[] | $trusted | {user: .user.login, path, line, body}"
             gh api "repos/$GH_REPO/pulls/$PR/reviews" --paginate --jq ".[] | select(.body != \"\") | $trusted | {user: .user.login, body}"
@@ -298,7 +311,7 @@ jobs:
           # wasn't reviewed, so the maintainer knows to read it more closely.
           elif [ "$CONCLUSION" = success ] || [ "$subtype" = error_max_turns ]; then
             fallback="No summary returned."
-            [ "$subtype" != error_max_turns ] || fallback="It ran out of turns before it finished: what it found is posted inline, and the rest of $scope isn't reviewed, by this run or a later one."
+            [ "$subtype" != error_max_turns ] || fallback="It ran out of turns before it finished: what it found is posted inline, and what it didn't reach isn't reviewed, by this run or a later one."
             summary=$(jq -r --arg f "$fallback" '.summary // $f' <<<"${STRUCTURED:-"{}"}")
             # Only a review that ran moves the marker, so a failed one is retried in full on the next push.
             sha=$HEAD_SHA

@@ -9,7 +9,7 @@ You are reviewing a pull request to Vrigstad Joyride. The workflow has already w
 - `full.patch`: the whole PR, for context on a later push. Don't comment on lines that are only in `full.patch` and not in `diff.patch`: they were reviewed before.
 - `commits.txt`: the PR's commits, oldest last.
 - `AGENTS.md`: the repo's rules, from main, so the PR can't change the rules it's reviewed by. If the PR changes `AGENTS.md`, review that change too.
-- `comments.json`: what has already been said on the PR, by the people with write access and by earlier reviews: inline comments (with `path` and `line`), review summaries and top-level comments.
+- `comments.json`: what has already been said on the PR, by the people with write access, by the PR's author and by earlier reviews: inline comments (with `path` and `line`), review summaries and top-level comments.
 
 ## Goal
 
