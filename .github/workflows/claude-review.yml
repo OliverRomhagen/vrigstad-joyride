@@ -4,7 +4,8 @@ name: Claude review
 # already had a thorough pass. What the review looks for is in .github/claude-review.md, read from main.
 # - The first review covers the whole PR. Later pushes get a review of only the commits since the last one, which a
 #   marker in the summary comment records. After a merge from main, a rebase (gh stack sync) or an amend, that is
-#   only what changed besides the new base; a push that only moved the PR onto a new base isn't reviewed.
+#   only what changed besides the new base; a push that only moved the PR onto a new base isn't reviewed. Generated
+#   and downloaded data (data/vrigstad.json, data/raw/, package-lock.json) is left out of every review.
 # - Opus does the full review; Sonnet, which costs less, reviews later pushes, unless one changes more than
 #   OPUS_ABOVE_LINES lines: that is as much as a new PR, so it gets Opus too.
 # - Drafts are skipped until they're ready for review, and so are PRs from forks: their runs get no secrets.
@@ -124,8 +125,8 @@ jobs:
       contents: read
       pull-requests: write
     # No GH_TOKEN here: only the steps that call gh get the job's token. The review step gets it too, as the action's
-    # github_token, and the action puts it in its own env, which Claude's process inherits and its Read tool could
-    # reach (/proc/self/environ). So it is this job's token, which can only read the code and comment on PRs, rather
+    # github_token, and the action puts it in its own env, which Claude's process inherits, and in the origin URL in
+    # .git/config: Claude's Read tool could reach either. So it is this job's token, which can only read the code and comment on PRs, rather
     # than the Claude app's, which can also push; Claude gets no shell; and the comments it reads are only trusted ones.
     env:
       GH_REPO: ${{ github.repository }}
@@ -139,8 +140,8 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
-          # Don't leave the job's token in the git config, where Claude's Read tool could reach it. The repo is public,
-          # so the later fetch needs no token.
+          # The action writes its own token into the origin URL anyway; this only avoids a second copy. The repo is
+          # public, so the fetches before the review need no token.
           persist-credentials: false
 
       - name: Gather the review's context
@@ -186,10 +187,11 @@ jobs:
             mode=full from=$merge_base since=$merge_base
           fi
 
-          # Generated files are left out of the patches and the line count: data/vrigstad.json is one line of about
-          # 200 KB, so a data PR would hand Claude 400 KB of diff while counting as 2 changed lines. Their sources
-          # (tools/process.py, package.json) are reviewed.
-          generated=(':(exclude)data/vrigstad.json' ':(exclude)package-lock.json')
+          # Generated and downloaded files are left out of the patches and the line count: data/vrigstad.json is one
+          # line of about 200 KB, so a data PR would hand Claude 400 KB of diff while counting as 2 changed lines, and
+          # an OSM refresh adds thousands of lines of data/raw/osm.json. What makes them (tools/, package.json) is
+          # reviewed.
+          generated=(':(exclude)data/vrigstad.json' ':(exclude)data/raw/' ':(exclude)package-lock.json')
           git diff "$from..HEAD" -- . "${generated[@]}" >.claude-review/diff.patch
           # A push that only moved the PR onto a new base, or a PR or push that only changes generated files, leaves
           # nothing to review: record it and skip the review.
@@ -197,7 +199,7 @@ jobs:
             echo "nothing=true" >>"$GITHUB_OUTPUT"
             echo "since=$since" >>"$GITHUB_OUTPUT"
             echo "mode=$mode" >>"$GITHUB_OUTPUT"
-            echo "Nothing new to review since $since." >>"$GITHUB_STEP_SUMMARY"
+            echo "Nothing to review in $mode mode since $since: no changes outside generated files." >>"$GITHUB_STEP_SUMMARY"
             exit 0
           fi
           git diff "$merge_base..HEAD" -- . "${generated[@]}" >.claude-review/full.patch
@@ -293,7 +295,7 @@ jobs:
           subtype=$(jq -r '[.[] | select(.type == "result")] | last | .subtype // ""' "$EXECUTION_FILE" 2>/dev/null || true)
           if [ "$NOTHING" = true ]; then
             if [ "$MODE" = full ]; then
-              summary="Nothing to review: the PR only changes generated files (\`data/vrigstad.json\`, \`package-lock.json\`)."
+              summary="Nothing to review: the PR changes nothing outside generated and downloaded data (\`data/vrigstad.json\`, \`data/raw/\`, \`package-lock.json\`)."
             else
               summary="Nothing new to review: the push only moved the PR onto a new base, or only changed generated files."
             fi
