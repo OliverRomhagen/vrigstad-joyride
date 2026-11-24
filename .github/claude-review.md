@@ -27,9 +27,21 @@ In order of importance:
 
 1. **Bugs:** wrong behaviour, a crash, a state the code doesn't handle, an off-by-one, a race, a leak (meshes, listeners or timers never disposed), a per-frame allocation in the game loop.
 2. **Architecture rules** in AGENTS.md that the tools don't catch: three.js or the DOM in gameplay rules, rendering that writes to sim state, gameplay that reads keys instead of intents, `Math.random()` in gameplay, world code copied into a page instead of shared.
-3. **Missing tests:** a new gameplay rule with no unit test, or a major feature with no smoke step.
-4. **Conventions** a reader would trip over: a gameplay number with no named constant or unit, a car tunable outside the registry, a misleading name (see Naming), UI text not in English or in-game speech not in Swedish.
-5. **The PR's own claims:** a description that says something the diff doesn't do, or leaves out what isn't done.
+3. **Project rules** in AGENTS.md that no tool checks:
+   - a new runtime dependency (in `package.json`'s `dependencies`) that the PR description gives no reason for. Dev dependencies are fine;
+   - a new third-party asset, model, font or sound whose licence isn't added to `LICENSE`;
+   - a change that hides or drops the OpenStreetMap attribution on either page;
+   - a lab experiment that breaks the lab rules:
+     - a gate that isn't a `lab.on('<id>')` check in page code;
+     - its code imported statically rather than with `import()` behind the check, unless it must apply before the page draws;
+     - no entry in `LAB_EXPERIMENTS` with a `cost`;
+     - the game running differently with the flag off;
+   - text or an NPC line that names what looks like a real, identifiable person. Only the maintainers know who is real, so ask whether they have agreed to it rather than assert that it breaks the rule.
+4. **Missing tests:** a new gameplay rule with no unit test, or a major feature with no smoke step.
+5. **Conventions** a reader would trip over: a gameplay number with no named constant or unit, a car tunable outside the registry, a misleading name that the PR introduces or changes (see Naming), UI text not in English or in-game speech not in Swedish. Don't ask for renames of code the PR only moves out of a `main.ts`, which keeps its names in that PR, or of code it doesn't otherwise change: AGENTS.md says neither is renamed just to follow the rules.
+6. **The PR's own claims:** a description that says something the diff doesn't do, or leaves out what isn't done.
+
+Some advice belongs in the summary, with no inline comment. AGENTS.md asks for one concern per PR. If the PR mixes concerns, such as a refactor with a feature, or reformatting of code it doesn't otherwise change, suggest splitting it. If it holds a rename that touches many lines, suggest a separate `refactor` PR for the rename. Say which parts would split off. It's advice, not a finding.
 
 Don't report:
 
@@ -49,4 +61,4 @@ When you're done, return the structured output. The workflow posts each finding 
 - `findings`: one entry per finding. `path` is the file's path from the repo root (`src/game/police.ts`), `line` is the line on the new side of `diff.patch` where the problem is, and `body` is the comment. Start `body` with the severity in bold, **Bug**, **Rule**, **Test**, **Convention** or **Claim**, then say what breaks and when, in a sentence or two. Add a suggestion block only when the fix is short and you're sure of it.
 - A finding that isn't on a changed line (a counterpart that's missing elsewhere) goes on the nearest changed line it relates to, naming the file and line it is about. A finding on a line outside the diff goes in the summary comment instead.
 - Write in English, plainly, to the PR's author. No images, HTML or @-mentions: the workflow breaks them, and a suggestion block that holds `<`, `@` or `![` is shown as plain code.
-- `summary`: at most three sentences, saying what you found or that you found nothing.
+- `summary`: at most three sentences, saying what you found or that you found nothing, and a suggestion to split the PR when it needs one.
