@@ -36,7 +36,17 @@ const arg = <N extends string, T>(name: N, parse: (word: string) => T, choices?:
 
 /** A whole number, within [min, max] when given. */
 export function int<N extends string>(name: N, range: { min?: number; max?: number } = {}): Arg<N, number> {
-  return arg(name, w => inRange(name, /^[+-]?\d{1,15}$/.test(w) ? Number(w) : Number.NaN, range, 'a whole number'));
+  return arg(name, w => {
+    if (!/^[+-]?\d+$/.test(w)) throw new UsageError(`${name} is a whole number.`);
+    const v = Number(w);
+    // Past 2^53 a number can't be told from its neighbours, so it's out of range, whatever range was asked for.
+    if (!Number.isSafeInteger(v))
+      throw range.min === undefined && range.max === undefined
+        ? new UsageError(`${name} is out of range.`)
+        : rangeError(name, range);
+    // -0 passes { min: 0 } but prints as 0 and divides into -Infinity: hand on 0.
+    return inRange(name, v === 0 ? 0 : v, range, 'a whole number');
+  });
 }
 
 /** A number, decimals allowed (a comma works as the decimal mark too), within [min, max] when given. */
@@ -112,9 +122,12 @@ export function optional<N extends string, T>(a: Arg<N, T>): Arg<N, T> & { reado
 
 function inRange(name: string, v: number, { min, max }: { min?: number; max?: number }, kind: string) {
   if (!Number.isFinite(v)) throw new UsageError(`${name} is ${kind}.`);
-  if ((min !== undefined && v < min) || (max !== undefined && v > max))
-    throw new UsageError(`${name} is from ${min ?? '…'} to ${max ?? '…'}.`);
+  if ((min !== undefined && v < min) || (max !== undefined && v > max)) throw rangeError(name, { min, max });
   return v;
+}
+
+function rangeError(name: string, { min, max }: { min?: number; max?: number }) {
+  return new UsageError(`${name} is from ${min ?? '…'} to ${max ?? '…'}.`);
 }
 
 export interface TypedCommand<A extends readonly AnyArg[]> {
