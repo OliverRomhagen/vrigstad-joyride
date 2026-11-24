@@ -174,12 +174,11 @@ function steer(e: KeyboardEvent) {
       {/each}
     </div>
     <button type="button" class="step" onclick={() => step(1)} aria-label="Next car">›</button>
-    <!-- the wiki's footer isn't drawn here, and the hall and carport are OSM outlines (AGENTS.md, Data and coordinates) -->
-    <p class="credit">
-      Map data © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a> · Car models by Axel
-      Tidehorn, <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>
-    </p>
   </section>
+  <!-- the wiki's footer isn't drawn here, and the hall and carport are OSM outlines, so their credit stays in sight
+       (AGENTS.md, Data and coordinates): a quiet line along the window's foot, as on a map. The car models' credit is in
+       the papers. -->
+  <p class="credit">Map data © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a></p>
 
   {#if status === 'loading'}
     <p class="notice" role="status">Opening the gate…</p>
@@ -310,7 +309,7 @@ header > * {
 .card {
   position: absolute;
   left: 50%;
-  bottom: 20px;
+  bottom: 30px; /* over the credit */
   translate: -50% 0;
   width: min(40rem, calc(100% - 32px));
   display: grid;
@@ -405,11 +404,14 @@ dd i {
   box-shadow: 0 0 0 2px var(--road);
 }
 .credit {
-  grid-column: 1 / -1;
-  margin: 4px 0 0;
+  position: absolute;
+  inset: auto 0 6px;
+  margin: 0;
   text-align: center;
   font-size: 0.75rem;
-  color: var(--muted);
+  line-height: 1.4;
+  color: var(--cream);
+  text-shadow: 0 1px 2px #000c; /* it lies on the yard's gravel, light or dark as the camera turns */
 }
 .credit a {
   color: inherit;
@@ -471,7 +473,7 @@ dd i {
     font-size: 0.9375rem;
   }
   .card {
-    bottom: 12px;
+    bottom: 28px;
     padding: 10px 6px;
   }
   .step {
