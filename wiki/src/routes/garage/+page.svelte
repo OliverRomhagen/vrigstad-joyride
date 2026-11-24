@@ -192,9 +192,9 @@ function steer(e: KeyboardEvent) {
        the papers. -->
   <p class="credit">Map data © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a></p>
 
-  {#if status === 'loading'}
-    <p class="notice" role="status">Opening the gate…</p>
-  {:else if status === 'failed'}
+  <!-- always in the page, so it can fade out as the yard fades in; once gone it is hidden from everyone -->
+  <p class={['notice', 'wait', { gone: status !== 'loading' }]} role="status">Opening the gate…</p>
+  {#if status === 'failed'}
     <p class="notice" role="alert">
       Plåt-Pelle can't find the keys to this one. Try another car.
       <!-- in dev the models come from the game's own dev server (site.ts), the likeliest reason they don't load -->
@@ -473,6 +473,27 @@ dd i {
   text-transform: uppercase;
   color: var(--road);
   pointer-events: none;
+}
+/* the wait for the first car: said only if the wait is long enough to notice, and it fades as the yard fades in */
+.gone {
+  visibility: hidden;
+  opacity: 0;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .wait {
+    animation: wait-in 300ms 500ms ease-out both;
+  }
+  .wait.gone {
+    animation: none;
+    transition:
+      opacity 400ms ease-out,
+      visibility 0s 400ms;
+  }
+}
+@keyframes wait-in {
+  from {
+    opacity: 0;
+  }
 }
 .notice small {
   font: 500 0.9375rem var(--font);

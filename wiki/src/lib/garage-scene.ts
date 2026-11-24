@@ -22,6 +22,8 @@ const MAX_DIST_M = 26; // how far you can zoom out, unless the window needs more
 const ZOOM_OUT = 1.4; // and then this much past the fitted distance
 const VIEW_MIN = 0.35; // the share of the window's height the scene keeps however tall the header and card are
 const LOOK_AT_M = 0.8; // the height above the ring the camera looks at
+const ARRIVE_S = 1.8; // how long the camera takes to ease in on the first car, as the yard fades in
+const ARRIVE_ZOOM = 0.84; // how wide it starts, as a share of its zoom once it has arrived
 
 /** How much of the window the page's header covers at the top and its card at the bottom (px): the scene is framed in between. */
 export type Margins = { top: number; bottom: number };
@@ -67,6 +69,8 @@ export class GarageScene {
   private stopped = false;
   private paint: string | undefined;
   private margins: Margins = { top: 0, bottom: 0 };
+  /** how far the camera has eased in on the first car, 0 to 1; 1 before it starts too, when the yard isn't shown yet */
+  private arrived = 1;
 
   constructor(private readonly g: GarageSceneDeps) {
     // the registry's paths (media/vehicles/…) are the game's: load the models from the game, served next to the wiki, so they
@@ -119,6 +123,12 @@ export class GarageScene {
 
     const you = { x: 0, z: 0 };
     stage.frame = dt => {
+      if (this.arrived < 1) {
+        this.arrived = Math.min(1, this.arrived + dt / ARRIVE_S);
+        // fast at first, then settling: the zoom alone, so your own dragging and the window's fit go on under it
+        camera.zoom = ARRIVE_ZOOM + (1 - ARRIVE_ZOOM) * (1 - (1 - this.arrived) ** 3);
+        camera.updateProjectionMatrix();
+      }
       for (const s of this.swaps) {
         s.t = Math.min(1, s.t + dt / SWAP_S);
         const off = offsetOf(s);
@@ -239,6 +249,13 @@ export class GarageScene {
     this.stage.scene.add(car);
     this.stage.hasDragged = false; // a new car turns on the ring again, until you drag it round yourself
     this.swaps.push({ car, from: first ? 0 : startOffset, to: 0, t });
+    // the first car is what the yard fades in on (Skroten.svelte): the camera comes in on it meanwhile, unless less
+    // motion is asked for
+    if (first && !this.stage.still) {
+      this.arrived = 0;
+      this.stage.camera.zoom = ARRIVE_ZOOM;
+      this.stage.camera.updateProjectionMatrix();
+    }
     this.repaint(this.paint);
     this.g.carShown();
   }
