@@ -24,9 +24,9 @@ name: Claude review
 # - The secret is meant to live in the claude-review environment, which only main may deploy to, rather than in the
 #   repo's secrets, which a workflow pushed on any branch can read. Until it is moved there, the repo's are used.
 # - Claude runs with --restricted: Read, Grep and Glob only, inside the checkout (symlinks out of it included), and
-#   none of the PR's settings, hooks or MCP servers. It has no GitHub token and no way to post: it returns its
-#   findings, and the last step strips images, links and @-mentions from them, checks them for the secret, and
-#   posts them.
+#   none of the PR's settings, hooks, MCP servers or CLAUDE.md. It has no GitHub token and no way to post: it
+#   returns its findings, and the last step breaks images, HTML and @-mentions in them, checks them for the secret,
+#   and posts them.
 on:
   pull_request_target:
     types: [opened, reopened, ready_for_review, synchronize, edited]
@@ -335,11 +335,13 @@ jobs:
             "summary":{"type":"string"},
             "findings":{"type":"array","items":{"type":"object","required":["path","line","body"],"properties":{
               "path":{"type":"string"},"line":{"type":"integer"},"body":{"type":"string"}}}}}}'
-          # --restricted: only the file tools, confined to the checkout, and none of the PR's settings, hooks or MCP
-          # servers. The deny rule keeps Claude out of .git too.
+          # --restricted: only the file tools, confined to the checkout, and none of the PR's settings, hooks, MCP
+          # servers or CLAUDE.md. --safe-mode turns off the rest of what a checkout can bring (skills, agents,
+          # commands), in case a later version of --restricted lets one through. The deny rule keeps Claude out of
+          # .git too.
           status=0
           timeout "${REVIEW_MINUTES}m" claude -p "$prompt" \
-            --restricted --strict-mcp-config --no-session-persistence \
+            --restricted --safe-mode --strict-mcp-config --no-session-persistence \
             --tools Read,Grep,Glob \
             --settings '{"permissions":{"deny":["Read(./.git/**)","Read(//proc/**)"]}}' \
             --model "$MODEL" --max-turns "$TURNS" \
@@ -453,20 +455,29 @@ jobs:
             echo "::error::The review's output contained its secret; nothing it returned was posted."
           fi
 
-          # No images (GitHub fetches them when the comment is shown, which would send what's in their URL away),
-          # no links or embedded HTML, and no @-mentions (a zero-width space after the @), however the review was
-          # steered.
+          # No images (GitHub fetches them when the comment is shown, which would send what's in their URL away), no
+          # HTML, no link definitions, no rendered diagrams or maps, and no @-mentions, however the review was steered.
+          # A zero-width space breaks each, in one pass that can't rebuild what it breaks (stripping a tag can:
+          # <im<img>g ...>), and is invisible inside code. Links stay: they leak only when someone clicks one. A
+          # suggestion that would change is shown as plain code, so committing it can't add the zero-width spaces.
           clean='def clean($max):
-            gsub("!\\["; "[")
-            | gsub("(?i)<\\s*/?\\s*(img|picture|source|video|audio|iframe|object|embed|svg|image|a|link|meta|style|script)\\b[^>]*>"; "")
-            | gsub("\\[(?<t>[^\\]]*)\\]\\((?<u>[^)]*)\\)"; "\(.t) (`\(.u | gsub("`"; ""))`)")
+            gsub("<(?<c>[A-Za-z/!?])"; "<\u200b\(.c)")
+            | gsub("!\\["; "!\u200b[")
             | gsub("@(?<c>[A-Za-z0-9])"; "@\u200b\(.c)")
-            | .[0:$max];'
+            | gsub("(?<p>^|\\n)(?<a>[ \\t]*\\[[^\\]\\n]+\\]):"; "\(.p)\(.a)\u200b:")
+            | gsub("(?<f>```|~~~)[ \\t]*(?i:mermaid|geojson|topojson|stl)"; "\(.f)text")
+            | .[0:$max];
+          def body($max):
+            . as $raw | clean($max) as $c
+            | if $c != $raw and ($raw | test("(```|~~~)[ \\t]*suggestion")) then
+                ($c | gsub("(?<f>```|~~~)[ \\t]*suggestion"; "\(.f)text"))
+                + "\n\n(Shown as plain code, not as a suggestion: it held characters the workflow changes, so committing it would have changed them too.)"
+              else $c end;'
           # Only Claude's summary: the others are this step's own, links included.
           if [ "$subtype" = success ] && [ "$leaked" = false ]; then
             summary=$(jq -rn --arg s "$summary" "$clean"' $s | clean(2000)')
           fi
-          jq --argjson max "$MAX_BODY_CHARS" "$clean"' map(.body |= clean($max) | .path |= (gsub("`"; "") | clean(300)))' \
+          jq --argjson max "$MAX_BODY_CHARS" "$clean"' map(.body |= body($max) | .path |= (gsub("`"; "") | clean(300)))' \
             "$findings" >"$findings.tmp" && mv "$findings.tmp" "$findings"
 
           # All the inline findings as one review, so the author gets one notification.
@@ -511,9 +522,9 @@ jobs:
             echo "<sub>This review: \$$cost · this PR so far: \$$total over $runs $reviews$COST_NOTE.</sub>"
           } >"$RUNNER_TEMP/comment.md"
 
-          if [ -n "$COMMENT_ID" ]; then
-            gh api -X PATCH "repos/$GH_REPO/issues/comments/$COMMENT_ID" -F body=@"$RUNNER_TEMP/comment.md" --silent
-          else
+          # A new comment when there is none, or when someone deleted it since it was read.
+          if [ -z "$COMMENT_ID" ] ||
+            ! gh api -X PATCH "repos/$GH_REPO/issues/comments/$COMMENT_ID" -F body=@"$RUNNER_TEMP/comment.md" --silent; then
             gh api "repos/$GH_REPO/issues/$PR/comments" -F body=@"$RUNNER_TEMP/comment.md" --silent
           fi
           echo "Review cost: \$$cost (PR total \$$total over $runs $reviews)$COST_NOTE" >>"$GITHUB_STEP_SUMMARY"

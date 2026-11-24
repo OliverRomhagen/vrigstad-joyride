@@ -47,5 +47,5 @@ When you're done, return the structured output. The workflow posts each finding 
 
 - `findings`: one entry per finding. `path` is the file's path from the repo root (`src/game/police.ts`), `line` is the line on the new side of `diff.patch` where the problem is, and `body` is the comment. Start `body` with the severity in bold, **Bug**, **Rule**, **Test**, **Convention** or **Claim**, then say what breaks and when, in a sentence or two. Add a suggestion block only when the fix is short and you're sure of it.
 - A finding that isn't on a changed line (a counterpart that's missing elsewhere) goes on the nearest changed line it relates to, naming the file and line it is about. A finding on a line outside the diff goes in the summary comment instead.
-- Write in English, plainly, to the PR's author. No images, links or @-mentions: the workflow takes them out.
+- Write in English, plainly, to the PR's author. No images, HTML or @-mentions: the workflow breaks them, and a suggestion block that holds `<`, `@` or `![` is shown as plain code.
 - `summary`: at most three sentences, saying what you found or that you found nothing.
