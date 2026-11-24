@@ -30,6 +30,12 @@ Live site: https://oliverromhagen.github.io/vrigstad-joyride/ (GitHub Pages, fro
 
 - Work on a branch and open a PR; don't push to `main`. For work on an issue, start the branch with `gh issue develop <n> --checkout`: GitHub then links the branch, and the PR made from it, to the issue. For work that only does part of an issue, make the branch yourself (see **Link** below).
 - A `feat` PR gets a playable preview link commented on it; add the `preview` label to get one for any other PR (see "Preview links" in the README).
+- A PR into `main` that changes code, a workflow or AGENTS.md gets a review by Claude once it's out of draft ([#469](https://github.com/OliverRomhagen/vrigstad-joyride/issues/469), an experiment), posted as inline comments with a summary comment that shows what it cost.
+  - PRs from forks aren't reviewed. Nor are the upper PRs of a stack until they're retargeted to `main`, when the one below them merges, and then pushed again: the push from `gh stack sync` gets the review, so the lower PR's merged code isn't reviewed again.
+  - What the review looks for is in `.github/claude-review.md`. Change it there.
+  - The workflow, `.github/workflows/claude-review.yml`, runs from `main`, and so does the instructions file. A change to either takes effect once it merges, not in its own PR.
+  - A PR by someone with no merged PR here yet waits until a maintainer approves its review, on the run's page (the `claude-review-approval` environment).
+  - Files that `.gitattributes` on `main` marks `linguist-generated` or `linguist-vendored` are left out of the review: mark a new generated file there. The summary folds those away. Binary files and very large patches are left out too, and very long lines are cut short; the summary lists these to read by hand.
 - Keep a PR to one concern. Don't mix a refactor with a feature, and don't reformat code you aren't otherwise changing.
 - Reference the issue in the PR (`Closes #12`, or `Part of #12` if it doesn't fully close it). Say in the PR what is *not* done. The PR template (`.github/pull_request_template.md`) asks for that. When a PR is opened, `.github/workflows/pr-triage.yml` assigns it to its author when they have write access, and comments while the description references no issue.
 - PRs that build on each other are a stack. Prefer `gh stack` (`gh extension install github/gh-stack`): `gh stack init` or `add` builds the stack, `gh stack submit` pushes it and opens the PRs, and `gh stack sync` rebases what's left after a lower PR merges or a lower branch is rebased: until then the PRs above it still hold its old commits, and their diffs repeat them. Merge from the bottom up. When a PR outside the stack targets one of its branches, merge one PR at a time, never the whole stack at once: merged together, the stack's branches are deleted together, and GitHub closes that PR instead of moving it to `main`. After a squash merge it still holds the stack's old commits, so its author rebases it onto `main` (`git rebase --onto origin/main <the old tip of the branch it targeted>`).
@@ -74,6 +80,7 @@ GitHub issues are the backlog: every bug, idea and piece of work is one issue.
 
 - One branch (and worktree) per agent and task. Bring your branch up to date with `main` before opening a PR and again before merging.
 - Most features still add a line or two to `src/game/main.ts`, where the modules are connected, so expect small conflicts there. Keep changes in their own section of the file where you can.
+- To see whether a branch conflicts with `main`, or with an open PR that may merge first, without touching the worktree or the index: after `git fetch origin`, `git merge-tree --write-tree --name-only --no-messages origin/main <branch>` merges the two. It prints a tree id, then the files that conflict, if any, and exits with 1 when there is a conflict. To compare with an open PR instead, fetch it (`git fetch origin pull/<n>/head`) and pass `FETCH_HEAD` in place of `origin/main`.
 - Say how you tested in the PR, and be honest about what wasn't tested ("not played by hand on a phone").
 
 ### Lab experiments
