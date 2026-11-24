@@ -19,6 +19,7 @@ export interface ActionPromptDeps {
   nearPlace(): Place | null;
   skrotenBuys(): boolean; // the car you drive stands on Skroten's ring, and Skroten would buy it
   skrotenRepairs(): number | null; // what Plåt-Pelle asks to mend the car you drive on the workshop's lift; null when he wouldn't
+  garageHere?(): boolean; // the car you drive stands on the lift and Plåt-Pelle's garage would take it (#3, lab `garage`)
   nearOwner(): boolean; // you stand on foot next to Plåt-Pelle
   nearCat(): Cat | null;
   nearestCar(): Car | null;
@@ -82,6 +83,9 @@ export class ActionPrompt {
     } else if (game.inCar && game.pcar && skrotenBuys()) {
       pr.hidden = this.g.menuOpen || tooFastToGetOut(game.pcar);
       pr.innerHTML = '<kbd>E</kbd>Sell the ' + carName(game.pcar) + ' at Skroten';
+    } else if (game.inCar && game.pcar && this.g.garageHere?.()) {
+      pr.hidden = this.g.menuOpen || tooFastToGetOut(game.pcar);
+      pr.innerHTML = '<kbd>E</kbd>Tune the ' + carName(game.pcar) + " at Plåt-Pelle's";
     } else if (game.inCar && game.pcar && repairKr !== null) {
       pr.hidden = this.g.menuOpen || tooFastToGetOut(game.pcar);
       pr.innerHTML = '<kbd>E</kbd>Repair the ' + carName(game.pcar) + ' · ' + fmtKr(repairKr);

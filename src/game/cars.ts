@@ -11,6 +11,7 @@ import { choice, command, described } from './command-args';
 import type { Commands } from './commands';
 import { impactSpeed, topSpeedShare, wrecked } from './health';
 import { bodyRadius, nearestBetweenSpines, pushBodyOut } from './sim/car-body';
+import { type CarMods, modAcc, modTop } from './sim/car-mods';
 import { approach, rearPivotShift, yawRate } from './sim/handling';
 import type { CarType, VehicleSpec } from './sim/vehicle-spec';
 
@@ -109,6 +110,7 @@ export interface Car extends Point {
   dmg: number; // damage, and the clock (s) of the last hit (health.ts)
   hitAt: number;
   color: string; // the paint (sRGB), one of T.cols
+  mods?: CarMods; // what Plåt-Pelle did to it (#3); none on a car as it came
 }
 
 /** A new car standing still at (x, z), nose towards h. `color` is the caller's roll from T.cols, so the world's rolls stay in their order. */
@@ -498,7 +500,9 @@ export class Fleet {
       thr = c.thr = 0;
       c.boost = 0;
     } // the engine is dead: it only rolls to a stop
-    const road = roads.nearestRoad(c.x, c.z).d < 0.6;
+    const road = roads.nearestRoad(c.x, c.z).d < 0.6,
+      acc = c.T.acc * modAcc(c.mods),
+      top = c.T.max * modTop(c.mods); // the type's, unless Plåt-Pelle tuned the engine (#3)
     c.wet = water.inWater(c.x, c.z);
     if (c.drift) {
       if (!brake || c.v < DRIVING.DRIFT_KEEP_V || c.wet) {
@@ -533,21 +537,20 @@ export class Fleet {
       }
     }
     if (c.drift) {
-      c.v += ((thr > 0 ? c.T.acc * DRIVING.DRIFT_THR * thr : 0) - DRIVING.DRIFT_DRAG) * dt;
+      c.v += ((thr > 0 ? acc * DRIVING.DRIFT_THR * thr : 0) - DRIVING.DRIFT_DRAG) * dt;
       if (Math.abs(c.slip) > 0.25) c.charge += dt;
     } else if (brake) c.v -= Math.sign(c.v) * Math.min(Math.abs(c.v), DRIVING.BRAKE_MS2 * dt);
     else if (c.loose > 0 && Math.abs(c.slip) > 0.1 && c.v > DRIVING.DRIFT_KEEP_V)
-      c.v += ((thr > 0 ? c.T.acc * DRIVING.DRIFT_THR * thr : 0) - DRIVING.DRIFT_DRAG) * dt; // still scrubbing sideways, or tapping Space would beat holding it
-    else if (thr > 0)
-      c.v += (c.v < 0 ? DRIVING.COUNTER_MS2 : c.T.acc * (1 - (0.6 * Math.max(0, c.v)) / c.T.max)) * thr * dt;
-    else if (thr < 0) c.v += (c.v > 0.5 ? DRIVING.COUNTER_MS2 : c.T.acc * 0.6) * thr * dt;
+      c.v += ((thr > 0 ? acc * DRIVING.DRIFT_THR * thr : 0) - DRIVING.DRIFT_DRAG) * dt; // still scrubbing sideways, or tapping Space would beat holding it
+    else if (thr > 0) c.v += (c.v < 0 ? DRIVING.COUNTER_MS2 : acc * (1 - (0.6 * Math.max(0, c.v)) / top)) * thr * dt;
+    else if (thr < 0) c.v += (c.v > 0.5 ? DRIVING.COUNTER_MS2 : acc * 0.6) * thr * dt;
     else c.v -= Math.sign(c.v) * Math.min(Math.abs(c.v), (road ? 2 : 5) * dt);
     if (c.boost > 0) {
       c.boost -= dt;
       if (c.wet) c.boost = 0;
     } // water puts the turbo out
     const max =
-      (c.wet ? 2.5 : c.T.max * (road ? 1 : c.T.off)) * (c.boost > 0 ? DRIVING.TURBO_TOP : 1) * topSpeedShare(c.dmg);
+      (c.wet ? 2.5 : top * (road ? 1 : c.T.off)) * (c.boost > 0 ? DRIVING.TURBO_TOP : 1) * topSpeedShare(c.dmg);
     if (c.boost > 0 && c.v < max) c.v = Math.min(max, c.v + DRIVING.TURBO_ACC * dt); // only up to the limit, so it never cancels the overspeed braking below
     if (c.v > max) c.v = Math.max(max, c.v - 14 * dt);
     if (c.v < -7) c.v = -7;

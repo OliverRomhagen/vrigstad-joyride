@@ -35,11 +35,14 @@ export interface DaylightTargets {
 export class Daylight {
   /** the sun's intensity for the time of day under a clear sky; the clouds' shade (sky.ts) multiplies it, so the camera rig sets sun.intensity */
   sunIntensity = SUN_I * LEGACY_LIGHT;
+  /** the sun's share of its midday strength under a clear sky: 0 at night, 1 at noon */
+  sunShare = 1;
   constructor(private readonly targets: DaylightTargets) {}
 
   apply(sky: Sky) {
     const { sun, hemi, sunDir, dome, fog, background } = this.targets;
     sunDir.set(sky.x, sky.y, sky.z);
+    this.sunShare = sky.sun;
     this.sunIntensity = SUN_I * LEGACY_LIGHT * sky.sun;
     sun.color.copy(SUN_DAY).lerp(SUN_LOW, sky.warm);
     hemi.intensity = HEMI_I * LEGACY_LIGHT * sky.light;

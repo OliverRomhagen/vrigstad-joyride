@@ -9,14 +9,14 @@ import type { CarType } from './sim/vehicle-spec';
 import { LIFT_RING_M, OWNER_UV, type YardCar, yardHeading, yardToWorld } from './skroten-yard';
 import type { GameState } from './state';
 
-const OWNER_SAYS = 'Plåt-Pelle: ';
+export const OWNER_SAYS = 'Plåt-Pelle: ';
 const OWNER_AT = yardToWorld(OWNER_UV.u, OWNER_UV.v);
 const TALK_M = 3; // how close you stand to talk to him
 const SALE_REACH_M = 5; // his price stays on the plate while you stand this close to the car; a little over the reach to get in
 const LOT_WRECK = OWNER_SAYS + '”Den där ä ju kaputt! Den får ja laga först. Kom tebaks sen.”';
 const WHOLE = OWNER_SAYS + '”Den ä ju hel! Dä finns inget å laga.”';
-const NO_POLICE = OWNER_SAYS + '”En polisbil? Ä du inte klok? Den rör ja inte.”';
-const CHASED = OWNER_SAYS + '”Inte mä snuten i hälarna! Kom tebaks när du ä av mä dom.”';
+export const NO_POLICE = OWNER_SAYS + '”En polisbil? Ä du inte klok? Den rör ja inte.”';
+export const CHASED = OWNER_SAYS + '”Inte mä snuten i hälarna! Kom tebaks när du ä av mä dom.”';
 /** What he says when you talk to him on foot, one after the other. */
 export const OWNER_LINES = [
   '”Tjena! Har du nån bil du vill bli av mä? Kör in den på ringen.”',
@@ -72,8 +72,8 @@ export class Skroten {
     return kr || WHOLE;
   }
 
-  // the car you drive stands on the lift
-  private onLift(c: Car | null): c is Car {
+  /** The car you drive stands on the workshop's lift. */
+  onLift(c: Car | null): c is Car {
     const { game, liftAt } = this.g;
     return !!(
       game.inCar &&

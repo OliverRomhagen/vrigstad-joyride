@@ -699,6 +699,38 @@ test.describe('game (index.html)', () => {
     expect(errors).toEqual([]);
   });
 
+  test('with ?lab=garage, Plåt-Pelle paints the car and fits neon on the lift (#3)', async ({ page }, testInfo) => {
+    const errors = watchErrors(page);
+    await page.setViewportSize({ width: 640, height: 360 });
+    await page.goto('/index.html?dev&lab=garage');
+    await page.locator('#go').click();
+    await page.keyboard.press('Backquote');
+    for (const line of ['kr 2000', 'car volvo240']) {
+      await page.keyboard.type(line);
+      await page.keyboard.press('Enter');
+    }
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('KeyE');
+    await page.keyboard.press('Backquote');
+    await page.keyboard.type('go verkstan');
+    await page.keyboard.press('Enter');
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#prompt')).toHaveText("ETune the Volvo 240 at Plåt-Pelle's");
+    await page.keyboard.press('KeyE');
+    await expect(page.locator('#kmenu')).toContainText('Neon under bilen');
+    await page.keyboard.press('Digit1'); // Lack (a whole car has no repair)
+    await page.keyboard.press('Digit5'); // Slättsjöblå metallic
+    await expect(page.locator('#kr')).toHaveText('1 700 riksdaler');
+    await expect(page.locator('#kmenu')).toContainText('på bilen'); // the shelf comes back, with the paint on
+    await page.keyboard.press('Escape'); // back to the front
+    await page.keyboard.press('Digit3'); // Neon under bilen
+    await page.keyboard.press('Digit1'); // Blått neon
+    await expect(page.locator('#kr')).toHaveText('1 300 riksdaler');
+    expect(await state(page)).toMatchObject({ inCar: true, carMods: { paint: 'slattsjo-bla', glow: 'bla' } });
+    await page.screenshot({ path: testInfo.outputPath('game-garage.png') });
+    expect(errors).toEqual([]);
+  });
+
   test('Plåt-Pelle sells you a car from his lot, and it is yours to drive', async ({ page }, testInfo) => {
     const errors = watchErrors(page);
     await page.setViewportSize({ width: 640, height: 360 });

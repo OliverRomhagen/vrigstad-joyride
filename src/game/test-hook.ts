@@ -187,6 +187,7 @@ export function installTestHook(g: TestHookDeps) {
         fps: g.fps,
         hp: health.hp,
         carDmg: game.pcar ? game.pcar.dmg : null,
+        carMods: game.pcar?.mods ?? null, // what Plåt-Pelle's garage fitted (#3, lab `garage`)
         carCrack: game.pcar ? g.crackShown(game.pcar) : null,
         ownCat: g.ownCat,
         vehicle: displayCar ? vehicleVisuals.state(displayCar) : null,

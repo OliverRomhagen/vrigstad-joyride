@@ -11,6 +11,7 @@ import {
 } from '../../../src/game/cars';
 import { Commands } from '../../../src/game/commands';
 import { CRASH_COOL_S, DMG_MAX } from '../../../src/game/health';
+import { ENGINE_TOP } from '../../../src/game/sim/car-mods';
 import { type CarType, specFor } from '../../../src/game/sim/vehicle-spec';
 import { BuildingIndex } from '../../../src/world/buildings';
 import { BuildingKind, ROAD_WIDTH_M, RoadClass, type WorldData } from '../../../src/world/data';
@@ -125,6 +126,23 @@ describe('drive', () => {
     expect(c.v).toBeGreaterThan(c.T.max * 0.8);
     expect(fastest).toBeLessThanOrEqual(c.T.max);
     expect(c.z).toBeLessThan(800); // heading 0 is north, towards -z
+  });
+
+  it('pulls harder and goes faster with a tuned engine (#3)', () => {
+    const { cars } = fleet();
+    const stock = car('volvo', 0, 800, 0, 'player'),
+      tuned = car('volvo', 0, 800, 0, 'player'); // both on the road; neither is in the fleet, so they don't collide
+    tuned.mods = { engine: 1 };
+    driveFor(cars, stock, 2, 1, 0, false);
+    driveFor(cars, tuned, 2, 1, 0, false);
+    expect(tuned.v).toBeGreaterThan(stock.v * 1.15); // after 2 s
+    let fastest = 0;
+    for (let t = 0; t < 30; t += DT) {
+      cars.drive(tuned, 1, 0, false, DT);
+      fastest = Math.max(fastest, tuned.v);
+    }
+    expect(fastest).toBeGreaterThan(stock.T.max);
+    expect(fastest).toBeLessThanOrEqual(stock.T.max * ENGINE_TOP + 1e-9);
   });
 
   it('stops with its nose at a wall, not inside it (#201)', () => {

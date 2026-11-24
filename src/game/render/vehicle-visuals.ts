@@ -23,7 +23,14 @@ type View = {
   travel: number;
   distance: number;
   color?: string;
+  metallic?: boolean;
+  rim?: RimLook | null;
 };
+/** How the rims look: a colour (sRGB) and finish; null puts the model's own back. */
+export type RimLook = { hex: string; metalness: number; roughness: number };
+type Finish = { color: THREE.Color; metalness: number; roughness: number };
+const METALLIC = { metalness: 0.7, roughness: 0.28 }; // a metallic paint's finish
+const RIM_NODE = /^trim_rim_(?!whitewall)/; // the rims under each wheel node, not the Impala's whitewalls
 const DETAIL_RANGE_M = 120,
   DETAIL_KEEP_M = 15, // a detailed car keeps its model until it is this much further away than the next candidate, so it doesn't pop back and forth
   DETAIL_CAP_COARSE = 3,
@@ -94,7 +101,8 @@ export class VehicleVisuals {
         view.car.mesh.add(root);
         view.status = 'loaded';
         this.onBody?.(view.car, sprung);
-        if (view.color) this.paint(view.car, view.color);
+        if (view.color) this.paint(view.car, view.color, view.metallic);
+        if (view.rim) this.rims(view.car, view.rim);
         this.updateVisibility(view);
       })
       .catch(error => {
@@ -109,22 +117,50 @@ export class VehicleVisuals {
     view.fallback.visible = !visible;
     if (view.root) view.root.visible = visible;
   }
-  paint(car: Car, color: string) {
+  /** Paints the body of the car's model, now or when it loads; `metallic` gives the paint a metallic finish (#3). */
+  paint(car: Car, color: string, metallic = false) {
     const view = this.records.get(car);
     if (!view || view.definition.police) return;
     view.color = color;
+    view.metallic = metallic;
     if (!view.root) return;
     const body = view.root.getObjectByName(BODY_NODE);
     const recolor = (material: THREE.MeshStandardMaterial) => {
-      const m = view.materials.has(material) ? material : material.clone();
+      const m = this.own(view, material),
+        base = m.userData.base as Finish;
       m.color.set(color).convertSRGBToLinear();
-      view.materials.add(m);
+      m.metalness = metallic ? METALLIC.metalness : base.metalness;
+      m.roughness = metallic ? METALLIC.roughness : base.roughness;
       return m;
     };
     body?.traverse(node => {
       if (!(node instanceof THREE.Mesh) || (node !== body && !node.name.startsWith(BODY_NODE + '_'))) return;
       node.material = Array.isArray(node.material) ? node.material.map(recolor) : recolor(node.material);
     });
+  }
+  /** Gives the car's model these rims, now or when it loads (#3); null puts its own back. */
+  rims(car: Car, rim: RimLook | null) {
+    const view = this.records.get(car);
+    if (!view || view.definition.police) return;
+    view.rim = rim;
+    view.root?.traverse(node => {
+      if (!(node instanceof THREE.Mesh) || !RIM_NODE.test(node.name) || Array.isArray(node.material)) return;
+      const m = this.own(view, node.material),
+        base = m.userData.base as Finish;
+      if (rim) m.color.set(rim.hex).convertSRGBToLinear();
+      else m.color.copy(base.color);
+      m.metalness = rim ? rim.metalness : base.metalness;
+      m.roughness = rim ? rim.roughness : base.roughness;
+      node.material = m;
+    });
+  }
+  // the view's own copy of a shared model material, made once, remembering the model's finish so it can be put back
+  private own(view: View, material: THREE.MeshStandardMaterial) {
+    if (view.materials.has(material)) return material;
+    const m = material.clone();
+    m.userData.base = { color: m.color.clone(), metalness: m.metalness, roughness: m.roughness } satisfies Finish;
+    view.materials.add(m);
+    return m;
   }
   attach(car: Car, id: VehicleId, fallback: THREE.Mesh, color?: string) {
     const definition = vehicleDefinition(id)!;

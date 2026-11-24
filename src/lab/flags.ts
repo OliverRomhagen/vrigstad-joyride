@@ -15,6 +15,11 @@ export interface LabExperiment {
  */
 export const LAB_EXPERIMENTS = [
   { id: 'hello', name: 'Hello lab', cost: 'Nothing: logs one line, as the smallest example of a gate' },
+  {
+    id: 'garage',
+    name: 'Garage',
+    cost: 'Nothing until you fit a part: then a few material copies per car, and one glow plane under a car with neon',
+  },
 ] as const satisfies readonly LabExperiment[];
 
 export type LabId = (typeof LAB_EXPERIMENTS)[number]['id'];
