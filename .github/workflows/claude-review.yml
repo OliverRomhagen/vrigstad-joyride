@@ -200,17 +200,23 @@ jobs:
           # files that .gitattributes marks linguist-generated or linguist-vendored, read from main so a PR can't hide
           # its own code by marking it, and any other file whose patch is over MAX_LINE_CHARS wide or MAX_PATCH_KB in
           # size. Binary files need nothing: git diff shows only that they differ. What makes the generated files
-          # (tools/, package.json) is reviewed. skipped.txt lists what was left out and why, for Claude and the summary.
+          # (tools/, package.json) is reviewed. skipped.txt lists what was left out and why (path, tab, reason), for
+          # Claude and the summary.
+          # File names are read NUL-separated and unquoted, so a name with å, ä or ö, a space or a colon still matches;
+          # without renames, so a moved file's old path is checked too.
           : >.claude-review/skipped.txt
           pathspec=(.) # what to review: everything, minus what is left out below
-          while IFS= read -r f; do
-            reason=
-            marked=$(git check-attr --source=origin/main linguist-generated linguist-vendored -- "$f" |
-              awk -F': ' '$3 == "true" || $3 == "set" { sub("linguist-", "", $2); print $2 }' | paste -sd, -)
+          while IFS= read -r -d '' f; do
+            reason= marked=
+            for attr in generated vendored; do
+              # -z prints path, attribute and value NUL-separated: the value is the last field, whatever the name.
+              value=$(git check-attr -z --source=origin/main "linguist-$attr" -- "$f" | tr '\0' '\n' | tail -1)
+              if [ "$value" = true ] || [ "$value" = set ]; then marked=${marked:+$marked,}$attr; fi
+            done
             if [ -n "$marked" ]; then
               reason="marked $marked in .gitattributes"
             else
-              read -r widest kb < <(git diff "$merge_base" HEAD -- "$f" |
+              read -r widest kb < <(git diff "$merge_base" HEAD -- ":(literal)$f" |
                 awk '{ if (length > w) w = length; b += length + 1 } END { print w + 0, int(b / 1024) }')
               if [ "$widest" -gt "$MAX_LINE_CHARS" ]; then
                 reason="a line of $widest characters"
@@ -220,9 +226,12 @@ jobs:
             fi
             if [ -n "$reason" ]; then
               pathspec+=(":(exclude,literal)$f")
-              echo "$f: $reason" >>.claude-review/skipped.txt
+              printf '%s\t%s\n' "$f" "$reason" >>.claude-review/skipped.txt
             fi
-          done < <({ git diff --name-only "$merge_base" HEAD; git diff --name-only "$from" HEAD; } | sort -u)
+          done < <({
+            git -c core.quotePath=false diff --name-only --no-renames -z "$merge_base" HEAD
+            git -c core.quotePath=false diff --name-only --no-renames -z "$from" HEAD
+          } | sort -zu)
 
           git diff "$from..HEAD" -- "${pathspec[@]}" >.claude-review/diff.patch
           # A push that only moved the PR onto a new base, or a PR or push that only changes files left out, leaves
@@ -367,9 +376,10 @@ jobs:
             echo "**Claude review**$name of $scope, up to \`${HEAD_SHA:0:7}\`: $summary"
             echo
             if [ -s .claude-review/skipped.txt ]; then
-              echo "<details><summary>Not reviewed: $(wc -l <.claude-review/skipped.txt | tr -d ' ') files nobody reads line by line</summary>"
+              n=$(wc -l <.claude-review/skipped.txt | tr -d ' ')
+              echo "<details><summary>Not reviewed: $n $([ "$n" = 1 ] && echo file || echo files) nobody reads line by line</summary>"
               echo
-              sed 's/^\([^:]*\): /- `\1`: /' .claude-review/skipped.txt
+              awk -F'\t' '{ printf "- `%s`: %s\n", $1, $2 }' .claude-review/skipped.txt
               echo
               echo '</details>'
               echo
