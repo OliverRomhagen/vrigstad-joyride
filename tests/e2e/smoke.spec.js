@@ -720,7 +720,16 @@ test.describe('game (index.html)', () => {
     await expect(page.locator('#prompt')).toHaveText("ETune the Volvo 240 at Plåt-Pelle's");
     await page.keyboard.press('KeyE');
     await expect(page.locator('#kmenu')).toContainText('Neon under bilen');
-    await page.keyboard.press('Digit1'); // Lack (a whole car has no repair)
+    const parked = await state(page);
+    await page.keyboard.down('KeyW'); // the car stays put while the garage is open
+    await page.waitForTimeout(600);
+    await page.keyboard.up('KeyW');
+    const after = await state(page);
+    expect(Math.hypot(after.x - parked.x, after.z - parked.z)).toBeLessThan(0.05);
+    expect(after.speed).toBe(0);
+    await page.keyboard.press('ArrowDown'); // the arrows walk the menu: Lack is first, as a whole car has no repair
+    await page.keyboard.press('Enter');
+    await expect(page.locator('#kmenu')).toContainText('Vilken färg?');
     await page.keyboard.press('Digit5'); // tries Slättsjöblå metallic on
     await expect(page.locator('#kmenu')).toContainText('Köp Slättsjöblå metallic');
     expect(await state(page)).toMatchObject({ carMods: null, kr: 2200 }); // on show, not bought (200 to start with, and 2000 from the console)

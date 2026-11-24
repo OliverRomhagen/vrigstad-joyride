@@ -34,7 +34,8 @@ export interface CameraRigDeps {
   readonly showroom?: boolean; // a garage menu is open (#3): the camera stays where you drag it round the car you drive
 }
 const SHOWROOM_DIST_M = 5.5, // close in: the workshop is narrow
-  SHOWROOM_LOOK_M = -0.6; // aims under the car, which lifts it in the frame, above the menu plate at the bottom
+  SHOWROOM_LOOK_M = -0.6, // aims under the car, which lifts it in the frame, above the menu plate at the bottom
+  SHOWROOM_SIDE = -Math.PI / 2; // lookOff that puts the camera off the car's right side: its paint and rims side on
 
 /** Places the camera every frame; `shake` jolts it after a crash. */
 export class CameraRig {
@@ -70,8 +71,10 @@ export class CameraRig {
       dist = 46;
       view.camPitch = 0.42;
     } else if (game.inCar && game.pcar && this.g.showroom) {
-      // a free camera: dragging turns lookOff round the parked car, and nothing swings it back while the garage is open
-      view.camYaw += wrap(game.pcar.h + view.lookOff - view.camYaw) * Math.min(1, dt * 8);
+      // a free camera: it comes round to the car's right side as the garage opens, then dragging turns lookOff round
+      // the parked car, and nothing swings it back while the garage is open
+      if (!this.showing) view.lookOff = SHOWROOM_SIDE;
+      view.camYaw += wrap(game.pcar.h + view.lookOff - view.camYaw) * Math.min(1, dt * 4);
       dist = SHOWROOM_DIST_M;
       lookY = SHOWROOM_LOOK_M;
       this.showing = true;

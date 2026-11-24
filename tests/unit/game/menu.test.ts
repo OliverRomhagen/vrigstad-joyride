@@ -4,7 +4,7 @@ import type { MenuItem, Pet } from '../../../src/game/pets';
 
 // Node has no DOM, so the plate gets a stub that carries only what the plate touches: the buttons it writes into its HTML,
 // the title it puts the name field after, and what it contains.
-type Button = { dataset: { k: string } };
+type Button = { dataset: { k: string }; focus(): void };
 type Field = {
   value: string;
   type: string;
@@ -15,14 +15,24 @@ type Field = {
   focus(): void;
   select(): void;
 };
-function plate() {
+function plate(o: { arrowKeys?: boolean } = {}) {
   let buttons: Button[] = [],
-    field: Field | null = null;
+    field: Field | null = null,
+    active: unknown = null; // what has focus, as document.activeElement
   const kmenu = {
     hidden: true,
     set innerHTML(html: string) {
-      buttons = [...html.matchAll(/data-k="([^"]*)"/g)].map(m => ({ dataset: { k: m[1] } }));
+      buttons = [...html.matchAll(/data-k="([^"]*)"/g)].map(m => {
+        const b: Button = {
+          dataset: { k: m[1]! },
+          focus: () => {
+            active = b;
+          },
+        };
+        return b;
+      });
       field = null;
+      active = null; // the old buttons, and their focus, are gone
     },
     querySelectorAll: () => buttons,
     querySelector: (sel: string) =>
@@ -41,7 +51,11 @@ function plate() {
   const deps: MenuPlateDeps = {
     kmenu: kmenu as unknown as HTMLElement,
     canvas: { focus: () => void calls.push('focus') },
+    arrowKeys: o.arrowKeys,
     doc: {
+      get activeElement() {
+        return active as Element | null;
+      },
       exitPointerLock: () => void calls.push('unlock'),
       createElement: (() => ({
         value: '',
@@ -70,7 +84,7 @@ function plate() {
     },
   };
   const menu = new MenuPlate(deps);
-  return { menu, kmenu, calls, game, field: () => field };
+  return { menu, kmenu, calls, game, field: () => field, focused: () => (active as Button | null)?.dataset.k ?? null };
 }
 function key(code: string, target: unknown = null) {
   const e = {
@@ -102,6 +116,54 @@ function pet(name: string) {
   } satisfies Pet;
   return { p, renamed };
 }
+
+describe('MenuPlate arrow keys (#3, lab garage)', () => {
+  const ITEMS: MenuItem[] = [
+    ['a', 'A'],
+    ['b', 'B'],
+    ['no', 'Stäng'],
+  ];
+
+  it('move between the choices, round from the ends', () => {
+    const { menu, focused } = plate({ arrowKeys: true });
+    menu.openMenu('garage', 'Garage', ITEMS, () => {});
+    const down = key('ArrowDown');
+    expect(menu.menuKey(down)).toBe(true);
+    expect(down.prevented).toBe(true);
+    expect(focused()).toBe('a');
+    menu.menuKey(key('ArrowDown'));
+    expect(focused()).toBe('b');
+    menu.menuKey(key('ArrowUp'));
+    menu.menuKey(key('ArrowUp'));
+    expect(focused()).toBe('no'); // round from the top to the bottom
+    menu.menuKey(key('ArrowDown'));
+    expect(focused()).toBe('a');
+  });
+
+  it('start from the bottom when the first key is up', () => {
+    const { menu, focused } = plate({ arrowKeys: true });
+    menu.openMenu('garage', 'Garage', ITEMS, () => {});
+    menu.menuKey(key('ArrowUp'));
+    expect(focused()).toBe('no');
+  });
+
+  it('stay on the same choice when picking it opens the next menu', () => {
+    const { menu, focused } = plate({ arrowKeys: true });
+    const reopen = () => menu.openMenu('garage-paint', 'Lack', [['buy', 'Köp'], ...ITEMS], reopen);
+    menu.openMenu('garage-paint', 'Lack', ITEMS, reopen);
+    menu.menuKey(key('ArrowDown'));
+    menu.menuKey(key('ArrowDown'));
+    menu.menuKey(key('Digit2')); // b, which brings the menu back with a line on top
+    expect(focused()).toBe('b');
+  });
+
+  it('are left to the game when they are off', () => {
+    const { menu, focused } = plate();
+    menu.openMenu('cat', 'Katt', ITEMS, () => {});
+    expect(menu.menuKey(key('ArrowDown'))).toBe(false);
+    expect(focused()).toBeNull();
+  });
+});
 
 describe('MenuPlate', () => {
   it('opens, picks a numbered item and closes', () => {

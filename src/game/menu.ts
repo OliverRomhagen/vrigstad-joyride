@@ -8,7 +8,8 @@ import type { MenuItem, Pet } from './pets';
 export interface MenuPlateDeps {
   kmenu: HTMLElement; // the plate
   canvas: Pick<HTMLElement, 'focus'>; // focus goes back to the game after a tapped choice
-  doc: Pick<Document, 'exitPointerLock' | 'createElement'>;
+  doc: Pick<Document, 'exitPointerLock' | 'createElement'> & { readonly activeElement?: Element | null };
+  readonly arrowKeys?: boolean; // ↑ and ↓ move between the choices, Enter or Space picks one (#3, lab `garage`)
   readonly input: Pick<Input, 'locked' | 'lockMouse'>;
   readonly hasPets: boolean; // P opens your pets only once you have one
   openPets: () => void;
@@ -32,7 +33,7 @@ export class MenuPlate {
       const b = (e.target as Element).closest('button');
       if (b) {
         this.menuChoose(b.dataset.k!);
-        g.canvas.focus();
+        if (!this.keyFocus()) g.canvas.focus(); // a choice made with the arrows keeps the keyboard on the menu it opened
       }
     });
   }
@@ -40,6 +41,22 @@ export class MenuPlate {
   /** Which menu is open: 'kiosk', 'cat', 'adopt', 'pets', or null. */
   get menuKind() {
     return this.kind;
+  }
+
+  // the choice the arrow keys have focused, if one has; null when the arrows are off
+  private keyFocus(): HTMLElement | null {
+    const { kmenu, doc, arrowKeys } = this.g,
+      el = doc.activeElement as HTMLElement | null | undefined;
+    return arrowKeys && !kmenu.hidden && el && kmenu.contains(el) ? el : null;
+  }
+
+  // ↑ / ↓: the next choice up or down, round from the ends; from none, the first or the last
+  private stepFocus(d: 1 | -1) {
+    const buttons = [...this.g.kmenu.querySelectorAll('button')],
+      n = buttons.length;
+    if (!n) return;
+    const i = buttons.indexOf(this.keyFocus() as HTMLButtonElement);
+    buttons[i < 0 ? (d > 0 ? 0 : n - 1) : (i + d + n) % n]!.focus();
   }
 
   // items are [key, label]; the 'no' item is last and gets Esc
@@ -51,6 +68,7 @@ export class MenuPlate {
     stay: (() => boolean) | null = null,
   ) => {
     const { kmenu, input, doc } = this.g;
+    const kept = this.keyFocus()?.dataset.k; // the arrows were on a choice: keep them on it when the menu comes back
     this.nameIn = null;
     kmenu.innerHTML =
       '<p id="kmenu-t">' +
@@ -77,6 +95,10 @@ export class MenuPlate {
     }
     kmenu.hidden = false;
     this.g.closeConsole(); // after the plate shows, so the console doesn't take the cursor back
+    if (kept !== undefined) {
+      const buttons = [...kmenu.querySelectorAll('button')];
+      (buttons.find(b => b.dataset.k === kept) ?? buttons[0])?.focus();
+    }
   };
   closeMenu = () => {
     const { kmenu, input } = this.g;
@@ -142,6 +164,11 @@ export class MenuPlate {
       return true;
     } // typing a name
     if (!kmenu.hidden) {
+      if (this.g.arrowKeys && (e.code === 'ArrowUp' || e.code === 'ArrowDown')) {
+        e.preventDefault();
+        this.stepFocus(e.code === 'ArrowDown' ? 1 : -1);
+        return true;
+      }
       const n = /^(?:Digit|Numpad)([1-9])$/.exec(e.code),
         b = n && kmenu.querySelectorAll('button')[+n[1] - 1];
       if (e.code === 'Escape' || (b && b.dataset.k !== 'no')) {
