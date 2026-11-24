@@ -217,6 +217,8 @@ if (tuneParam && !DEV) console.warn('?tune= works in dev mode only: add ?dev');
 else for (const err of tunables.override(tuneParam ?? '')) console.warn('?tune=', err);
 let displayCar: RenderedCar | null = null;
 function carName(c: Car) { return vehicleVisuals.definition(meshed(c))?.name || c.T.name; }
+// the car parked by Torget, next to where you start; first, so the parked cars and traffic keep clear of it (#409)
+(function () { const o = { x: HOME.x + 7, z: HOME.z + 3 }; collide(o, 2.6); displayCar = addCar(selectedVehicle?.archetype || 'volvo', o.x, o.z, 0.6, 'parked', selectedVehicle?.id ?? 'volvo240'); })();
 fleet.parkCars();   // parked cars along streets and driveways
 for (let i = 0; i < 18; i++) spawnTraffic(null);
 
@@ -280,7 +282,6 @@ function drawTreats() { const el = $('treats'); el.hidden = false; el.textConten
 const player = { x: HOME.x, z: HOME.z, y: 0, vy: 0, h: 0, speed: 0, phase: 0, mesh: personParts('#f2c230', '#2b3a55', null, true) };   // y: metres above the ground
 collide(player, 0.6); scene.add(player.mesh);
 const jumpOk = () => !game.inCar && !places.inside && game.titleCardT <= 0;   // queue only where a jump can start, so a press inside a safehouse or under Gripen! can't fire as it ends
-(function () { const o = { x: player.x + 7, z: player.z + 3 }; collide(o, 2.6); displayCar = addCar(selectedVehicle?.archetype || 'volvo', o.x, o.z, 0.6, 'parked', selectedVehicle?.id ?? 'volvo240'); })();
 const health = newHealth();
 const wallet = newWallet();
 const wanted = new Wanted({ roads, rnd, pick, removeCar, drive, toast,

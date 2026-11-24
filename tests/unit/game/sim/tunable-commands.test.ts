@@ -30,7 +30,9 @@ describe('tunable commands', () => {
   it('refuses a value out of range, or an unknown tunable, and changes nothing', () => {
     const { car, c } = console_();
     expect(c.run('tune set car.grip 6')).toBe('car.grip is from 0 to 5 1/s. Usage: tune set <tunable> <value>');
-    expect(c.run('tune set car.wings 1')).toBe('No tunable called car.wings. Usage: tune set <tunable> <value>');
+    expect(c.run('tune set car.wings 1')).toBe(
+      'No tunable called car.wings. Pick one of: car.grip, car.top-speed, cat.naps. Usage: tune set <tunable> <value>',
+    );
     expect(c.run('tune set car.grip x')).toBe('value is a number. Usage: tune set <tunable> <value>');
     expect(car.GRIP).toBe(2);
   });

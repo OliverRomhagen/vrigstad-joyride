@@ -5,9 +5,11 @@ import type { BuildingIndex } from '../world/buildings';
 import type { Label } from '../world/data';
 import { wrap } from '../world/math';
 import { nodeKey, ROAD_CELL_M as RC, type RoadLine, type RoadNetwork } from '../world/roads';
+import { bodyRadius, type CarBody, nearestOnSpine, PERSON_RADIUS_M } from './sim/car-body';
 
 // Each 50 m cell gets a density (0..1): how built-up the cell and its neighbours are, plus a boost near named places.
 // NPC_ZONES hand-tunes spots on top of that (m multiplies the density within r metres).
+const _onCar = { x: 0, z: 0 }; // nearestOnSpine writes here: no allocation per walker per car
 const NPC_ZONES = [{ x: -8.9, z: 30.1, r: 80, m: 1.8 }]; // Torget
 const NPC_MAX = 42,
   NPC_MAX_COARSE = 26; // count around the player in the busiest places; on a touch screen
@@ -64,7 +66,7 @@ export interface CrowdDeps {
   personParts(shirt: string, pants: string, hair: string): PersonMesh;
   /** moves a walker on to the next segment at a junction of `graph` */
   advance(n: Npc, graph: Map<string, number[]>): void;
-  cars: readonly Point[];
+  cars: readonly CarBody[];
   /** a car drives into n: true takes n out of the crowd's hands (n.down) instead of pushing them aside. Unset, everyone is pushed. */
   readonly hit?: ((n: Npc, car: Point) => boolean) | null;
   readonly player: Point;
@@ -241,16 +243,19 @@ export class Crowd {
       n.z += (pz - n.z) * k;
     }
     for (const c of cars) {
-      const ex = n.x - c.x,
-        ez = n.z - c.z,
-        d = Math.hypot(ex, ez);
-      if (d < 2.3 && d > 0.01) {
+      if (Math.abs(n.x - c.x) > c.T.lengthM || Math.abs(n.z - c.z) > c.T.lengthM) continue;
+      nearestOnSpine(c, n.x, n.z, _onCar);
+      const ex = n.x - _onCar.x,
+        ez = n.z - _onCar.z,
+        d = Math.hypot(ex, ez),
+        apart = bodyRadius(c) + PERSON_RADIUS_M;
+      if (d < apart && d > 0.01) {
         if (hit?.(n, c)) {
           n.down = true;
           return;
         }
-        n.x += (ex / d) * (2.3 - d);
-        n.z += (ez / d) * (2.3 - d);
+        n.x += (ex / d) * (apart - d);
+        n.z += (ez / d) * (apart - d);
       }
     }
     if (!inCar) {
