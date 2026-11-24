@@ -5,7 +5,7 @@ import type { Sky } from '../../../../src/game/render/sky';
 import { newGameState, newViewState } from '../../../../src/game/state';
 
 // a rig on flat ground at height 0, following you on foot; `camY` is where the camera stands after a frame
-function rig() {
+function rig(calm = true) {
   const camera = new THREE.PerspectiveCamera();
   const r = new CameraRig({
     camera,
@@ -18,7 +18,7 @@ function rig() {
     groundAt: () => 0,
     heightAt: () => 0,
     rnd: () => 0.5,
-    calmMotion: { matches: true },
+    calmMotion: { matches: calm },
     sunIntensity: 1,
   });
   return { r, camY: () => camera.position.y };
@@ -51,5 +51,25 @@ describe('CameraRig', () => {
       expect(up - camY()).toBeGreaterThan(0.4); // well on its way down after 0.2 s
       expect(up - camY()).toBeLessThan(1.2); // but not there yet
     }
+  });
+
+  it('lifts with a share of a hop, and none for players who prefer less motion', () => {
+    const hopPeak = (calm: boolean) => {
+      const { r, camY } = rig(calm),
+        you = { x: 0, z: 0, floor: 0, y: 0 };
+      r.update(you, 0, DT);
+      const ground = camY();
+      let most = 0;
+      for (let t = 0; t < 0.65; t += DT) {
+        you.y = 5.2 * t - 8 * t * t; // a hop: 0.85 m high, 0.65 s long
+        r.update(you, 0, DT);
+        most = Math.max(most, camY() - ground);
+      }
+      return most;
+    };
+    const lift = hopPeak(false);
+    expect(lift).toBeGreaterThan(0.05);
+    expect(lift).toBeLessThan(0.3 * 0.85); // a share of the 0.85 m hop, eased, so less than the share itself
+    expect(hopPeak(true)).toBe(0);
   });
 });
