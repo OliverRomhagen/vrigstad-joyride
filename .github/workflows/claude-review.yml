@@ -194,8 +194,8 @@ jobs:
       AUTHOR: ${{ github.event.pull_request.user.login }}
       BASE_REF: ${{ github.event.pull_request.base.ref }}
       OPUS_ABOVE_LINES: 400 # added plus removed lines in a later push
-      # A longer line is cut short in the patches, and a file whose patch is larger isn't reviewed: minified code,
-      # one-line JSON, data dumps. The longest line in the repo's source is 513 characters (src/game/main.ts), and
+      # A longer line is cut short in the patches (minified code, one-line JSON), and a file whose patch is still
+      # larger after that isn't reviewed (data dumps). The longest line in the repo's source is 513 characters (src/game/main.ts), and
       # its largest source file 61 KB (src/world/streetscape.ts).
       # Below 2000, where Claude Code's Read tool cuts a line itself without saying where, with room for the marker.
       MAX_LINE_CHARS: 1900
@@ -280,7 +280,7 @@ jobs:
           # Leave out of the patches and the line count what nobody reads line by line, so it can't fill Claude's
           # context: data/vrigstad.json is one line of about 200 KB, and would count as 2 changed lines. Left out are
           # files that .gitattributes marks linguist-generated or linguist-vendored, files whose patch is over
-          # MAX_PATCH_KB, and binary files, which git shows only as differing (a NUL byte makes a .ts file one).
+          # MAX_PATCH_KB with its long lines cut, and binary files, which git shows only as differing (a NUL byte makes a .ts file one).
           # What makes the generated files (tools/, package.json) is reviewed. skipped.txt lists what was left out and
           # why (path, tab, reason), for Claude and the summary, which shows all but the marked ones as files to read
           # by hand: a PR can pad its own source to be left out, but not to be left out unnoticed.
@@ -296,26 +296,32 @@ jobs:
             git -c core.quotePath=false diff --name-only --no-renames -z "$from" HEAD
           } | sort -zu >"$names"
           declare -A marked=() binary=() patch_kb=()
+          # Each call writes a file first, so a failing one fails the step, as it wouldn't inside < <(...).
           # -z prints path, attribute and value NUL-separated, three fields per file and attribute.
+          git check-attr -z --stdin --source=origin/main linguist-generated linguist-vendored <"$names" >"$RUNNER_TEMP/attrs"
           while IFS= read -r -d '' path && IFS= read -r -d '' attr && IFS= read -r -d '' value; do
             if [ "$value" = true ] || [ "$value" = set ]; then marked["$path"]=${marked["$path"]:+${marked["$path"]},}${attr#linguist-}; fi
-          done < <(git check-attr -z --stdin --source=origin/main linguist-generated linguist-vendored <"$names")
+          done <"$RUNNER_TEMP/attrs"
           # -z prints added, tab, removed, tab, path, NUL; a binary file's counts are -.
+          git -c core.quotePath=false diff --numstat --no-renames -z "$merge_base" HEAD >"$RUNNER_TEMP/numstat"
           while IFS=$'\t' read -r -d '' added _ path; do
             [ "$added" != - ] || binary["$path"]=1
-          done < <(git -c core.quotePath=false diff --numstat --no-renames -z "$merge_base" HEAD)
-          # Each file's patch as Claude will read it, with long lines cut (see below). A name git still quotes (one
-          # with a tab, a newline, a quote or a backslash) isn't matched, so its file is reviewed whatever its size.
-          while IFS=$'\t' read -r path kb; do
-            patch_kb["$path"]=$kb
-          done < <(git -c core.quotePath=false diff --no-renames "$merge_base" HEAD | awk -v max="$MAX_LINE_CHARS" '
+          done <"$RUNNER_TEMP/numstat"
+          # Each file's patch as Claude will read it, with long lines counted as cut (see below), so a one-line JSON
+          # is reviewed cut short, not left out: only many long lines, or a great many short ones, reach the limit.
+          # A name git still quotes (one with a tab, a newline, a quote or a backslash) isn't matched, so its file is
+          # reviewed whatever its size.
+          git -c core.quotePath=false diff --no-renames "$merge_base" HEAD | awk -v max="$MAX_LINE_CHARS" '
             function flush() { if (path != "") kb[path] += b; b = 0 }
             /^diff --git / { flush(); path = ""; old = ""; header = 1 }
             header && /^--- / { p = substr($0, 5); sub(/\t$/, "", p); old = (p == "/dev/null") ? "" : substr(p, 3) }
             header && /^\+\+\+ / { p = substr($0, 5); sub(/\t$/, "", p); path = (p == "/dev/null") ? old : substr(p, 3) }
             /^@@ / { header = 0 }
             { n = length; if (n > max + 40) n = max + 40; b += n + 1 }
-            END { flush(); for (p in kb) printf "%s\t%d\n", p, int(kb[p] / 1024) }')
+            END { flush(); for (p in kb) printf "%s\t%d\n", p, int(kb[p] / 1024) }' >"$RUNNER_TEMP/patch-kb"
+          while IFS=$'\t' read -r path kb; do
+            patch_kb["$path"]=$kb
+          done <"$RUNNER_TEMP/patch-kb"
           while IFS= read -r -d '' f; do
             reason=
             if [ -n "${marked["$f"]:-}" ]; then
