@@ -58,6 +58,14 @@ let speaking = $state(false);
 let saidAt = 0;
 let shownAt: number | undefined; // when the yard first showed, with a car on the ring or word that it wouldn't load
 let bubble = $state<HTMLElement>();
+// His bubble hangs over his head in the yard, wherever the camera puts him: the scene says where his cap is each time
+// it moves, and that goes straight into two CSS properties the bubble's styles read, not through state, as it comes
+// many times a second.
+let page: HTMLElement | undefined;
+function pelleAt(x: number, y: number) {
+  page?.style.setProperty('--pelle-x', `${x}px`);
+  page?.style.setProperty('--pelle-y', `${y}px`);
+}
 function say(line: string | undefined) {
   if (!line) return;
   saying = { line, n: (saying?.n ?? 0) + 1 };
@@ -107,7 +115,7 @@ function steer(e: KeyboardEvent) {
 />
 <svelte:window onkeydown={steer} />
 
-<main>
+<main bind:this={page}>
   <Skroten
     footprints={data.footprints}
     {index}
@@ -117,6 +125,7 @@ function steer(e: KeyboardEvent) {
     carShown={() => showed('ready')}
     carFailed={() => showed('failed')}
     sceneFailed={() => (status = 'down')}
+    {pelleAt}
   />
 
   <header bind:this={topEl} bind:offsetHeight={topHeight}>
@@ -304,40 +313,45 @@ header > * {
   letter-spacing: 0.1em;
   color: #6b4a32;
 }
-/* to the right under the header, clear of the gate's sign: in the game he stands on that side of the ring, and here he
-   speaks from there, behind the camera */
+/* beside his head, its tail pointing at him (--pelle-x and --pelle-y, his cap's top, from the scene): it follows him as you
+   turn the yard. Beside and not over him, as he stands high in a wide window, close under the header. Kept inside the
+   window, and under the header, when he is near an edge or out of sight. */
 .says {
+  --width: min(21rem, calc(100% - 32px));
   position: absolute;
-  top: 124px;
-  right: max(24px, 7vw);
-  max-width: min(24rem, calc(100% - 48px));
+  /* its right edge, and the tail on it, just left of his head */
+  right: clamp(16px, calc(100% - var(--pelle-x, 100%) + 34px), calc(100% - var(--width) - 16px));
+  /* its top a little over his cap, so the tail, a little way down its side, is level with his face; never under the header */
+  top: max(84px, calc(var(--pelle-y, 130px) - 22px));
+  width: max-content;
+  max-width: var(--width);
   margin: 0;
-  padding: 16px 18px 11px;
-  --paper: #fffaf0d6; /* paper, with the yard just showing through it */
+  padding: 14px 16px 9px;
+  --paper: #fffaf0b8; /* thin paper: the yard shows through it, so it sits in the scene and not on top of it */
   background: var(--paper);
   color: var(--road);
-  border-radius: 16px 16px 4px 16px; /* squarer where its tail leaves it */
-  font-size: 1rem;
+  border-radius: 16px;
+  font-size: 0.9375rem;
   text-wrap: pretty;
   rotate: 0.6deg; /* pinned up by hand, like the gate's sign */
   box-shadow:
-    0 1px 2px #0002,
-    0 8px 24px #0003;
-  backdrop-filter: blur(10px) saturate(1.3);
+    0 1px 2px #0001,
+    0 6px 18px #0002;
+  backdrop-filter: blur(12px) saturate(1.3);
   /* it grows out of its tail, where the words come from */
-  transform-origin: calc(100% - 22px) calc(100% + 12px);
+  transform-origin: calc(100% + 12px) 30px;
 }
-/* the tail: down and to the right, to where he stands behind the camera */
+/* the tail: out of its right side, towards him */
 .says::after {
   content: "";
   position: absolute;
-  top: 100%;
-  right: 12px;
-  width: 20px;
-  height: 13px;
+  top: 20px;
+  left: 100%;
+  width: 13px;
+  height: 18px;
   background: var(--paper);
-  clip-path: polygon(0 0, 100% 0, 85% 100%);
-  backdrop-filter: blur(10px) saturate(1.3);
+  clip-path: polygon(0 0, 100% 75%, 0 100%);
+  backdrop-filter: blur(12px) saturate(1.3);
 }
 /* his name on a tab in his cap's red, stuck over the bubble's top edge */
 .says a {
@@ -345,11 +359,11 @@ header > * {
   top: -0.7em;
   left: 14px;
   padding: 1px 8px;
-  font: 700 0.8125rem / 1.4 var(--font);
+  font: 700 0.75rem / 1.4 var(--font);
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: #fffaf0;
-  background: #b8322a;
+  background: #b8322ae6;
   border-radius: 4px;
   text-decoration: none;
   rotate: -2deg;
@@ -660,11 +674,13 @@ dd i {
     font-size: 1rem;
     padding: 8px 10px 8px 8px;
   }
+  /* higher on a phone, its tail at its foot, so it lies over the yard's fence and not over the car */
   .says {
-    top: 104px;
-    right: 16px;
-    max-width: calc(100% - 32px);
-    font-size: 0.9375rem;
+    top: max(68px, calc(var(--pelle-y, 150px) - 64px));
+  }
+  .says::after {
+    top: auto;
+    bottom: 10px;
   }
   .card {
     bottom: 28px;

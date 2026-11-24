@@ -119,6 +119,12 @@ h2 {
   white-space: nowrap;
 }
 
+/* a heading a link jumps to lands under the header that stays at the window's top, not behind it */
+:is(h2, h3)[id],
+:target {
+  scroll-margin-top: 5.5rem;
+}
+
 /* ---------- text ---------- */
 /* a page's prose, written in Markdown: a line no longer than reads well */
 .prose {

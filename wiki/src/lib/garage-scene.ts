@@ -1,5 +1,5 @@
 // Skroten, the scrapyard from #346, as a scene: the game's own yard (skroten-yard.ts) and meshes (render/skroten.ts), and
-// the car you look at standing on Plåt-Pelle's ring. He talks from behind the camera, so the car has the stage. A new car
+// the car you look at standing on Plåt-Pelle's ring, with him beside it, turning to watch you. A new car
 // drives in as the old one drives out. Browser only: render/skroten.ts draws textures on a canvas when it loads, so import
 // this on demand, from an attachment (Skroten.svelte).
 import * as THREE from 'three';
@@ -16,12 +16,20 @@ const SWAP_S = 0.9; // how long a car takes to drive off the ring, and the next 
 const SWAP_M = 14; // how far along the yard they drive
 const TURN_RAD_S = 0.12; // the ring turns the car slowly, so you see it from all sides without dragging
 const HORIZON = '#d9a27a'; // the fog: sRGB, as the game's (three applies fog after the colour space conversion)
-const CAR_R_M = 3; // half the width round the car on the ring that the camera keeps in frame
+// half the width round the ring that the camera keeps in frame. No more: a narrow window backs the camera off to fit
+// it, and much further back it would stand outside the gate, looking through the fence
+const CAR_R_M = 3;
 const CAR_HALF_H_M = 1.5; // half the height it keeps in frame: the car and the ground just around it
 const MAX_DIST_M = 26; // how far you can zoom out, unless the window needs more to fit the car
 const ZOOM_OUT = 1.4; // and then this much past the fitted distance
 const VIEW_MIN = 0.35; // the share of the window's height the scene keeps however tall the header and card are
 const LOOK_AT_M = 0.8; // the height above the ring the camera looks at
+// Where Plåt-Pelle stands, from the ring's middle in the yard's metres (u along the yard, v into it): to the right of the
+// car as you come in, 3.2 m out, so a turning car's corner clears him, and 1.7 m off the line the cars drive in and out
+// along. In the game he stands 7.5 m off, which a narrow window wouldn't show.
+const PELLE_FROM_RING = { u: -2.7, v: -1.7 };
+const LOOK_TOWARDS_PELLE = 0.15; // the camera looks this share of the way from the ring to him, so both are in frame
+const PELLE_HEAD_M = 1.95; // just over his cap: where his words come from
 const ARRIVE_S = 1.4; // how long the camera takes to ease in on the first car, as the yard fades in
 const ARRIVE_ZOOM = 0.93; // how wide it starts, as a share of its zoom once it has arrived
 
@@ -37,6 +45,8 @@ export interface GarageSceneDeps {
   carShown(): void;
   /** the picked car's model didn't load; picking it again tries again */
   carFailed(): void;
+  /** where the top of Plåt-Pelle's cap is in the window, in px from its top left: called when it moves, for his bubble */
+  pelleAt(x: number, y: number): void;
 }
 
 type Swap = { car: THREE.Group; from: number; to: number; t: number };
@@ -51,6 +61,8 @@ const offsetOf = (s: Swap) => {
 export class GarageScene {
   private readonly stage: Stage;
   private readonly ring = yardToWorld(RING_UV.u, RING_UV.v);
+  /** what the camera looks at and turns about: the ring, a little towards Plåt-Pelle */
+  private readonly lookAt: THREE.Vector3;
   /** the way the cars drive on and off the ring, along the yard */
   private readonly along: THREE.Vector3;
   private readonly loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
@@ -95,8 +107,17 @@ export class GarageScene {
     land.receiveShadow = true;
     scene.add(land);
 
-    // the yard sets its own shadows, as in the game (none cast on a phone). Plåt-Pelle stands beside the ring, where he would
-    // take the stage from the car: he is left out, and talks from behind the camera (the page's bubble)
+    // the yard sets its own shadows, as in the game (none cast on a phone)
+    const pelleUV = { u: RING_UV.u + PELLE_FROM_RING.u, v: RING_UV.v + PELLE_FROM_RING.v };
+    const pelle = yardToWorld(pelleUV.u, pelleUV.v);
+    this.lookAt = new THREE.Vector3(ring.x, LOOK_AT_M, ring.z).lerp(
+      new THREE.Vector3(pelle.x, LOOK_AT_M, pelle.z),
+      LOOK_TOWARDS_PELLE,
+    );
+    const head = new THREE.Vector3(pelle.x, PELLE_HEAD_M, pelle.z);
+    const onScreen = new THREE.Vector3();
+    let headX = Number.NaN,
+      headY = Number.NaN;
     let yard: SkrotenMeshes;
     try {
       yard = new SkrotenMeshes({
@@ -105,7 +126,7 @@ export class GarageScene {
         layout: yardLayout(g.footprints, flat),
         coarse: stage.coarse,
         carModel: def => this.carModel(def),
-        showOwner: false,
+        ownerUV: pelleUV,
       });
     } catch (err) {
       // nobody gets this scene to dispose when its constructor throws: give the canvas and its WebGL context back here
@@ -115,7 +136,7 @@ export class GarageScene {
 
     const from = yardToWorld(5.5, 2.5);
     camera.position.set(from.x, 2.3, from.z);
-    controls.target.set(ring.x, LOOK_AT_M, ring.z);
+    controls.target.copy(this.lookAt);
     controls.minDistance = 4;
     controls.maxPolarAngle = Math.PI * 0.47;
     const a = yardToWorld(1, RING_UV.v);
@@ -141,6 +162,15 @@ export class GarageScene {
       you.x = camera.position.x;
       you.z = camera.position.z;
       yard.update(dt, you); // swaps the yard's cars for their models once you are near
+      // his cap in the window, for the page's bubble: told only when it has moved, and not while he is behind you
+      onScreen.copy(head).project(camera);
+      const x = Math.round(((onScreen.x + 1) / 2) * g.host.clientWidth),
+        y = Math.round(((1 - onScreen.y) / 2) * g.host.clientHeight);
+      if (onScreen.z < 1 && (x !== headX || y !== headY)) {
+        headX = x;
+        headY = y;
+        g.pelleAt(x, y);
+      }
     };
     stage.resized = (width, height) => {
       // a narrow screen backs off, so the car still fits across
@@ -299,7 +329,7 @@ export class GarageScene {
     const offset = camera.position.clone().sub(controls.target);
     if (backOffOnly && offset.length() >= dist) return;
     const dir = offset.normalize();
-    controls.target.set(this.ring.x, LOOK_AT_M, this.ring.z);
+    controls.target.copy(this.lookAt);
     camera.position.copy(controls.target).addScaledVector(dir, dist);
   }
 

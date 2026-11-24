@@ -12,6 +12,7 @@ let {
   carShown,
   carFailed,
   sceneFailed,
+  pelleAt,
 }: {
   footprints: { p: number[] }[];
   index: number;
@@ -25,6 +26,8 @@ let {
   carFailed: () => void;
   /** the scene itself didn't start, so no car will show until the page reloads */
   sceneFailed: () => void;
+  /** where the top of Plåt-Pelle's cap is in the window (px), as the camera moves */
+  pelleAt: (x: number, y: number) => void;
 } = $props();
 
 // the scene, once its code has loaded and it runs. The effects below hand it the picked car, the paint and the margins:
@@ -48,7 +51,13 @@ function start(host: HTMLDivElement) {
   import('./garage-scene')
     .then(({ GarageScene }) => {
       if (unmounted) return; // left the page before the import finished: nothing to start, nothing to dispose
-      made = new GarageScene({ host, footprints, carShown: () => carShown(), carFailed: () => carFailed() });
+      made = new GarageScene({
+        host,
+        footprints,
+        carShown: () => carShown(),
+        carFailed: () => carFailed(),
+        pelleAt: (x, y) => pelleAt(x, y),
+      });
       scene = made;
     })
     .catch(err => {

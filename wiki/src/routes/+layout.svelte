@@ -15,6 +15,11 @@ import '#fonts/barlow';
 
 let { data, children } = $props();
 
+// the header stays at the window's top as the page scrolls under it. At the top of the page it lies on the sky with
+// nothing behind it; once the page has moved it gets the road's dark behind it, so the text passing under doesn't show.
+let scrollY = $state(0);
+const scrolled = $derived(scrollY > 16);
+
 // by route, not by path: while prerendering, SvelteKit's paths are relative ('./garage'), so a page's pathname never equals
 // resolve()'s, and the HTML would get the wrong frame and no aria-current until the page hydrates
 const here = (route: string, slug?: string) =>
@@ -71,9 +76,15 @@ function drawer(dialog: HTMLDialogElement) {
     .menu.menu.menu {
       display: none;
     }
+    /* and the header scrolls away with the page: nothing would give it its dark ground */
+    .top.top.top {
+      position: static;
+    }
     </style>
   </noscript>
 </svelte:head>
+
+<svelte:window bind:scrollY />
 
 {#snippet links()}
   {#each data.sections as g (g.folder)}
@@ -106,7 +117,7 @@ function drawer(dialog: HTMLDialogElement) {
        the window's bottom on a short page too -->
   <div class="page">
     <div class="shell">
-      <header class="top">
+      <header class={['top', { scrolled }]}>
         <a class="brand" href={resolve('/')}><span>Vrigstad</span> <b>wiki</b></a>
         <button
           type="button"
@@ -165,7 +176,7 @@ function drawer(dialog: HTMLDialogElement) {
   position: absolute;
   left: 16px;
   top: -4rem;
-  z-index: 1;
+  z-index: 3; /* over the header */
   font: 600 1.125rem var(--font);
   text-transform: uppercase;
   color: var(--road);
@@ -198,7 +209,38 @@ function drawer(dialog: HTMLDialogElement) {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 20px 0 48px;
+  /* the gap under it is a margin, not padding, so the bar that stays is only as tall as what is in it */
+  padding: 16px 0 12px;
+  margin-bottom: 36px;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  /* its ground reaches the window's edges: a shadow as wide as any window, cut off level with its top and bottom */
+  --ground-now: transparent;
+  background: var(--ground-now);
+  box-shadow: 0 0 0 100vmax var(--ground-now);
+  clip-path: inset(0 -100vmax);
+}
+.top.scrolled {
+  --ground-now: var(--road);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .top,
+  .brand span,
+  .brand b {
+    transition:
+      background-color 200ms ease-out,
+      box-shadow 200ms ease-out,
+      color 200ms ease-out;
+  }
+  /* on the dark ground the brand's dark word turns light, and its little sign turns over */
+  .scrolled .brand span {
+    color: var(--cream);
+  }
+  .scrolled .brand b {
+    color: var(--road);
+    background: var(--cream);
+  }
 }
 /* the phone's menu button; the sidebar is always there on a wider screen */
 .menu {
@@ -272,6 +314,12 @@ function drawer(dialog: HTMLDialogElement) {
 .side {
   grid-area: side;
   font-size: 1rem;
+  /* it stays beside the page as that scrolls, under the header, and scrolls by itself when it is taller than the window */
+  position: sticky;
+  top: 5.25rem;
+  align-self: start;
+  max-height: calc(100dvh - 5.25rem - 16px);
+  overflow-y: auto;
 }
 :is(.side, .drawer) h2 {
   font: 600 0.875rem var(--font);
@@ -304,6 +352,7 @@ function drawer(dialog: HTMLDialogElement) {
 
 main {
   grid-area: main;
+  scroll-margin-top: 5.25rem; /* the skip link lands it under the header, not behind it */
   min-width: 0;
   padding-bottom: 64px;
 }
@@ -329,7 +378,7 @@ footer p {
   /* a narrow header mustn't push the page wider than the screen: the brand gives way first */
   .top {
     gap: 8px;
-    padding-bottom: 24px;
+    margin-bottom: 12px;
   }
   .brand {
     font-size: 1.375rem;
