@@ -38,10 +38,13 @@ export const PAINTS = {
 } as const satisfies Record<string, Paint>;
 export type PaintId = keyof typeof PAINTS;
 
+// The scene has no environment map, so a true metal has nothing to reflect and draws black: every finish keeps its
+// metalness at most FINISH_METAL_MAX, and gets its shine from a low roughness, which catches the sun's highlight.
+export const FINISH_METAL_MAX = 0.35;
 export const RIMS = {
-  krom: { name: 'Kromfälgar', kr: 250, hex: '#e4e8ea', metalness: 1, roughness: 0.12 },
-  guld: { name: 'Guldfälgar', kr: 250, hex: '#c9a03a', metalness: 1, roughness: 0.28 },
-  svart: { name: 'Svarta fälgar', kr: 250, hex: '#16171a', metalness: 0.4, roughness: 0.45 },
+  krom: { name: 'Kromfälgar', kr: 250, hex: '#f1f4f6', metalness: 0.3, roughness: 0.18 },
+  guld: { name: 'Guldfälgar', kr: 250, hex: '#e0b143', metalness: 0.3, roughness: 0.3 },
+  svart: { name: 'Svarta fälgar', kr: 250, hex: '#1c1d21', metalness: 0.1, roughness: 0.45 },
 } as const satisfies Record<string, Rim>;
 export type RimId = keyof typeof RIMS;
 

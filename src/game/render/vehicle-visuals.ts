@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { FINISH_METAL_MAX } from '../sim/car-mods';
 import { BODY_NODE, type VehicleId, vehicleDefinition, WHEEL_NODES } from './vehicle-registry';
 
 type Car = { mesh: THREE.Object3D; x: number; z: number; h: number };
@@ -29,7 +30,9 @@ type View = {
 /** How the rims look: a colour (sRGB) and finish; null puts the model's own back. */
 export type RimLook = { hex: string; metalness: number; roughness: number };
 type Finish = { color: THREE.Color; metalness: number; roughness: number };
-const METALLIC = { metalness: 0.7, roughness: 0.28 }; // a metallic paint's finish
+// a metallic paint's finish: little metalness, as there is no environment map to reflect (FINISH_METAL_MAX), and a low
+// roughness for the sheen
+const METALLIC = { metalness: FINISH_METAL_MAX, roughness: 0.32 };
 const RIM_NODE = /^trim_rim_(?!whitewall)/; // the rims under each wheel node, not the Impala's whitewalls
 const DETAIL_RANGE_M = 120,
   DETAIL_KEEP_M = 15, // a detailed car keeps its model until it is this much further away than the next candidate, so it doesn't pop back and forth

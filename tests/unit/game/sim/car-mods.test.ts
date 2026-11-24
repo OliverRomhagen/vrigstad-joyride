@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { ENGINE_ACC, ENGINE_TOP, GLOWS, modAcc, modTop, PAINTS, RIMS } from '../../../../src/game/sim/car-mods';
+import {
+  ENGINE_ACC,
+  ENGINE_TOP,
+  FINISH_METAL_MAX,
+  GLOWS,
+  modAcc,
+  modTop,
+  PAINTS,
+  RIMS,
+} from '../../../../src/game/sim/car-mods';
 
 describe('car mods', () => {
   it('leave a car without an engine step as fast as its type', () => {
@@ -22,6 +31,10 @@ describe('car mods', () => {
         expect(p.kr).toBeGreaterThan(0);
         expect(p.hex).toMatch(/^#[0-9a-f]{6}$/);
       }
+  });
+
+  it("keep the rims' metalness low, since a metal with no environment map to reflect draws black", () => {
+    for (const r of Object.values(RIMS)) expect(r.metalness).toBeLessThanOrEqual(FINISH_METAL_MAX);
   });
 
   it('price a metallic paint above a flat one', () => {
