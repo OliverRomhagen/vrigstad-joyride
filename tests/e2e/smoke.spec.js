@@ -180,6 +180,23 @@ test.describe('game (index.html)', () => {
       expect(errors).toEqual([]);
     });
 
+  test("V puts the camera in the driver's seat, with ?lab=cockpit (#473)", async ({ page }, testInfo) => {
+    const errors = watchErrors(page);
+    await page.setViewportSize({ width: 640, height: 360 }); // keep software WebGL affordable
+    await page.goto('/index.html?lab=cockpit');
+    await expectWebGL(page);
+    await page.locator('#go').click();
+    await getInParkedCar(page);
+    expect(await state(page)).toMatchObject({ lab: ['cockpit'], cockpit: false }); // behind the car until you press V
+    await page.keyboard.press('KeyV');
+    await expect.poll(async () => (await state(page)).cockpit).toBe(true);
+    await frames(page, 3);
+    await page.screenshot({ path: testInfo.outputPath('cockpit.png') });
+    await page.keyboard.press('KeyV');
+    await expect.poll(async () => (await state(page)).cockpit).toBe(false);
+    expect(errors).toEqual([]);
+  });
+
   test('ragdolls are on for everyone, without a lab flag', async ({ page }) => {
     const errors = watchErrors(page);
     await page.setViewportSize({ width: 640, height: 360 }); // checks only the hook; keep software WebGL affordable

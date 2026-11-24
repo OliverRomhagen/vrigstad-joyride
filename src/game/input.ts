@@ -59,6 +59,7 @@ export interface InputDeps {
   action(): void; // E, F, Enter or the touch action button
   respawn(): void; // R
   rain(): void; // L: låt det regna
+  toggleView(): void; // V, or the touch View button: the driver's view in a car, where the lab has it (#473)
   jump(): void; // a fresh Space / touch Brake press; main.ts decides whether a jump can start
   look(dx: number, dy: number): void; // turns the camera by this many pixels: a drag's own, or a locked mouse's scaled by LOCK_K
   zoom(factor: number): void; // multiplies the camera distance: above 1 is further out
@@ -93,6 +94,7 @@ export class Input {
       } else if ((e.code === 'KeyE' || e.code === 'KeyF' || e.code === 'Enter') && !e.repeat) this.g.action();
       else if (e.code === 'KeyR') this.g.respawn();
       else if (e.code === 'KeyL' && !e.repeat) this.g.rain();
+      else if (e.code === 'KeyV' && !e.repeat) this.g.toggleView();
     });
     win.addEventListener('keyup', ev => {
       const k = KEYMAP[(ev as KeyboardEvent).code];
@@ -242,6 +244,7 @@ export class Input {
     hold($('p-brake'), 'brake');
     $('p-brake').addEventListener('pointerdown', () => this.g.jump());
     $('p-act').addEventListener('click', () => this.g.action());
+    $('p-view').addEventListener('click', () => this.g.toggleView());
     const showTouch = () => {
       $('joy').hidden = false;
       $('pad').hidden = false;
