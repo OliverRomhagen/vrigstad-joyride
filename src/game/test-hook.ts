@@ -63,6 +63,11 @@ export interface TestHookDeps {
 /** Puts the hook on `window.__joyride`. */
 export function installTestHook(g: TestHookDeps) {
   const { game, view, player, health, cars, vehicleVisuals, bodyMotion, skyDome, street } = g;
+  // installed before the first frame, while every car still stands where it was placed: the smallest gap between two (#409)
+  let startGapM = Infinity;
+  for (let i = 0; i < cars.length; i++)
+    for (let j = i + 1; j < cars.length; j++)
+      startGapM = Math.min(startGapM, Math.hypot(cars[i].x - cars[j].x, cars[i].z - cars[j].z));
   function furnitureState() {
     const { layout, draw, ms } = g.furniture;
     const count = (key: 'kind' | 'source', value: string) => layout.placements.filter(p => p[key] === value).length;
@@ -184,6 +189,7 @@ export function installTestHook(g: TestHookDeps) {
         activeVehicle: game.pcar ? vehicleVisuals.state(game.pcar) : null,
         body: game.pcar ? bodyMotion.state(game.pcar) : null,
         wheelbase: (game.pcar || displayCar)?.T.handling.wheelbaseM ?? 0,
+        startGapM,
         traffic: cars.filter(c => c.mode === 'ai').map(c => ({ type: c.type, vehicle: vehicleVisuals.state(c) })),
         clouds: skyDome.state(),
         hour: g.day.hour,

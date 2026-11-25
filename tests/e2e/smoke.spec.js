@@ -139,9 +139,11 @@ test.describe('game (index.html)', () => {
     expect(f.byKind['street-lamp']).toBeGreaterThan(0);
     expect(f.byKind.bench).toBeGreaterThanOrEqual(4);
     expect(f.byKind['waste-bin']).toBeGreaterThanOrEqual(2);
+    // and the villa streets: a mailbox and wheelie bins at the houses, cabinets in the verges (#305)
+    for (const k of ['wheelie-bin', 'mailbox', 'street-cabinet']) expect(f.byKind[k]).toBeGreaterThan(0);
     expect(f.bySource.osm + f.bySource.override + f.bySource.procedural).toBe(f.total);
     expect(f.meshes).toBeGreaterThan(0);
-    expect(f.meshes).toBeLessThanOrEqual(6 * 36); // at most six per 400 m cell, and the 2200 m world spans 6 × 6 cells
+    expect(f.meshes).toBeLessThanOrEqual(16 * 36); // per 400 m cell at most one per model (14, FurnitureModelId; raise this with the next model) and per lamp glass (2), and the 2200 m world spans 6 × 6 cells
     expect(f.debug).toBe(true);
     await page.locator('#go').click();
     await frames(page, 5);
@@ -219,6 +221,7 @@ test.describe('game (index.html)', () => {
     const s = await state(page);
     expect(s.vehicle.id).toBe('volvo240');
     expect(s.traffic.length).toBeGreaterThan(0);
+    expect(s.startGapM).toBeGreaterThanOrEqual(7); // no car was placed inside another, the Volvo at Torget included (#409)
     const fleet = { volvo: ['volvo240', 'impala1970'], saab: ['saab900', 'xc70', 'micra-k11'], epa: ['duett-epa'] };
     for (const c of s.traffic) expect(fleet[c.type] ?? [null]).toContain(c.vehicle?.id ?? null);
     const notice = await page.request.get('/media/vehicles/NOTICE.txt');
@@ -319,7 +322,10 @@ test.describe('game (index.html)', () => {
 
     // Held straight on, the Volvo soon hits something hard enough to dent it: traffic crossing Torget, or the house past it.
     await page.keyboard.down('KeyW');
-    await expect.poll(async () => (await state(page)).carDmg, { intervals: [100], timeout: 90_000 }).toBeGreaterThan(0); // inside the test's 240 s, so a miss fails here
+    // At least 0.5, so the bar, which shows the damage rounded, reads 1 or more: a glancing hit can dent it by less.
+    await expect
+      .poll(async () => (await state(page)).carDmg, { intervals: [100], timeout: 90_000 }) // inside the test's 240 s, so a miss fails here
+      .toBeGreaterThanOrEqual(0.5);
     await page.keyboard.up('KeyW');
     await expect(page.locator('#dmg')).not.toHaveAttribute('aria-valuenow', '0');
     await page.screenshot({ path: testInfo.outputPath('game-crash.png') });
