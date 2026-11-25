@@ -353,7 +353,7 @@ debugOverlay?.registerCommands(commands);
 // ---------- input: keys, mouse look and the touch controls (src/game/input.ts) ----------
 // the dev console sees each key first, then the menus (src/game/menu.ts)
 const input = new Input({ win: window, doc: document, canvas, $, coarse, menuKey: e => devcon.takeKey(e) || menuKey(e),
-  get started() { return game.started; }, get menuOpen() { return !kmenu.hidden; },
+  get started() { return game.started; }, get menuOpen() { return !kmenu.hidden; }, get consoleOpen() { return devcon.isOpen; },
   action: () => action(), respawn: () => respawn(), rain: () => cashRain.makeItRain(),
   jump: () => { if (jumpOk()) game.jumpQ = true; },   // queue only where a jump can start (see jumpOk)
   look: (dx, dy) => { if (game.inCar) { view.lookOff = wrap(view.lookOff + dx * 0.006); view.lookIdle = 0; } else view.camYaw = wrap(view.camYaw + dx * 0.006);
