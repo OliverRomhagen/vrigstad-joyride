@@ -24,10 +24,10 @@ const RAYS: readonly (readonly [angle: number, length: number, spread: number, o
 // leave from the disc.
 const FORWARD_KNEE = 0.6,
   FORWARD_FLOOR = 0.15;
-// The rays are a low-sun effect: full below about 20° (sun y 0.35), an eighth of that above about 53° (y 0.8), so
+// The rays are a low-sun effect: full below about 20° (sun y 0.35), approaching 12% at about 53° (y 0.8), so
 // midday shows only a hint and late afternoon gets the drama. Tuned to the game's day (day-cycle.ts): its sun stands at
-// y 0.79 at noon, 0.58 at 17:00 and 0.33 at 19:00, so it never sinks lower in the evening. The halo keeps half its
-// strength at midday.
+// y 0.79 at noon, 0.58 at 17:00 and 0.33 at 19:00. Noon approaches the high-sun floors (12% rays, 50% halo)
+// without quite reaching them, and the evening sun never sinks below y 0.33.
 const LOW_SUN_Y = 0.35,
   HIGH_SUN_Y = 0.8,
   HIGH_SUN_RAYS = 0.12,
@@ -217,7 +217,8 @@ export class SunStreaks {
       low = 1 - smoothstep(LOW_SUN_Y, HIGH_SUN_Y, d.y);
     u.src.value.set(s.x, s.y);
     u.aspect.value = camera.aspect;
-    // the rays take the shade twice, the glare once: a half-covered sun keeps a halo but casts few streaks
+    // direct already includes Sky.sunFactor; these extra shade factors apply twice to rays and once to glare,
+    // so a half-covered sun keeps a halo but casts few streaks
     u.presence.value = s.presence * k * shade * (HIGH_SUN_RAYS + (1 - HIGH_SUN_RAYS) * low);
     u.glare.value = s.glare * k * (HIGH_SUN_HALO + (1 - HIGH_SUN_HALO) * low);
     // the fan opens towards a point half a frame below the bottom edge: straight down for a sun above the frame, as in

@@ -22,6 +22,7 @@ export interface TestHookDeps {
   health: Health;
   cars: readonly Car[];
   labs: readonly string[]; // the lab experiments switched on
+  readonly styled: boolean; // frames are drawn through a style (?lab=toon), which loads after the page
   readonly ragdolls: number; // people knocked over right now
   readonly stars: number;
   readonly cats: number;
@@ -158,6 +159,7 @@ export function installTestHook(g: TestHookDeps) {
       return {
         started: game.started,
         lab: g.labs,
+        styled: g.styled,
         ragdolls: g.ragdolls,
         x: player.x,
         z: player.z,

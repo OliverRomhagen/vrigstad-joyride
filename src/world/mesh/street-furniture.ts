@@ -117,12 +117,88 @@ function bin(): FurnitureModel {
   };
 }
 
+// #305: what stands by the houses; each faces +z, the street
+const WHEELIE = { green: 0x2f5d3a, black: 0x2a2c2d } as const;
+const WHEEL = 0x1c1c1c;
+// Swedish mailboxes: green, grey or black
+const MAILBOX = { green: 0x2f4f3a, grey: 0x6b7069, black: 0x2a2b2c } as const;
+const MAILBOX_COLOURS = Object.values(MAILBOX);
+const MAILBOX_EDGE = 0x1e2120;
+const WOOD_GREY = 0x7a6a58;
+const CABINET = 0x7d8a80;
+const CABINET_BASE = 0x4d5550;
+
+/** A two-wheeled wheelie bin, lid hinged at the back by the wheels, about 0.6 × 0.72 × 1.05 m. */
+function wheelieBin(colour: number): FurnitureModel {
+  const axle = (x: number) =>
+    new THREE.CylinderGeometry(0.1, 0.1, 0.06, 8).rotateZ(Math.PI / 2).translate(x, 0.1, -0.25);
+  return {
+    body: merge([
+      [box(0.56, 0.92, 0.66, 0, 0.5, 0.02), colour],
+      [box(0.6, 0.05, 0.72, 0, 0.985, 0), colour], // the lid, overhanging a little
+      [box(0.5, 0.04, 0.04, 0, 1.03, -0.33), WHEEL], // the handle
+      [axle(-0.25), WHEEL],
+      [axle(0.25), WHEEL],
+    ]),
+  };
+}
+
+/**
+ * A Swedish mailbox: an upright rectangular box, taller than wide and wider than deep, with a lid that slopes down to the
+ * front over the slot, about 0.34 × 0.4 × 0.2 m on top of a post at 0.85 m. Not the round-topped American tunnel.
+ */
+function mailboxParts(x: number, colour: number): Part[] {
+  return [
+    [box(0.34, 0.4, 0.2, x, 1.05, 0), colour],
+    [box(0.36, 0.025, 0.24, x, 1.265, 0, 0.18), colour], // the lid, sloping to the front
+    [box(0.3, 0.015, 0.005, x, 1.17, 0.1025), MAILBOX_EDGE], // the flap's edge across the front
+  ];
+}
+function mailbox(colour: number): FurnitureModel {
+  return { body: merge([[box(0.07, 0.86, 0.07, 0, 0.43, -0.02), WOOD_GREY], ...mailboxParts(0, colour)]) };
+}
+
+/** A wooden stand of `n` mailboxes side by side, at the road edge in the outskirts. */
+function mailboxStand(n: number): FurnitureModel {
+  const step = 0.4;
+  const span = n * step;
+  const parts: Part[] = [
+    [box(0.08, 0.9, 0.08, -span / 2, 0.45, -0.06), WOOD_GREY],
+    [box(0.08, 0.9, 0.08, span / 2, 0.45, -0.06), WOOD_GREY],
+    [box(span + 0.08, 0.06, 0.26, 0, 0.84, 0), WOOD_GREY], // the shelf the boxes sit on
+  ];
+  for (let i = 0; i < n; i++)
+    parts.push(...mailboxParts(-span / 2 + step * (i + 0.5), MAILBOX_COLOURS[i % MAILBOX_COLOURS.length]));
+  return { body: merge(parts) };
+}
+
+/** A grey-green street cabinet on a dark plinth, about 0.8 × 0.4 × 1.2 m. */
+function streetCabinet(): FurnitureModel {
+  return {
+    body: merge([
+      [box(0.78, 0.12, 0.38, 0, 0.06, 0), CABINET_BASE],
+      [box(0.76, 0.98, 0.36, 0, 0.61, 0), CABINET],
+      [box(0.8, 0.08, 0.4, 0, 1.14, 0), CABINET], // the roof, overhanging a little
+    ]),
+  };
+}
+
 /** Every model by id; the registry is the seam where a GLB-backed model could later stand in (#59). */
 export const FURNITURE_MODELS: Readonly<Record<FurnitureModelId, () => FurnitureModel>> = {
   'lamp-arm': () => lamp(6.5, 1.25, 1),
   'lamp-arm-short': () => lamp(5, 1, 0.8),
   'bench-wood': bench,
   'bin-green': bin,
+  'wheelie-bin-green': () => wheelieBin(WHEELIE.green),
+  'wheelie-bin-black': () => wheelieBin(WHEELIE.black),
+  'mailbox-green': () => mailbox(MAILBOX.green),
+  'mailbox-grey': () => mailbox(MAILBOX.grey),
+  'mailbox-black': () => mailbox(MAILBOX.black),
+  'mailbox-stand-3': () => mailboxStand(3),
+  'mailbox-stand-4': () => mailboxStand(4),
+  'mailbox-stand-5': () => mailboxStand(5),
+  'mailbox-stand-6': () => mailboxStand(6),
+  'street-cabinet': streetCabinet,
 };
 
 export interface StreetFurnitureOptions {
