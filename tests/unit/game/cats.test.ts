@@ -30,7 +30,7 @@ function colony(water: (x: number, z: number) => boolean = () => false) {
     geoCache: {},
     boxGeo: () => new THREE.BufferGeometry(),
     paintMat: new THREE.MeshBasicMaterial(),
-    blob: () => {},
+    blob: () => new THREE.Object3D(),
     cars: drive.cars,
     toast: msg => {
       toasts.push(msg);
@@ -388,6 +388,21 @@ describe('strays on the EPA flak', () => {
     expect(off).toBe(true);
   });
 
+  it('keeps its blob on the ground under it while it hops up, and under it on the flak once it lands', () => {
+    const { c, cat, car, player } = epaScene();
+    const shadow = new THREE.Object3D(),
+      at = new THREE.Vector3();
+    cat.mesh.add(shadow);
+    cat.shadow = shadow;
+    for (let i = 0; i < 3000 && !(cat.hop?.onto === car && cat.hop.p >= 0.5); i++) c.update(player, 1 / 30);
+    expect(cat.hop?.onto).toBe(car);
+    expect(cat.mesh.position.y).toBeGreaterThan(0.5); // up in the air
+    expect(shadow.getWorldPosition(at).y).toBeCloseTo(0.06, 6); // on the ground (0 here)
+    for (let i = 0; i < 60 && cat.hop; i++) c.update(player, 1 / 30);
+    expect(cat.ride).toBe(car);
+    expect(shadow.position.y).toBe(0.06); // on the flak, just under the cat
+  });
+
   it('adopted mid-hop onto the flak, it lands on the ground and leaves the EPA free', () => {
     const { c, cat, car, player } = epaScene();
     for (let i = 0; i < 3000 && cat.state !== 'hop'; i++) {
@@ -422,6 +437,21 @@ describe('strays on the EPA flak', () => {
     expect(cat.ride).toBeNull();
     expect(cat.hop).toBeNull();
     expect(car.cat).toBeFalsy();
+  });
+
+  it('your cat sent home mid-hop puts its blob back under it', () => {
+    const { c, cat, car, player, drive } = epaScene();
+    const shadow = new THREE.Object3D();
+    cat.mesh.add(shadow);
+    cat.shadow = shadow;
+    c.adopt(cat);
+    cat.x = 2; // within hopping reach of the EPA
+    drive.inCar = true;
+    drive.pcar = car;
+    for (let i = 0; i < 60 && !(cat.hop && cat.hop.p >= 0.5); i++) c.update(player, 1 / 30);
+    expect(shadow.position.y).toBeLessThan(0); // held down on the ground mid-hop
+    c.sendHome();
+    expect(shadow.position.y).toBe(0.06);
   });
 
   it('your cat sent home mid-hop into your car leaves the car free', () => {
@@ -528,9 +558,12 @@ describe('catMesh', () => {
       paintMat: new THREE.MeshBasicMaterial(),
       blob: (parent: THREE.Object3D) => {
         shadows.push(parent);
+        return new THREE.Object3D();
       },
     };
     const cat = catMesh(CAT_COLS[0], deps);
+    expect(cat.castShadow).toBe(false); // the blob is its shadow (#239)
+    expect(cat.shadow).toBeInstanceOf(THREE.Object3D);
     expect(built).toEqual([catParts(CAT_COLS[0])]);
     expect(cat.scale.x).toBeCloseTo(1.225);
     expect(cat.material).toBe(deps.paintMat);
@@ -546,7 +579,7 @@ describe('catMesh', () => {
         return new THREE.BufferGeometry();
       },
       paintMat: new THREE.MeshBasicMaterial(),
-      blob: () => {},
+      blob: () => new THREE.Object3D(),
     };
     const a = catMesh(CAT_COLS[0], deps),
       b = catMesh(CAT_COLS[0], deps, 1.1);
