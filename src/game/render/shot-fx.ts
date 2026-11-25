@@ -196,8 +196,8 @@ export class ShotFx {
       if (streaks < SHOTS_MAX) this.tracers.setMatrixAt(streaks++, e.at);
       e.leftS -= dt;
     }
+    if (streaks || this.tracers.count) this.tracers.instanceMatrix.needsUpdate = true;
     this.tracers.count = streaks;
-    this.tracers.instanceMatrix.needsUpdate = true;
   }
 
   /**
@@ -210,7 +210,7 @@ export class ShotFx {
     if (long < 0.05) return;
     _n.normalize();
     if (this.ended.length < STREAKS_MAX) this.ended.push({ at: new THREE.Matrix4(), leftS: 0 });
-    const e = this.ended[this.nextEnded % this.ended.length];
+    const e = this.ended[this.nextEnded];
     this.nextEnded = (this.nextEnded + 1) % STREAKS_MAX;
     _q.setFromUnitVectors(Z, _n);
     _p.set(x, y, z).addScaledVector(_n, -long / 2);

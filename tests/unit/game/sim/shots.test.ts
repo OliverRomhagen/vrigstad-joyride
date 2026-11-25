@@ -275,7 +275,7 @@ describe('a fast shot', () => {
     expect(Math.hypot(quick.x - slow.x, quick.z - slow.z)).toBeLessThan(1);
   });
 
-  it('drops little enough to hit what is under the cross at 300 m', () => {
+  it('hits who it is aimed at 300 m off, the drop allowed for', () => {
     const weapon = WEAPONS[ALG],
       aim = aimAt(weapon.speedMs, 0, MUZZLE_M, 0, 0, 1, -300, { yaw: 0, pitch: 0 }),
       people = [{ x: 0, z: -300, scale: 1 }],

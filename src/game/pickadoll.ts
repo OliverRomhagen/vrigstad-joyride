@@ -40,6 +40,7 @@ const CROSSHAIR_NDC_Y = 0.3, // how far above the middle of the screen, as a sha
 // a weapon with a scope: aiming looks through it, from your eye, and the line of sight reaches further
 const SCOPE_EYE_M = 1.6, // the eye, above your feet
   SCOPE_FWD_M = 0.3, // the camera sits this far ahead of your middle, clear of your own head
+  SCOPE_CLEAR_M = 1.1, // and keeps this far back from a wall ahead: the camera draws nothing nearer than 0.8 m (stage.ts)
   SCOPE_SIGHT_M = 420,
   SCOPE_ON_K = 0.6; // the scope's edge and cross show, and you are hidden, from this far into the aim
 const TARGET_UP_M = 1; // the soft lock aims this far above its target's feet
@@ -377,7 +378,8 @@ export class Pickadoll {
       ty = this.aimHit.y,
       tz = this.aimHit.z,
       onTarget = seen && (this.aimHit.kind === 'person' || this.aimHit.kind === 'car');
-    if (coarse && !onTarget) {
+    // not through a scope: its view is far narrower than the cone, and the shot would go to someone you can't see
+    if (coarse && !onTarget && !this.isScoped) {
       const t = assistTarget(
         from.x,
         from.z,
@@ -511,9 +513,17 @@ export class Pickadoll {
       fz = -Math.cos(yaw) * cp,
       ground = world.groundAt(player.x, player.z);
     if (scope) {
-      const ex = player.x + Math.sin(yaw) * SCOPE_FWD_M,
+      // forward of your middle, but back from a wall you stand against: nearer than the camera draws, the wall would
+      // be cut away and you would look into the house
+      let fwd = SCOPE_FWD_M;
+      for (let d = 0; d < SCOPE_CLEAR_M; d += 0.15)
+        if (!this.clear(player.x + Math.sin(yaw) * (SCOPE_FWD_M + d), player.z - Math.cos(yaw) * (SCOPE_FWD_M + d))) {
+          fwd = SCOPE_FWD_M + d - SCOPE_CLEAR_M;
+          break;
+        }
+      const ex = player.x + Math.sin(yaw) * fwd,
         ey = ground + player.y + SCOPE_EYE_M,
-        ez = player.z - Math.cos(yaw) * SCOPE_FWD_M;
+        ez = player.z - Math.cos(yaw) * fwd;
       fx.aimCamera(this.aimK, ex, ey, ez, ex + fx_, ey + fy, ez + fz, fx.magnified(scope));
       return;
     }
