@@ -801,8 +801,15 @@ test.describe('map (map.html)', () => {
     const errors = watchErrors(page);
     await page.goto('/map.html?focus=-433,-835&embed');
     await expectWebGL(page);
-    for (const id of ['#title', '#tools', '#legend']) await expect(page.locator(id)).toBeHidden();
-    await expect(page.locator('#credit')).toBeVisible();
+    // the label gets its translate once a frame is drawn; focused on the lake, the label sits near the frame's middle,
+    // where the overview would put it off to the upper left
+    const lake = page.locator('#labels .lbl', { hasText: /^Slättsjön$/ });
+    await expect(lake).toHaveAttribute('style', /translate/);
+    const box = await lake.boundingBox();
+    expect(Math.abs(box.x + box.width / 2 - 320)).toBeLessThan(120);
+    expect(Math.abs(box.y + box.height / 2 - 180)).toBeLessThan(90);
+    for (const id of ['#title', '#tools .btns', '#legend']) await expect(page.locator(id)).toBeHidden();
+    for (const id of ['#north', '#credit']) await expect(page.locator(id)).toBeVisible();
     await page.screenshot({ path: testInfo.outputPath('map-embed.png') });
     expect(errors).toEqual([]);
   });
