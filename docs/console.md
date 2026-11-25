@@ -300,6 +300,12 @@ Each step is a PR of its own, in this order; the first two are what #218 asks fo
    a `choice` and the value as a `num` that the registry checks against the entry's range. They sit under `tune`, so
    `list` and `reset` stay free for other areas. A tunable never registers a command of its own. `?tune=` sets the same
    numbers at load, in dev mode only.
+
+   **Lab flags** (#227, built in #501) are the same kind of adapter, over `LAB_EXPERIMENTS`:
+   `src/lab/lab-commands.ts` adds `lab`, which lists every experiment with its state, name and cost, and
+   `lab on <experiment>` and `lab off <experiment>`. The game reads the flags once, at page load, so a switch
+   rewrites the `lab` parameter in the address, leaves every other parameter as it was written, and loads the page
+   again. `LabFlags` stays the one place gameplay asks.
 4. **Tabs, panels and the Log tab.** The console box gets the panel contract (see [Panels and
    plugins](#panels-and-plugins)), and the Dev tab and a Log tab are its first two panels. The Log is a small `Log` in
    sim code (a ring buffer of `{ level, text, at }`) that any module writes to; warnings that go to `console.warn`
@@ -325,4 +331,6 @@ Each step is a PR of its own, in this order; the first two are what #218 asks fo
   instead, or start with `?cmd=`. A write path in the hook only if that proves too slow.
 - **Who sees the console in a release build.** Today it opens in dev mode only. With the Log tab and `player`
   commands, it could open for everyone, with dev commands still behind `?dev`.
-- **Lab flags** (#227) could get `lab on <id>` once experiments can start and stop without a reload.
+- **Lab flags without a reload.** `lab on <id>` (#501) loads the page again, since the game reads the flags once.
+  Switching one while the game runs needs each experiment to start and stop; `register` and `use` already return
+  the function that takes a command or a hook out again.

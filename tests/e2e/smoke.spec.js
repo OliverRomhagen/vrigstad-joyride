@@ -673,6 +673,13 @@ test.describe('game (index.html)', () => {
     expect((await state(page)).banknotes).toBeGreaterThan(0);
     await page.keyboard.press('KeyL'); // not enough left: nothing is taken
     expect(await state(page)).toMatchObject({ kr: 700 });
+    // last, as it loads the page again: lab on <id> puts the flag in the address and keeps ?dev (#501)
+    await page.keyboard.press('Backquote');
+    await expect(await run('lab')).toContainText('hello [off]: Hello lab.');
+    await page.keyboard.type('lab on hello');
+    await page.keyboard.press('Enter');
+    await page.waitForURL(/\?dev&lab=hello$/);
+    await expect.poll(async () => (await state(page)).lab).toEqual(['hello']);
   });
 
   test('Skroten buys the car you drive onto its ring', async ({ page }, testInfo) => {
