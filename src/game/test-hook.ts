@@ -28,8 +28,10 @@ export interface TestHookDeps {
   readonly cats: number;
   readonly ownCat: boolean;
   readonly displayCar: Car | null; // the car parked by Torget at the start, ?vehicle= picks it
+  lift: { readonly x: number; readonly z: number; readonly inX: number; readonly inZ: number } | null; // the middle of the lift's bay in Skroten's workshop, and the way in from its door
   // what the car's model and springs are doing
   vehicleVisuals: { state(car: Car): unknown };
+  crackShown(car: Car): number; // the crack level its glass shows
   bodyMotion: { state(car: Car): unknown };
   skyDome: Pick<Sky, 'state'>;
   street: { layout: StreetscapeLayout; meshes: readonly unknown[]; tris: number; ms: number };
@@ -189,6 +191,8 @@ export function installTestHook(g: TestHookDeps) {
         fps: g.fps,
         hp: health.hp,
         carDmg: game.pcar ? game.pcar.dmg : null,
+        carCrack: game.pcar ? g.crackShown(game.pcar) : null,
+        carAt: game.pcar ? { x: game.pcar.x, z: game.pcar.z, h: game.pcar.h } : null, // where the car you drive stands, and its heading
         ownCat: g.ownCat,
         vehicle: displayCar ? vehicleVisuals.state(displayCar) : null,
         nearSelectedVehicle: n === displayCar,
@@ -196,6 +200,7 @@ export function installTestHook(g: TestHookDeps) {
         body: game.pcar ? bodyMotion.state(game.pcar) : null,
         wheelbase: (game.pcar || displayCar)?.T.handling.wheelbaseM ?? 0,
         startGapM,
+        lift: g.lift && { x: g.lift.x, z: g.lift.z, inX: g.lift.inX, inZ: g.lift.inZ },
         forSale: cars.filter(c => c.saleKr).map(c => ({ x: c.x, z: c.z, h: c.h, kr: c.saleKr })), // Skroten's lot
         traffic: cars.filter(c => c.mode === 'ai').map(c => ({ type: c.type, vehicle: vehicleVisuals.state(c) })),
         clouds: skyDome.state(),

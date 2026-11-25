@@ -18,6 +18,7 @@ export interface ActionPromptDeps {
   coarse: boolean; // a touch screen: no "Get out" prompt, the E button says it
   nearPlace(): Place | null;
   skrotenBuys(): boolean; // the car you drive stands on Skroten's ring, and Skroten would buy it
+  skrotenRepairKr(): number | null; // what Plåt-Pelle asks to mend the car you drive on the workshop's lift; null when he wouldn't
   nearOwner(): boolean; // you stand on foot next to Plåt-Pelle
   nearCat(): Cat | null;
   nearestCar(): Car | null;
@@ -43,6 +44,7 @@ export class ActionPrompt {
       coarse,
       nearPlace,
       skrotenBuys,
+      skrotenRepairKr,
       nearOwner,
       nearCat,
       nearestCar,
@@ -53,7 +55,8 @@ export class ActionPrompt {
     const pr = $('prompt'),
       pl = game.started && !places.inside ? nearPlace() : null,
       kt = game.started ? nearCat() : null,
-      c = game.started && !game.inCar && !places.inside ? nearestCar() : null;
+      c = game.started && !game.inCar && !places.inside ? nearestCar() : null,
+      repairKr = game.inCar ? skrotenRepairKr() : null;
     $('hide').hidden = !places.inside;
     if (places.inside) {
       $('hide').innerHTML = wanted.stars
@@ -79,6 +82,9 @@ export class ActionPrompt {
     } else if (game.inCar && game.pcar && skrotenBuys()) {
       pr.hidden = this.g.menuOpen || tooFastToGetOut(game.pcar);
       pr.innerHTML = '<kbd>E</kbd>Sell the ' + carName(game.pcar) + ' at Skroten';
+    } else if (game.inCar && game.pcar && repairKr !== null) {
+      pr.hidden = this.g.menuOpen || tooFastToGetOut(game.pcar);
+      pr.innerHTML = '<kbd>E</kbd>Repair the ' + carName(game.pcar) + ' · ' + fmtKr(repairKr);
     } else if (game.inCar && game.pcar && !coarse) {
       pr.hidden = tooFastToGetOut(game.pcar);
       pr.innerHTML = '<kbd>E</kbd>Get out';

@@ -6,6 +6,8 @@ import { carsForSale, OWNER_LINES, Skroten, type SkrotenDeps } from '../../../sr
 import { OWNER_UV, type YardCar, yardHeading, yardToWorld } from '../../../src/game/skroten-yard';
 import { newGameState } from '../../../src/game/state';
 
+const LIFT = { x: 50, z: 0 };
+
 // You drive `car` onto Skroten's ring with `stars`; `open` holds the last menu, `choose` picks from it.
 function skroten(o: { car?: Partial<Car>; model?: string; stars?: number; kr?: number } = {}) {
   const calls: string[] = [];
@@ -16,7 +18,7 @@ function skroten(o: { car?: Partial<Car>; model?: string; stars?: number; kr?: n
     pick: (k: string) => void;
     stay?: (() => boolean) | null;
   } | null = null;
-  const car = { type: 'volvo', dmg: 0, ...o.car } as Car;
+  const car = { type: 'volvo', dmg: 0, x: 0, z: 0, v: 0, ...o.car } as Car;
   const game = { ...newGameState(), inCar: true, pcar: car as Car | null },
     wallet = { kr: o.kr ?? 0 };
   let onRing = true;
@@ -29,6 +31,7 @@ function skroten(o: { car?: Partial<Car>; model?: string; stars?: number; kr?: n
     },
     toast: m => void calls.push('toast ' + m),
     atSkroten: () => onRing,
+    liftAt: LIFT,
     modelId: () => o.model,
     carName: () => 'Volvo 240',
     wallet,
@@ -48,6 +51,11 @@ function skroten(o: { car?: Partial<Car>; model?: string; stars?: number; kr?: n
     choose: (k: string) => open!.pick(k),
     leaveRing: () => {
       onRing = false;
+    },
+    driveOntoLift: () => {
+      onRing = false;
+      car.x = LIFT.x + 1;
+      car.z = LIFT.z;
     },
   };
 }
@@ -148,6 +156,101 @@ describe('Skroten', () => {
     moving.choose('sell');
     expect(moving.wallet.kr).toBe(0);
     expect(moving.game.inCar).toBe(true);
+  });
+});
+
+describe('Plåt-Pelle mends the car on the lift', () => {
+  it('names his price for the damage, and mends the car once you pay', () => {
+    const t = skroten({ model: 'volvo240', car: { dmg: 50 }, kr: 500 });
+    t.driveOntoLift();
+    expect(t.s.repairKr()).toBe(200);
+    expect(t.s.open()).toBe(true);
+    expect(t.menu()!.kind).toBe('skrot-fix');
+    expect(t.menu()!.title).toContain(fmtKr(200));
+    t.choose('fix');
+    expect(t.g.game.pcar!.dmg).toBe(0);
+    expect(t.wallet.kr).toBe(300);
+    expect(t.game.inCar).toBe(true);
+  });
+
+  it('keeps the damage and your money when you say no, or cannot pay', () => {
+    const no = skroten({ car: { dmg: 50 }, kr: 500 });
+    no.driveOntoLift();
+    no.s.open();
+    no.choose('no');
+    expect(no.g.game.pcar!.dmg).toBe(50);
+    expect(no.wallet.kr).toBe(500);
+    const broke = skroten({ car: { dmg: 50 }, kr: 10 });
+    broke.driveOntoLift();
+    broke.s.open();
+    broke.choose('fix');
+    expect(broke.g.game.pcar!.dmg).toBe(50);
+    expect(broke.wallet.kr).toBe(10);
+    expect(broke.calls.at(-1)).toContain('Kom tebaks när du har pengarna');
+  });
+
+  it('opens nothing and says nothing for a whole car, so E gets you out, even a police car or with the police after you', () => {
+    for (const o of [{}, { car: { type: 'polis' } }, { stars: 1 }] as const) {
+      const t = skroten({ ...o, car: { dmg: 0, ...('car' in o ? o.car : {}) }, kr: 1000 });
+      t.driveOntoLift();
+      expect(t.s.repairKr()).toBeNull();
+      expect(t.s.open()).toBe(false);
+      expect(t.menu()).toBeNull();
+      expect(t.calls).toEqual([]);
+    }
+  });
+
+  it('names the new price instead of taking it when the car took more damage with the menu open', () => {
+    const t = skroten({ model: 'volvo240', car: { dmg: 50 }, kr: 1000 });
+    t.driveOntoLift();
+    t.s.open();
+    t.g.game.pcar!.dmg = 80; // rammed while you read the menu
+    t.choose('fix');
+    expect(t.wallet.kr).toBe(1000);
+    expect(t.g.game.pcar!.dmg).toBe(80);
+    expect(t.menu()!.title).toContain(fmtKr(320));
+    t.choose('fix');
+    expect(t.wallet.kr).toBe(1000 - 320);
+    expect(t.g.game.pcar!.dmg).toBe(0);
+  });
+
+  it('closes the menu once the car rolls off faster than you can get out', () => {
+    const t = skroten({ car: { dmg: 50 }, kr: 1000 });
+    t.driveOntoLift();
+    t.s.open();
+    t.g.game.pcar!.v = 5;
+    expect(t.menu()!.stay!()).toBe(false);
+    t.choose('fix');
+    expect(t.g.game.pcar!.dmg).toBe(50);
+  });
+
+  it('mends nothing for the police or with them after you', () => {
+    for (const [o, says] of [
+      [{ car: { dmg: 50, type: 'polis' } }, 'En polisbil?'],
+      [{ car: { dmg: 50 }, stars: 1 }, 'Inte mä snuten i hälarna!'],
+    ] as const) {
+      const t = skroten({ ...o, kr: 1000 } as Parameters<typeof skroten>[0]);
+      t.driveOntoLift();
+      expect(t.s.repairKr()).toBeNull();
+      expect(t.s.open()).toBe(false);
+      expect(t.menu()).toBeNull();
+      expect(t.calls.at(-1)).toContain(says);
+    }
+  });
+
+  it('offers nothing off the lift, keeps the menu only while the car stands on it, and mends none that left', () => {
+    const t = skroten({ car: { dmg: 50 }, kr: 500 });
+    t.leaveRing();
+    expect(t.s.repairKr()).toBeNull();
+    expect(t.s.open()).toBe(false);
+    t.driveOntoLift();
+    t.s.open();
+    expect(t.menu()!.stay!()).toBe(true);
+    t.g.game.pcar!.x = LIFT.x + 10;
+    expect(t.menu()!.stay!()).toBe(false);
+    t.choose('fix');
+    expect(t.g.game.pcar!.dmg).toBe(50);
+    expect(t.wallet.kr).toBe(500);
   });
 });
 
