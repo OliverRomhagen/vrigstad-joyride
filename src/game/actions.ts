@@ -1,8 +1,12 @@
 // What pressing E does (walk into a place, pet a cat, open the kiosk, get in or out of a car, steal one), and where you end up after Gripen! or a knock-out.
 // Moved from src/game/main.ts (#177); main.ts passes in the places, the cats' menus, the police, what the HUD draws and whether the player's mesh shows. No three.js or DOM here.
+// Getting in and out of a car are commands, `enter` and `exit` (#366): E only picks which and runs it through the registry,
+// so a hook, the console and a test reach the same rule. The other actions follow.
 import { wrap } from '../world/math';
 import type { Car } from './cars';
 import type { Cat } from './cats';
+import { command } from './command-args';
+import type { Commands } from './commands';
 import { fine, fmtKr, pay, type Wallet } from './economy';
 import { type Health, HP_MAX, wakeSpot, wrecked } from './health';
 import type { Place, Places } from './places';
@@ -30,6 +34,7 @@ export interface ActionsDeps {
   wanted: Pick<Wanted, 'addStar' | 'police' | 'stars' | 'clear'>;
   health: Health;
   wallet: Wallet;
+  commands: Pick<Commands, 'register' | 'run'>; // where enter and exit are registered, and what E runs them through
   menuOpen(): boolean; // the menu plate is up: E closes it
   closeMenu(): void;
   showPlayer(shown: boolean): void; // the player's mesh: hidden while you drive
@@ -61,6 +66,9 @@ export interface ActionsDeps {
   pickLine(lines: readonly string[]): string;
 }
 
+const NOT_NOW = 'Not now: the game is not running.';
+const TOO_FAST = 'Slow down before you get out.';
+
 // a car you can get straight back into: one you got out of, while it still drives
 const enterable = (c: Car) => c.mode === 'idle' && !wrecked(c);
 
@@ -70,6 +78,28 @@ export class Actions {
 
   constructor(g: ActionsDeps) {
     this.g = g;
+    g.commands.register(
+      'enter',
+      command({
+        help: 'get into the car in reach, taking it if it is not yours',
+        details: 'What E does beside a car. Taking someone else’s car can bring the police.',
+        examples: ['enter'],
+        access: 'player',
+        args: [],
+        run: () => this.enterCar(),
+      }),
+    );
+    g.commands.register(
+      'exit',
+      command({
+        help: 'get out of the car you drive',
+        details: 'What E does in a car, once it is slow enough.',
+        examples: ['exit'],
+        access: 'player',
+        args: [],
+        run: () => this.exitCar(),
+      }),
+    );
   }
 
   nearestCar = () => {
@@ -103,13 +133,10 @@ export class Actions {
   action = () => {
     const {
       game,
-      view,
-      player,
       places,
-      wanted,
+      commands,
       menuOpen,
       closeMenu,
-      showPlayer,
       nearPlace,
       enterHouse,
       leaveHouse,
@@ -122,15 +149,6 @@ export class Actions {
       nearOwner,
       talkToOwner,
       offerCar,
-      rnd,
-      pick,
-      toast,
-      carName,
-      spokenName,
-      driverOut,
-      replaceTaken,
-      drawStolen,
-      pickLine,
     } = this.g;
     if (!game.started || game.titleCardT > 0) return;
     if (places.inside) {
@@ -158,19 +176,40 @@ export class Actions {
       return;
     }
     if (game.inCar) {
-      if (tooFastToGetOut(game.pcar!)) {
-        toast('Slow down before you get out.', 2);
-        return;
-      }
-      if (!openSkroten()) this.getOut();
+      // too fast, exit says so; otherwise Skroten's offer for the car on its ring comes before getting out
+      if (tooFastToGetOut(game.pcar!) || !openSkroten()) commands.run('exit', 'input');
       return;
     }
     const c = this.nearestCar();
     if (!c) return;
-    if (c.saleKr) {
-      offerCar(c);
-      return;
-    }
+    if (c.saleKr) offerCar(c);
+    else commands.run('enter', 'input');
+  };
+  /** The `enter` command: into the car in reach, taking it if it isn't yours. Returns the line the console shows. */
+  enterCar = (): string => {
+    const {
+      game,
+      view,
+      player,
+      places,
+      wanted,
+      showPlayer,
+      rnd,
+      pick,
+      toast,
+      carName,
+      spokenName,
+      driverOut,
+      replaceTaken,
+      drawStolen,
+      pickLine,
+    } = this.g;
+    if (!game.started || game.titleCardT > 0) return NOT_NOW;
+    if (places.inside) return 'You are inside a house.';
+    if (game.inCar) return 'You are already in the ' + carName(game.pcar!) + '.';
+    const c = this.nearestCar();
+    if (!c) return 'No car in reach.';
+    if (c.saleKr) return 'The ' + carName(c) + ' is for sale at Skroten.';
     if (c.mode === 'ai') {
       driverOut(c);
       toast(
@@ -209,6 +248,20 @@ export class Actions {
     showPlayer(false);
     view.lookOff = 0;
     view.camYaw = c.h;
+    return 'You are in the ' + carName(c) + '.';
+  };
+  /** The `exit` command: out of the car you drive, unless it is still too fast. Returns the line the console shows. */
+  exitCar = (): string => {
+    const { game, toast, carName } = this.g;
+    if (!game.started || game.titleCardT > 0) return NOT_NOW;
+    if (!game.inCar) return 'You are not in a car.';
+    if (tooFastToGetOut(game.pcar!)) {
+      toast(TOO_FAST, 2);
+      return TOO_FAST;
+    }
+    const name = carName(game.pcar!);
+    this.getOut();
+    return 'You got out of the ' + name + '.';
   };
   respawn = () => {
     const { game, player, leaveHouse, collide } = this.g;

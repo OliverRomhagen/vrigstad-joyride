@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { Actions, type ActionsDeps } from '../../../src/game/actions';
 import type { Car } from '../../../src/game/cars';
 import type { Cat } from '../../../src/game/cats';
+import { Commands } from '../../../src/game/commands';
 import { FINE_PER_STAR_KR } from '../../../src/game/economy';
 import { HP_MAX } from '../../../src/game/health';
 import type { Place } from '../../../src/game/places';
@@ -37,6 +38,7 @@ function actions(
     stars?: number;
     place?: Place | null;
     places?: Place[];
+    inside?: Place | null;
     cat?: Cat | null;
     menuOpen?: boolean;
     skroten?: boolean;
@@ -59,6 +61,13 @@ function actions(
       calls.push('clear');
     },
   };
+  // every command E runs, as a hook sees it: its name and where it came from
+  const commands = new Commands(),
+    ran: string[] = [];
+  commands.use((call, next) => {
+    ran.push(call.name + ' from ' + call.source);
+    return next();
+  });
   const health = { hp: 7, calm: 0, god: false },
     wallet = { kr: o.kr ?? 0 };
   const g: ActionsDeps = {
@@ -66,10 +75,11 @@ function actions(
     view,
     player,
     cars: o.cars ?? [],
-    places: { inside: null, list: o.places ?? [] },
+    places: { inside: o.inside ?? null, list: o.places ?? [] },
     wanted,
     health,
     wallet,
+    commands,
     menuOpen: () => !!o.menuOpen,
     showPlayer: v => {
       mesh.visible = v;
@@ -109,7 +119,21 @@ function actions(
     sayLater: l => void calls.push('later ' + l),
     pickLine: a => a[0],
   };
-  return { a: new Actions(g), calls, screens, game, view, player, mesh, wanted, health, wallet };
+  return {
+    a: new Actions(g),
+    deps: g,
+    commands,
+    ran,
+    calls,
+    screens,
+    game,
+    view,
+    player,
+    mesh,
+    wanted,
+    health,
+    wallet,
+  };
 }
 
 describe('Actions.action', () => {
@@ -256,6 +280,95 @@ describe('Actions.action', () => {
     expect(t.view.lookOff).toBe(0);
     expect(t.view.camYaw).toBeCloseTo(0.5);
     expect(t.mesh.visible).toBe(true);
+  });
+});
+
+describe('enter and exit as commands', () => {
+  it('E at a car only picks the command: a hook sees enter, then exit, from input', () => {
+    const t = actions({ cars: [parked()] });
+    t.a.action();
+    expect(t.game.inCar).toBe(true);
+    t.a.action();
+    expect(t.game.inCar).toBe(false);
+    expect(t.ran).toEqual(['enter from input', 'exit from input']);
+  });
+
+  it('E runs no command for what is not getting in or out of a car', () => {
+    const t = actions({ cars: [parked({ saleKr: 2000 })] });
+    t.a.action(); // Plåt-Pelle's price
+    actions().a.action(); // nothing in reach
+    const onRing = actions({ cars: [parked()], skroten: true });
+    onRing.a.action();
+    onRing.a.action(); // Skroten's offer
+    expect(t.ran).toEqual([]);
+    expect(onRing.ran).toEqual(['enter from input']);
+  });
+
+  it('a hook that refuses the command keeps you on foot', () => {
+    const t = actions({ cars: [parked()] });
+    t.commands.use(call => 'No ' + call.name + ' here.');
+    t.a.action();
+    expect(t.game.inCar).toBe(false);
+  });
+
+  it('enter gets you into the car in reach without a key, as taking it by E does', () => {
+    const c = parked(),
+      t = actions({ cars: [c] });
+    expect(t.commands.run('enter', 'test')).toBe('You are in the Volvo.');
+    expect(t.game.pcar).toBe(c);
+    expect(c.owned).toBe(true);
+    expect(t.calls).toEqual(['toast You took the Volvo. Nobody noticed.', 'stolen 1']);
+    expect(t.commands.run('enter', 'test')).toBe('You are already in the Volvo.');
+    expect(t.ran).toEqual(['enter from test', 'enter from test']);
+  });
+
+  it('enter says why not: no car, a car for sale, inside a house, or the game not running', () => {
+    expect(actions().commands.run('enter')).toBe('No car in reach.');
+    const lot = actions({ cars: [parked({ saleKr: 2000 })] });
+    expect(lot.commands.run('enter')).toBe('The Volvo is for sale at Skroten.');
+    expect(lot.calls).toEqual([]); // the price is what E asks, not what enter does
+    const home = actions({ cars: [parked()], inside: { kind: 'safe', name: 'Storgatan', x: 0, z: 0 } });
+    expect(home.commands.run('enter')).toBe('You are inside a house.');
+    const waiting = actions({ cars: [parked()] });
+    waiting.game.started = false;
+    expect(waiting.commands.run('enter')).toBe('Not now: the game is not running.');
+    waiting.game.started = true;
+    waiting.game.titleCardT = 1;
+    expect(waiting.commands.run('exit')).toBe('Not now: the game is not running.');
+    for (const t of [lot, home, waiting]) expect(t.game.inCar).toBe(false);
+  });
+
+  it('exit gets you out, and says so when you are on foot or too fast', () => {
+    const c = parked(),
+      t = actions({ cars: [c] });
+    expect(t.commands.run('exit')).toBe('You are not in a car.');
+    t.commands.run('enter');
+    c.v = 20;
+    expect(t.commands.run('exit')).toBe('Slow down before you get out.');
+    expect(t.calls.at(-1)).toBe('toast Slow down before you get out.');
+    expect(t.game.inCar).toBe(true);
+    c.v = 0;
+    expect(t.commands.run('exit')).toBe('You got out of the Volvo.');
+    expect(t.game.inCar).toBe(false);
+    expect(c.mode).toBe('idle');
+  });
+
+  it("exit gets you out on Skroten's ring too: the offer is what E asks first", () => {
+    const t = actions({ cars: [parked()], skroten: true });
+    t.commands.run('enter');
+    expect(t.commands.run('exit')).toBe('You got out of the Volvo.');
+    expect(t.calls).not.toContain('skroten');
+  });
+
+  it('both take no words, run outside dev mode and explain themselves', () => {
+    const t = actions();
+    expect(t.commands.run('enter now')).toBe('Too many words. Usage: enter');
+    expect(t.commands.run('help exit')).toBe(
+      'exit: get out of the car you drive\nWhat E does in a car, once it is slow enough.\nExamples:\n  exit',
+    );
+    const players = new Commands({ allowed: access => access === 'player' });
+    new Actions({ ...t.deps, commands: players });
+    expect(players.names()).toEqual(['enter', 'exit', 'help']);
   });
 });
 

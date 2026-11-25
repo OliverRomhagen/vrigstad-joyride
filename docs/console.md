@@ -10,6 +10,7 @@ registers against, what is built, and what comes next. The player-facing story i
  sources                     registry (sim code: no DOM)                 modules
  ───────                     ───────────────────────────                 ───────
  DevConsole (typed, Tab) ─┐
+ E, touch         (input) │
  ?cmd= at start*    (url) ├─► Commands.run(line, source) ─► hooks ─► Command.run ─► wallet, pets, police, …
  binds, exec*    (script) │     │ access check                 (outermost first)        (their own API)
  panels*          (panel) │     │ alias → name
@@ -139,6 +140,20 @@ line.
    seconds, rather than when the page starts.
 5. Call it once from `src/game/main.ts`, next to the others. `help` lists the command; nothing else needs to change.
 
+### `enter`: a player action, picked by E
+
+1. `Actions` (`src/game/actions.ts`) registers `enter` and `exit` with access `player`. Each one's `run` calls the
+   rule beside it, `enterCar` or `exitCar`, which checks that it can happen (a car in reach, slow enough to get out)
+   and returns the line to show.
+2. **E only picks.** `Actions.action` looks at where you stand: inside a house, at a cat, at the kiosk, in a car, beside
+   one. For getting in or out it runs `commands.run('enter', 'input')` and does nothing else, so a key press, a typed
+   `enter` and a test's `commands.run('enter', 'test')` reach the same rule through the same hooks.
+3. **The hooks see it** as `{ name: 'enter', args: [], source: 'input' }`. That call is all a replay or another player
+   needs (#361, #1), and what a tutorial waits for.
+
+Getting in and out of a car came first (#366). The other things E does (the kiosk, the cats, a safehouse, Skroten)
+still run straight from `Actions.action`, and move over the same way.
+
 ## The contract
 
 ### A command
@@ -220,7 +235,8 @@ run was done stays what `next()` said, as with `return { ...outcome, text }`. Th
 | Record | keeps the lines that changed the sim, with the step they ran in, for replays | #49 |
 | Network | sends a host's commands to the other players, refuses a guest's dev command | #1 |
 
-The `source` on the call says where the line came from: `console`, `url`, `script` (binds, `exec`), `panel` or `test`. An unknown command, or
+The `source` on the call says where the line came from: `console`, `input` (a key, a touch or a gamepad button),
+`url`, `script` (binds, `exec`), `panel` or `test`. An unknown command, or
 one that isn't allowed, is answered before the hooks, so a hook never sees it; the Log tab takes those lines from the
 console itself.
 
