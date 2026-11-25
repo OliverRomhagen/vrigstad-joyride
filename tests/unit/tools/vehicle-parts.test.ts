@@ -1,13 +1,13 @@
 import { type Mesh, Vector3 } from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { expect, test } from 'vitest';
-import { mergeStaticParts } from '../../../tools/vehicle-parts';
+import { type Gltf, mergeStaticParts } from '../../../tools/vehicle-parts';
 
 // A hand-made GLB: one triangle per part, so every merged vertex can be worked out.
 // Materials: 0 paint, 1 rubber, 2 glass, 3 beacon.
 const TRIANGLE = [0, 0, 0, 1, 0, 0, 0, 1, 0];
 const UP = [0, 0, 1, 0, 0, 1, 0, 0, 1];
-function glb(): Buffer {
+function glb(change?: (json: Gltf) => void): Buffer {
   const data = Buffer.from(new Float32Array([...TRIANGLE, ...UP]).buffer);
   const tri = (material: number) => ({ primitives: [{ attributes: { POSITION: 0, NORMAL: 1 }, material }] });
   const json = {
@@ -37,6 +37,7 @@ function glb(): Buffer {
     ],
     buffers: [{ byteLength: data.length }],
   };
+  change?.(json);
   let text = Buffer.from(JSON.stringify(json));
   text = Buffer.concat([text, Buffer.alloc((4 - (text.length % 4)) % 4, 0x20)]);
   const chunk = (type: number, payload: Buffer) => {
@@ -102,4 +103,88 @@ test('a car with nothing left to merge comes back unchanged', () => {
   const twice = mergeStaticParts(once);
   expect(twice.report.merged).toEqual([]);
   expect(twice.glb).toBe(once);
+});
+
+test('a childless wheel under the body remains named and separate', () => {
+  const input = glb(json => {
+    json.nodes[6]!.children = [];
+    json.nodes[0]!.children!.push(6);
+  });
+  const out = mergeStaticParts(input).glb;
+  const json = JSON.parse(out.subarray(20, 20 + out.readUInt32LE(12)).toString()) as Gltf;
+  expect(json.nodes.find(n => n.name === 'wheel_fl')?.mesh).toBeDefined();
+});
+
+test.each<[string, (json: Gltf) => void]>([
+  [
+    'morph targets',
+    j => {
+      j.meshes[1]!.primitives[0]!.targets = [{ POSITION: 0 }];
+    },
+  ],
+  [
+    'sparse attributes',
+    j => {
+      j.accessors[0]!.sparse = {};
+    },
+  ],
+  [
+    'skin',
+    j => {
+      j.nodes[1]!.skin = 0;
+    },
+  ],
+  [
+    'node extension',
+    j => {
+      j.nodes[1]!.extensions = { example: {} };
+    },
+  ],
+  [
+    'primitive extension',
+    j => {
+      j.meshes[1]!.primitives[0]!.extensions = { example: {} };
+    },
+  ],
+  [
+    'animation target',
+    j => {
+      j.animations = [{ channels: [{ target: { node: 1 } }] }];
+    },
+  ],
+])('keeps a part with %s untouched', (_name, change) => {
+  const out = mergeStaticParts(glb(change)).glb;
+  const json = JSON.parse(out.subarray(20, 20 + out.readUInt32LE(12)).toString()) as Gltf;
+  expect(json.nodes.find(n => n.name === 'trim_handle')?.mesh).toBe(1);
+});
+
+test('bounds do not spread a dense material into function arguments', () => {
+  const out = mergeStaticParts(
+    glb(json => {
+      const part = json.meshes[1]!.primitives[0]!;
+      json.meshes[1]!.primitives = Array.from({ length: 23000 }, () => part);
+    }),
+  ).glb;
+  const json = JSON.parse(out.subarray(20, 20 + out.readUInt32LE(12)).toString()) as Gltf;
+  const mesh = json.nodes.find(n => n.name === 'parts_rubber')!.mesh!;
+  const position = json.meshes[mesh]!.primitives[0]!.attributes.POSITION!;
+  expect(json.accessors[position]!.count).toBe(207000);
+  expect(json.accessors[position]!.min!.map(v => Math.round(v * 1e6) / 1e6 + 0)).toEqual([-1, 0, 0]);
+  expect(json.accessors[position]!.max!.map(v => Math.round(v * 1e6) / 1e6 + 0)).toEqual([3, 1, 1]);
+});
+
+test('UV-mapped trim stays unmerged', () => {
+  const input = glb(j => {
+    j.meshes[1]!.primitives[0]!.attributes.TEXCOORD_0 = 0;
+  });
+  expect(mergeStaticParts(input).glb).toBe(input);
+});
+
+test('different unnamed materials are not treated as one', () => {
+  const input = glb(j => {
+    j.materials = [{}, {}, {}, {}, {}, {}];
+    j.nodes[2]!.mesh = j.meshes.push({ primitives: [{ attributes: { POSITION: 0, NORMAL: 1 }, material: 4 }] }) - 1;
+    j.nodes[8]!.mesh = j.meshes.push({ primitives: [{ attributes: { POSITION: 0, NORMAL: 1 }, material: 5 }] }) - 1;
+  });
+  expect(mergeStaticParts(input).report.merged).toEqual([]);
 });

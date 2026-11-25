@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { copyFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import {
   CrossingKind,
   FurnitureCode,
@@ -76,6 +76,8 @@ const street = way(
 );
 const elements = [
   way(48762655, church, { building: 'church' }),
+  // a house the tests' own BUILDING_SHIFT moves; centred where that table expects its outline
+  way(48807861, ring(-80.5, -26.1, 10, 10), { building: 'yes' }),
   street,
   street, // a duplicate, as a union of selectors can return
   { type: 'way', id: 2, nodes: [1, 2], tags: { highway: 'residential' } }, // no geometry: skipped, not a crash
@@ -139,6 +141,7 @@ const elements = [
   node(26, 22, 20, { highway: 'bus_stop', name: 'Vrigstad Torget', kerb: 'raised' }),
   node(27, 5000, 20, { amenity: 'bench' }), // outside the world: dropped
   node(28, 24, 20, { leisure: 'picnic_table' }), // counted only
+  node(31, 26, 20, { man_made: 'street_cabinet' }),
   way(
     29,
     [
@@ -157,19 +160,34 @@ const elements = [
   ),
 ];
 
-let dir = '';
+// The tests' own table of moved outlines, in place of process.py's: way id -> [dx, dz, centroid x, centroid z].
+// So this world needn't hold a way for every house the real table lists.
+const MOVED_WAY = 48807861;
+const BUILDING_SHIFT: Record<number, number[]> = { [MOVED_WAY]: [-1.5, -5, -75.5, -21.1] };
+
+// runs tools/process.py on an Overpass answer in a temp dir; a failed assert throws with the script's stderr
+const runProcess = (els: readonly unknown[], shift = BUILDING_SHIFT) => {
+  const dir = mkdtempSync(join(tmpdir(), 'process-'));
+  try {
+    copyFileSync('data/raw/tile.png', join(dir, 'tile.png'));
+    writeFileSync(join(dir, 'osm.json'), JSON.stringify({ elements: els }));
+    const log = execFileSync('python3', ['tools/process.py', dir, join(dir, 'out.json')], {
+      encoding: 'utf8',
+      stdio: 'pipe',
+      env: { ...process.env, BUILDING_SHIFT: JSON.stringify(shift) },
+    });
+    return { log, out: JSON.parse(readFileSync(join(dir, 'out.json'), 'utf8')) as WorldData };
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+};
+
 let out: WorldData;
 let log = '';
 
 beforeAll(() => {
-  dir = mkdtempSync(join(tmpdir(), 'process-'));
-  copyFileSync('data/raw/tile.png', join(dir, 'tile.png'));
-  writeFileSync(join(dir, 'osm.json'), JSON.stringify({ elements }));
-  log = execFileSync('python3', ['tools/process.py', dir, join(dir, 'out.json')], { encoding: 'utf8' });
-  out = JSON.parse(readFileSync(join(dir, 'out.json'), 'utf8'));
+  ({ out, log } = runProcess(elements));
 });
-
-afterAll(() => rmSync(dir, { recursive: true, force: true }));
 
 describe('tools/process.py street furniture data', () => {
   it('keeps mapped lamps, benches, bins and bus stops, with a bench direction when it parses', () => {
@@ -181,6 +199,7 @@ describe('tools/process.py street furniture data', () => {
       { i: 24, e: 'w', k: FurnitureCode.BENCH, x: 31, z: 30.3 }, // a way: nodes and ways number separately
       { i: 25, k: FurnitureCode.WASTE_BASKET, x: 18, z: 20 },
       { i: 26, k: FurnitureCode.BUS_STOP, x: 22, z: 20 },
+      { i: 31, k: FurnitureCode.STREET_CABINET, x: 26, z: 20 },
     ]);
     expect(log).toContain('picnic tables 1 (counted only); 1 outside the world');
   });
@@ -188,6 +207,53 @@ describe('tools/process.py street furniture data', () => {
     expect(out.r.find(r => r.i === 29)?.lt).toBe(1);
     expect(out.r.find(r => r.i === 30)?.lt).toBeUndefined();
     expect(out.r.find(r => r.i === 1)?.lt).toBeUndefined();
+  });
+});
+
+describe('tools/process.py buildings', () => {
+  it('moves an outline listed in BUILDING_SHIFT by its offset', () => {
+    expect(out.b.map(b => b.p)).toContainEqual([-82, -31.1, -72, -31.1, -72, -21.1, -82, -21.1]);
+  });
+
+  // the fixture with the moved way replaced, or dropped for undefined
+  const withMoved = (moved: ReturnType<typeof way> | undefined) =>
+    elements.flatMap(e => (e.type === 'way' && e.id === MOVED_WAY ? (moved ? [moved] : []) : [e]));
+  const movedRing = ring(-80.5, -26.1, 10, 10);
+
+  it('fails the build when a listed outline was re-traced', () => {
+    const retraced = way(MOVED_WAY, ring(-80.3, -26.1, 10, 10), { building: 'yes' }); // 0.2 m east
+    expect(() => runProcess(withMoved(retraced))).toThrow(/way 48807861 was re-traced/);
+  });
+
+  it('keeps a listed outline that only gained a corner on an edge', () => {
+    const [a, b, ...rest] = movedRing;
+    const entrance = way(MOVED_WAY, [a, [(a[0] + b[0]) / 2, a[1]], b, ...rest], { building: 'yes' });
+    expect(() => runProcess(withMoved(entrance))).not.toThrow();
+  });
+
+  it('fails the build when a listed way is no longer a building outline', () => {
+    const msg = /BUILDING_SHIFT ways not found as building outlines in osm\.json .*: \[48807861\]/;
+    expect(() => runProcess(withMoved(undefined))).toThrow(msg);
+    expect(() => runProcess(withMoved(way(MOVED_WAY, movedRing, { amenity: 'bank' })))).toThrow(msg);
+  });
+
+  it('fails the build when the offset moves a listed outline out of the world', () => {
+    const farEast = { [MOVED_WAY]: [2000, 0, -75.5, -21.1] };
+    expect(() => runProcess(elements, farEast)).toThrow(/way 48807861 is moved out of the world/);
+  });
+
+  it('fails the build when a listed outline has no area', () => {
+    const flat = way(
+      MOVED_WAY,
+      [
+        [-80, -21],
+        [-75, -21],
+        [-70, -21],
+        [-80, -21],
+      ],
+      { building: 'yes' },
+    );
+    expect(() => runProcess(withMoved(flat))).toThrow(/way 48807861 has no area/);
   });
 });
 

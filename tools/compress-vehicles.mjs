@@ -5,6 +5,7 @@ import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { basename, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { runnerImport } from 'vite';
 
 const source = process.argv[2];
@@ -13,7 +14,7 @@ const output = resolve('src/public/media/vehicles');
 if (resolve(source) === output) throw new Error('Source must contain the original, uncompressed exports');
 const require = createRequire(import.meta.url);
 const cli = require.resolve('gltfpack/cli.js');
-const { mergeStaticParts } = (await runnerImport(new URL('./vehicle-parts.ts', import.meta.url).pathname)).module;
+const { mergeStaticParts } = (await runnerImport(fileURLToPath(new URL('./vehicle-parts.ts', import.meta.url)))).module;
 const scratch = mkdtempSync(join(tmpdir(), 'vehicles-'));
 try {
   for (const file of readdirSync(output)

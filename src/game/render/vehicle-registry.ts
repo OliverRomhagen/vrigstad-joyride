@@ -4,6 +4,16 @@ import type { CarType } from '../sim/vehicle-spec';
 // length is the model's, measured along Z; width is the body's without mirrors, from the car's spec sheet: the hitbox (#201).
 export const BODY_NODE = 'body';
 export const WHEEL_NODES = ['wheel_fl', 'wheel_fr', 'wheel_rl', 'wheel_rr'] as const;
+export const GLASS_PREFIX = 'glass_';
+export const BEACON_PARTS = /^lamp_(blue_module|police_grille)/;
+/** Parts the game addresses separately, which compression must keep named. */
+export const keepVehiclePart = (name: string) =>
+  name === BODY_NODE ||
+  name.startsWith(BODY_NODE + '_') ||
+  name.startsWith(GLASS_PREFIX) ||
+  BEACON_PARTS.test(name) ||
+  WHEEL_NODES.some(wheel => wheel === name);
+
 export const VEHICLES = [
   {
     id: 'volvo240',

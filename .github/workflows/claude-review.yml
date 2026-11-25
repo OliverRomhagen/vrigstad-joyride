@@ -1,0 +1,796 @@
+name: Claude review
+
+# Reviews each PR with Claude and posts the findings as inline comments, so the maintainer reviews a version that has
+# already had a thorough pass. What the review looks for is in .github/claude-review.md, read from main.
+# - The first review covers the whole PR. Later pushes get a review of only the commits since the last one, which a
+#   marker in the summary comment records. After a merge from main, a rebase (gh stack sync) or an amend, that is
+#   only what changed besides the new base; a push that only moved the PR onto a new base isn't reviewed. Files nobody
+#   reads line by line are left out of every review: those .gitattributes on main marks generated or vendored, binary
+#   files and files with a very large patch, and very long lines are cut short. The summary comment lists them, and
+#   all but the marked files as ones to read by hand.
+# - Opus does every review, later pushes too: Sonnet, which costs less, missed in a later push what a later review
+#   found, and a later push's review costs cents either way.
+# - Drafts are skipped until they're ready for review, and so are PRs from forks. So are PRs into another branch than
+#   main, such as the upper PRs of a stack, until they're retargeted to main and the next push (gh stack sync) comes.
+# - A PR by someone with no merged PR here yet waits for approval: its review runs after a job in the APPROVAL_ENV
+#   environment, whose required reviewers approve each run on the run's page. If that environment has no required
+#   reviewers, such a PR isn't reviewed at all, so a missing environment can't let it through.
+# - The summary comment shows what each review cost, and the total so far on the PR.
+#
+# Security: the review holds a secret and reads code anyone with push access wrote, so:
+# - It runs on pull_request_target: this file, and so the gate, always come from main, and a PR can't edit them.
+#   That is safe only because no step runs the PR's code: the checkout is read by git, jq and Claude's file tools,
+#   and nothing in it is executed, installed or sourced. Keep it that way. The cost: a change to this file can't be
+#   tried out in its own PR; it runs once it's on main.
+# - The secret is meant to live in the claude-review environment, which only main may deploy to, rather than in the
+#   repo's secrets, which a workflow pushed on any branch can read. Until it is moved there, the repo's are used.
+# - Claude runs with --restricted: Read, Grep and Glob only, inside the checkout (symlinks out of it included), and
+#   none of the PR's settings, hooks, MCP servers or CLAUDE.md. It has no GitHub token and no way to post: it
+#   returns its findings, and the last step breaks images, HTML and @-mentions in them, checks them for the secret,
+#   and posts them.
+# - What it reads from main, it reads by SHA: a bare origin/main also names a tag refs/tags/origin/main, which git
+#   prefers and anyone with push access can push.
+# - The marker that records what was reviewed is signed with an HMAC keyed by the review's secret. Any workflow can
+#   post as github-actions[bot], preview.yml with the PR's own code running, so an unsigned marker could say a commit
+#   was reviewed and keep it from ever being reviewed. A marker that doesn't verify is ignored. A new secret
+#   invalidates every marker, so each PR's next review covers the whole PR.
+on:
+  pull_request_target:
+    # Not on edited, when a stack's PR is retargeted to main once the one below it merges: until gh stack sync
+    # rebases it, the branch still holds the lower PR's commits, and a review then would cover that merged code again.
+    # The sync's push reviews it.
+    types: [opened, reopened, ready_for_review, synchronize]
+    # Skip PRs that only change docs, labels, issue forms or agent files, as unit.yml does. But not AGENTS.md: the
+    # review checks a change to the rules too. Nor the workflows, unlike unit.yml: they hold the repo's tokens, and
+    # preview.yml runs a PR's code, so a change to one is the riskiest kind there is.
+    paths:
+      - '**'
+      - '!**/*.md'
+      - '!.claude/**'
+      - '!.github/**'
+      - 'AGENTS.md'
+      - '.github/workflows/**'
+      - '.github/claude-review.md'
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    name: Who may run the review
+    if: >-
+      !github.event.pull_request.draft &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.base.ref == 'main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read # to read the approval environment's protection rules
+      pull-requests: write # to say on the PR when it isn't reviewed for want of an approver
+    outputs:
+      run: ${{ steps.gate.outputs.run }}
+      approval: ${{ steps.gate.outputs.approval }}
+    steps:
+      - id: gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          AUTHOR: ${{ github.event.pull_request.user.login }}
+          AUTHOR_TYPE: ${{ github.event.pull_request.user.type }}
+          SENDER: ${{ github.event.sender.login }}
+          SENDER_TYPE: ${{ github.event.sender.type }}
+          PR: ${{ github.event.pull_request.number }}
+          COMMITS: ${{ github.event.pull_request.commits }}
+          APPROVAL_ENV: claude-review-approval # also named in the approve job's environment
+        run: |
+          set -euo pipefail
+          # The review doesn't need to cover bots' PRs, so don't make them wait for approval either.
+          if [ "$AUTHOR_TYPE" = Bot ]; then
+            echo "run=false" >>"$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Known: has a merged PR here. Both the PR's author and whoever pushed must be, so a new collaborator pushing
+          # to a known author's PR still needs approval.
+          # A failed search counts as unknown, so the review doesn't run unapproved, but says why in the log.
+          # Its warnings go to a file, not into the count: a notice gh prints on a call that worked would make it no
+          # number, and count a known person as new.
+          known() {
+            local n
+            if ! n=$(gh api -X GET search/issues -f q="repo:$GH_REPO is:pr is:merged author:$1" --jq .total_count 2>"$RUNNER_TEMP/gh-err"); then
+              echo "::warning::Couldn't look up $1's merged PRs, so counting them as new: $(cat "$RUNNER_TEMP/gh-err")"
+              return 1
+            fi
+            [ "$n" -gt 0 ]
+          }
+          unknown=()
+          known "$AUTHOR" || unknown+=("$AUTHOR")
+          # A bot pushing to a person's PR (a merge from main, an autofix) isn't a new collaborator, and the search
+          # can't take a bot's login anyway.
+          [ "$SENDER" = "$AUTHOR" ] || [ "$SENDER_TYPE" = Bot ] || known "$SENDER" || unknown+=("$SENDER")
+          # And whoever wrote the PR's commits: on ready_for_review or reopened the sender is whoever clicked, and a
+          # draft's pushes aren't reviewed, so a new collaborator's commits could otherwise go through unapproved. The
+          # login is the one GitHub matched to each commit's author email; a commit whose email is on no account, or a
+          # failed lookup, counts as unknown. An email can be forged, so this catches a new collaborator's own
+          # commits, not one who signs them as someone else.
+          if ! authors=$(gh api "repos/$GH_REPO/pulls/$PR/commits" --paginate \
+            --jq '.[] | if .author == null then "?" elif .author.type == "Bot" then empty else .author.login end'); then
+            echo "::warning::Couldn't list the PR's commits, so counting their authors as new."
+            authors='!'
+          fi
+          while IFS= read -r a; do
+            case "$a" in
+              '' | "$AUTHOR" | "$SENDER") ;;
+              '?') unknown+=("a commit author with no GitHub account") ;;
+              '!') unknown+=("the commits' authors") ;;
+              *) known "$a" || unknown+=("$a") ;;
+            esac
+          done < <(sort -u <<<"$authors")
+          # The list stops at 250 commits, oldest first, so a later one's author would go unchecked.
+          [ "${COMMITS:-0}" -le 250 ] || unknown+=("the commits after the first 250")
+          if [ ${#unknown[@]} -eq 0 ]; then
+            echo "run=true" >>"$GITHUB_OUTPUT"
+            echo "approval=false" >>"$GITHUB_OUTPUT"
+            exit 0
+          fi
+          who=$(IFS=,; echo "${unknown[*]}")
+          # On any error this reads as no reviewers, so the review doesn't run unapproved.
+          reviewers=$(gh api "repos/$GH_REPO/environments/$APPROVAL_ENV" \
+            --jq '[.protection_rules[]? | select(.type == "required_reviewers")] | length' 2>/dev/null || echo 0)
+          if [ "$reviewers" -gt 0 ]; then
+            echo "run=true" >>"$GITHUB_OUTPUT"
+            echo "approval=true" >>"$GITHUB_OUTPUT"
+            echo "No merged PR here yet by $who: the review waits for a maintainer to approve it." >>"$GITHUB_STEP_SUMMARY"
+          else
+            echo "run=false" >>"$GITHUB_OUTPUT"
+            echo "::warning::No merged PR here yet by $who, and the $APPROVAL_ENV environment has no required reviewers: not reviewing."
+            # Say so on the PR once, so a missing review doesn't look like a broken workflow.
+            mark='<!-- claude-review-unapproved -->'
+            # Only the bot's own comment counts, and a failed call only warns: the notice isn't worth a red check.
+            if ! bodies=$(gh api "repos/$GH_REPO/issues/$PR/comments" --paginate \
+              --jq '.[] | select(.user.login == "github-actions[bot]") | .body'); then
+              echo "::warning::Couldn't read the PR's comments, so not saying why on the PR."
+            elif ! grep -qF "$mark" <<<"$bodies"; then
+              printf '%s\n**Claude review:** not run. No merged PR here yet by %s, and nobody is set up to approve a review for a new contributor (the `%s` environment has no required reviewers).\n' \
+                "$mark" "$who" "$APPROVAL_ENV" | gh api "repos/$GH_REPO/issues/$PR/comments" -F body=@- --silent ||
+                echo "::warning::Couldn't comment on the PR to say why it isn't reviewed."
+            fi
+          fi
+
+  approve:
+    name: Approve the review
+    needs: gate
+    if: needs.gate.outputs.approval == 'true'
+    # Waits here until one of the environment's required reviewers approves the run. A job of its own, so the review
+    # job's environment can be the one that holds the secret. A new push cancels the wait for the previous one.
+    environment: claude-review-approval
+    concurrency:
+      group: claude-review-approve-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    steps:
+      - run: echo "Approved."
+
+  review:
+    name: Claude review
+    needs: [gate, approve]
+    # The approve job is skipped when no approval is needed, and fails or is cancelled when it is refused or replaced.
+    if: >-
+      !cancelled() && needs.gate.outputs.run == 'true' &&
+      (needs.approve.result == 'success' || needs.approve.result == 'skipped')
+    # Holds the secret, once it's moved there from the repo's secrets: allowed to deploy from main only, so only a
+    # workflow from main can read it. pull_request_target runs with main as its ref.
+    environment: claude-review
+    # A new push cancels the review of the previous one. A cancelled review records no marker, so the next one also
+    # covers the commits it missed. Nor does it record its cost: the summary step doesn't run on a cancelled job, so
+    # what a cancelled review spent is missing from the PR's total. On the job, not the workflow, so a run the job's
+    # condition skips, such as a draft's, doesn't cancel a review.
+    concurrency:
+      group: claude-review-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      pull-requests: write
+    # No GH_TOKEN here: only the steps that call gh get the job's token, and Claude's isn't one of them.
+    env:
+      GH_REPO: ${{ github.repository }}
+      PR: ${{ github.event.pull_request.number }}
+      HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      AUTHOR: ${{ github.event.pull_request.user.login }}
+      BASE_REF: ${{ github.event.pull_request.base.ref }}
+      MODEL: claude-opus-5-5
+      MODEL_LABEL: Opus # named in the summary comment
+      # A longer line is cut short in the patches (minified code, one-line JSON), and a file whose patch is still
+      # larger after that isn't reviewed (data dumps). The longest line in the repo's source is 513 characters
+      # (src/game/main.ts), and its largest source file 61 KB (src/world/streetscape.ts).
+      # Below 2000, where Claude Code's Read tool cuts a line itself without saying where, with room for the marker.
+      MAX_LINE_CHARS: 1900
+      MAX_PATCH_KB: 256
+      # A larger patch to review isn't reviewed at all: Claude would run out of turns before it finished, and it
+      # returns its findings only at the end. A first guess, to tune with real reviews.
+      MAX_REVIEW_KB: 400
+      # How long Claude may take, below the job's limit, so a review that runs long fails rather than cancelling the
+      # job: the summary step still runs and records it.
+      REVIEW_MINUTES: 15
+      CLAUDE_CODE_VERSION: 2.1.325
+      # Signs and checks the marker: HMAC-SHA256 of stdin keyed by MARKER_KEY, in hex. Run with python3 -I, so no
+      # module in the checkout (a PR's hmac.py) is imported.
+      MARKER_HMAC: "import hashlib, hmac, os, sys; print(hmac.new(os.environb[b'MARKER_KEY'], sys.stdin.buffer.read(), hashlib.sha256).hexdigest())"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          # No token in .git/config, where Claude's Read tool could reach it. The repo is public, so the fetches
+          # before the review need none.
+          persist-credentials: false
+
+      - name: Gather the review's context
+        id: ctx
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # Only to check the marker's signature.
+          MARKER_KEY: ${{ secrets.ANTHROPIC_API_KEY || secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+        run: |
+          set -euo pipefail
+          # From an empty directory: a PR can commit .claude-review/ with symlinks in it, and the writes below would
+          # follow them out of the checkout, onto ~/.npmrc say, which the install then reads, or a file a later step
+          # trusts.
+          rm -rf .claude-review
+          mkdir .claude-review
+          # Every git command here reads .gitattributes from main, not from the checkout: the PR's own (or a nested
+          # one) could mark its source -diff or binary, and its patch would show only that the file differs, or set a
+          # merge driver for merge-tree. Git before 2.42 ignores the variable without a word, so check.
+          if ! printf '2.42\n%s\n' "$(git version | awk '{ print $3 }')" | sort -V -C; then
+            echo "::error::$(git version) can't read .gitattributes from main (GIT_ATTR_SOURCE needs 2.42)."
+            exit 1
+          fi
+          # main by SHA, resolved once from its full ref name: a bare origin/main would also match a tag named
+          # origin/main, which git prefers, and anyone with push access can push one.
+          main=$(git rev-parse --verify 'refs/remotes/origin/main^{commit}')
+          export GIT_ATTR_SOURCE=$main
+
+          # The PR's top-level comments, read once: the marker and comments.json both come from them.
+          gh api "repos/$GH_REPO/issues/$PR/comments" --paginate --jq '.[]' | jq -s . >"$RUNNER_TEMP/issue-comments.json"
+          # The summary comment from the last review, and the commit and costs it recorded: the newest one whose
+          # marker this workflow signed. Any workflow can post as github-actions[bot], preview.yml with the PR's own
+          # code running, so a marker can be forged; an unsigned one could hide commits from every later review.
+          sign() { printf 'claude-review/v1 %s#%s %s' "$GH_REPO" "$PR" "$1" | python3 -I -c "$MARKER_HMAC"; }
+          jq -c '[.[] | select(.user.login == "github-actions[bot]" and (.body | contains("<!-- claude-review -->"))) | {id, body}] | reverse | .[]' \
+            "$RUNNER_TEMP/issue-comments.json" >"$RUNNER_TEMP/markers.jsonl"
+          marker='{}' fields=''
+          if [ -n "$MARKER_KEY" ]; then
+            while IFS= read -r candidate; do
+              line=$(jq -r '.body // ""' <<<"$candidate" |
+                sed -nE 's/^<!-- claude-review: (sha=[^ ]+ runs=[^ ]+ cost=[^ ]+) sig=([0-9a-f]{64}) -->$/\1 \2/p' | head -1)
+              [ -n "$line" ] || continue
+              if [ "$(sign "${line% *}")" = "${line##* }" ]; then
+                marker=$candidate fields=${line% *}
+                break
+              fi
+            done <"$RUNNER_TEMP/markers.jsonl"
+          fi
+          # Signed or not, a field that isn't the shape this workflow writes counts as missing: unchecked,
+          # runs=PR[$(cmd)] would run cmd in the summary step's arithmetic, and sha= reaches git.
+          field() { tr ' ' '\n' <<<"$fields" | sed -n "s/^$1=//p" | head -1 | grep -xE "$2" || true; }
+          last_sha=$(field sha '[0-9a-f]{40}')
+          echo "last_sha=$last_sha" >>"$GITHUB_OUTPUT"
+          echo "comment_id=$(jq -r '.id // "" | tostring | select(test("^[0-9]+$")) // ""' <<<"$marker")" >>"$GITHUB_OUTPUT"
+          # No leading zero: the summary step's arithmetic reads one as octal, so 010 would count as 8 and 08 fail.
+          echo "runs=$(field runs '(0|[1-9][0-9]{0,5})')" >>"$GITHUB_OUTPUT"
+          echo "total=$(field cost '[0-9]{1,6}(\.[0-9]{1,2})?')" >>"$GITHUB_OUTPUT"
+
+          merge_base=$(git merge-base "refs/remotes/origin/$BASE_REF" HEAD)
+          # After a force push the last reviewed commit is on no branch, but GitHub still serves it by its SHA.
+          if [ -n "$last_sha" ] && ! git cat-file -e "$last_sha^{commit}" 2>/dev/null; then
+            git fetch -q origin "$last_sha" 2>/dev/null || true
+          fi
+          if [ -z "$last_sha" ] || ! git cat-file -e "$last_sha^{commit}" 2>/dev/null; then
+            mode=full from=$merge_base since=$merge_base
+          elif [ "$last_sha" = "$HEAD_SHA" ]; then
+            echo "skip=true" >>"$GITHUB_OUTPUT"
+            echo "Already reviewed $HEAD_SHA." >>"$GITHUB_STEP_SUMMARY"
+            exit 0
+          elif git merge-base --is-ancestor "$last_sha" HEAD && git merge-base --is-ancestor "$merge_base" "$last_sha"; then
+            mode=incremental from=$last_sha since=$last_sha
+          # main was merged in, or the branch was rebased (gh stack sync) or amended since the last review: compare with
+          # the last review merged onto the PR's base as it is now, so neither main's changes nor the PR's own reviewed
+          # ones are reviewed again. If that merge conflicts, review the whole PR.
+          elif tree=$(git merge-tree --write-tree --no-messages "$last_sha" "$merge_base"); then
+            mode=incremental from=$(head -1 <<<"$tree") since=$last_sha
+          else
+            mode=full from=$merge_base since=$merge_base
+          fi
+
+          # Leave out of the patches and the line count what nobody reads line by line, so it can't fill Claude's
+          # context: data/vrigstad.json is one line of about 200 KB, and would count as 2 changed lines. Left out are
+          # files that .gitattributes marks linguist-generated or linguist-vendored, files whose patch is over
+          # MAX_PATCH_KB with its long lines cut, and binary files, which git shows only as differing (a NUL byte makes
+          # a .ts file one).
+          # What makes the generated files (tools/, package.json) is reviewed. skipped.txt lists what was left out and
+          # why (path, tab, reason), for Claude and the summary, which shows all but the marked ones as files to read
+          # by hand: a PR can pad its own source to be left out, but not to be left out unnoticed.
+          # File names are read NUL-separated and unquoted, so a name with å, ä or ö, a space or a colon still matches;
+          # without renames, so a moved file's old path is checked too.
+          # One git call each for the names, their attributes, which are binary and how large their patches are,
+          # rather than three or four per file: a PR touching 300 files would run a thousand.
+          : >.claude-review/skipped.txt
+          pathspec=(.) # what to review: everything, minus what is left out below
+          names=$RUNNER_TEMP/names
+          {
+            git -c core.quotePath=false diff --name-only --no-renames -z "$merge_base" HEAD
+            git -c core.quotePath=false diff --name-only --no-renames -z "$from" HEAD
+          } | sort -zu >"$names"
+          # Only what the commits reviewed now change, for the lockfile check below.
+          git -c core.quotePath=false diff --name-only --no-renames -z "$from" HEAD >"$RUNNER_TEMP/names-new"
+          declare -A marked=() binary=() patch_kb=()
+          # Each call writes a file first, so a failing one fails the step, as it wouldn't inside < <(...).
+          # -z prints path, attribute and value NUL-separated, three fields per file and attribute.
+          git check-attr -z --stdin --source="$main" linguist-generated linguist-vendored <"$names" >"$RUNNER_TEMP/attrs"
+          while IFS= read -r -d '' path && IFS= read -r -d '' attr && IFS= read -r -d '' value; do
+            if [ "$value" = true ] || [ "$value" = set ]; then marked["$path"]=${marked["$path"]:+${marked["$path"]},}${attr#linguist-}; fi
+          done <"$RUNNER_TEMP/attrs"
+          # Over both ranges, merge_base..HEAD for the PR and from..HEAD for the patch Claude reads in incremental mode:
+          # a file this push reverts is unchanged from main, but its from..HEAD patch can still be large or binary.
+          # The larger size counts.
+          ranges=("$merge_base")
+          [ "$from" = "$merge_base" ] || ranges+=("$from")
+          for base in "${ranges[@]}"; do
+            # -z prints added, tab, removed, tab, path, NUL; a binary file's counts are -.
+            git -c core.quotePath=false diff --numstat --no-renames -z "$base" HEAD >"$RUNNER_TEMP/numstat"
+            while IFS=$'\t' read -r -d '' added _ path; do
+              [ "$added" != - ] || binary["$path"]=1
+            done <"$RUNNER_TEMP/numstat"
+            # Each file's patch as Claude will read it, with long lines counted as cut (see below), so a one-line JSON
+            # is reviewed cut short, not left out: only many long lines, or a great many short ones, reach the limit.
+            # A name git still quotes (one with a tab, a newline, a quote or a backslash) isn't matched, so its file
+            # is reviewed whatever its size.
+            git -c core.quotePath=false diff --no-renames "$base" HEAD | awk -v max="$MAX_LINE_CHARS" '
+              function flush() { if (path != "") kb[path] += b; b = 0 }
+              /^diff --git / { flush(); path = ""; old = ""; header = 1 }
+              header && /^--- / { p = substr($0, 5); sub(/\t$/, "", p); old = (p == "/dev/null") ? "" : substr(p, 3) }
+              header && /^\+\+\+ / { p = substr($0, 5); sub(/\t$/, "", p); path = (p == "/dev/null") ? old : substr(p, 3) }
+              /^@@ / { header = 0 }
+              { n = length; if (n > max + 40) n = max + 40; b += n + 1 }
+              END { flush(); for (p in kb) printf "%s\t%d\n", p, int(kb[p] / 1024) }' >"$RUNNER_TEMP/patch-kb"
+            while IFS=$'\t' read -r path kb; do
+              [ "$kb" -le "${patch_kb["$path"]:-0}" ] || patch_kb["$path"]=$kb
+            done <"$RUNNER_TEMP/patch-kb"
+          done
+          while IFS= read -r -d '' f; do
+            reason=
+            if [ -n "${marked["$f"]:-}" ]; then
+              reason="marked ${marked["$f"]} in .gitattributes"
+              # A lockfile isn't all generated from its package.json: its resolved URLs and integrity hashes can change
+              # by themselves, and npm ci installs what they say. Changed without the package.json beside it in the
+              # commits reviewed now, it's to read by hand.
+              if [ "${f##*/}" = package-lock.json ] && ! grep -qzxF "${f%package-lock.json}package.json" "$RUNNER_TEMP/names-new"; then
+                reason="generated, but changed without package.json"
+              fi
+            elif [ -n "${binary["$f"]:-}" ]; then
+              reason="binary"
+            elif [ "${patch_kb["$f"]:-0}" -gt "$MAX_PATCH_KB" ]; then
+              reason="a ${patch_kb["$f"]} KB patch"
+            fi
+            if [ -n "$reason" ]; then
+              pathspec+=(":(exclude,literal)$f")
+              # A tab or newline in the name would split the line wrongly, or pass a binary file off as a generated
+              # one: write them as \t and \n.
+              shown=${f//$'\t'/\\t}
+              printf '%s\t%s\n' "${shown//$'\n'/\\n}" "$reason" >>.claude-review/skipped.txt
+            fi
+          done <"$names"
+
+          # Unquoted names here too, so the summary step can match a finding's path with a patch's.
+          git -c core.quotePath=false diff "$from..HEAD" -- "${pathspec[@]}" >.claude-review/diff.patch
+          # A push that only moved the PR onto a new base, or a PR or push that only changes files left out, leaves
+          # nothing to review: record it and skip the review.
+          if [ ! -s .claude-review/diff.patch ]; then
+            echo "nothing=true" >>"$GITHUB_OUTPUT"
+            echo "since=$since" >>"$GITHUB_OUTPUT"
+            echo "mode=$mode" >>"$GITHUB_OUTPUT"
+            echo "Nothing to review in $mode mode since $since: no changes outside the files left out." >>"$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          git -c core.quotePath=false diff "$merge_base..HEAD" -- "${pathspec[@]}" >.claude-review/full.patch
+          # A line over MAX_LINE_CHARS (minified code, a one-line JSON) is cut short in both patches rather than its
+          # file left out, so one long line can't hide the rest of a file. cut.txt (path, line, length) lists the
+          # PR's cut lines on the new side, which the summary shows to read by hand: code can sit past the cut.
+          # The same pass writes lines.txt (path, line): the lines a review comment can go on, the new side of the
+          # PR's diff, context included. The summary step puts a finding elsewhere in its comment instead, as GitHub
+          # would refuse the whole review over it. Made empty first, as awk creates it only when it prints a line.
+          : >"$RUNNER_TEMP/lines.txt"
+          awk -v max="$MAX_LINE_CHARS" -v lines="$RUNNER_TEMP/lines.txt" '
+            /^diff --git / { header = 1; path = ""; next }
+            # git ends the name with a tab when it holds a space.
+            header && /^\+\+\+ / { p = substr($0, 5); sub(/\t$/, "", p); path = (p == "/dev/null") ? "" : substr(p, 3); next }
+            /^@@ / { header = 0; match($0, /\+[0-9]+/); n = substr($0, RSTART + 1, RLENGTH - 1) + 0; next }
+            !header && path != "" && /^[ +]/ {
+              print path "\t" n >lines
+              if (/^\+/ && length > max + 1) print path "\t" n "\t" length - 1
+              n++
+            }
+          ' .claude-review/full.patch >.claude-review/cut.txt
+          for patch in diff full; do
+            awk -v max="$MAX_LINE_CHARS" '{ if (length > max + 1) print substr($0, 1, max + 1) " [… cut: " length - 1 " characters in all]"; else print }' \
+              ".claude-review/$patch.patch" >"$RUNNER_TEMP/cut.patch"
+            mv "$RUNNER_TEMP/cut.patch" ".claude-review/$patch.patch"
+          done
+          # Too much to review in one pass: say so on the PR instead of spending the turns.
+          review_kb=$(( $(wc -c <.claude-review/diff.patch) / 1024 ))
+          if [ "$review_kb" -gt "$MAX_REVIEW_KB" ]; then
+            echo "too_large=$review_kb" >>"$GITHUB_OUTPUT"
+          fi
+          # Claude gets no shell (a git command can write files, `git grep -O` runs a program), so what it would ask
+          # git for is written out here.
+          git log --format='%h %an: %s' "$merge_base..HEAD" >.claude-review/commits.txt
+          # From main only: the PR's copy could be a symlink to anything on the runner.
+          git show "$main:AGENTS.md" >.claude-review/AGENTS.md
+          gh pr view "$PR" --json title,body,author,labels >.claude-review/pr.json
+          # Inline comments, review summaries and top-level comments: findings are raised in all three. Only those by
+          # people with write access and the PR's author (known, or approved by a maintainer): anyone can comment on a
+          # public repo's PR, and Claude reads these, so an outsider's comment could steer the review. The bot's inline
+          # comments and reviews are earlier reviews' findings, there so they aren't repeated; its top-level ones are
+          # only the summary and other workflows' notices, so they're left out. Anything the bot posts could also come
+          # from another workflow, preview.yml running the PR's code say, but only for someone with write access, whose
+          # own comments are read anyway.
+          # Write access isn't enough: like the gate, a collaborator with no merged PR here yet is left out, as their
+          # comments would otherwise reach a review that a known author's push started without approval. A failed
+          # search leaves them out too.
+          gh api "repos/$GH_REPO/pulls/$PR/comments" --paginate --jq '.[]' | jq -s . >"$RUNNER_TEMP/review-comments.json"
+          gh api "repos/$GH_REPO/pulls/$PR/reviews" --paginate --jq '.[]' | jq -s . >"$RUNNER_TEMP/reviews.json"
+          known=("$AUTHOR")
+          while IFS= read -r login; do
+            [ -n "$login" ] || continue
+            if n=$(gh api -X GET search/issues -f q="repo:$GH_REPO is:pr is:merged author:$login" --jq .total_count 2>/dev/null) &&
+              [ "$n" -gt 0 ] 2>/dev/null; then
+              known+=("$login")
+            else
+              echo "::notice::Leaving out $login's comments: no merged PR here yet, or the lookup failed."
+            fi
+          done < <(jq -r --arg author "$AUTHOR" '.[] | select(.author_association == "COLLABORATOR" or .author_association == "MEMBER")
+            | .user.login | select(. != $author)' \
+            "$RUNNER_TEMP/review-comments.json" "$RUNNER_TEMP/reviews.json" "$RUNNER_TEMP/issue-comments.json" | sort -u)
+          known_json=$(printf '%s\n' "${known[@]}" | jq -R . | jq -sc .)
+          people='(.author_association == "OWNER") or (.user.login | IN($known[]))'
+          bot='.user.login == "github-actions[bot]"'
+          {
+            jq --argjson known "$known_json" ".[] | select($people or $bot) | {user: .user.login, path, line, body}" "$RUNNER_TEMP/review-comments.json"
+            jq --argjson known "$known_json" ".[] | select(.body != \"\") | select($people or $bot) | {user: .user.login, body}" "$RUNNER_TEMP/reviews.json"
+            jq --argjson known "$known_json" ".[] | select($people) | {user: .user.login, body}" "$RUNNER_TEMP/issue-comments.json"
+          } | jq -s . >.claude-review/comments.json
+
+          if [ "$mode" = full ]; then turns=40; else turns=20; fi
+          {
+            echo "mode=$mode"
+            echo "since=$since"
+            echo "turns=$turns"
+            # From main, like this file, so a PR can't change the instructions it's reviewed by. A random delimiter, so
+            # no line in the file can end the value early and set the outputs above.
+            delim="CLAUDE_REVIEW_$(openssl rand -hex 16)"
+            echo "instructions<<$delim"
+            git show "$main:.github/claude-review.md"
+            echo "$delim"
+          } >>"$GITHUB_OUTPUT"
+
+      # Only for a run that reviews, so one that ends as already reviewed, nothing to review or too large doesn't pay
+      # for it. From an empty directory outside the checkout, so nothing in the PR (an .npmrc, a package.json) can
+      # change what is installed; npm looks for those from where it runs, never in the checkout.
+      - name: Install Claude Code
+        if: steps.ctx.outputs.skip != 'true' && steps.ctx.outputs.nothing != 'true' && steps.ctx.outputs.too_large == ''
+        run: |
+          set -euo pipefail
+          dir=$(mktemp -d "$RUNNER_TEMP/install.XXXXXX")
+          cd "$dir"
+          npm install -g --no-fund --no-audit "@anthropic-ai/claude-code@$CLAUDE_CODE_VERSION"
+
+      - name: Review
+        id: claude
+        if: steps.ctx.outputs.skip != 'true' && steps.ctx.outputs.nothing != 'true' && steps.ctx.outputs.too_large == ''
+        env:
+          # An API key when there is one, else a Claude subscription's token (`claude setup-token`), which uses that
+          # plan's limits instead of credits. Only one is passed, so it's always clear which one pays.
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.ANTHROPIC_API_KEY == '' && secrets.CLAUDE_CODE_OAUTH_TOKEN || '' }}
+          MODE: ${{ steps.ctx.outputs.mode }}
+          SINCE: ${{ steps.ctx.outputs.since }}
+          TURNS: ${{ steps.ctx.outputs.turns }}
+          INSTRUCTIONS: ${{ steps.ctx.outputs.instructions }}
+        run: |
+          set -uo pipefail
+          [ -n "$ANTHROPIC_API_KEY" ] || unset ANTHROPIC_API_KEY
+          [ -n "$CLAUDE_CODE_OAUTH_TOKEN" ] || unset CLAUDE_CODE_OAUTH_TOKEN
+          prompt=$(printf 'REPO: %s\nPR NUMBER: %s\nREVIEW: %s, from %s to %s\n\n%s' \
+            "$GH_REPO" "$PR" "$MODE" "$SINCE" "$HEAD_SHA" "$INSTRUCTIONS")
+          schema='{"type":"object","required":["summary","findings"],"properties":{
+            "summary":{"type":"string"},
+            "findings":{"type":"array","items":{"type":"object","required":["path","line","body"],"properties":{
+              "path":{"type":"string"},"line":{"type":"integer"},"body":{"type":"string"}}}}}}'
+          # --restricted: only the file tools, confined to the checkout, and none of the PR's settings, hooks, MCP
+          # servers or CLAUDE.md. --safe-mode turns off the rest of what a checkout can bring (skills, agents,
+          # commands), in case a later version of --restricted lets one through. The deny rule keeps Claude out of
+          # .git too.
+          status=0
+          timeout "${REVIEW_MINUTES}m" claude -p "$prompt" \
+            --restricted --safe-mode --strict-mcp-config --no-session-persistence \
+            --tools Read,Grep,Glob \
+            --settings '{"permissions":{"deny":["Read(./.git/**)","Read(//proc/**)"]}}' \
+            --model "$MODEL" --max-turns "$TURNS" \
+            --output-format json --json-schema "$schema" >"$RUNNER_TEMP/claude.json" || status=$?
+          echo "status=$status" >>"$GITHUB_OUTPUT"
+          exit "$status"
+
+      - name: Post the findings, the summary and the cost
+        if: ${{ !cancelled() && steps.ctx.outputs.skip != 'true' && steps.ctx.conclusion == 'success' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          STATUS: ${{ steps.claude.outputs.status }}
+          COMMENT_ID: ${{ steps.ctx.outputs.comment_id }}
+          LAST_SHA: ${{ steps.ctx.outputs.last_sha }}
+          NOTHING: ${{ steps.ctx.outputs.nothing }}
+          TOO_LARGE: ${{ steps.ctx.outputs.too_large }}
+          MODE: ${{ steps.ctx.outputs.mode }}
+          FROM: ${{ steps.ctx.outputs.since }}
+          # On a subscription nothing is billed per review: Claude Code's figure is what it would have cost on the API.
+          COST_NOTE: ${{ secrets.ANTHROPIC_API_KEY == '' && ' (API price estimate; paid by a subscription)' || '' }}
+          RUNS: ${{ steps.ctx.outputs.runs }}
+          TOTAL: ${{ steps.ctx.outputs.total }}
+          # Only to check that Claude's output doesn't contain them.
+          SECRET_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          SECRET_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # To sign the marker, as the context step checks it.
+          MARKER_KEY: ${{ secrets.ANTHROPIC_API_KEY || secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          MAX_FINDINGS: 50
+          MAX_BODY_CHARS: 4000
+          # Characters of findings the summary comment shows, leaving room for the rest within GitHub's 65,536.
+          FINDINGS_BUDGET: 40000
+        run: |
+          set -euo pipefail
+          # Claude Code's output is one result message: the run's cost in US dollars, how it ended, and the findings.
+          result=$RUNNER_TEMP/claude.json
+          # sent is the subtype as Claude Code sent it, for the summary; subtype is what this step makes of it.
+          cost=0 subtype='' sent='' out='{}' why=''
+          if [ -s "$result" ] && jq -e 'type == "object"' "$result" >/dev/null 2>&1; then
+            cost=$(jq '.total_cost_usd // 0' "$result")
+            subtype=$(jq -r '.subtype // ""' "$result") sent=$subtype
+            out=$(jq -c '.structured_output // {} | if type == "object" then . else {} end' "$result")
+            # Claude Code reports an API error (a usage limit, a bad or expired token) as subtype success with is_error
+            # set and no structured output. That isn't a finished review: count it as one that didn't finish, so the
+            # marker keeps the last reviewed commit.
+            if [ "$subtype" = success ] && ! jq -e '.is_error != true and (.structured_output | type == "object")' "$result" >/dev/null; then
+              subtype=error_api
+            fi
+          fi
+          # plural 2 file files: "2 files".
+          plural() { if [ "$1" = 1 ]; then echo "$1 $2"; else echo "$1 $3"; fi; }
+          # Only a run in which Claude reviewed counts, and only then is its model named: one that finished, or that
+          # ran out of turns or time, having spent what a review costs. One that stopped on an API error (a usage
+          # limit, a bad token) or returned nothing reviewed nothing; what it cost, if anything, is still added below.
+          ran=false
+          if [ "$NOTHING" != true ] && [ -z "$TOO_LARGE" ] &&
+            { [ "$subtype" = success ] || [ "$subtype" = error_max_turns ] || [ "$STATUS" = 124 ]; }; then
+            ran=true
+          fi
+          runs=${RUNS:-0} model_name=
+          if [ "$ran" = true ]; then runs=$(( runs + 1 )) model_name=" ($MODEL_LABEL)"; fi
+          total=$(awk -v a="${TOTAL:-0}" -v b="$cost" 'BEGIN { printf "%.2f", a + b }')
+          cost=$(awk -v c="$cost" 'BEGIN { printf "%.2f", c }')
+
+          if [ "$MODE" = full ]; then scope="the whole PR"; else scope="the commits since \`${FROM:0:7}\`"; fi
+          findings=$RUNNER_TEMP/findings.json
+          echo '[]' >"$findings"
+          # The commit the marker records as reviewed. A review that didn't finish, or whose output is withheld below,
+          # keeps the last one, so the next push reviews these commits again.
+          sha=$HEAD_SHA
+          if [ "$NOTHING" = true ]; then
+            if [ "$MODE" = full ]; then
+              summary="Nothing to review: the PR changes nothing outside the files left out below."
+            else
+              summary="Nothing new to review: the push only moved the PR onto a new base, or only changed files left out of the review."
+            fi
+          # Recorded as done all the same, so the next push gets a review of only what it changes, which may fit.
+          elif [ -n "$TOO_LARGE" ]; then
+            summary="Not reviewed: its patch is $TOO_LARGE KB, more than the $MAX_REVIEW_KB KB one review reads, and a later run won't review these commits either. Split the PR, or review it by hand."
+          elif [ "$subtype" = success ]; then
+            summary=$(jq -r '(.summary // "") | tostring | if . == "" then "No summary returned." else . end' <<<"$out")
+            # lines.txt, from the context step: the lines a finding can be posted on inline.
+            jq -c --arg ws "$GITHUB_WORKSPACE/" --rawfile lines "$RUNNER_TEMP/lines.txt" --argjson max "$MAX_FINDINGS" '
+              ($lines | split("\n") | map(select(. != "") | {key: ., value: true}) | from_entries) as $ok
+              | [(.findings // [])[]? | select(type == "object")
+                  | {path: ((.path // "") | tostring | ltrimstr($ws) | ltrimstr("./")),
+                     line: (((.line | tonumber?) // 0) | floor),
+                     body: ((.body // "") | tostring)}
+                  | select(.path != "" and .body != "")][:$max]
+              | map(. + {inline: ($ok[.path + "\t" + (.line | tostring)] == true)})' <<<"$out" >"$findings"
+          # A review that ran out of turns or time spent the money: record it, or every later push would start another
+          # one that ends the same way. It returns its findings only at the end, so it has none: say so plainly.
+          elif [ "$subtype" = error_max_turns ]; then
+            summary="It ran out of turns before it finished, so it has no findings to post. Review this by hand: a later run won't review these commits again."
+          elif [ "$STATUS" = 124 ]; then
+            summary="It ran out of time ($REVIEW_MINUTES minutes) before it finished, so it has no findings to post. Review this by hand: a later run won't review these commits again. Its cost isn't counted."
+          else
+            # Why, as Claude Code says it: its error message (a usage limit, a bad or expired token, an API error) or
+            # its errors, else how it exited. The secret check below covers it, and only plain characters are kept,
+            # so it can carry no HTML, image, mention or workflow command into the comment or the log.
+            if [ -s "$result" ] && jq -e 'type == "object"' "$result" >/dev/null 2>&1; then
+              why=$(jq -r '[(if .is_error == true then .result else empty end), (.errors // [] | if type == "array" then .[] else . end)]
+                | map(select(. != null) | tostring | select(. != "")) | join("; ")' "$result")
+            fi
+            if [ -n "$why" ]; then
+              why="${sent:-no subtype}: $why"
+            elif [ -z "$STATUS" ]; then
+              why="the review step didn't run"
+            else
+              why="claude exited with status $STATUS and returned no error message"
+              [ -z "$sent" ] || why="$why (subtype $sent)"
+            fi
+            why=$(jq -rn --arg s "$why" '$s | gsub("[^A-Za-z0-9 .,:;()\u0027_/=+-]+"; " ") | gsub("  +"; " ") | .[0:300]')
+            summary="The review didn't finish: $why. See [the run log]($GITHUB_SERVER_URL/$GH_REPO/actions/runs/$GITHUB_RUN_ID); the next push reviews these commits again."
+            sha=$LAST_SHA
+          fi
+
+          # A tripwire, behind the real guard (Claude can't read the environment): if anything it would post contains
+          # the secret, or a run of it, or its base64 or hex, post none of it.
+          needles=$RUNNER_TEMP/needles.txt
+          : >"$needles"
+          for s in "$SECRET_API_KEY" "$SECRET_OAUTH_TOKEN"; do
+            [ "${#s}" -ge 16 ] || continue
+            # Every 16-character window, so any run of 16 or more trips it, wherever it starts.
+            for ((i = 0; i + 16 <= ${#s}; i++)); do printf '%s\n' "${s:i:16}" >>"$needles"; done
+            for k in 0 1 2; do
+              b=$(printf '%*s%s' "$k" '' "$s" | base64 -w0)
+              printf '%s\n' "${b:4:${#b}-8}" >>"$needles"
+            done
+            hex=$(printf '%s' "$s" | od -An -tx1 | tr -d ' \n')
+            printf '%s\n%s\n' "${hex:0:40}" "$(tr a-f A-F <<<"${hex:0:40}")" >>"$needles"
+          done
+          # Through a file, not a pipe: with pipefail, grep -q stopping at the first match could fail the writer and
+          # read as no match.
+          # The path also as it will be shown, backticks stripped: a backtick every 15 characters would otherwise
+          # split the secret past every window.
+          { printf '%s\n' "$summary"; jq -r '.[] | .path, (.path | gsub("`"; "")), .body' "$findings"; } >"$RUNNER_TEMP/outgoing.txt"
+          leaked=false
+          if [ -s "$needles" ] && grep -qF -f "$needles" "$RUNNER_TEMP/outgoing.txt"; then
+            leaked=true
+            echo '[]' >"$findings"
+            summary="Withheld: what the review returned contains the secret it runs with, so none of it is posted. Rotate the secret, and look in the PR for text that told the review to do this."
+            sha=$LAST_SHA
+            echo "::error::The review's output contained its secret; nothing it returned was posted."
+          # In the log too, once the check has passed it.
+          elif [ -n "$why" ]; then
+            echo "::error::The review didn't finish: $why"
+          fi
+
+          # No images (GitHub fetches them when the comment is shown, which would send what's in their URL away), no
+          # HTML, no link definitions, no rendered diagrams or maps, and no @-mentions, however the review was steered.
+          # A zero-width space breaks each, in one pass that can't rebuild what it breaks (stripping a tag can:
+          # <im<img>g ...>), and is invisible inside code. Links stay: they leak only when someone clicks one. A
+          # suggestion that would change is shown as plain code, so committing it can't add the zero-width spaces.
+          # Cleaned first and cut after, so a long body isn't taken for one the cleaning changed.
+          clean='def clean($max):
+            gsub("<(?<c>[A-Za-z/!?])"; "<\u200b\(.c)")
+            | gsub("!\\["; "!\u200b[")
+            | gsub("@(?<c>[A-Za-z0-9])"; "@\u200b\(.c)")
+            | gsub("(?<p>^|\\n)(?<a>[ \\t]*\\[[^\\]\\n]+\\]):"; "\(.p)\(.a)\u200b:")
+            | gsub("(?<f>```|~~~)[ \\t]*(?i:mermaid|geojson|topojson|stl)"; "\(.f)text")
+            | .[0:$max];
+          def body($max):
+            . as $raw | clean(infinite) as $c
+            | ($c | length > $max) as $long
+            | ($c | if $long then .[0:$max] else . end)
+            # A cut inside a code block would leave it open: close it with the fence that opened it. Only a bare line
+            # of the same fence closes one, so a ``` line inside a ~~~ block stays code.
+            | if $long then
+                . + (reduce (split("\n")[] | capture("^[ \\t]*(?<f>```|~~~)(?<rest>.*)$")) as $m (null;
+                    if . == null then $m.f elif $m.f == . and ($m.rest | test("^[`~]*[ \\t]*$")) then null else . end)
+                  | if . == null then "" else "\n" + . end)
+              else . end
+            # Tested on what is shown, so a suggestion cut off entirely goes unmentioned.
+            | if ($c != $raw or $long) and test("(```|~~~)[ \\t]*suggestion") then
+                gsub("(?<f>```|~~~)[ \\t]*suggestion"; "\(.f)text")
+                + "\n\n(Shown as plain code, not as a suggestion: \(if $long then "it was cut short" else "it held characters the workflow changes" end), so committing it would have changed it.)"
+              else . end
+            | if $long then . + "\n\n(Cut short at \($max) characters.)" else . end;'
+          # Only Claude's summary: the others are this step's own, links included.
+          if [ "$subtype" = success ] && [ "$leaked" = false ]; then
+            summary=$(jq -rn --arg s "$summary" "$clean"' $s | clean(2000)')
+          fi
+          jq --argjson max "$MAX_BODY_CHARS" "$clean"' map(.body |= body($max) | .shown = (.path | gsub("`"; "") | clean(300)))' \
+            "$findings" >"$findings.tmp" && mv "$findings.tmp" "$findings"
+
+          # All the inline findings as one review, so the author gets one notification.
+          inline=$(jq -c '[.[] | select(.inline) | {path, line, side: "RIGHT", body}]' "$findings")
+          n=$(jq length <<<"$inline")
+          if [ "$n" -gt 0 ]; then
+            body="**Claude review**: $(plural "$n" finding findings) on the lines below."
+            if ! jq -n --arg sha "$HEAD_SHA" --arg body "$body" --argjson c "$inline" \
+              '{commit_id: $sha, event: "COMMENT", body: $body, comments: $c}' |
+              gh api "repos/$GH_REPO/pulls/$PR/reviews" --input - --silent; then
+              echo "::warning::Couldn't post the findings as a review, so they go in the summary comment."
+              jq 'map(.inline = false)' "$findings" >"$findings.tmp" && mv "$findings.tmp" "$findings"
+            fi
+          fi
+
+          {
+            echo '<!-- claude-review -->'
+            fields="sha=${sha:-none} runs=$runs cost=$total"
+            # Without a key, unsigned: the next review then covers the whole PR.
+            sig=none
+            if [ -n "$MARKER_KEY" ]; then
+              sig=$(printf 'claude-review/v1 %s#%s %s' "$GH_REPO" "$PR" "$fields" | python3 -I -c "$MARKER_HMAC")
+            fi
+            echo "<!-- claude-review: $fields sig=$sig -->"
+            echo "**Claude review**$model_name of $scope, up to \`${HEAD_SHA:0:7}\`: $summary"
+            echo
+            if [ "$(jq '[.[] | select(.inline | not)] | length' "$findings")" -gt 0 ]; then
+              echo 'Findings not on a line of the diff:'
+              echo
+              # Within a budget: when the review couldn't be posted, all 50 findings of up to MAX_BODY_CHARS land here,
+              # past GitHub's 65,536 characters a comment may hold. The rest go to the run's summary page.
+              jq -r --argjson budget "$FINDINGS_BUDGET" --arg run "$GITHUB_SERVER_URL/$GH_REPO/actions/runs/$GITHUB_RUN_ID" '
+                [.[] | select(.inline | not) | "- `\(.shown)` line \(.line): \(.body | gsub("\\s*\n\\s*"; " "))"]
+                | reduce .[] as $l ({out: [], used: 0, cut: 0};
+                    if .cut == 0 and .used + ($l | length) + 1 <= $budget then .out += [$l] | .used += ($l | length) + 1
+                    else .cut += 1 end)
+                | (.out[]), (if .cut > 0 then "- And \(.cut) more, too long for this comment: see [the run'"'"'s summary](\($run))." else empty end)' \
+                "$findings"
+              echo
+            fi
+            # The names are the PR's: a backtick in one would end the code span and let the rest render.
+            name_def="$clean"' def name: gsub("`"; "") | clean(300);'
+            # In the open, what a PR could use to hide code: files left out for their size or as binary, and lines
+            # cut short. Folded away, the files .gitattributes on main marks generated or vendored.
+            byhand=$(
+              [ ! -s .claude-review/skipped.txt ] || jq -Rr "$name_def"' split("\t") | select(.[1] // "" | startswith("marked ") | not)
+                | "- `\(.[0] | name)`: \(.[1]), so not reviewed"' .claude-review/skipped.txt
+              [ ! -s .claude-review/cut.txt ] || jq -Rrs --arg max "$MAX_LINE_CHARS" "$name_def"' split("\n") | map(select(. != "") | split("\t"))
+                | group_by(.[0])[] | "- `\(.[0][0] | name)`: \(length) \(if length == 1 then "line" else "lines" end) over \($max) characters, from line \(.[0][1]), cut short, so not reviewed past that"' \
+                .claude-review/cut.txt
+            )
+            if [ -n "$byhand" ]; then
+              echo '**Read by hand:** the review didn'"'"'t see all of these.'
+              echo
+              echo "$byhand"
+              echo
+            fi
+            marked=$([ ! -s .claude-review/skipped.txt ] || jq -Rr "$name_def"' split("\t") | select(.[1] // "" | startswith("marked "))
+              | "- `\(.[0] | name)`: \(.[1])"' .claude-review/skipped.txt)
+            if [ -n "$marked" ]; then
+              n=$(wc -l <<<"$marked" | tr -d ' ')
+              echo "<details><summary>Not reviewed: $(plural "$n" 'generated or vendored file' 'generated or vendored files')</summary>"
+              echo
+              echo "$marked"
+              echo
+              echo '</details>'
+              echo
+            fi
+            echo "<sub>This review: \$$cost · this PR so far: \$$total over $(plural "$runs" review reviews)$COST_NOTE.</sub>"
+          } >"$RUNNER_TEMP/comment.md"
+          # Every finding on the run's page too, which holds far more than a comment.
+          if [ "$(jq length "$findings")" -gt 0 ]; then
+            {
+              echo '### Findings'
+              echo
+              jq -r '.[] | "- `\(.shown)` line \(.line): \(.body | gsub("\\s*\n\\s*"; " "))"' "$findings"
+            } >>"$GITHUB_STEP_SUMMARY"
+          fi
+          # Should the lists of files still take it past GitHub's limit, cut it there, so the post and with it the
+          # marker are saved: a failed post would make the next push pay for the same review again.
+          python3 -I -c '
+          import sys
+          p, limit = sys.argv[1], 65000
+          s = open(p, encoding="utf-8").read()
+          if len(s) > limit:
+              note = "\n\n(Cut short to fit in a comment.)\n"
+              open(p, "w", encoding="utf-8").write(s[: limit - len(note)] + note)
+          ' "$RUNNER_TEMP/comment.md"
+
+          # A new comment when there is none, or when someone deleted it since it was read.
+          if [ -z "$COMMENT_ID" ] ||
+            ! gh api -X PATCH "repos/$GH_REPO/issues/comments/$COMMENT_ID" -F body=@"$RUNNER_TEMP/comment.md" --silent; then
+            gh api "repos/$GH_REPO/issues/$PR/comments" -F body=@"$RUNNER_TEMP/comment.md" --silent
+          fi
+          echo "Review cost: \$$cost (PR total \$$total over $(plural "$runs" review reviews))$COST_NOTE" >>"$GITHUB_STEP_SUMMARY"
+          [ "$leaked" = false ]

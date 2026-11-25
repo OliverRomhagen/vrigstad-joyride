@@ -30,7 +30,13 @@ Live site: https://oliverromhagen.github.io/vrigstad-joyride/ (GitHub Pages, fro
 
 - Work on a branch and open a PR; don't push to `main`. For work on an issue, start the branch with `gh issue develop <n> --checkout`: GitHub then links the branch, and the PR made from it, to the issue. For work that only does part of an issue, make the branch yourself (see **Link** below).
 - A `feat` PR gets a playable preview link commented on it; add the `preview` label to get one for any other PR (see "Preview links" in the README).
-- Keep a PR to one concern. Don't mix a refactor with a feature, and don't reformat code you aren't otherwise changing.
+- A PR into `main` that changes code, a workflow or AGENTS.md gets a review by Claude once it's out of draft ([#469](https://github.com/OliverRomhagen/vrigstad-joyride/issues/469), an experiment), posted as inline comments with a summary comment that shows what it cost.
+  - PRs from forks aren't reviewed. Nor are the upper PRs of a stack until they're retargeted to `main`, when the one below them merges, and then pushed again: the push from `gh stack sync` gets the review, so the lower PR's merged code isn't reviewed again.
+  - What the review looks for is in `.github/claude-review.md`. Change it there.
+  - The workflow, `.github/workflows/claude-review.yml`, runs from `main`, and so does the instructions file. A change to either takes effect once it merges, not in its own PR.
+  - A PR by someone with no merged PR here yet waits until a maintainer approves its review, on the run's page (the `claude-review-approval` environment).
+  - Files that `.gitattributes` on `main` marks `linguist-generated` or `linguist-vendored` are left out of the review: mark a new generated file there. The summary folds those away. Binary files and very large patches are left out too, and very long lines are cut short; the summary lists these to read by hand.
+- Keep a PR to one concern. Don't mix a refactor with a feature, and don't reformat code you aren't otherwise changing. Split by concern before a PR grows, not after: when a feature needs a change to code other features share (a type moved, a function exported, a new option on a class), that change is its own PR at the bottom of a stack from the start, and the feature builds on it. The wiki reached 76 files in one PR before it became three.
 - Reference the issue in the PR (`Closes #12`, or `Part of #12` if it doesn't fully close it). Say in the PR what is *not* done. The PR template (`.github/pull_request_template.md`) asks for that. When a PR is opened, `.github/workflows/pr-triage.yml` assigns it to its author when they have write access, and comments while the description references no issue.
 - PRs that build on each other are a stack. Prefer `gh stack` (`gh extension install github/gh-stack`): `gh stack init` or `add` builds the stack, `gh stack submit` pushes it and opens the PRs, and `gh stack sync` rebases what's left after a lower PR merges or a lower branch is rebased: until then the PRs above it still hold its old commits, and their diffs repeat them. Merge from the bottom up. When a PR outside the stack targets one of its branches, merge one PR at a time, never the whole stack at once: merged together, the stack's branches are deleted together, and GitHub closes that PR instead of moving it to `main`. After a squash merge it still holds the stack's old commits, so its author rebases it onto `main` (`git rebase --onto origin/main <the old tip of the branch it targeted>`).
 - Big structural moves conflict with every open feature branch. Check open PRs first, and coordinate rather than rebasing someone else's work.
@@ -74,7 +80,7 @@ GitHub issues are the backlog: every bug, idea and piece of work is one issue.
 
 - One branch (and worktree) per agent and task. Bring your branch up to date with `main` before opening a PR and again before merging.
 - Most features still add a line or two to `src/game/main.ts`, where the modules are connected, so expect small conflicts there. Keep changes in their own section of the file where you can.
-- To see whether a branch conflicts with `main`, or with an open PR that may merge first, without touching the worktree or the index: after `git fetch origin`, `git merge-tree --write-tree --name-only --no-messages origin/main <branch>` merges the two. It prints a tree id, then the files that conflict, if any, and exits with 1 when there is a conflict. To compare with an open PR instead, fetch it (`git fetch origin pull/<n>/head`) and pass `FETCH_HEAD` in place of `origin/main`.
+- To see whether a branch conflicts with `main`, or with an open PR that may merge first, without touching the worktree or the index: after `git fetch origin`, `git merge-tree --write-tree --name-only --no-messages origin/main <branch>` merges the two. It prints a tree id, then the files that conflict, if any, and exits with 1 when there is a conflict. To compare with an open PR instead, fetch it (`git fetch origin pull/<n>/head`) and pass `FETCH_HEAD` in place of `origin/main`. Before pushing a change to the bottom branch of a stack, compare it with the stack's top branch the same way: it shows what the PRs above will hit when they sync. It doesn't show a name they use that the change removes, which fails their typecheck after the sync, so name those in the PR.
 - Say how you tested in the PR, and be honest about what wasn't tested ("not played by hand on a phone").
 
 ### Lab experiments
@@ -82,10 +88,46 @@ GitHub issues are the backlog: every bug, idea and piece of work is one issue.
 An experiment is work that ships switched off for everyone, until a player opts in with `?lab=<id>`. It is written where its code will live once it graduates, behind a flag check ([#323](https://github.com/OliverRomhagen/vrigstad-joyride/issues/323)); why is in ARCHITECTURE.md (Decisions).
 
 - **Start one:** add `{ id, name, cost }` to `LAB_EXPERIMENTS` in `src/lab/flags.ts`; `cost` says in one line what switching it on costs a player (a download, frame time, nothing). Write its code where it belongs, in its own files where possible: rules in `src/game/` or `src/game/sim/` (plain data, no three.js, no DOM), drawing in `src/game/render/`, world code in `src/world/`. A panel or other DOM is a page module: list it as the Tests section says. The architecture checks then apply from the first commit.
-- **Gate it where it's wired in:** each gate is a `lab.on('<id>')` check in page code, so `git grep "lab.on('<id>')"` finds every one. `lab` is made in the lab section of `src/game/main.ts`; a page module that gates gets it passed in. Sim and render code can't import the flags (Fallow's zones), so they get the experiment as a constant or a callback when they're built, which also keeps the check out of the hot loops. Load its code with `import()` behind the check, so it doesn't run when the flag is off, and only warn when it fails: `if (lab.on('<id>')) import('./<module>').then(m => m.start…(…)).catch(err => console.warn('Lab: <id> failed', err));`. Import it statically only when it must apply before the page draws, such as a font. It may change the rules, but only behind its flag.
-- **Test it:** unit tests go where its code's tests will stay, mirroring `src/`. With the flag off, the game must run exactly as before, so the existing smoke tests need no change; a smoke step with `?lab=<id>` is optional. Try it locally and in the PR's preview with `?lab=<id>`: a `feat` PR gets a preview link by itself; any other PR needs the `preview` label.
+- **Gate it where it's wired in:** each gate is a `lab.on('<id>')` check in page code, so `git grep "lab.on('<id>')"` finds every one. `lab` is made in the lab section of `src/game/main.ts`; a page module that gates gets it passed in. Sim and render code can't import the flags (Fallow's zones), so they get the experiment as a constant or a callback when they're built, which also keeps the check out of the hot loops. Load its code with `import()` behind the check, so it doesn't run when the flag is off, and only warn when it fails: `if (lab.on('<id>')) import('./<module>').then(m => m.start…(…)).catch(err => console.warn('Lab: <id> failed', err));`. This doesn't make the page smaller: the pages are built as single files (`vite-plugin-singlefile`), which put the imported module inside the page. Files an experiment fetches itself (a font, a model) are still separate downloads. Import it statically only when it must apply before the page draws, such as a font. It may change the rules, but only behind its flag.
+- **Test it:** unit tests go where its code's tests will stay, mirroring `src/`. With the flag off, the game must run exactly as before, so the existing smoke tests need no change; a smoke step with `?lab=<id>` is optional. One that is written waits for a read-only field in the test hook that says the experiment is running, as `styled` does for the toon style: a failed `import()` only warns, and the smoke tests fail on errors, so a step that checks the flag and the console passes when the experiment never loaded. Try it locally and in the PR's preview with `?lab=<id>`: a `feat` PR gets a preview link by itself; any other PR needs the `preview` label.
 - **Its issue and PR:** label the issue `lab`. The PR gets the label too when it references the issue (`Closes #n` or `Part of #n`) or its branch name starts with the issue number. Put the preview link with `?lab=<id>` in the PR, and say in the issue what would decide the experiment.
 - **Leaving the lab:** an experiment that works graduates in its own PR: delete its `LAB_EXPERIMENTS` entry, and turn each gate into ordinary wiring (a static import or a direct call, without the check). If a smoke test used its flag, keep one step that checks the old flag is now ignored, as the ragdolls' does. One that doesn't work is dropped: delete its files, its tests, its gates and its entry.
+
+### Reviewing PRs
+
+Claude Code's built-in `/code-review` checks a change against this file, so these rules apply to it as much as to a review by hand:
+
+- Start with the problem the PR solves, in one line, and ask whether this is the best way to solve it. A better alternative is the first finding: what it is, why it's better, and the rough cost to switch. If the approach holds, say so in one line. An alternative that widens the issue's scope is a follow-up.
+- Read the earlier reviews first. A point stays open until the current head fixes it; credit the fix when it's there.
+- Every finding has its file:line and the code or input that triggers it. A claim you couldn't confirm is marked **unverified**, or dropped; a check you couldn't run (not playable headless, code not on the branch) is **not assessed**, never passed.
+- Split the findings into **before merging** and **follow-ups**. A one-line fix goes inline as a suggestion block.
+- An agent posts the review only when asked.
+
+The automated review on each PR (Workflow, above) follows `.github/claude-review.md` instead where the two differ: it posts by itself, reports only findings and a short summary, and labels each finding by its kind rather than splitting them.
+
+### Claude Code in this repo
+
+Shared agents (`.claude/agents/`) and skills (`.claude/skills/`) come with the repo, so every collaborator's Claude Code has them. Agents advise; none edits tracked files, and `performance-analyst` runs commands to build and measure, in a scratch worktree. Some are adapted from [Claude Code Game Studios](https://github.com/donchitos/claude-code-game-studios) (MIT, see `LICENSE`). Each holds only its own expertise and points here for the rules, so a refactor doesn't make it wrong. Try one on a real task before relying on it, and drop one nobody reaches for (#255 lists what was left out). Claude can start any of them on its own when a request matches its description.
+
+| Reach for | When |
+|---|---|
+| `threejs-specialist` | Rendering code; three.js changes after r176 are in [docs/threejs.md](docs/threejs.md) |
+| `performance-analyst`, `/perf-profile` | Low fps, stutter, a performance regression |
+| `/balance-check` | Whether the numbers are balanced, e.g. before merging a tuning change |
+| `writer` | What people in the game say, in local Swedish |
+| `game-designer`, `/quick-design` | Shaping a feature from the player's side; a short spec for a small change |
+| `systems-designer`, `economy-designer` | The maths behind a mechanic; money, prices and payouts |
+| `ai-programmer` | How police, traffic, pedestrians and animals decide and move |
+| `level-designer` | Choosing and laying out a real place for play |
+| `technical-artist` | Art styles, post-processing, effects, model and texture budgets |
+| `ux-designer`, `ui-programmer`, `accessibility-specialist` | Flows, controls and the HUD; reviewing UI code; barriers for disabled players |
+| `sound-designer` | Specifying sounds and the mix before they're made |
+| `network-programmer`, `security-engineer` | Multiplayer sync; strings into HTML, saved data, CI permissions, privacy |
+| `/playtest-report` | Turning playtest notes on a preview into one shape |
+| `/test-flakiness` | Flaky or slow smoke tests in CI |
+| `/asset-audit` | Every model, image, sound and font has a licence, is used and fits a budget |
+| `/onboard` | A guide for a new collaborator's area |
+| `ticket-triage`, `/new-ticket` | Checking and filing issues (Tickets, above) |
 
 ## Code style
 
@@ -102,6 +144,17 @@ An experiment is work that ships switched off for everyone, until a player opts 
 - No new runtime dependency without saying why in the PR. Dev dependencies (tooling, tests) are fine.
 - Gameplay numbers (speeds, radii, timers) go in named constants near the top of their module, with units in the name or a comment (`EVADE_DIST_M = 170`). The cars' numbers have moved into the tunables registry (#217): a number in the driving model, the steering or a car type's speed and response goes in its object (`DRIVING`, `STEERING`, `VEHICLE_SPECS`) and in `src/game/sim/car-tunables.ts`, with a unit, a range and a line of help, so `?tune=` and the console can change it. The unit and help live only in the registry; a comment beside the value says why it is what it is. Other areas follow.
 - Avoid per-frame allocations in the game loop: reuse vectors (`const _v = new THREE.Vector3()` at module level) as the existing code does.
+
+### UI and motion
+
+For anything a person sees and touches: the HUD, menus, the map's tools and the pages around the game. [The interfaces.dev cheat sheet](https://interfaces.dev/cheat-sheet) is the reference for the small things; these are the ones we keep to.
+
+- **What leaves is quicker and plainer than what comes.** An exit is shorter than its entrance and travels less: a fade, with a slight blur at most.
+- **Things that arrive together step in**, in small groups a short beat apart (about 100 ms), not as one block.
+- **Nothing moves by itself for someone who asked for less motion.** Put animations and transitions inside `@media (prefers-reduced-motion: no-preference)`; code that moves something on its own (a showcase camera, a turntable) checks `matchMedia('(prefers-reduced-motion: reduce)')`.
+- **Hover styles are for pointers that hover:** inside `@media (hover: hover)`, as `:hover` stays stuck on a touch screen after a tap.
+- **CSS before JavaScript for motion**, and a newer browser feature (view transitions, `@starting-style`) only where a browser without it gets the plain behaviour, not a broken one.
+- **Subtle first.** Start with less movement, less contrast and more see-through than seems right, and add from there.
 
 ### Naming
 
@@ -142,6 +195,7 @@ Until the migration reaches a given rule, don't make the existing code worse in 
 - In dev mode (`?dev`), uncaught errors show in a red box over the game (a tap or `errors clear` empties it), and the console's `fps` shows frame times, what the renderer draws and the build's commit, which is also `build` in the test hook (`src/game/presentation/debug-overlay.ts`). A screenshot of it makes a good bug report from a phone.
 - The numbers in the tunables registry take `?dev&tune=driving.grip:8,vehicle.volvo.top-speed:45` (keys in `src/game/sim/car-tunables.ts`), in dev mode only; a key or value it can't use is a warning in the browser's console, and the rest still apply. In the console, `tune set`, `tune get`, `tune list` and `tune reset` change them while you play.
 - The sky's clouds take URL parameters for visual testing: `?clouds=clear|scattered|partly|mostly|off`, `cloudSeed=7`, `wind=250,7` (from degrees, m/s), `cloudSoft=1.3` and `cloudQuality=low|high` (`src/world/clouds.ts`).
+- `?sunrays=off` leaves out the sunlight streaks and the sun disc (`src/game/render/sun-streaks.ts`), for comparing with them on; `?time=16&cycle=off` holds the sun at one hour.
 - The smoke tests live in `tests/e2e/` and run in CI on every PR that changes more than docs, labels, issue forms, agent files or other workflows (`.github/workflows/e2e.yml`), split across three runners with Playwright's `--shard` and reported as one `Smoke tests (Playwright)` check. The workflow also fails if the committed `data/vrigstad.json` is stale, and uploads screenshots of both pages as the `e2e-screenshots` artifact. They read game state from `window.__joyride.state()` (defined in `src/game/test-hook.ts`); add a field there when a new smoke step needs one, and keep the hook read-only.
 - **Static analysis** ([Fallow](https://github.com/fallow-rs/fallow), [#107](https://github.com/OliverRomhagen/vrigstad-joyride/issues/107)), configured in `fallow.toml`, is the last step of `npm run check`, so it runs before every commit and in CI (`.github/workflows/check.yml`), and takes well under a second:
   - The gate (`fallow dead-code`) fails on: an unused file, export, class member or dependency; a circular import; an import across the layers in `fallow.toml` (`world` imports only `world`; `sim` only `sim` and `world`; `render` anything but the page code).
@@ -151,6 +205,7 @@ Until the migration reaches a given rule, don't make the existing code worse in 
   - `npm run analyze:report` prints copied code (`fallow dupes`) and the files where complexity meets churn (`fallow health --hotspots`). Read it before refactoring; it doesn't fail.
 - **Before a commit**, run `npm run check` and `npm test` in full: they take seconds. The smoke tests render WebGL in software and keep every core busy for minutes, so run only the ones for what you changed, plus the ones that load the page and get into the Volvo, on one or two workers, after a build, since they test `dist/`: `npm run build && npx playwright test -g "kiosk|loads with no console errors|gets you in" --workers=2`. CI runs the whole suite on every PR. A change to the wiring in `src/game/main.ts` or to the frame loop can break another feature's test, so a red CI run after a green subset is expected now and then, not a reason to run everything locally.
 - The page modules (`main.ts`, `loop.ts`, `prompt.ts`, the HUD) and the rendering are out of the unit tests' reach: test changes there in a browser too, and describe what you did in the PR.
+- **Look at a change to anything visible before calling it done, at a phone's width and a desktop's** (a screenshot at about 390 px and at about 1280 px, or the real thing). Green checks say nothing about how it looks: a camera fitted for a wide window can end up outside a fence on a narrow one, and a label placed over a character can cover their face, with every test passing. Say in the PR which widths you looked at.
 
 ## Data and coordinates
 

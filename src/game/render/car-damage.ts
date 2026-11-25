@@ -5,6 +5,7 @@ import { makeRnd } from '../../world/random';
 import { col } from '../../world/three-legacy';
 import { crackLevel, smokeLevel } from '../health';
 import type { RenderedCar } from './car-meshes';
+import { GLASS_PREFIX } from './vehicle-registry';
 import type { VehicleVisuals } from './vehicle-visuals';
 
 /** What the damage effects keep for one car: the crack level its glass shows, the crack meshes they have added, and the smoke still owed (puffs). */
@@ -262,7 +263,7 @@ export class CarDamageFx {
     if (!v.modelCrack && vehicleVisuals.loaded(c) && c.mesh.getObjectByName('glass_envelope')) {
       const glass: THREE.Mesh[] = [];
       c.mesh.traverse(o => {
-        if (o instanceof THREE.Mesh && o.name.startsWith('glass_')) glass.push(o);
+        if (o instanceof THREE.Mesh && o.name.startsWith(GLASS_PREFIX)) glass.push(o);
       });
       v.modelCrack = glass.map(gl => {
         const m = new THREE.Mesh(this.modelCrackGeo(gl.geometry), this.crackMats[lv]!);

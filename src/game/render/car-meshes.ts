@@ -5,6 +5,7 @@ import { makeRnd } from '../../world/random';
 import type { Car } from '../cars';
 import type { CarType } from '../sim/vehicle-spec';
 import type { BodyMotion } from './body-motion';
+import { INK_FLAG } from './ink-flag';
 import { pickVariant, type VehicleId } from './vehicle-registry';
 import type { VehicleVisuals } from './vehicle-visuals';
 
@@ -70,6 +71,7 @@ export class CarMeshes {
       bar.position.set(0, 1.62, 0.2);
       fallback.add(bar);
     }
+    mesh.userData[INK_FLAG] = true; // the toon style inks the cars' creases, like the art direction lab
     const c = Object.assign(car, { mesh, body: fallback });
     scene.add(mesh);
     this.placeCar(c);

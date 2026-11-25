@@ -6,8 +6,8 @@
 // (they flash), the wheels and everything under them (they spin), and any part with attributes other than position
 // and normal. The geometry is copied exactly, transformed into the body's space.
 
-/** Parts the game finds by name, so they keep their own mesh. */
-export const KEPT_PARTS = /^(glass_|body_|lamp_blue_module|lamp_police_grille)/;
+import { BODY_NODE, keepVehiclePart } from '../src/game/render/vehicle-registry';
+
 const GLB_MAGIC = 0x46546c67;
 const JSON_CHUNK = 0x4e4f534a;
 const BIN_CHUNK = 0x004e4942;
@@ -16,6 +16,7 @@ const UINT32 = 5125;
 const TRIANGLES = 4;
 
 interface Accessor {
+  sparse?: unknown;
   bufferView?: number;
   byteOffset?: number;
   componentType: number;
@@ -25,12 +26,16 @@ interface Accessor {
   max?: number[];
 }
 interface Primitive {
+  targets?: unknown[];
+  extensions?: unknown;
   attributes: Record<string, number>;
   indices?: number;
   material?: number;
   mode?: number;
 }
 interface Node {
+  skin?: number;
+  extensions?: unknown;
   name?: string;
   mesh?: number;
   children?: number[];
@@ -39,7 +44,8 @@ interface Node {
   rotation?: number[];
   scale?: number[];
 }
-interface Gltf {
+export interface Gltf {
+  animations?: { channels: { target: { node?: number } }[] }[];
   nodes: Node[];
   meshes: { name?: string; primitives: Primitive[] }[];
   materials?: { name?: string }[];
@@ -110,6 +116,12 @@ function read(gltf: Gltf, bin: Buffer, index: number): number[] {
 /** Whether a primitive can be merged: indexed or not, triangles, float positions and normals and nothing else. */
 function plain(gltf: Gltf, p: Primitive): boolean {
   const keys = Object.keys(p.attributes).sort().join();
+  if (p.targets?.length || p.extensions) return false;
+  if (
+    Object.values(p.attributes).some(i => gltf.accessors[i]!.sparse) ||
+    (p.indices !== undefined && gltf.accessors[p.indices]!.sparse)
+  )
+    return false;
   if (keys !== 'NORMAL,POSITION' || (p.mode ?? TRIANGLES) !== TRIANGLES || p.material === undefined) return false;
   const pos = gltf.accessors[p.attributes.POSITION!]!;
   const nrm = gltf.accessors[p.attributes.NORMAL!]!;
@@ -121,26 +133,20 @@ function plain(gltf: Gltf, p: Primitive): boolean {
   );
 }
 
-export function mergeStaticParts(glb: Buffer): { glb: Buffer; report: MergeReport } {
-  if (glb.readUInt32LE(0) !== GLB_MAGIC || glb.readUInt32LE(16) !== JSON_CHUNK) throw new Error('Not a GLB');
-  const jsonLength = glb.readUInt32LE(12);
-  const gltf = JSON.parse(glb.subarray(20, 20 + jsonLength).toString()) as Gltf;
-  const binStart = 20 + jsonLength;
-  if (glb.readUInt32LE(binStart + 4) !== BIN_CHUNK || gltf.buffers.length !== 1)
-    throw new Error('Expected one binary buffer');
-  const bin = glb.subarray(binStart + 8, binStart + 8 + glb.readUInt32LE(binStart));
-  const body = gltf.nodes.find(n => n.name === 'body');
-  if (!body) throw new Error('No body node');
-  const children = body.children ?? [];
-  const before = children.filter(c => gltf.nodes[c]!.mesh !== undefined).length;
-
+/** Material groups eligible for merging; shared with the committed-asset check. */
+export function staticPartGroups(gltf: Gltf) {
+  const children = gltf.nodes.find(n => n.name === BODY_NODE)?.children ?? [];
+  const animated = new Set(gltf.animations?.flatMap(a => a.channels.map(c => c.target.node)));
   // a part merges only if it is a plain mesh with no children, and every one of its primitives is plain
   const mergeable = children.filter(c => {
     const n = gltf.nodes[c]!;
     return (
       n.mesh !== undefined &&
       !n.children?.length &&
-      !KEPT_PARTS.test(n.name ?? '') &&
+      !keepVehiclePart(n.name ?? '') &&
+      n.skin === undefined &&
+      !n.extensions &&
+      !animated.has(c) &&
       gltf.meshes[n.mesh]!.primitives.every(p => plain(gltf, p))
     );
   });
@@ -156,6 +162,24 @@ export function mergeStaticParts(glb: Buffer): { glb: Buffer; report: MergeRepor
   const touched = new Set(merging.flatMap(([, parts]) => parts.map(p => p.node)));
   for (const [material, parts] of groups)
     if (parts.length === 1 && touched.has(parts[0]!.node)) merging.push([material, parts]);
+  return merging;
+}
+
+export function mergeStaticParts(glb: Buffer): { glb: Buffer; report: MergeReport } {
+  if (glb.readUInt32LE(0) !== GLB_MAGIC || glb.readUInt32LE(16) !== JSON_CHUNK) throw new Error('Not a GLB');
+  const jsonLength = glb.readUInt32LE(12);
+  const gltf = JSON.parse(glb.subarray(20, 20 + jsonLength).toString()) as Gltf;
+  const binStart = 20 + jsonLength;
+  if (glb.readUInt32LE(binStart + 4) !== BIN_CHUNK || gltf.buffers.length !== 1)
+    throw new Error('Expected one binary buffer');
+  const bin = glb.subarray(binStart + 8, binStart + 8 + glb.readUInt32LE(binStart));
+  const body = gltf.nodes.find(n => n.name === BODY_NODE);
+  if (!body) throw new Error('No body node');
+  const children = body.children ?? [];
+  const before = children.filter(c => gltf.nodes[c]!.mesh !== undefined).length;
+
+  const merging = staticPartGroups(gltf);
+  const touched = new Set(merging.flatMap(([, parts]) => parts.map(p => p.node)));
   if (!merging.length) return { glb, report: { before, after: before, merged: [] } };
 
   const chunks: Buffer[] = [bin];
@@ -218,8 +242,12 @@ export function mergeStaticParts(glb: Buffer): { glb: Buffer; report: MergeRepor
         if (det < 0) indices.push(base + own[k]!, base + own[k + 2]!, base + own[k + 1]!);
         else indices.push(base + own[k]!, base + own[k + 1]!, base + own[k + 2]!);
     }
-    const min = [0, 1, 2].map(k => Math.min(...positions.filter((_, j) => j % 3 === k)));
-    const max = [0, 1, 2].map(k => Math.max(...positions.filter((_, j) => j % 3 === k)));
+    const min = [Infinity, Infinity, Infinity];
+    const max = [-Infinity, -Infinity, -Infinity];
+    for (let j = 0; j < positions.length; j++) {
+      min[j % 3] = Math.min(min[j % 3]!, positions[j]!);
+      max[j % 3] = Math.max(max[j % 3]!, positions[j]!);
+    }
     const floats = (values: number[]) => Buffer.from(new Float32Array(values).buffer);
     const position =
       gltf.accessors.push({
