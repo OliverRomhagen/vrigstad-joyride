@@ -1,4 +1,4 @@
-import collections, json, math, re, struct, sys, zlib
+import collections, json, math, os, re, struct, sys, zlib
 
 data_dir, out_path = sys.argv[1], sys.argv[2]
 LAT0, LON0 = 57.3555, 14.4756
@@ -168,6 +168,16 @@ def area(pts):
 
 def centroid(pts):
     return (sum(p[0] for p in pts) / len(pts), sum(p[1] for p in pts) / len(pts))
+
+
+def area_centroid(ring):
+    """The centroid of the shape, not of its corners: a corner added on an edge doesn't move it."""
+    a = cx = cz = 0.0
+    for i in range(len(ring)):
+        (x0, z0), (x1, z1) = ring[i - 1], ring[i]
+        c = x0 * z1 - x1 * z0
+        a += c; cx += (x0 + x1) * c; cz += (z0 + z1) * c
+    return cx / (3 * a), cz / (3 * a)
 
 
 def length(pts):
@@ -391,6 +401,21 @@ LEIS = {'pitch': 6, 'playground': 3, 'sports_centre': 3, 'park': 3}
 SHORT = {'Best Western Hotell Vrigstad Värdshus': 'Vrigstad Värdshus', 'Torget Vrigstad': 'Torget',
          'Tallåsen, Vrigstads Idrottsplats': 'Tallåsen idrottsplats', 'Hagabanan - Vrigstad Motorklubb': 'Hagabanan'}
 CHURCH_WAY = 48762655   # Vrigstad kyrka; its tower is split out of this way's outline
+# outlines moved (dx, dz) m off the carriageway they were traced onto, each with the area centroid (cx, cz) of the
+# outline it was tuned on. shortcut: a fixed offset; a re-traced way moves its centroid and fails the build, so re-check the
+# offset then (our roads are wider than the real ones, so a correct outline may still need a small one). list the
+# centroid to 0.1 m: the check allows RETRACE_TOL_M, since the offsets are tuned to clearances of centimetres
+BUILDING_SHIFT = {
+    # the old bank museum on Jönköpingsvägen, west of the Emån bridge: traced in 2010 (v1) about 3 m south, onto
+    # the road; moved north until a full sidewalk fits between its front wall and the 9 m carriageway (the road is
+    # drawn wider than it is, so further than the aerial alone), and west so it only grazes the driveway behind it
+    48807861: (-1.5, -5, -75.5, -21.1),
+}
+RETRACE_TOL_M = 0.1
+if os.environ.get('BUILDING_SHIFT'):   # the unit tests' own table, as JSON, so their small world needn't hold these ways
+    BUILDING_SHIFT = {int(i): tuple(v) for i, v in json.loads(os.environ['BUILDING_SHIFT']).items()}
+    print('BUILDING_SHIFT taken from the environment, not from process.py', file=sys.stderr)
+shifted = set()   # BUILDING_SHIFT ways kept as buildings
 buildings, roads, water, waterways, land, labels = [], [], [], [], [], {}
 parking_areas, parking_spaces, crossings, kerbs, trees, furniture = [], [], [], [], [], []
 road_nodes = []              # per road: the OSM node id of each kept vertex, None where clipping made the vertex
@@ -470,6 +495,15 @@ for e in elements:
         report['kerb ways'] += 1
         continue
     if 'building' in t:
+        if ring and e['type'] == 'way' and e['id'] in BUILDING_SHIFT:
+            dx, dz, cx, cz = BUILDING_SHIFT[e['id']]
+            assert area(ring) > 1, f'way {e["id"]} has no area: re-check its BUILDING_SHIFT'
+            mx, mz = area_centroid(ring)
+            assert math.hypot(mx - cx, mz - cz) < RETRACE_TOL_M, f'way {e["id"]} was re-traced: re-check its BUILDING_SHIFT'
+            ring = [(x + dx, z + dz) for x, z in ring]
+            # the check below would drop it without a word
+            assert inside(centroid(ring)), f'way {e["id"]} is moved out of the world: re-check its BUILDING_SHIFT'
+            shifted.add(e['id'])
         if not ring or not inside(centroid(ring)): continue
         a = area(ring)
         kind = {'church': 1, 'hotel': 2}.get(t['building'], 0)
@@ -554,6 +588,7 @@ for e in elements:
             land.append({'k': k, 'p': flat(r)})
 
 assert sum('s' in b for b in buildings) == 1, f'church way {CHURCH_WAY} missing from osm.json'
+assert shifted == set(BUILDING_SHIFT), f'BUILDING_SHIFT ways not found as building outlines in osm.json (a relation is not matched): {sorted(set(BUILDING_SHIFT) - shifted)}'
 
 # ---------- crossing and kerb nodes, tied to road vertices through the ways' node lists ----------
 on_roads = collections.defaultdict(list)          # node id -> [(class, road index, vertex index)], carriageways only
