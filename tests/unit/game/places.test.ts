@@ -65,25 +65,31 @@ describe('Places', () => {
     ]);
   });
 
-  it('takes you to Torget, the kiosk, Skroten or a safehouse with go', () => {
+  it('takes you to Torget, the kiosk, Skroten, its lift or a safehouse with go, turned where a spot says', () => {
     const { places: p } = places(),
       c = new Commands(),
-      went: [number, number][] = [];
-    p.registerCommands(c, (x, z, name) => {
-      went.push([x, z]);
-      return 'You are at ' + name + '.';
-    });
+      went: [number, number, number | undefined][] = [];
+    p.registerCommands(
+      c,
+      (x, z, name, h) => {
+        went.push([x, z, h]);
+        return 'You are at ' + name + '.';
+      },
+      { verkstan: { x: 50, z: 60, name: "Plåt-Pelle's lift", h: 1.5 } },
+    );
     expect(c.run('go Skroten')).toBe('You are at Skroten.');
-    expect(went.at(-1)).toEqual([SKROTEN.x, SKROTEN.z]);
+    expect(went.at(-1)).toEqual([SKROTEN.x, SKROTEN.z, undefined]); // a car keeps its heading
     expect(c.run('go torget')).toBe('You are at Torget.');
-    expect(went.at(-1)).toEqual([HOME.x, HOME.z]);
+    expect(went.at(-1)).toEqual([HOME.x, HOME.z, undefined]);
     expect(c.run('go kiosk')).toBe('You are at Kiosken.');
     expect(c.run('go gästgivaregatan')).toBe('You are at Gästgivaregatan.');
     expect(c.run('go mars')).toBe(
-      'No place called mars. Pick one of: gästgivaregatan, kiosk, skroten, torget. Usage: go <place>',
+      'No place called mars. Pick one of: gästgivaregatan, kiosk, skroten, torget, verkstan. Usage: go <place>',
     );
     expect(c.run('tp kiosk')).toBe('You are at Kiosken.');
-    expect(c.complete('go ')).toEqual(['gästgivaregatan', 'kiosk', 'skroten', 'torget']);
+    expect(c.complete('go ')).toEqual(['gästgivaregatan', 'kiosk', 'skroten', 'torget', 'verkstan']);
+    expect(c.run('go verkstan')).toBe("You are at Plåt-Pelle's lift.");
+    expect(went.at(-1)).toEqual([50, 60, 1.5]); // turned to drive in
   });
 
   it('finds Skroten for a car within 4 m of its ring, never for you on foot', () => {
