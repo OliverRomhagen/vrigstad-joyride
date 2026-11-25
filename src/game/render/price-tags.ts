@@ -23,6 +23,7 @@ const _o = new THREE.Vector3(),
   _d = new THREE.Vector3(),
   _n = new THREE.Vector3(),
   _box = new THREE.Box3(),
+  _part = new THREE.Box3(),
   _inv = new THREE.Matrix4(),
   _m = new THREE.Matrix4(),
   _q = new THREE.Quaternion();
@@ -63,15 +64,22 @@ export class PriceTags {
     this.g = g;
   }
 
-  // every frame, as the cards hang on the shape: a model swapped in or out would hide them with the old one until the next check,
-  // and a car just bought would drive off with them. With each shape's fit cached, a frame with no change only compares.
+  // every frame, as the cards hang on the shape: a model swapped in or out would hide them with the old one, and a car just bought
+  // would drive off with them. With each shape's fit cached, a frame with no change only compares. A new shape's rays are cast for
+  // one car a frame at most, as the lot's models load at about the same time near Skroten: a car waiting its turn, a few frames at
+  // most, shows no cards.
   update() {
     this.tags.forEach(this.dropSold);
+    let fitted = false;
     for (const c of this.g.cars) {
       if (!c.saleKr) continue;
       const shape = this.g.visibleModel(c) ?? c.body,
         tag = this.tags.get(c);
       if (tag?.on === shape) continue;
+      if (!tag?.fits.has(shape)) {
+        if (fitted) continue; // the next frame
+        fitted = true;
+      }
       const cards =
           tag?.cards ??
           ENDS.map(() => {
@@ -111,15 +119,18 @@ export class PriceTags {
   private fit(c: RenderedCar, shape: THREE.Object3D, end: End): Fit {
     c.mesh.updateMatrixWorld(true);
     _inv.copy(c.mesh.matrixWorld).invert();
-    const top = _box.setFromObject(shape).max.y - c.mesh.position.y,
-      deep = shape !== c.body; // the procedural body is one mesh; a model is a tree of them
+    const deep = shape !== c.body, // the procedural body is one mesh; a model is a tree of them
+      top = visibleTop(shape, deep) - c.mesh.position.y,
+      glass = deep ? glassOf(shape) : null; // a model's rays go to its glass alone: fewer triangles, and no grille to pass over
     const out = end === 'front' ? -1 : 1; // nose at local -z: the ray comes from out there, along the car
     for (const below of GLASS_BELOW_TOP_M) {
       _o.set(CARD_SIDE_M, top - below, out * LOOK_FROM_M).applyMatrix4(c.mesh.matrixWorld);
       _d.set(0, 0, -out).transformDirection(c.mesh.matrixWorld);
       this.ray.set(_o, _d);
       this.ray.far = LOOK_FROM_M * 2;
-      const hit = this.ray.intersectObject(shape, deep)[0];
+      const hit = (glass ? this.ray.intersectObjects(glass, false) : this.ray.intersectObject(shape, deep)).find(h =>
+        shown(h.object, shape),
+      );
       if (!hit?.face) continue;
       _n.copy(hit.face.normal).transformDirection(hit.object.matrixWorld).transformDirection(_inv);
       if (_n.z * out < 0) _n.negate(); // a face wound the other way: the card faces out of its end
@@ -188,4 +199,32 @@ export class PriceTags {
     this.materials.set(kr, m);
     return m;
   }
+}
+
+// the raycaster and Box3 count hidden nodes too: a GLB's helper or variant mesh would catch the card or lift the top above the glass
+function shown(o: THREE.Object3D | null, root: THREE.Object3D) {
+  for (; o && o !== root; o = o.parent) if (!o.visible) return false;
+  return true;
+}
+
+// the top of what shows of `shape` (world y); the procedural body alone, not the cards and cracks on it
+function visibleTop(shape: THREE.Object3D, deep: boolean) {
+  _box.makeEmpty();
+  const add = (o: THREE.Object3D) => {
+    if (!(o instanceof THREE.Mesh)) return;
+    if (!o.geometry.boundingBox) o.geometry.computeBoundingBox();
+    _box.union(_part.copy(o.geometry.boundingBox!).applyMatrix4(o.matrixWorld));
+  };
+  if (deep) shape.traverseVisible(add);
+  else add(shape);
+  return _box.max.y;
+}
+
+// a model's visible windows (every car model has a glass_envelope); null if it has none, and the rays go to the whole model
+function glassOf(shape: THREE.Object3D) {
+  const glass: THREE.Object3D[] = [];
+  shape.traverseVisible(o => {
+    if (o instanceof THREE.Mesh && o.name.startsWith('glass_')) glass.push(o);
+  });
+  return glass.length ? glass : null;
 }
