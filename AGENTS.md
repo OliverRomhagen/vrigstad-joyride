@@ -36,7 +36,7 @@ Live site: https://oliverromhagen.github.io/vrigstad-joyride/ (GitHub Pages, fro
   - The workflow, `.github/workflows/claude-review.yml`, runs from `main`, and so does the instructions file. A change to either takes effect once it merges, not in its own PR.
   - A PR by someone with no merged PR here yet waits until a maintainer approves its review, on the run's page (the `claude-review-approval` environment).
   - Files that `.gitattributes` on `main` marks `linguist-generated` or `linguist-vendored` are left out of the review: mark a new generated file there. The summary folds those away. Binary files and very large patches are left out too, and very long lines are cut short; the summary lists these to read by hand.
-- Keep a PR to one concern. Don't mix a refactor with a feature, and don't reformat code you aren't otherwise changing.
+- Keep a PR to one concern. Don't mix a refactor with a feature, and don't reformat code you aren't otherwise changing. Split by concern before a PR grows, not after: when a feature needs a change to code other features share (a type moved, a function exported, a new option on a class), that change is its own PR at the bottom of a stack from the start, and the feature builds on it. The wiki reached 76 files in one PR before it became three.
 - Reference the issue in the PR (`Closes #12`, or `Part of #12` if it doesn't fully close it). Say in the PR what is *not* done. The PR template (`.github/pull_request_template.md`) asks for that. When a PR is opened, `.github/workflows/pr-triage.yml` assigns it to its author when they have write access, and comments while the description references no issue.
 - PRs that build on each other are a stack. Prefer `gh stack` (`gh extension install github/gh-stack`): `gh stack init` or `add` builds the stack, `gh stack submit` pushes it and opens the PRs, and `gh stack sync` rebases what's left after a lower PR merges or a lower branch is rebased: until then the PRs above it still hold its old commits, and their diffs repeat them. Merge from the bottom up. When a PR outside the stack targets one of its branches, merge one PR at a time, never the whole stack at once: merged together, the stack's branches are deleted together, and GitHub closes that PR instead of moving it to `main`. After a squash merge it still holds the stack's old commits, so its author rebases it onto `main` (`git rebase --onto origin/main <the old tip of the branch it targeted>`).
 - Big structural moves conflict with every open feature branch. Check open PRs first, and coordinate rather than rebasing someone else's work.
@@ -145,6 +145,17 @@ Shared agents (`.claude/agents/`) and skills (`.claude/skills/`) come with the r
 - Gameplay numbers (speeds, radii, timers) go in named constants near the top of their module, with units in the name or a comment (`EVADE_DIST_M = 170`). The cars' numbers have moved into the tunables registry (#217): a number in the driving model, the steering or a car type's speed and response goes in its object (`DRIVING`, `STEERING`, `VEHICLE_SPECS`) and in `src/game/sim/car-tunables.ts`, with a unit, a range and a line of help, so `?tune=` and the console can change it. The unit and help live only in the registry; a comment beside the value says why it is what it is. Other areas follow.
 - Avoid per-frame allocations in the game loop: reuse vectors (`const _v = new THREE.Vector3()` at module level) as the existing code does.
 
+### UI and motion
+
+For anything a person sees and touches: the HUD, menus, the map's tools and the pages around the game. [The interfaces.dev cheat sheet](https://interfaces.dev/cheat-sheet) is the reference for the small things; these are the ones we keep to.
+
+- **What leaves is quicker and plainer than what comes.** An exit is shorter than its entrance and travels less: a fade, with a slight blur at most.
+- **Things that arrive together step in**, in small groups a short beat apart (about 100 ms), not as one block.
+- **Nothing moves by itself for someone who asked for less motion.** Put animations and transitions inside `@media (prefers-reduced-motion: no-preference)`; code that moves something (a camera, a turntable) checks `matchMedia('(prefers-reduced-motion: reduce)')`.
+- **Hover styles are for pointers that hover:** inside `@media (hover: hover)`, as `:hover` stays stuck on a touch screen after a tap.
+- **CSS before JavaScript for motion**, and a newer browser feature (view transitions, `@starting-style`) only where a browser without it gets the plain behaviour, not a broken one.
+- **Subtle first.** Start with less movement, less contrast and more see-through than seems right, and add from there.
+
 ### Naming
 
 Defaults for new code; review checks them, no linter does.
@@ -193,6 +204,7 @@ Until the migration reaches a given rule, don't make the existing code worse in 
   - `npm run analyze:report` prints copied code (`fallow dupes`) and the files where complexity meets churn (`fallow health --hotspots`). Read it before refactoring; it doesn't fail.
 - **Before a commit**, run `npm run check` and `npm test` in full: they take seconds. The smoke tests render WebGL in software and keep every core busy for minutes, so run only the ones for what you changed, plus the ones that load the page and get into the Volvo, on one or two workers, after a build, since they test `dist/`: `npm run build && npx playwright test -g "kiosk|loads with no console errors|gets you in" --workers=2`. CI runs the whole suite on every PR. A change to the wiring in `src/game/main.ts` or to the frame loop can break another feature's test, so a red CI run after a green subset is expected now and then, not a reason to run everything locally.
 - The page modules (`main.ts`, `loop.ts`, `prompt.ts`, the HUD) and the rendering are out of the unit tests' reach: test changes there in a browser too, and describe what you did in the PR.
+- **Look at a change to anything visible before calling it done, at a phone's width and a desktop's** (a screenshot at about 390 px and at about 1280 px, or the real thing). Green checks say nothing about how it looks: a camera fitted for a wide window can end up outside a fence on a narrow one, and a label placed over a character can cover their face, with every test passing. Say in the PR which widths you looked at.
 
 ## Data and coordinates
 
