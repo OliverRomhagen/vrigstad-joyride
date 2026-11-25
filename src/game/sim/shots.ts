@@ -17,7 +17,7 @@ export interface Weapon {
   blastM: number; // a hit also reaches everyone within this radius; 0 for none
 }
 
-/** The pistol ladder from #17, a scatter gun and the village-built bazooka. */
+/** The pistol ladder from #17, a scatter gun, the village-built bazooka and a minigun. */
 export const WEAPONS = [
   {
     id: 'artpuffra',
@@ -78,6 +78,18 @@ export const WEAPONS = [
     power: 4,
     splatM: 2.2,
     blastM: 4,
+  },
+  {
+    id: 'minigun',
+    name: 'Minigun',
+    speedMs: 75,
+    coolS: 0.03,
+    auto: true,
+    pellets: 1,
+    spreadRad: 0.055,
+    power: 0.4,
+    splatM: 0.38,
+    blastM: 0,
   },
 ] as const satisfies readonly Weapon[];
 
@@ -196,10 +208,19 @@ function hitAt(s: Shot, world: ShotWorld, out: ShotHit): ShotHit | null {
         ez = s.z - _onCar.z,
         d = Math.hypot(ex, ez);
       if (d > bodyRadius(c)) continue;
-      return d > 0.01 ? surface(out, 'car', i, ex / d, 0, ez / d) : surface(out, 'car', i, -out.dx, 0, -out.dz);
+      // on the body's side, not where the shot was noticed, up to a step inside it
+      const nx = d > 0.01 ? ex / d : -out.dx,
+        nz = d > 0.01 ? ez / d : -out.dz;
+      out.x = _onCar.x + nx * bodyRadius(c);
+      out.z = _onCar.z + nz * bodyRadius(c);
+      return surface(out, 'car', i, nx, 0, nz);
     }
   if (up <= 0) {
-    out.y = ground;
+    // back along its path to where it met the ground
+    const pastS = s.vy < 0 ? Math.min(up / s.vy, STEP_M / (Math.hypot(s.vx, s.vy, s.vz) || 1)) : 0;
+    out.x = s.x - s.vx * pastS;
+    out.z = s.z - s.vz * pastS;
+    out.y = world.groundAt(out.x, out.z);
     return surface(out, 'ground', -1, 0, 1, 0);
   }
   if (up < WALL_MAX_M) {
@@ -210,7 +231,12 @@ function hitAt(s: Shot, world: ShotWorld, out: ShotHit): ShotHit | null {
       const ex = _probe.x - s.x,
         ez = _probe.z - s.z,
         d = Math.hypot(ex, ez);
-      return d > 1e-4 ? surface(out, 'wall', -1, ex / d, 0, ez / d) : surface(out, 'wall', -1, -out.dx, 0, -out.dz);
+      const nx = d > 1e-4 ? ex / d : -out.dx,
+        nz = d > 1e-4 ? ez / d : -out.dz;
+      // on the wall's face: the probe ends its own radius outside it
+      out.x = _probe.x - nx * WALL_PROBE_M;
+      out.z = _probe.z - nz * WALL_PROBE_M;
+      return surface(out, 'wall', -1, nx, 0, nz);
     }
   }
   return null;

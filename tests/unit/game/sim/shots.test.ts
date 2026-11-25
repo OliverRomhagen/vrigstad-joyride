@@ -19,9 +19,9 @@ const T = { lengthM: 4.6, widthM: 1.8 };
 function world(over: Partial<ShotWorld> = {}): ShotWorld {
   return {
     groundAt: () => 0,
-    collide: o => {
-      if (o.z > -20 || Math.abs(o.x) > 5) return false;
-      o.z = -20; // pushed back out of the south wall
+    collide: (o, r) => {
+      if (o.z > -20 + r || Math.abs(o.x) > 5) return false;
+      o.z = -20 + r; // pushed back out of the south wall, as BuildingIndex.collide does
       return true;
     },
     people: [],
@@ -68,12 +68,13 @@ describe('stepShot', () => {
     // level from MUZZLE_M: it falls for sqrt(2 h / g) seconds
     const fallS = Math.sqrt((2 * MUZZLE_M) / GRAVITY_MS2);
     expect(-s.z).toBeCloseTo(WEAPONS[PICKADOLL].speedMs * fallS, 0);
+    if (hit !== 'gone') expect(-hit.z).toBeCloseTo(WEAPONS[PICKADOLL].speedMs * fallS, 0);
   });
 
   it('hits the wall of a house, and says which way the wall faces', () => {
     const hit = fly(shot(), world());
     expect(hit).toMatchObject({ kind: 'wall', nx: 0, nz: 1 }); // the south wall faces south
-    if (hit !== 'gone') expect(hit.z).toBeLessThan(-20);
+    if (hit !== 'gone') expect(hit.z).toBeCloseTo(-20); // on the wall's face, not where the shot was noticed inside it
   });
 
   it('hits a person in the way, not the house behind them', () => {
@@ -94,7 +95,7 @@ describe('stepShot', () => {
     const hit = fly(shot(), world({ cars: [{ x: 0, z: -10, h: Math.PI / 2, T }] }));
     expect(hit).toMatchObject({ kind: 'car', target: 0 });
     if (hit !== 'gone') {
-      expect(hit.z).toBeGreaterThan(-10);
+      expect(hit.z).toBeCloseTo(-10 + T.widthM / 2); // on the body's side
       expect(hit.nz).toBeCloseTo(1); // the side that faces the shooter
     }
   });
@@ -108,6 +109,12 @@ describe('stepShot', () => {
     const s = shot(),
       hit = stepShot(s, 0.25, world({ people: [{ x: 0, z: -9, scale: 1 }] }), newHit());
     expect(hit).toMatchObject({ kind: 'person' });
+  });
+});
+
+describe('the weapons', () => {
+  it('has a minigun that fires for as long as the trigger is held', () => {
+    expect(WEAPONS.find(w => w.id === 'minigun')).toMatchObject({ auto: true });
   });
 });
 

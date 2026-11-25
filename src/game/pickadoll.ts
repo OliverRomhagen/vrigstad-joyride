@@ -31,12 +31,11 @@ const AIM_LEVEL_PITCH = 0.34, // the camera pitch (rad) that fires level
   AIM_PITCH_K = 0.75, // rad of aim per rad of camera pitch
   AIM_UP_MAX = 0.35,
   AIM_DOWN_MAX = 0.6;
-const AIM_EVERY = 3; // the aim mark is worked out every this many frames
 // the soft lock on a touch screen, where there is no fine aim: the shot turns to the nearest target near where you look
 const ASSIST_CONE_RAD = 0.3,
   ASSIST_CONE_CAR_RAD = 0.6, // wider from a car: both thumbs are busy driving
   ASSIST_RANGE_M = 45;
-const SHOTS_MAX = 128; // in the air at once
+const SHOTS_MAX = 256; // in the air at once
 const INTRO_AFTER_S = 5.5; // the lab's own line comes this long after Start, once the start line is gone
 // pang: a hit throws people and shoves cars
 const PANG_THROW_MS = 5, // a person leaves at this, plus PANG_THROW_PER_POWER_MS for each point of the weapon's power
@@ -91,7 +90,6 @@ export class Pickadoll {
   private held = false; // the trigger is down
   private pulled = false; // and hasn't fired yet: a weapon that isn't automatic fires once per pull
   private coolS = 0;
-  private frame = 0;
   private clockS = 0;
   private introS = INTRO_AFTER_S;
   /** shots fired and hits landed so far, for the test hook */
@@ -230,8 +228,7 @@ export class Pickadoll {
       this.shots.pop();
     }
     fx.drawShots(this.shots, this.colourOf);
-    if (this.frame++ % AIM_EVERY === 0)
-      fx.aim(ready ? landing(this.weapon, from.x, from.z, yaw, pitch, this.world, this.aimHit) : null);
+    fx.aim(ready ? landing(this.weapon, from.x, from.z, yaw, pitch, this.world, this.aimHit) : null);
     this.dance(dt);
   }
 

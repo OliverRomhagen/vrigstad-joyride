@@ -3,11 +3,13 @@
 import * as THREE from 'three';
 import type { Shot, ShotHit } from '../sim/shots';
 
-const SHOTS_MAX = 128; // shots drawn at once
+const SHOTS_MAX = 256; // shots drawn at once
 const SPLATS_MAX = 600,
   SPLATS_MAX_COARSE = 220; // splats on the ground and the walls; the oldest is painted over first. On a touch screen
 const STUCK_MAX = 80,
   STUCK_MAX_COARSE = 36; // splats on cars and people, each its own mesh
+const SPLAT_ORDER = 1, // splats are drawn after the walls and cars they sit on
+  STUCK_ORDERS = 4096;
 const LIFT_M = 0.03; // a splat sits this far off its surface, so the two don't flicker
 const SHOT_R_M = 0.07;
 const AIM_MARK_PER_M = 0.09; // the aim mark grows this much per metre from the camera, so it stays as big on screen
@@ -70,6 +72,7 @@ export class ShotFx {
       mesh.setColorAt(0, _c.set('#ffffff')); // makes the colour buffer before the first frame compiles the material
       mesh.count = 0;
       mesh.frustumCulled = false; // the instances are all over the village
+      mesh.renderOrder = SPLAT_ORDER;
       mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
       g.scene.add(mesh);
     }
@@ -94,6 +97,7 @@ export class ShotFx {
       map: this.texture,
       color: colour ?? '#ffffff',
       alphaTest: 0.5,
+      depthWrite: false, // splats that overlap are settled by the order they landed in, not by depth, where they would flicker
       side: THREE.DoubleSide,
       polygonOffset: true,
       polygonOffsetFactor: -2,
@@ -193,6 +197,7 @@ export class ShotFx {
     }
     if (this.stuck.length >= this.stuckMax) this.stuck.shift()!.removeFromParent();
     const mesh = new THREE.Mesh(this.quad, material);
+    mesh.renderOrder = SPLAT_ORDER + (this.splatted % STUCK_ORDERS) / STUCK_ORDERS; // a later one over an earlier one
     this.stuck.push(mesh);
     this.splatted++;
     return mesh;
