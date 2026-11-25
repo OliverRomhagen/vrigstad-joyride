@@ -251,7 +251,7 @@ const updateNpcs = crowd.update.bind(crowd);
 // the getter and the star are read when someone is hit, so they can name things declared further down
 const ragdolls = new Ragdolls({ world: { groundAt, collide }, crowd, coarse, get pcar() { return game.inCar ? game.pcar : null; },
   knockedDown: () => wanted.addStar('”Aj! Va gör du?!” Someone calls the police.') });
-const ragdollMeshes = new RagdollMeshes({ scene, groundAt, geoCache, boxGeo, paintMat, ragdolls });
+const ragdollMeshes = new RagdollMeshes({ scene, groundAt, geoCache, boxGeo, paintMat, blob, ragdolls });
 
 // ---------- cats: lounge by the house walls, wander a little, bolt from cars and running feet (src/game/cats.ts) ----------
 // the getters are read when the cats use them, so they can name things declared further down
@@ -280,7 +280,7 @@ $('pets').addEventListener('click', () => { if (menuPlate.menuKind === 'pets') c
 function drawTreats() { const el = $('treats'); el.hidden = false; el.textContent = 'Cat treats: ' + game.treats; }
 
 // ---------- player (walking, jumping, getting out: src/game/player.ts) ----------
-const player = { x: HOME.x, z: HOME.z, y: 0, vy: 0, h: 0, speed: 0, phase: 0, mesh: personParts('#f2c230', '#2b3a55', null, true) };   // y: metres above the ground
+const player = { x: HOME.x, z: HOME.z, y: 0, vy: 0, h: 0, speed: 0, phase: 0, mesh: personParts('#f2c230', '#2b3a55', null, true, true) };   // y: metres above the ground
 collide(player, 0.6); scene.add(player.mesh);
 const jumpOk = () => !game.inCar && !places.inside && game.titleCardT <= 0;   // queue only where a jump can start, so a press inside a safehouse or under Gripen! can't fire as it ends
 const health = newHealth();
