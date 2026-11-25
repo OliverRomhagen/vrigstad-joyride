@@ -153,6 +153,7 @@ export class GameLoop {
     const workStart = performance.now();
     const dt = clamp((now - this.last) / 1000, 0, 0.05);
     this.last = now;
+    if (game.paused) return g.renderer.render(g.scene, g.camera); // a resize clears the canvas, so keep drawing
     const mx = game.started ? clamp((keys.right ? 1 : 0) - (keys.left ? 1 : 0) + joy.x, -1, 1) : 0,
       my = game.started ? clamp((keys.up ? 1 : 0) - (keys.down ? 1 : 0) + joy.y, -1, 1) : 0;
     game.clockS += dt;

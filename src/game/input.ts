@@ -63,6 +63,7 @@ export interface InputDeps {
   look(dx: number, dy: number): void; // turns the camera by this many pixels: a drag's own, or a locked mouse's scaled by LOCK_K
   zoom(factor: number): void; // multiplies the camera distance: above 1 is further out
   lockLost(): void; // the pointer lock ended while playing with no menu open
+  pause(): void; // Esc with the mouse free (a locked mouse's Esc only frees it: see lockLost)
 }
 
 /** Keyboard, mouse and touch input for the game page. Registers its listeners when built. */
@@ -93,6 +94,7 @@ export class Input {
       } else if ((e.code === 'KeyE' || e.code === 'KeyF' || e.code === 'Enter') && !e.repeat) this.g.action();
       else if (e.code === 'KeyR') this.g.respawn();
       else if (e.code === 'KeyL' && !e.repeat) this.g.rain();
+      else if (e.code === 'Escape' && !e.repeat) this.g.pause();
     });
     win.addEventListener('keyup', ev => {
       const k = KEYMAP[(ev as KeyboardEvent).code];

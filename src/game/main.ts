@@ -46,6 +46,7 @@ import { Crashes } from './crashes';
 import { GameLoop } from './loop';
 import { installTestHook } from './test-hook';
 import { esc, MenuPlate } from './menu';
+import { PauseMenu } from './pause-menu';
 import { KioskCatMenus } from './kiosk-cat-menus';
 import { Pets } from './pets';
 import { Commands } from './commands';
@@ -333,7 +334,7 @@ const trisslott = new Trisslott({ random: trissRnd, pick, now: () => performance
 // ---------- dev console: § in dev mode; each module registers its own commands (src/game/devconsole.ts) ----------
 // before the input, whose pointerdown listener has to come after the console's
 const commands = new Commands();
-const devcon = new DevConsole({ root: $('devcon'), commands, canvas, doc: document, get input() { return input; }, get enabled() { return DEV; }, get menuOpen() { return !kmenu.hidden; } });
+const devcon = new DevConsole({ root: $('devcon'), commands, canvas, doc: document, get input() { return input; }, get enabled() { return DEV; }, get menuOpen() { return !kmenu.hidden || pause.isOpen; } });
 registerWalletCommands(commands, wallet);
 pets.registerCommands(commands);
 wanted.registerCommands(commands);
@@ -345,16 +346,22 @@ places.registerCommands(commands, (x, z, name) => { leaveHouse(); const c = game
 fleet.registerCommands(commands, new Map<string, CarType>([...VEHICLES.filter(v => !v.police).map(v => [v.id, v.archetype] as const), ['traktor', 'traktor']]), () => view.camYaw, c => carName(c));   // car <model>
 debugOverlay?.registerCommands(commands);
 
+// ---------- pause menu: Esc or the Menu button stops the game and shows the settings (src/game/pause-menu.ts) ----------
+// storage is a getter: reading localStorage itself throws where storage is blocked, and the menu catches that
+const pause = new PauseMenu({ root: $('pause'), canvas, game, get input() { return input; }, get storage() { return localStorage; } });
+$('menu').addEventListener('click', () => pause.open());
+
 // ---------- input: keys, mouse look and the touch controls (src/game/input.ts) ----------
-// the dev console sees each key first, then the menus (src/game/menu.ts)
-const input = new Input({ win: window, doc: document, canvas, $, coarse, menuKey: e => devcon.takeKey(e) || menuKey(e),
-  get started() { return game.started; }, get menuOpen() { return !kmenu.hidden; },
+// the dev console sees each key first, then the pause menu, then the other menus (src/game/menu.ts)
+const input = new Input({ win: window, doc: document, canvas, $, coarse, menuKey: e => devcon.takeKey(e) || pause.key(e) || menuKey(e),
+  get started() { return game.started; }, get menuOpen() { return !kmenu.hidden || pause.isOpen; },
   action: () => action(), respawn: () => respawn(), rain: () => cashRain.makeItRain(),
   jump: () => { if (jumpOk()) game.jumpQ = true; },   // queue only where a jump can start (see jumpOk)
-  look: (dx, dy) => { if (game.inCar) { view.lookOff = wrap(view.lookOff + dx * 0.006); view.lookIdle = 0; } else view.camYaw = wrap(view.camYaw + dx * 0.006);
+  look: (dx, dy) => { const { lookSpeed, invertY } = pause.settings; dx *= lookSpeed; dy *= invertY ? -lookSpeed : lookSpeed;
+    if (game.inCar) { view.lookOff = wrap(view.lookOff + dx * 0.006); view.lookIdle = 0; } else view.camYaw = wrap(view.camYaw + dx * 0.006);
     view.camPitch = clamp(view.camPitch + dy * 0.004, 0.06, 1.25); },
   zoom: f => cameraRig.zoom(f),
-  lockLost: () => { if (!devcon.isOpen && !hud.toasting) toast('Click the game to look around with the mouse again.', 3); } });
+  lockLost: () => { if (!devcon.isOpen) pause.open(true); }, pause: () => pause.open() });
 const { keys, joy } = input;
 
 // ---------- HUD (src/game/hud.ts) ----------

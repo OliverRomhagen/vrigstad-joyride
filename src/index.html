@@ -60,7 +60,7 @@ body { isolation: isolate; }
 #dmg b { width: 0; background: var(--gold); }
 #dmg.bad b { background: var(--alarm); }
 #hurt { position: absolute; inset: 0; pointer-events: none; opacity: 0; transition: opacity .7s ease-out; box-shadow: inset 0 0 150px 36px rgba(205, 28, 18, .8); }
-#kr, #count, #triss, #treats, #pets { padding: 4px 10px; font: 500 13px var(--body); font-variant-numeric: tabular-nums; }
+#kr, #count, #triss, #treats, #pets, #menu { padding: 4px 10px; font: 500 13px var(--body); font-variant-numeric: tabular-nums; }
 
 #bl { grid-area: bl; align-self: end; }
 #joy { width: 124px; height: 124px; border-radius: 50%; background: var(--hud); position: relative; pointer-events: auto; touch-action: none; }
@@ -77,7 +77,7 @@ body { isolation: isolate; }
 
 #prompt { position: absolute; left: 50%; bottom: calc(22px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); padding: 7px 14px;
   font: 600 18px var(--display); letter-spacing: .03em; white-space: nowrap; }
-#prompt kbd, #kmenu kbd, #pets kbd { display: inline-block; min-width: 22px; text-align: center; background: var(--ink); color: #161c1a; border-radius: 3px; padding: 0 5px; margin-right: 6px; font: 700 15px var(--display); }
+#prompt kbd, #kmenu kbd, #pets kbd, #menu kbd { display: inline-block; min-width: 22px; text-align: center; background: var(--ink); color: #161c1a; border-radius: 3px; padding: 0 5px; margin-right: 6px; font: 700 15px var(--display); }
 #kmenu { position: absolute; left: 50%; bottom: calc(22px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); min-width: 230px; padding: 10px 12px 12px; pointer-events: auto; }
 #kmenu p { margin: 0 0 4px; font: 600 17px var(--display); letter-spacing: .03em; color: var(--gold); }
 #kmenu button { display: block; width: 100%; margin-top: 6px; padding: 6px 10px; border: 0; border-radius: 3px; background: rgba(244, 241, 230, .08); color: var(--ink);
@@ -120,9 +120,18 @@ body { isolation: isolate; }
 #card .fine { font-size: 11px; color: var(--dim); margin-top: 12px; }
 #card .fine a { color: inherit; }
 #fail { position: absolute; inset: 0; display: grid; place-items: center; padding: 24px; text-align: center; font-size: 15px; color: #16201c; }
-#pets { border: 0; cursor: pointer; pointer-events: auto; }
-#pets kbd { font-size: 12px; min-width: 16px; padding: 0 4px; }
-@media (pointer: coarse) { #pets kbd { display: none; } #pets { min-height: 44px; padding: 0 16px; } }   /* a finger-sized target */
+#pets, #menu { border: 0; cursor: pointer; pointer-events: auto; }
+#pets kbd, #menu kbd { font-size: 12px; min-width: 16px; padding: 0 4px; }
+@media (pointer: coarse) { #pets kbd, #menu kbd { display: none; } #pets, #menu { min-height: 44px; padding: 0 16px; } }   /* a finger-sized target */
+#pause { position: absolute; inset: 0; display: grid; place-items: center; padding: 20px; background: rgba(12, 18, 16, .55); }
+#pause > div { width: min(100%, 320px); padding: 16px 20px 20px; border-top: 6px solid var(--gold); }
+#pause h2 { margin: 0 0 10px; font: 700 34px/1 var(--display); text-transform: uppercase; letter-spacing: .02em; }
+#pause label { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 10px; }
+#pause input[type=range] { flex: 1; max-width: 150px; accent-color: var(--gold); }
+#pause input[type=checkbox] { width: 20px; height: 20px; accent-color: var(--gold); }
+#resume { margin-top: 18px; width: 100%; padding: 10px; border: 0; border-radius: 4px; background: var(--gold); color: #1a1a14; cursor: pointer;
+  font: 700 20px var(--display); letter-spacing: .06em; text-transform: uppercase; }
+#resume:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
 @media (pointer: coarse) { #kmenu { bottom: calc(160px + env(safe-area-inset-bottom, 0px)); } }   /* above the joystick and the Use button */
 @media (max-width: 560px) { #mini { width: 108px; height: 108px; } #sign { font-size: 15px; } #speed > b { font-size: 30px; } }
 @media (prefers-reduced-motion: reduce) { #stars.evading b, #hp.bad i, #toast.win { animation: none; } #hp b { transition: none; } }
@@ -134,7 +143,7 @@ body { isolation: isolate; }
   <div id="fail" hidden>This game needs WebGL, which this browser or view does not provide.</div>
   <div id="ui">
     <div id="tl"><canvas id="mini" width="296" height="296" aria-label="Minimap"></canvas><div id="sign"><span id="street">Torget</span><small id="near"></small></div></div>
-    <div id="tr"><div id="hp" class="plate" role="meter" aria-label="Health" aria-valuemin="0" aria-valuemax="100" aria-valuenow="100"><i><b></b></i></div><div id="stars" class="plate" aria-label="Wanted level"></div><div id="kr" class="plate"></div><div id="count" class="plate">Cars stolen: 0</div><div id="triss" class="plate" hidden></div><div id="treats" class="plate" hidden></div><button type="button" id="pets" class="plate" aria-keyshortcuts="P" hidden><kbd aria-hidden="true">P</kbd>Pets</button></div>
+    <div id="tr"><div id="hp" class="plate" role="meter" aria-label="Health" aria-valuemin="0" aria-valuemax="100" aria-valuenow="100"><i><b></b></i></div><div id="stars" class="plate" aria-label="Wanted level"></div><div id="kr" class="plate"></div><div id="count" class="plate">Cars stolen: 0</div><div id="triss" class="plate" hidden></div><div id="treats" class="plate" hidden></div><button type="button" id="pets" class="plate" aria-keyshortcuts="P" hidden><kbd aria-hidden="true">P</kbd>Pets</button><button type="button" id="menu" class="plate" aria-keyshortcuts="Escape"><kbd aria-hidden="true">Esc</kbd>Menu</button></div>
     <div id="bl"><div id="joy" hidden><div id="knob"></div></div></div>
     <div id="br">
       <div id="speed" class="plate" hidden><em id="carname"></em><b id="kmh">0</b><span>km/h</span><div id="dmg" class="meter" role="meter" aria-label="Car damage" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span>Damage</span><i><b></b></i></div></div>
@@ -146,6 +155,12 @@ body { isolation: isolate; }
   <canvas id="confetti" aria-hidden="true" hidden></canvas>
   <div id="toast" class="plate" hidden></div>
   <div id="devcon" class="plate" role="dialog" aria-label="Dev console" hidden><ol role="log"></ol><input type="text" aria-label="Command" aria-describedby="devcon-hint" placeholder="help · Tab completes · Esc closes" autocomplete="off" autocapitalize="off" spellcheck="false"><p class="hint" id="devcon-hint" hidden></p></div>
+  <div id="pause" role="dialog" aria-modal="true" aria-labelledby="pause-t" hidden><div class="plate">
+    <h2 id="pause-t">Paused</h2>
+    <label>Look speed <input type="range" id="look-speed" step="0.05"></label>
+    <label>Invert look up/down <input type="checkbox" id="invert-y"></label>
+    <button type="button" id="resume">Resume</button>
+  </div></div>
   <div id="hide" class="plate" hidden></div>
   <div id="hurt" aria-hidden="true"></div>
   <div id="title-card" hidden><div><h2 id="title-card-t">Gripen!</h2><p id="title-card-p">Busted. The police drop you off at Torget.</p></div></div>
@@ -158,7 +173,8 @@ body { isolation: isolate; }
         <dt>Steal / get out</dt><dd>E (or the Use button)</dd>
         <dt>Sprint / jump</dt><dd>Shift and Space on foot. In a car, Space brakes.</dd>
         <dt>Drift</dt><dd>Space and steer at speed. Hold the slide until the sparks turn blue or orange, then let go for a boost</dd>
-        <dt>Look around</dt><dd>Move the mouse (Esc frees the cursor). On a phone, drag the view.</dd>
+        <dt>Look around</dt><dd>Move the mouse. On a phone, drag the view.</dd>
+        <dt>Pause / settings</dt><dd>Esc, or the Menu button</dd>
         <dt>Lie low</dt><dd>Go inside a safehouse (green house on the minimap) for a minute</dd>
         <dt>Back to Torget</dt><dd>R</dd>
       </dl>

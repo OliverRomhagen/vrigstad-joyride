@@ -408,6 +408,36 @@ test.describe('game (index.html)', () => {
     expect(errors).toEqual([]);
   });
 
+  test('Esc pauses the game and shows the settings, which are kept, and Resume carries on', async ({ page }) => {
+    const errors = watchErrors(page);
+    await page.setViewportSize({ width: 640, height: 360 }); // checks only the hook and the DOM; keep software WebGL affordable
+    await page.goto('/index.html');
+    await page.locator('#go').click();
+    await expect(page.locator('#intro')).toBeHidden();
+
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#pause')).toBeVisible();
+    expect(await state(page)).toMatchObject({ paused: true });
+    const { x, z } = await state(page);
+    await page.keyboard.down('KeyW'); // the game keys wait while paused
+    await page.waitForTimeout(400);
+    await page.keyboard.up('KeyW');
+    expect(await state(page)).toMatchObject({ x, z });
+
+    await page.getByLabel('Invert look up/down').check();
+    await page.getByRole('button', { name: 'Resume' }).click();
+    await expect(page.locator('#pause')).toBeHidden();
+    expect(await state(page)).toMatchObject({ paused: false });
+
+    await page.reload();
+    await page.locator('#go').click();
+    await page.getByRole('button', { name: 'Menu' }).click();
+    await expect(page.getByLabel('Invert look up/down')).toBeChecked();
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#pause')).toBeHidden();
+    expect(errors).toEqual([]);
+  });
+
   test('dragging the view turns the camera', async ({ page }) => {
     // The pointer lock is taken away (see beforeEach), so this covers the drag that touch and lock-refusing browsers fall back to.
     const errors = watchErrors(page);
