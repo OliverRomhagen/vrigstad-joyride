@@ -339,9 +339,11 @@ document.getElementById('b-out').onclick = () => zoom(1 / 0.7);
 document.getElementById('c-labels').onchange = e => { labelBox.hidden = !e.target.checked; requestRender(); };
 // ?embed (the wiki's infoboxes): a small frame, so only the map, the north arrow and the credit stay; the wiki's
 // "Open full screen" opens it without. Inside a page that scrolls, the frame leaves the page its gestures: the wheel
-// scrolls the page rather than zooming, and on touch one finger scrolls the page while two rotate the map.
+// scrolls the page rather than zooming, and on touch one finger scrolls the page while two turn the map. Tilting stays
+// with full screen: pan-y gives every vertical drag to the page, two fingers too.
 if (query.has('embed')) {
   for (const el of [document.getElementById('title'), document.getElementById('legend'), document.querySelector('#tools .btns')]) el.hidden = true;
+  canvas.setAttribute('aria-label', '3D terrain model of Vrigstad. Drag or turn two fingers to rotate; open it full screen to zoom.');
   controls.enableZoom = false;
   controls.touches = { ONE: null, TWO: THREE.TOUCH.DOLLY_ROTATE };
   canvas.style.touchAction = 'pan-y';
