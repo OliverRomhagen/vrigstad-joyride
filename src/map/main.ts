@@ -69,22 +69,22 @@ controls.target.set(0, centerY, 0);
 controls.maxPolarAngle = Math.PI * 0.47;
 controls.minDistance = 120; controls.maxDistance = 5200;
 controls.screenSpacePanning = false;
-// ?focus=x,z (metres from Torget) starts the view close in over that spot, with a pin: the wiki's place pages embed it
-const focusParts = (new URLSearchParams(location.search).get('focus') || '').split(',');
-// Number('') is 0, so an empty part ("500,") would pass as a coordinate: ask for two non-empty numbers
-const focus = focusParts.map(part => (part.trim() === '' ? NaN : Number(part)));
+const query = new URLSearchParams(location.search);
+// ?focus=x,z (metres from Torget) starts the view close in over that spot, with a pin: the wiki's place pages embed it.
+// Each part must be a plain decimal (Number also takes '', '0x1F' and '1e9'), and the spot is kept on the map's square.
+const focus = (query.get('focus') || '').split(',')
+  .map(part => (/^\s*-?\d+(\.\d+)?\s*$/.test(part) ? Math.max(-HALF, Math.min(HALF, Number(part))) : NaN));
 const hasFocus = focus.length === 2 && focus.every(Number.isFinite);
+// over a lake or a river the heightfield is the cut bed, so the view and the pin stand on the water instead
+const focusLevel = hasFocus ? waterBodies.levelAt(focus[0], focus[1]) : NaN;
+const focusY = hasFocus ? Math.max(hAt(focus[0], focus[1]), Number.isNaN(focusLevel) ? -Infinity : focusLevel * EX) : 0;
 const FOCUS_ZOOM = 0.3;   // share of the overview's camera distance for a focused view
 let focused = hasFocus;   // the first view only: Reset and Top go back to the whole village, the pin stays
+// the camera's offset from the village centre; a focused view is the same angle, FOCUS_ZOOM as far from its spot
+const VIEW_OFFSET = new THREE.Vector3(-1300, 1550 - centerY, 2650), TOP_OFFSET = new THREE.Vector3(0, 3400 - centerY, 0.5);
 function setView(top) {
-  if (!focused) {
-    controls.target.set(0, centerY, 0);
-    if (top) camera.position.set(0, 3400, 0.5); else camera.position.set(-1300, 1550, 2650);
-  } else {
-    const [fx, fz] = focus, fy = hAt(fx, fz), k = FOCUS_ZOOM;
-    controls.target.set(fx, fy, fz);
-    if (top) camera.position.set(fx, fy + 3400 * k, fz + 0.5); else camera.position.set(fx - 1300 * k, fy + 1550 * k, fz + 2650 * k);
-  }
+  if (focused) controls.target.set(focus[0], focusY, focus[1]); else controls.target.set(0, centerY, 0);
+  camera.position.copy(top ? TOP_OFFSET : VIEW_OFFSET).multiplyScalar(focused ? FOCUS_ZOOM : 1).add(controls.target);
   controls.update(); requestRender();
 }
 
@@ -259,13 +259,15 @@ const TREE_M2_PER_TRY = 95;   // one try at a tree per this much of a wood's bou
   mesh.castShadow = true; scene.add(mesh);
 })();
 
-// ---- place-name labels ----
-if (hasFocus) {   // the pin for ?focus: a gold post with a ball on top, 60 m tall so it shows from the focused view
+// ---- the ?focus pin ----
+if (hasFocus) {   // a gold post with a ball on top, 60 m tall so it shows from the focused view
   const pin = new THREE.Group(), gold = new THREE.MeshLambertMaterial({ color: 0xe8b44a, emissive: 0x4a3000 });
   const post = new THREE.Mesh(new THREE.CylinderGeometry(2, 2, 60, 8), gold); post.position.y = 30;
   const ball = new THREE.Mesh(new THREE.SphereGeometry(9, 16, 12), gold); ball.position.y = 64;
-  pin.add(post, ball); pin.position.set(focus[0], hAt(focus[0], focus[1]), focus[1]); scene.add(pin);
+  pin.add(post, ball); pin.position.set(focus[0], focusY, focus[1]); scene.add(pin);
 }
+
+// ---- place-name labels ----
 const labelBox = document.getElementById('labels');
 const labels = D.labels.map(l => { const el = document.createElement('div');
   el.className = 'lbl ' + l.k; el.textContent = l.t; if (l.k !== 'w') el.appendChild(document.createElement('i'));
@@ -335,9 +337,15 @@ function zoom(f) { const d = camera.position.clone().sub(controls.target);
 document.getElementById('b-in').onclick = () => zoom(0.7);
 document.getElementById('b-out').onclick = () => zoom(1 / 0.7);
 document.getElementById('c-labels').onchange = e => { labelBox.hidden = !e.target.checked; requestRender(); };
-// ?embed (the wiki's infoboxes): a small frame, so only the map and its credit stay; the wiki's "Open full screen" opens it without
-const embedded = new URLSearchParams(location.search).has('embed');
-if (embedded) for (const id of ['title', 'tools', 'legend']) document.getElementById(id).hidden = true;
+// ?embed (the wiki's infoboxes): a small frame, so only the map, the north arrow and the credit stay; the wiki's
+// "Open full screen" opens it without. Inside a page that scrolls, the frame leaves the page its gestures: the wheel
+// scrolls the page rather than zooming, and on touch one finger scrolls the page while two rotate the map.
+if (query.has('embed')) {
+  for (const el of [document.getElementById('title'), document.getElementById('legend'), document.querySelector('#tools .btns')]) el.hidden = true;
+  controls.enableZoom = false;
+  controls.touches = { ONE: null, TWO: THREE.TOUCH.DOLLY_ROTATE };
+  canvas.style.touchAction = 'pan-y';
+}
 if (innerWidth < 700) document.getElementById('legend').open = false;
 
 resize(); applyTheme(); setView(false);
