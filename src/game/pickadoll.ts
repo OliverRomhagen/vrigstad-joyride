@@ -13,7 +13,7 @@ import type { RenderedCar } from './render/car-meshes';
 import type { Person } from './render/models';
 import { GEGGA, type ShotFx } from './render/shot-fx';
 import {
-  aimAt,
+  aimAtMoving,
   aimShot,
   assistTarget,
   blastPush,
@@ -22,6 +22,7 @@ import {
   type HitFlavour,
   MUZZLE_M,
   newHit,
+  SHOTS_MAX,
   type Shot,
   type ShotHit,
   type ShotWorld,
@@ -54,7 +55,6 @@ const AIM_BACK_M = 3, // the camera sits this far behind your shoulder
 const ASSIST_CONE_RAD = 0.3,
   ASSIST_CONE_CAR_RAD = 0.6, // wider from a car: both thumbs are busy driving
   ASSIST_RANGE_M = 45;
-const SHOTS_MAX = 256; // in the air at once
 const PULL_KEEP_S = 0.12; // a click this long before the weapon is ready still fires when it is
 const INTRO_AFTER_S = 5.5; // the lab's own line comes this long after Start, once the start line is gone
 // pang: a hit throws people and shoves cars
@@ -77,7 +77,7 @@ const ARC_STEP_S = 1 / 20, // the arc has a dot this often along the flight
 const RAISED_S = 1.2, // the arm stays up this long after a shot
   WIND_UP_RAD = -0.9; // the arm goes back this far while you hold a throw
 // the placeholder gun in the hand, by weapon: its length and thickness (m). No models yet
-const GUN_M: Record<string, readonly [number, number]> = {
+const GUN_M: Record<(typeof WEAPONS)[number]['id'], readonly [number, number]> = {
   artpuffra: [0.5, 0.04],
   pickadoll: [0.3, 0.08],
   pepprapuffra: [0.4, 0.1],
@@ -148,6 +148,22 @@ export class Pickadoll {
   private readonly aim = { yaw: 0, pitch: 0 };
   private readonly probe = { x: 0, z: 0 };
   private readonly muzzle = { x: 0, y: 0, z: 0 }; // where a shot leaves from this frame
+  private carVx = 0; // the speed of the car you fire from, which its shots keep (m/s); 0 on foot
+  private carVz = 0;
+  private crossY = -1; // where the crosshair was last put
+  private readonly flown: Shot = {
+    x: 0,
+    y: 0,
+    z: 0,
+    vx: 0,
+    vy: 0,
+    vz: 0,
+    ageS: 0,
+    weapon: 0,
+    bounced: 0,
+    lifeS: 0,
+    lying: false,
+  }; // the throw's arc is this one, flown ahead
   private readonly crosshair: HTMLElement;
   private readonly world: ShotWorld & { cars: RenderedCar[] };
   private readonly weaponButton: HTMLButtonElement;
@@ -190,6 +206,7 @@ export class Pickadoll {
     fire.type = 'button';
     fire.id = 'p-fire';
     fire.textContent = 'Fire';
+    fire.setAttribute('aria-keyshortcuts', 'X');
     this.trigger.hold(fire);
     const aim = document.createElement('button');
     aim.type = 'button';
@@ -232,6 +249,8 @@ export class Pickadoll {
       button.replaceChildren(kbd, name);
     };
     label(this.weaponButton, 'Q', WEAPONS[this.weapon].name);
+    this.weaponButton.setAttribute('aria-label', 'Weapon: ' + WEAPONS[this.weapon].name);
+    this.flavourButton.setAttribute('aria-label', 'Hit: ' + HIT_FLAVOURS[this.flavour].name);
     const [lengthM, thickM] = GUN_M[WEAPONS[this.weapon].id];
     this.g.fx.sizeGun(lengthM, thickM);
     label(this.flavourButton, 'G', HIT_FLAVOURS[this.flavour].name);
@@ -245,7 +264,7 @@ export class Pickadoll {
 
   private nextWeapon() {
     this.weapon = (this.weapon + 1) % WEAPONS.length;
-    this.coolS = 0;
+    this.coolS = Math.min(this.coolS, WEAPONS[this.weapon].coolS); // the wait left, at most the new weapon's own
     this.drawHud();
   }
 
@@ -307,7 +326,10 @@ export class Pickadoll {
         : 0
       : clamp(this.aimK + (aiming ? 1 : -1) * AIM_IN_PER_S * dt, 0, 1);
     const crossY = CROSSHAIR_NDC_Y * (1 - this.aimK);
-    this.crosshair.style.top = 50 - crossY * 50 + '%';
+    if (crossY !== this.crossY) {
+      this.crossY = crossY;
+      this.crosshair.style.top = 50 - crossY * 50 + '%';
+    }
     if (aiming) {
       player.h = view.camYaw; // you face where you aim, and walk sideways
       player.mesh.rotation.y = -player.h;
@@ -322,7 +344,9 @@ export class Pickadoll {
     muzzle.y = this.g.world.groundAt(from.x, from.z) + (car ? 0 : Math.max(0, player.y)) + MUZZLE_M;
     const line = fx.sightLine(crossY, this.line),
       pastM = Math.hypot(muzzle.x - line.x, muzzle.y - line.y, muzzle.z - line.z),
-      seen = sight(line.x, line.y, line.z, line.dx, line.dy, line.dz, pastM, pastM + SIGHT_M, this.world, this.aimHit);
+      seen =
+        ready &&
+        sight(line.x, line.y, line.z, line.dx, line.dy, line.dz, pastM, pastM + SIGHT_M, this.world, this.aimHit);
     let tx = this.aimHit.x,
       ty = this.aimHit.y,
       tz = this.aimHit.z,
@@ -343,7 +367,21 @@ export class Pickadoll {
         onTarget = true;
       }
     }
-    const { yaw, pitch } = aimAt(weapon.speedMs, muzzle.x, muzzle.y, muzzle.z, tx, ty, tz, this.aim);
+    // a shot from a moving car keeps the car's speed, and the aim allows for it, so it still lands under the crosshair
+    this.carVx = car ? Math.sin(car.vh) * car.v : 0;
+    this.carVz = car ? -Math.cos(car.vh) * car.v : 0;
+    const { yaw, pitch } = aimAtMoving(
+      weapon.speedMs,
+      muzzle.x,
+      muzzle.y,
+      muzzle.z,
+      tx,
+      ty,
+      tz,
+      this.carVx,
+      this.carVz,
+      this.aim,
+    );
     this.crosshair.hidden = !ready;
     this.crosshair.classList.toggle('on', onTarget);
     this.markS -= dt;
@@ -359,15 +397,12 @@ export class Pickadoll {
       this.isWindingUp = false;
     }
     if (this.isWindingUp) {
-      const flown = {
-        ...muzzle,
-        ...aimShot(weapon, yaw, pitch),
-        ageS: 0,
-        bounced: 0,
-        lifeS: 0,
-        lying: false,
-        weapon: this.weapon,
-      };
+      const flown = Object.assign(this.flown, muzzle, aimShot(weapon, yaw, pitch));
+      flown.vx += this.carVx;
+      flown.vz += this.carVz;
+      flown.ageS = flown.lifeS = flown.bounced = 0;
+      flown.lying = false;
+      flown.weapon = this.weapon;
       fx.drawArc(
         this.arc,
         flightPath(flown, this.world, ARC_STEP_S, ARC_POINTS, this.arc, this.arcEnd),
@@ -376,7 +411,7 @@ export class Pickadoll {
     } else fx.drawArc(this.arc, 0, 0);
     if (ready && this.coolS <= 0 && (weapon.thrown ? thrown : weapon.auto ? this.trigger.down : this.pulledS >= 0)) {
       this.pulledS = -1;
-      this.coolS = weapon.coolS;
+      this.coolS = Math.max(this.coolS, -dt) + weapon.coolS; // what this frame overshot comes off the next wait
       this.raisedS = RAISED_S;
       this.fire(car, yaw, pitch);
     }
@@ -468,8 +503,8 @@ export class Pickadoll {
       flavour = HIT_FLAVOURS[this.flavour].id;
     if (!car) player.h = yaw; // you turn to face where you fire
     // a shot from a moving car keeps the car's speed
-    const cvx = car ? Math.sin(car.vh) * car.v : 0,
-      cvz = car ? -Math.cos(car.vh) * car.v : 0;
+    const cvx = this.carVx,
+      cvz = this.carVz;
     for (let i = 0; i < weapon.pellets && this.shots.length < SHOTS_MAX; i++) {
       const v = aimShot(weapon, yaw, pitch, rnd() * 2 - 1, rnd() * 2 - 1);
       this.shots.push({

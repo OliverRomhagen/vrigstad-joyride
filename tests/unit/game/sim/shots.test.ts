@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   aimAt,
+  aimAtMoving,
   aimShot,
   assistTarget,
   blastPush,
@@ -216,6 +217,39 @@ describe('a thrown shot with a fuse', () => {
   });
 });
 
+describe('a bounce on a slope', () => {
+  it('goes on up a hill instead of stopping where it first touches', () => {
+    const GULD = WEAPONS.findIndex(w => w.id === 'guldartpuffra'),
+      // the ground rises 1 m for every 2 m north
+      w = world({ collide: () => false, groundAt: (_x, z) => -z * 0.5 }),
+      s = { ...shot(GULD), ...aimShot(WEAPONS[GULD], 0, 0.5) },
+      out = newHit();
+    let first: number | null = null;
+    for (let i = 0; i < 600 && first === null; i++) if (stepShot(s, 1 / 60, w, out)) first = s.bounced;
+    expect(first).toBe(1); // it met the slope still rising, and bounced off it
+    expect(out.ny).toBeCloseTo(2 / Math.hypot(1, 2)); // the slope's own normal, leaning back south
+    expect(out.nz).toBeCloseTo(1 / Math.hypot(1, 2));
+  });
+});
+
+describe('aimAtMoving', () => {
+  it('lands a shot from a car driving east on a target to the north', () => {
+    const weapon = WEAPONS[PICKADOLL],
+      aim = aimAtMoving(weapon.speedMs, 0, MUZZLE_M, 0, 0, 1, -40, 20, 0, { yaw: 0, pitch: 0 }),
+      s = { ...shot(), ...aimShot(weapon, aim.yaw, aim.pitch) };
+    s.vx += 20; // the shot keeps the car's speed
+    const hit = fly(s, world({ collide: () => false, people: [{ x: 0, z: -40, scale: 1 }] })) as { kind: string };
+    expect(hit.kind).toBe('person');
+    expect(aim.yaw).toBeLessThan(0); // aimed back, against the drift
+  });
+
+  it('is aimAt for a shooter that stands still', () => {
+    const a = aimAt(60, 0, 1, 0, 10, 2, -30, { yaw: 0, pitch: 0 }),
+      b = aimAtMoving(60, 0, 1, 0, 10, 2, -30, 0, 0, { yaw: 0, pitch: 0 });
+    expect(b).toEqual(a);
+  });
+});
+
 describe('blastPush', () => {
   it('reaches what stands within the blast, and pushes it away from the middle', () => {
     const out = { dx: 0, dz: 0 };
@@ -352,7 +386,13 @@ describe('assistTarget', () => {
     { x: -20, z: 0, scale: 1 }, // due west
   ];
 
-  it('is the nearest target inside the cone', () => {
+  it('is who you look most nearly at, not who stands nearest', () => {
+    const near = { x: 1.2, z: -5, scale: 1 }, // 5 m off, well to the side
+      far = { x: 2, z: -40, scale: 1 }; // 40 m off, nearly dead ahead
+    expect(assistTarget(0, 0, 0, { people: [near, far], cars: [] }, 0.3, 45)).toBe(far);
+  });
+
+  it('is the target inside the cone', () => {
     expect(assistTarget(0, 0, 0, { people, cars: [] }, 0.3, 45)).toBe(people[0]);
   });
 

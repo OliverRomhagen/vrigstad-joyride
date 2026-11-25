@@ -201,6 +201,8 @@ const WALL_MAX_M = 9; // houses are taken to be this tall: a shot above it flies
 const PERSON_TALL_M = 1.85; // a standard person, to the top of the head
 const CAR_TALL_M = 1.5;
 const WALL_PROBE_M = 0.05; // the radius of the circle that feels for a wall
+const SLOPE_STEP_M = 0.5; // the ground's slope where a shot lands is read over this distance
+export const SHOTS_MAX = 256; // in the air at once
 
 /** One shot in the air. Metres and m/s; y is up. */
 export interface Shot {
@@ -379,7 +381,12 @@ function hitAt(
     out.x = s.x - s.vx * pastS;
     out.z = s.z - s.vz * pastS;
     out.y = world.groundAt(out.x, out.z);
-    return surface(out, 'ground', -1, 0, 1, 0);
+    // the way the ground faces there: on a slope a shot bounces off the slope, not off level ground
+    const d = SLOPE_STEP_M,
+      sx = world.groundAt(out.x - d, out.z) - world.groundAt(out.x + d, out.z),
+      sz = world.groundAt(out.x, out.z - d) - world.groundAt(out.x, out.z + d),
+      len = Math.hypot(sx, 2 * d, sz);
+    return surface(out, 'ground', -1, sx / len, (2 * d) / len, sz / len);
   }
   if (up < WALL_MAX_M) {
     _probe.x = s.x;
@@ -569,8 +576,38 @@ export function aimAt(
 }
 
 /**
- * The soft lock: the nearest person or car within `coneRad` of the heading `yaw` and `rangeM` of (x, z), or null
- * when there is none.
+ * `aimAt` for a shooter that moves along the ground at (vx, vz) m/s, as from a car: the shot keeps that speed on top of
+ * its own, so it is aimed at where the point is once the drift is taken off. Out of reach when the shooter drives away
+ * from the point faster than the shot flies.
+ */
+export function aimAtMoving(
+  speedMs: number,
+  x: number,
+  y: number,
+  z: number,
+  tx: number,
+  ty: number,
+  tz: number,
+  vx: number,
+  vz: number,
+  out: { yaw: number; pitch: number },
+) {
+  let ax = tx,
+    az = tz;
+  // the drift depends on the time in the air, which depends on the aim: a few rounds settle it
+  for (let i = 0; (vx || vz) && i < AIM_ROUNDS; i++) {
+    aimAt(speedMs, x, y, z, ax, ty, az, out);
+    const airS = Math.hypot(ax - x, az - z) / Math.max(0.01, Math.cos(out.pitch) * speedMs);
+    ax = tx - vx * airS;
+    az = tz - vz * airS;
+  }
+  return aimAt(speedMs, x, y, z, ax, ty, az, out);
+}
+const AIM_ROUNDS = 4;
+
+/**
+ * The soft lock: the person or car nearest to where you look, by the angle from the heading `yaw`, within `coneRad`
+ * of it and `rangeM` of (x, z), or null when there is none.
  */
 export function assistTarget(
   x: number,

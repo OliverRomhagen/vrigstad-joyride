@@ -188,7 +188,7 @@ test.describe('game (index.html)', () => {
     // One page load: the old lab flag is ignored, so ragdolls are on without it and the lab list stays empty.
     await page.goto('/index.html?lab=ragdoll');
     await page.locator('#go').click();
-    expect(await state(page)).toMatchObject({ lab: [], ragdolls: 0 }); // nobody knocked over yet
+    expect(await state(page)).toMatchObject({ lab: [], ragdolls: 0, pickadoll: null }); // nobody knocked over yet, and no lab without its flag
     expect(errors).toEqual([]);
   });
 

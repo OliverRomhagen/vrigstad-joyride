@@ -1,9 +1,9 @@
 // Draws the shots (#17, lab: pickadoll): the shots in the air, the splats they leave on the ground, on walls, on cars
 // and on people, and the mark where the next shot would land. The rules are in ../sim/shots.ts.
 import * as THREE from 'three';
-import type { Shot, ShotHit } from '../sim/shots';
+import { SHOTS_MAX, type Shot, type ShotHit } from '../sim/shots';
+import { SPIKES_MAX } from '../sim/spikes';
 
-const SHOTS_MAX = 256; // shots drawn at once
 const SPLATS_MAX = 600,
   SPLATS_MAX_COARSE = 220; // splats on the ground and the walls; the oldest is painted over first. On a touch screen
 const STUCK_MAX = 80,
@@ -17,8 +17,7 @@ const ARC_MAX = 64, // dots in a throw's arc
 const ARM_M = 0.6, // the player's arm, shoulder to hand (models.ts)
   ARM_HALF_THICK_M = 0.08,
   GUN_GRIP_M = 0.08; // the hand holds the gun this far in from its end
-const SPIKES_MAX = 140, // fotanglar drawn at once
-  SPIKE_M = 0.16;
+const SPIKE_M = 0.16;
 const SLOPE_STEP_M = 0.5; // the ground's slope under a splat is read over this distance
 const TEX_PX = 128;
 // where a splat lands on a person: on the front, the back or a side of the body's box (m, as personParts builds it)
@@ -144,6 +143,7 @@ export class ShotFx {
   /** Draws the shots in the air; `colour` gives each its colour. */
   drawShots<S extends Shot>(shots: readonly S[], colour: (s: S) => string, radiusM: (s: S) => number) {
     const n = Math.min(shots.length, SHOTS_MAX);
+    if (!n && !this.shots.count) return; // nothing in the air, and nothing was: no buffers to send
     for (let i = 0; i < n; i++) {
       const s = shots[i];
       const r = radiusM(s) / SHOT_R_M;
@@ -160,6 +160,7 @@ export class ShotFx {
    * metres on the ground where it ends. n = 0 hides it.
    */
   drawArc(points: readonly number[], n: number, ringM: number) {
+    if (!n && !this.arc.count) return;
     const dots = Math.min(n, ARC_MAX);
     for (let i = 0; i < dots; i++)
       this.arc.setMatrixAt(i, _m.makeTranslation(points[i * 3], points[i * 3 + 1], points[i * 3 + 2]));
