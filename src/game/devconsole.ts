@@ -92,10 +92,10 @@ export class DevConsole {
     if (this.isOpen) return;
     const { root, input, doc } = this.d;
     root.hidden = false;
-    input.releaseKeys();
     this.relock = input.locked();
     if (this.relock) doc.exitPointerLock();
     this.input.focus();
+    input.releaseKeys(); // last: a module's release that throws must not leave the console half open
   }
 
   close() {

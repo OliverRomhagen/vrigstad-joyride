@@ -104,7 +104,7 @@ export interface InputDeps {
 }
 
 // A touch button, the game's own or a control's: down with the finger, up when it lifts or leaves the button
-function onHold(el: Pick<InputElement, 'addEventListener'>, down: () => void, up: () => void) {
+function bindHold(el: Pick<InputElement, 'addEventListener'>, down: () => void, up: () => void) {
   el.addEventListener('pointerdown', e => {
     down();
     e.preventDefault();
@@ -148,7 +148,7 @@ class HeldControl implements Control {
   }
 
   hold(el: Pick<InputElement, 'addEventListener'>) {
-    onHold(
+    bindHold(
       el,
       () => this.take(el),
       () => this.drop(el),
@@ -204,8 +204,11 @@ export class Input {
       // A menu or Esc took the lock, and the button may be let go over something else than the game, where its
       // pointerup never comes here: no control is held by the mouse any more
       this.mouseButtons = 0;
-      this.eachControl(c => c.drop('mouse'));
-      if (this.g.started && !this.g.menuOpen) this.g.lockLost();
+      try {
+        this.eachControl(c => c.drop('mouse'));
+      } finally {
+        if (this.g.started && !this.g.menuOpen) this.g.lockLost();
+      }
     });
     canvas.addEventListener('pointerdown', e => {
       this.dragId = e.pointerId;
@@ -241,7 +244,7 @@ export class Input {
     // The mouse buttons of the modules' controls. A button pressed while another is down comes as a pointermove, not a
     // pointerdown, and only the last one let go as a pointerup, so each is read from the buttons held.
     const readButtons = (e: PointerEvent) => {
-      if (e.pointerType !== 'mouse' || !this.mouseMask) return;
+      if (e.pointerType !== 'mouse') return;
       // a button that goes down was up, whatever was last seen of it: its pointerup can have gone elsewhere
       if (e.type === 'pointerdown') this.mouseButtons &= ~(BUTTON_BITS[e.button] ?? 0);
       const pressed = e.buttons & ~this.mouseButtons,
@@ -355,7 +358,7 @@ export class Input {
     };
     joyEl.addEventListener('pointerup', joyEnd);
     joyEl.addEventListener('pointercancel', joyEnd);
-    onHold(
+    bindHold(
       $('p-brake'),
       () => {
         keys.brake = true;
