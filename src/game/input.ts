@@ -1,7 +1,7 @@
 // Input: keys, the mouse (pointer lock and drag to look), the touch joystick and buttons. DOM events in, key state and callbacks out.
 // Moved from src/game/main.ts (#177); main.ts passes in the menus' key handling and what each key or button does. Turning
 // this into one set of intents (throttle / steer / brake / action) for keyboard, touch and gamepad is #50. Until then a
-// module that needs a key or a button of its own adds a control (`control`, below) and never listens itself (rule 3).
+// module that needs a key or a button of its own adds a control (`addControl`, below) and never listens itself (rule 3).
 import { clamp } from '../world/math';
 
 const KEYMAP: Record<string, Key> = {
@@ -32,21 +32,38 @@ const WHEEL_LINE_PX = 16; // a wheel that reports lines instead of pixels (delta
 const PAGE_ZOOM_CHARS = /^[-+=]$/,
   PAGE_ZOOM_KEYS = /^(Equal|Minus|NumpadAdd|NumpadSubtract)$/;
 
-// what each of these keys does is passed in by main.ts (InputDeps); a module's control can't take them
-const GAME_CODES = ['KeyE', 'KeyF', 'Enter', 'KeyR', 'KeyL'];
+// Keys a module's control can't take. What the first five do is passed in by main.ts (InputDeps): the keydown listener
+// below names them too, so add a new one in both places. The rest are the menus' (menu.ts) and the dev console's.
+const GAME_CODES = [
+  'KeyE',
+  'KeyF',
+  'Enter',
+  'KeyR',
+  'KeyL',
+  'NumpadEnter',
+  'Escape',
+  'KeyP',
+  'Backquote',
+  'IntlBackslash',
+];
+const BUTTON_BITS = [1, 4, 2]; // PointerEvent.button (left, middle, right) as its bit in PointerEvent.buttons
 
 export type Key = 'up' | 'down' | 'left' | 'right' | 'brake' | 'run';
 /** The mouse buttons a control can take, as their bits in PointerEvent.buttons. */
 export const MouseButton = { LEFT: 1, RIGHT: 2 } as const;
 export type MouseButton = (typeof MouseButton)[keyof typeof MouseButton];
-/** What a module's control is held by, and what holding it does. */
+/**
+ * What a module's control is held by, and what holding it does. A press counts only while the game is played: not
+ * before Start, and not while a menu is open. One that is already held when a menu opens stays held until it is let
+ * go, so the module still decides what holding it does then.
+ */
 export interface ControlSpec {
   codes?: readonly string[]; // keys, as KeyboardEvent.code. With ctrl, alt or ⌘ held they are the browser's
   mouseButton?: MouseButton; // counts only while the mouse is locked on the game: the click that locks it never presses
-  press?(): void; // at each fresh press of a key or a button of it
-  release?(): void; // when the last of them is let go
+  press?(): void; // at each fresh press of a key or a button of it: twice when two of them are pressed together,
+  release?(): void; // and this once, when the last of them is let go. Don't count one against the other
 }
-/** A control a module added with `Input.control`. */
+/** A control a module added with `Input.addControl`. */
 export interface Control {
   /** True while a key or a button of it is held. */
   readonly down: boolean;
@@ -87,11 +104,12 @@ export interface InputDeps {
 }
 
 // A module's control and what holds it right now: a key's code, 'mouse', or a touch button's own name.
-class Bound implements Control {
+class HeldControl implements Control {
   private readonly held = new Set<string>();
 
   constructor(
     readonly spec: ControlSpec,
+    private readonly playing: () => boolean, // started, and no menu open
     private readonly touchName: () => string,
   ) {}
 
@@ -100,7 +118,7 @@ class Bound implements Control {
   }
 
   take(by: string) {
-    if (this.held.has(by)) return;
+    if (this.held.has(by) || !this.playing()) return;
     this.held.add(by);
     this.spec.press?.();
   }
@@ -115,7 +133,7 @@ class Bound implements Control {
     this.spec.release?.();
   }
 
-  // as the game's own touch buttons: down with the finger, up when it lifts or slides off
+  // as the game's own touch buttons: down with the finger, up when it lifts or leaves the button
   hold(el: Pick<InputElement, 'addEventListener'>) {
     const name = this.touchName();
     el.addEventListener('pointerdown', e => {
@@ -136,10 +154,10 @@ export class Input {
   private joyId: number | null = null;
   private readonly pinch = new Map<number, { x: number; y: number }>(); // touches on the game, by pointer id
   private pinchD = 0; // the two touches' last distance apart (px); 0 until two are down
-  private readonly controls: Bound[] = [];
-  private readonly byCode = new Map<string, Bound>();
+  private readonly controls: HeldControl[] = [];
+  private readonly byCode = new Map<string, HeldControl>();
   private mouseButtons = 0; // the mouse buttons down, as PointerEvent.buttons
-  private touchButtons = 0; // touch buttons made with Control.hold so far: each holds under its own name
+  private touchButtonCount = 0; // touch buttons made with Control.hold so far: each holds under its own name
   private readonly g: InputDeps;
 
   constructor(g: InputDeps) {
@@ -168,7 +186,12 @@ export class Input {
     });
     win.addEventListener('blur', () => this.releaseKeys());
     doc.addEventListener('pointerlockchange', () => {
-      if (!this.locked() && this.g.started && !this.g.menuOpen) this.g.lockLost();
+      if (this.locked()) return;
+      // A menu or Esc took the lock, and the button may be let go over something else than the game, where its
+      // pointerup never comes here: no control is held by the mouse any more
+      this.mouseButtons = 0;
+      for (const c of this.controls) c.drop('mouse');
+      if (this.g.started && !this.g.menuOpen) this.g.lockLost();
     });
     canvas.addEventListener('pointerdown', e => {
       this.dragId = e.pointerId;
@@ -205,6 +228,8 @@ export class Input {
     // pointerdown, and only the last one let go as a pointerup, so each is read from the buttons held.
     const readButtons = (e: PointerEvent) => {
       if (e.pointerType !== 'mouse') return;
+      // a button that goes down was up, whatever was last seen of it: its pointerup can have gone elsewhere
+      if (e.type === 'pointerdown') this.mouseButtons &= ~(BUTTON_BITS[e.button] ?? 0);
       const pressed = e.buttons & ~this.mouseButtons,
         letGo = this.mouseButtons & ~e.buttons;
       this.mouseButtons = e.buttons;
@@ -212,7 +237,7 @@ export class Input {
       for (const c of this.controls) {
         const button = c.spec.mouseButton;
         if (!button) continue;
-        if (pressed & button && this.locked() && this.g.started && !this.g.menuOpen) c.take('mouse');
+        if (pressed & button && this.locked()) c.take('mouse');
         if (letGo & button) c.drop('mouse');
       }
     };
@@ -356,16 +381,20 @@ export class Input {
 
   /**
    * Adds a control for a module: held while one of its keys, its mouse button or a touch button of its own is down.
-   * The keys go the way the game's own do: none before Start, and the dev console and the menus see each first.
-   * Throws when a key or the mouse button is already taken, by the game or by another control.
+   * The dev console and the menus see each key first, as they do the game's own. Throws when a key or the mouse
+   * button is already taken, by the game, a menu, the console or another control, and adds nothing then.
    */
-  control(spec: ControlSpec): Control {
+  addControl(spec: ControlSpec): Control {
     for (const code of spec.codes ?? [])
       if (KEYMAP[code] || GAME_CODES.includes(code) || this.byCode.has(code))
         throw new Error(`Input: ${code} is already taken`);
     if (spec.mouseButton && this.controls.some(c => c.spec.mouseButton === spec.mouseButton))
       throw new Error(`Input: mouse button ${spec.mouseButton} is already taken`);
-    const bound = new Bound(spec, () => `touch-${this.touchButtons++}`);
+    const bound = new HeldControl(
+      spec,
+      () => this.g.started && !this.g.menuOpen,
+      () => `touch-${this.touchButtonCount++}`,
+    );
     this.controls.push(bound);
     for (const code of spec.codes ?? []) this.byCode.set(code, bound);
     return bound;
