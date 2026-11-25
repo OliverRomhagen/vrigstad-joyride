@@ -18,7 +18,6 @@ const WOBBLE_RAD = 0.09, // each figure leans up to this much either way
   BOUNCE_PX = 5; // and sits up to this far off the line
 const CARD_OFF_M = 0.012; // the card stands this far off the glass, so the two don't flicker into each other
 const LOOK_FROM_M = 6; // the ray starts this far in front of or behind the car's middle
-const REFRESH_S = 0.35; // how often the cards check for a sale, a new car or a model swapped in or out
 
 const _o = new THREE.Vector3(),
   _d = new THREE.Vector3(),
@@ -54,32 +53,32 @@ type Tag = { cards: THREE.Mesh[]; on: THREE.Object3D; kr: number; fits: Map<THRE
 export class PriceTags {
   private readonly g: PriceTagsDeps;
   private readonly tags = new Map<RenderedCar, Tag>();
-  // by price, kept for good: the lot's prices, and a dented car's at most a few dozen more, each a small canvas
+  // by price, kept for good: the lot's prices, a dozen at most, each a small canvas
   private readonly materials = new Map<number, THREE.Material>();
   private readonly geo = new THREE.PlaneGeometry(CARD_W_M, CARD_H_M);
   private readonly ray = new THREE.Raycaster();
-  private wait = 0;
 
   constructor(g: PriceTagsDeps) {
     this.g = g;
   }
 
-  update(dt: number) {
-    this.wait -= dt;
-    if (this.wait > 0) return;
-    this.wait = REFRESH_S;
-    for (const [c, tag] of this.tags)
-      if (!c.saleKr || !c.mesh.parent) {
-        for (const card of tag.cards) card.removeFromParent(); // a car taken away has left the scene with its cards already
-        this.tags.delete(c);
-      }
+  // every frame, as the cards hang on the shape: a model swapped in or out would hide them with the old one until the next check,
+  // and a car just bought would drive off with them. With each shape's fit cached, a frame with no change only compares.
+  update() {
+    this.tags.forEach(this.dropSold);
     for (const c of this.g.cars) {
       if (!c.saleKr) continue;
       const shape = this.g.visibleModel(c) ?? c.body,
         kr = c.saleKr,
         tag = this.tags.get(c);
       if (tag?.on === shape && tag.kr === kr) continue;
-      const cards = tag?.cards ?? ENDS.map(() => new THREE.Mesh(this.geo)),
+      const cards =
+          tag?.cards ??
+          ENDS.map(() => {
+            const card = new THREE.Mesh(this.geo);
+            card.receiveShadow = true; // under the carport roof, in the car's shade
+            return card;
+          }),
         fits = tag?.fits ?? new Map<THREE.Object3D, Fit[]>();
       let shapeFits = fits.get(shape);
       if (!shapeFits) {
@@ -103,6 +102,12 @@ export class PriceTags {
       this.tags.set(c, { cards, on: shape, kr, fits });
     }
   }
+
+  private dropSold = (tag: Tag, c: RenderedCar) => {
+    if (c.saleKr && c.mesh.parent) return;
+    for (const card of tag.cards) card.removeFromParent(); // a car taken away has left the scene with its cards already
+    this.tags.delete(c);
+  };
 
   // where a card goes on the windscreen or the rear window of `shape`, in the frame of the part the ray hit; null when no ray finds the glass
   private fit(c: RenderedCar, shape: THREE.Object3D, end: End): Fit {
