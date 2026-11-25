@@ -805,6 +805,8 @@ test.describe('map (map.html)', () => {
     // where the overview would put it off to the upper left
     const lake = page.locator('#labels .lbl', { hasText: /^Slättsjön$/ });
     await expect(lake).toHaveAttribute('style', /translate/);
+    // a label that collides with another keeps its old translate but is hidden, and would have no box
+    await expect(lake).toBeVisible();
     const box = await lake.boundingBox();
     expect(Math.abs(box.x + box.width / 2 - 320)).toBeLessThan(120);
     expect(Math.abs(box.y + box.height / 2 - 180)).toBeLessThan(90);
