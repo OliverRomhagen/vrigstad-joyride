@@ -42,13 +42,14 @@ function setupPage() {
 let frame = 0;
 const marks = { cards: [], chases: [] };
 async function shoot(page, fn, n, arg) {
+  const step = new Function('i', 'n', 'a', `(${fn})(i, n, a); __step(1);`);
   for (let i = 0; i < n; i++) {
-    await page.evaluate(new Function('i', 'n', 'a', `(${fn})(i, n, a); __step(1);`), i, n, arg);
+    await page.evaluate(step, i, n, arg);
     await page.screenshot({ path: path.join(FRAMES, String(frame++).padStart(5, '0') + '.jpg'), type: 'jpeg', quality: 93, optimizeForSpeed: true });
   }
 }
 const card = (i, n, html) => { const X = __X; X.mode('cine'); X.fade(1); X.card(html, X.io(i, 1, n - 1, 3)); };
-const cut = (i, n, [cam, back]) => { const X = __X; if (i === 0) { X.fade(0); X.card(null, 0); X.cams[cam](); } X.k = i / (n - 1); if (back) { __G.view.lookOff = 2.62 - 0.25 * X.k; __G.view.lookIdle = 0; } };
+const cut = (i, n, cam) => { const X = __X; if (i === 0) { X.fade(0); X.card(null, 0); X.cams[cam](); } X.k = i / (n - 1); if (cam === 'back') { __G.view.lookOff = 2.62 - 0.25 * X.k; __G.view.lookIdle = 0; } };
 
 // one version: open it, start the chase, then its card and its cuts; the first also opens the film and the last ends it
 async function version(file, v, opts) {
@@ -62,12 +63,12 @@ async function version(file, v, opts) {
     await shoot(page, card, CARD_F, `<p>${v.when}</p><h2>${v.name}</h2>`);
     await page.evaluate((name, when) => __X.label(name, when), v.name, v.when);
     marks.chases.push(frame);
-    for (const [n, cam] of v.cuts) await shoot(page, cut, n, [cam, cam === 'back']);
+    for (const [n, cam] of v.cuts) await shoot(page, cut, n, cam);
     if (opts.last) {
       marks.title = frame;
       await page.evaluate(() => { __X.label(null); __X.mode('cine'); });
       await shoot(page, (i, n, html) => { const X = __X; X.fade(i < 12 ? X.lerp(0, 0.74, i / 12) : i > n - 24 ? X.lerp(0.74, 1, (i - (n - 24)) / 20) : 0.74); X.card(html, X.io(i, 10, n - 4, 10)); },
-        TITLE_F, `<h1>Vrigstad <span>Joyride</span></h1><div class="rule"></div><p>${opts.summary}</p><div class="url">oliverromhagen.github.io/vrigstad-joyride</div>`);
+        TITLE_F, `<h1>Vrigstad <span>Joyride</span></h1><div class="rule"></div><p>${opts.summary()}</p><div class="url">oliverromhagen.github.io/vrigstad-joyride</div>`);
     }
   } finally { await browser.close(); }
 }
@@ -89,11 +90,15 @@ function soundtrack(file) {
 
 (async () => {
   fs.rmSync(FRAMES, { recursive: true, force: true }); fs.mkdirSync(FRAMES, { recursive: true });
-  const rel = releases(), first = rel.length ? rel[0].date : null, today = new Date().toISOString().slice(0, 10);
-  const list = rel.map(r => ({ name: r.tag, when: day(r.date), file: () => prepare(r.tag), cuts: RELEASE_CUTS }));
+  const today = new Date().toLocaleDateString('sv-SE');   // the local YYYY-MM-DD, as the tags' dates are
+  const list = releases().map(r => ({ name: r.tag, date: r.date, when: day(r.date), file: () => prepare(r.tag), cuts: RELEASE_CUTS }));
   list.push({ name: 'Today', when: day(today), file: () => null, cuts: TODAY_CUTS });   // null: the rig builds this checkout
-  const days = first ? Math.round((Date.parse(today) - Date.parse(first)) / 864e5) : 0;
-  const summary = `${rel.length} release${rel.length === 1 ? '' : 's'} · ${days} day${days === 1 ? '' : 's'}`;
+  // the title card counts the releases the film shows, so it's read when the title is shot, after the skipped ones are known
+  const shown = [];
+  const summary = () => {
+    const days = shown.length ? Math.round((Date.parse(today) - Date.parse(shown[0].date)) / 864e5) : 0;
+    return `${shown.length} release${shown.length === 1 ? '' : 's'} · ${days} day${days === 1 ? '' : 's'}`;
+  };
   for (const [k, v] of list.entries()) {
     const t0 = Date.now(), from = frame, cards = marks.cards.length, chases = marks.chases.length;
     try { await version(v.file(), v, { first: frame === 0, last: k === list.length - 1, summary }); }
@@ -104,6 +109,7 @@ function soundtrack(file) {
       for (let f = from; f < frame; f++) fs.rmSync(path.join(FRAMES, String(f).padStart(5, '0') + '.jpg'), { force: true });
       frame = from; marks.cards.length = cards; marks.chases.length = chases; continue;
     }
+    if (v.date) shown.push(v);
     console.log(v.name, frame - from, 'frames', ((Date.now() - t0) / 1000).toFixed(0) + 's');
   }
   const wav = path.join(WORK, 'timelapse.wav'), peak = soundtrack(wav);
