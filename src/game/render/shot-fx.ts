@@ -12,6 +12,8 @@ const SPLAT_ORDER = 1, // splats are drawn after the walls and cars they sit on
   STUCK_ORDERS = 4096;
 const LIFT_M = 0.03; // a splat sits this far off its surface, so the two don't flicker
 const SHOT_R_M = 0.07;
+const SPIKES_MAX = 140, // fotanglar drawn at once
+  SPIKE_M = 0.16;
 const SLOPE_STEP_M = 0.5; // the ground's slope under a splat is read over this distance
 const TEX_PX = 128;
 // where a splat lands on a person: on the front, the back or a side of the body's box (m, as personParts builds it)
@@ -47,6 +49,7 @@ export class ShotFx {
   private readonly g: ShotFxDeps;
   private readonly shots: THREE.InstancedMesh;
   private readonly splats: THREE.InstancedMesh;
+  private readonly spikes: THREE.InstancedMesh;
   private readonly quad = new THREE.PlaneGeometry(1, 1);
   private readonly texture: THREE.CanvasTexture;
   private readonly stuckMats = new Map<string, THREE.Material>();
@@ -69,6 +72,16 @@ export class ShotFx {
       SHOTS_MAX,
     );
     this.splats = new THREE.InstancedMesh(this.quad, this.splatMaterial(), max);
+    // a fotangel: a small steel jack, four points whichever way it lies
+    this.spikes = new THREE.InstancedMesh(
+      new THREE.TetrahedronGeometry(SPIKE_M),
+      new THREE.MeshLambertMaterial({ color: new THREE.Color('#3a4046').convertSRGBToLinear() }),
+      SPIKES_MAX,
+    );
+    this.spikes.count = 0;
+    this.spikes.frustumCulled = false;
+    this.spikes.castShadow = true;
+    g.scene.add(this.spikes);
     for (const mesh of [this.shots, this.splats]) {
       mesh.setColorAt(0, _c.set('#ffffff')); // makes the colour buffer before the first frame compiles the material
       mesh.count = 0;
@@ -96,16 +109,29 @@ export class ShotFx {
   }
 
   /** Draws the shots in the air; `colour` gives each its colour. */
-  drawShots<S extends Shot>(shots: readonly S[], colour: (s: S) => string) {
+  drawShots<S extends Shot>(shots: readonly S[], colour: (s: S) => string, radiusM: (s: S) => number) {
     const n = Math.min(shots.length, SHOTS_MAX);
     for (let i = 0; i < n; i++) {
       const s = shots[i];
-      this.shots.setMatrixAt(i, _m.makeTranslation(s.x, s.y, s.z));
+      const r = radiusM(s) / SHOT_R_M;
+      this.shots.setMatrixAt(i, _m.makeScale(r, r, r).setPosition(s.x, s.y + (s.lying ? radiusM(s) : 0), s.z));
       this.shots.setColorAt(i, _c.set(colour(s)).convertSRGBToLinear());
     }
     this.shots.count = n;
     this.shots.instanceMatrix.needsUpdate = true;
     if (this.shots.instanceColor) this.shots.instanceColor.needsUpdate = true;
+  }
+
+  /** Draws the fotanglar that lie on the ground. Call it when the list changes. */
+  drawSpikes(spikes: readonly { x: number; y: number; z: number; turn: number }[]) {
+    const n = Math.min(spikes.length, SPIKES_MAX);
+    for (let i = 0; i < n; i++) {
+      const s = spikes[i];
+      _q.setFromAxisAngle(UP, s.turn * Math.PI * 2);
+      this.spikes.setMatrixAt(i, _m.compose(_p.set(s.x, s.y + SPIKE_M * 0.6, s.z), _q, _s.set(1, 1, 1)));
+    }
+    this.spikes.count = n;
+    this.spikes.instanceMatrix.needsUpdate = true;
   }
 
   /** Leaves a splat of radius `r` (m) where a shot hit the ground or a wall; `turn` (0..1) turns it, so no two look the same. */

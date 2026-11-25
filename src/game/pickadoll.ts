@@ -65,6 +65,21 @@ const DANCE_S = 6,
   DANCE_HOP_HZ = 3.2,
   DANCE_COLOUR = '#ff5fd2';
 const BLAST_DROPS = 7; // a blast of gegga leaves this many more splats around the hit
+// fotanglar: they lie where they land for a while. Someone who steps on one hops on and walks slowly; a car that
+// drives over one has a puncture and limps; you are hurt, unless you jump over
+const SPIKES_MAX = 140, // on the ground at once; the oldest go first
+  SPIKE_S = 60, // one lies this long
+  SPIKE_STEP_M = 0.55, // a foot within this of one steps on it
+  SPIKE_WHEEL_M = 1.3, // a car's middle within this of one drives over it
+  SPIKE_CAR_MIN_MS = 1, // a car standing on one is fine until it rolls
+  PUNCTURE_DMG = 80, // a puncture is this much damage at least: the car limps (health.ts, LIMP_AT)
+  LIMP_S = 6, // someone who stepped on one limps this long,
+  LIMP_SPEED = 0.35, // at this share of their speed,
+  LIMP_HOP_M = 0.14, // hopping this high,
+  LIMP_HOP_HZ = 2.4,
+  SPIKE_HURT_HP = 6, // what stepping on one costs you,
+  SPIKE_HURT_EVERY_S = 1, // at most this often
+  SPIKE_OFF_WALL_M = 0.3; // one that hits a wall or a car drops this far out from it
 
 type Point = { x: number; z: number };
 
@@ -88,6 +103,7 @@ export interface PickadollDeps {
   readonly inside: boolean; // in a safehouse
   mouseLocked(): boolean;
   toast(msg: string, secs?: number): void;
+  hurtPlayer(n: number): void;
 }
 
 /** The lab's weapons: built once, stepped every frame. */
@@ -95,6 +111,9 @@ export class Pickadoll {
   private readonly g: PickadollDeps;
   private readonly shots: (Shot & { seed: number; flavour: HitFlavour })[] = [];
   private readonly dancers: { npc: Npc; leftS: number }[] = [];
+  private readonly spikes: { x: number; y: number; z: number; turn: number; leftS: number }[] = [];
+  private readonly limping: { npc: Npc; leftS: number; speed: number }[] = [];
+  private spikeHurtS = 0; // s until a fotangel can hurt you again
   private readonly hit = newHit();
   private readonly aimHit = newHit();
   private readonly line = { x: 0, y: 0, z: 0, dx: 0, dy: 0, dz: -1 };
@@ -228,6 +247,8 @@ export class Pickadoll {
       weapon: WEAPONS[this.weapon].id,
       flavour: HIT_FLAVOURS[this.flavour].id,
       aiming: this.aimK > 0.5,
+      spikes: this.spikes.length,
+      limping: this.limping.length,
     };
   }
 
@@ -319,9 +340,12 @@ export class Pickadoll {
       this.shots[i] = this.shots[this.shots.length - 1];
       this.shots.pop();
     }
-    fx.drawShots(this.shots, this.colourOf);
+    fx.drawShots(this.shots, this.colourOf, this.radiusOf);
     this.dance(dt);
+    this.stepSpikes(dt);
   }
+
+  private readonly radiusOf = (s: Shot) => WEAPONS[s.weapon].shotM;
 
   // on foot only: from a car you aim with the car's own camera
   private get aiming() {
@@ -398,6 +422,8 @@ export class Pickadoll {
         vz: v.vz + cvz,
         ageS: 0,
         bounced: 0,
+        lifeS: 0,
+        lying: false,
         weapon: this.weapon,
         seed: rnd(),
         flavour,
@@ -411,7 +437,18 @@ export class Pickadoll {
     const { fx, crowd, rnd } = this.g,
       weapon = WEAPONS[s.weapon],
       colour = this.colourOf(s);
+    if (hit.bounced && weapon.fuseS) return; // a grenade only bounces and lies until its fuse runs out
     this.hits++;
+    if (weapon.zone === 'spikes') {
+      // on the ground where it fell; off a wall or a car, just out from it
+      const out = hit.kind === 'ground' ? 0 : SPIKE_OFF_WALL_M,
+        x = hit.x + hit.nx * out,
+        z = hit.z + hit.nz * out;
+      if (this.spikes.length >= SPIKES_MAX) this.spikes.shift();
+      this.spikes.push({ x, y: this.g.world.groundAt(x, z), z, turn: s.seed, leftS: SPIKE_S });
+      fx.drawSpikes(this.spikes);
+      return;
+    }
     const person = hit.kind === 'person' ? crowd.npcs[hit.target] : null,
       car = hit.kind === 'car' ? this.world.cars[hit.target] : null;
     if (person) this.hitPerson(person, s.flavour, hit.dx, hit.dz, hit.y, weapon.power, weapon.splatM, colour, s.seed);
@@ -494,6 +531,63 @@ export class Pickadoll {
     c.x += dx * power * PANG_CAR_SHOVE_M;
     c.z += dz * power * PANG_CAR_SHOVE_M;
     this.g.placeCar(c);
+  }
+
+  // what the fotanglar on the ground do to who comes by
+  private stepSpikes(dt: number) {
+    const { game, player, crowd, fx } = this.g,
+      { spikes, limping } = this;
+    let changed = false;
+    this.spikeHurtS -= dt;
+    for (let i = spikes.length - 1; i >= 0; i--) {
+      const s = spikes[i];
+      s.leftS -= dt;
+      let used = s.leftS <= 0;
+      // a car that rolls over it has a puncture, the police's and your own too
+      if (!used)
+        for (const c of this.g.cars)
+          if (Math.abs(c.v) > SPIKE_CAR_MIN_MS && Math.hypot(c.x - s.x, c.z - s.z) < SPIKE_WHEEL_M) {
+            c.dmg = Math.max(c.dmg, PUNCTURE_DMG);
+            used = true;
+            break;
+          }
+      if (!used)
+        for (const n of crowd.npcs)
+          if (!n.down && Math.hypot(n.x - s.x, n.z - s.z) < SPIKE_STEP_M && !limping.some(l => l.npc === n)) {
+            limping.push({ npc: n, leftS: LIMP_S, speed: n.speed });
+            n.speed *= LIMP_SPEED;
+          }
+      // you, on foot and on the ground: a jump clears them
+      if (
+        !used &&
+        !game.inCar &&
+        player.y <= 0 &&
+        this.spikeHurtS <= 0 &&
+        Math.hypot(player.x - s.x, player.z - s.z) < SPIKE_STEP_M
+      ) {
+        this.spikeHurtS = SPIKE_HURT_EVERY_S;
+        this.g.hurtPlayer(SPIKE_HURT_HP);
+        this.g.toast('”Aj! Fotanglar!”', 2);
+      }
+      if (used) {
+        spikes.splice(i, 1);
+        changed = true;
+      }
+    }
+    if (changed) fx.drawSpikes(spikes);
+    // limping is drawn over the crowd's own pose: a hop on one foot, and their speed back when it wears off
+    for (let i = limping.length - 1; i >= 0; i--) {
+      const l = limping[i];
+      l.leftS -= dt;
+      if (l.leftS <= 0 || !crowd.npcs.includes(l.npc)) {
+        l.npc.speed = l.speed;
+        limping.splice(i, 1);
+        continue;
+      }
+      if (l.npc.down) continue;
+      l.npc.mesh.position.y += Math.abs(Math.sin(this.clockS * Math.PI * LIMP_HOP_HZ)) * LIMP_HOP_M;
+      l.npc.mesh.legs[0].rotation.x = -1.1; // one foot held up
+    }
   }
 
   // dancing is drawn over the crowd's own pose: they spin and hop where they stand

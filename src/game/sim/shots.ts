@@ -16,9 +16,13 @@ export interface Weapon {
   splatM: number; // radius of the mark a hit leaves
   blastM: number; // a hit also reaches everyone within this radius; 0 for none
   bounces: number; // how many times a shot bounces off the ground, a wall or a car before it stops
+  thrown: boolean; // lobbed by hand, not fired
+  fuseS: number; // it goes off this long after it leaves, wherever it is by then; until then it only bounces and lies. 0 for none
+  zone: '' | 'spikes'; // what it leaves on the ground where it lands: spikes are fotanglar
+  shotM: number; // the radius it is drawn with
 }
 
-/** The pistol ladder from #17, a scatter gun, the village-built bazooka, a minigun and a legendary. */
+/** The pistol ladder from #17, a scatter gun, the village-built bazooka, a minigun, a legendary and two throwables. */
 export const WEAPONS = [
   {
     id: 'artpuffra',
@@ -32,6 +36,10 @@ export const WEAPONS = [
     splatM: 0.2,
     blastM: 0,
     bounces: 0,
+    thrown: false,
+    fuseS: 0,
+    zone: '',
+    shotM: 0.07,
   },
   {
     id: 'pickadoll',
@@ -45,6 +53,10 @@ export const WEAPONS = [
     splatM: 0.6,
     blastM: 0,
     bounces: 0,
+    thrown: false,
+    fuseS: 0,
+    zone: '',
+    shotM: 0.07,
   },
   {
     id: 'pepprapuffra',
@@ -58,6 +70,10 @@ export const WEAPONS = [
     splatM: 0.45,
     blastM: 0,
     bounces: 0,
+    thrown: false,
+    fuseS: 0,
+    zone: '',
+    shotM: 0.07,
   },
   {
     id: 'hagelbossa',
@@ -71,6 +87,10 @@ export const WEAPONS = [
     splatM: 0.4,
     blastM: 0,
     bounces: 0,
+    thrown: false,
+    fuseS: 0,
+    zone: '',
+    shotM: 0.07,
   },
   {
     id: 'potatiskanon',
@@ -84,6 +104,10 @@ export const WEAPONS = [
     splatM: 2.2,
     blastM: 4,
     bounces: 0,
+    thrown: false,
+    fuseS: 0,
+    zone: '',
+    shotM: 0.07,
   },
   {
     id: 'minigun',
@@ -97,6 +121,10 @@ export const WEAPONS = [
     splatM: 0.38,
     blastM: 0,
     bounces: 0,
+    thrown: false,
+    fuseS: 0,
+    zone: '',
+    shotM: 0.07,
   },
   // the legendary one from #17: the weakest gun, but its peas bounce
   {
@@ -111,6 +139,45 @@ export const WEAPONS = [
     splatM: 0.24,
     blastM: 0,
     bounces: 12,
+    thrown: false,
+    fuseS: 0,
+    zone: '',
+    shotM: 0.07,
+  },
+  // throwables (#17): lobbed by hand
+  {
+    id: 'granat',
+    name: 'Granat',
+    speedMs: 15,
+    coolS: 0.9,
+    auto: false,
+    pellets: 1,
+    spreadRad: 0.01,
+    power: 3,
+    splatM: 1.8,
+    blastM: 5,
+    bounces: 6,
+    thrown: true,
+    fuseS: 2.2,
+    zone: '',
+    shotM: 0.13,
+  },
+  {
+    id: 'fotanglar',
+    name: 'Fotanglar',
+    speedMs: 11,
+    coolS: 1,
+    auto: false,
+    pellets: 7,
+    spreadRad: 0.16,
+    power: 0,
+    splatM: 0,
+    blastM: 0,
+    bounces: 0,
+    thrown: true,
+    fuseS: 0,
+    zone: 'spikes',
+    shotM: 0.1,
   },
 ] as const satisfies readonly Weapon[];
 
@@ -126,6 +193,7 @@ export const GRAVITY_MS2 = 9.8;
 export const MUZZLE_M = 1.35; // a shot leaves this far above the shooter's feet
 const RANGE_S = 4; // a shot that has hit nothing by then is gone; a bounce starts the count again
 const BOUNCE_KEEP = 0.78, // the share of its speed a shot keeps in a bounce
+  THROWN_BOUNCE_KEEP = 0.4, // and a thrown thing, which thuds: it lands near where it was thrown at
   BOUNCE_MIN_MS = 4, // slower than this after a bounce, it stops there
   BOUNCE_CLEAR_M = 0.08; // a bounced shot starts this far off the surface, so it isn't hit again at once
 const STEP_M = 0.25; // a shot is checked every this far along its path, so it can't skip through a person
@@ -145,6 +213,8 @@ export interface Shot {
   ageS: number;
   weapon: number; // index in WEAPONS
   bounced: number; // times it has bounced so far
+  lifeS: number; // s since it left, bounces and all: the fuse counts this
+  lying: boolean; // a shot with a fuse that has come to rest, waiting for it
 }
 
 /** What a shot can hit. */
@@ -174,6 +244,8 @@ export interface ShotHit {
   target: number;
   /** the shot bounced off and flies on; false when it stopped here */
   bounced: boolean;
+  /** its fuse ran out here: it goes off, in the air or on the ground */
+  burst: boolean;
 }
 
 /**
@@ -192,10 +264,18 @@ const _probe = { x: 0, z: 0 },
 
 /** Moves a shot on by dt seconds. Returns what it hit, 'gone' when it ran out of range, or null while it still flies. */
 export function stepShot(s: Shot, dt: number, world: ShotWorld, out: ShotHit): ShotHit | 'gone' | null {
+  const fuseS = WEAPONS[s.weapon].fuseS;
+  out.burst = false;
+  if (s.lying) {
+    s.lifeS += dt;
+    return s.lifeS >= fuseS ? burst(s, world, out) : null;
+  }
   const speed = Math.hypot(s.vx, s.vy, s.vz),
     steps = Math.max(1, Math.ceil((speed * dt) / STEP_M)),
     h = dt / steps;
   for (let i = 0; i < steps; i++) {
+    s.lifeS += h;
+    if (fuseS && s.lifeS >= fuseS) return burst(s, world, out);
     s.vy -= GRAVITY_MS2 * h;
     s.x += s.vx * h;
     s.y += s.vy * h;
@@ -204,11 +284,33 @@ export function stepShot(s: Shot, dt: number, world: ShotWorld, out: ShotHit): S
     const hit = hitAt(s, world, out);
     if (hit) {
       hit.bounced = bounce(s, hit);
+      // a shot with a fuse that is out of bounces or speed lies where it stopped until the fuse runs out
+      if (!hit.bounced && fuseS && hit.kind !== 'person') {
+        s.x = hit.x + hit.nx * BOUNCE_CLEAR_M;
+        s.y = world.groundAt(s.x, s.z);
+        s.z = hit.z + hit.nz * BOUNCE_CLEAR_M;
+        s.vx = s.vy = s.vz = 0;
+        s.lying = true;
+        hit.bounced = true;
+      }
       return hit;
     }
     if (s.ageS > RANGE_S) return 'gone';
   }
   return null;
+}
+
+// the fuse ran out: it goes off where it is, and what it leaves lands on the ground below
+function burst(s: Shot, world: ShotWorld, out: ShotHit): ShotHit {
+  surface(out, 'ground', -1, 0, 1, 0);
+  out.x = s.x;
+  out.y = world.groundAt(s.x, s.z);
+  out.z = s.z;
+  out.dx = 0;
+  out.dz = -1;
+  out.bounced = false;
+  out.burst = true;
+  return out;
 }
 
 // off the ground, a wall or a car, if its weapon's shots bounce and it has bounces and speed left: the shot is turned
@@ -217,9 +319,10 @@ function bounce(s: Shot, hit: ShotHit): boolean {
   if (hit.kind === 'person' || s.bounced >= WEAPONS[s.weapon].bounces) return false;
   const into = s.vx * hit.nx + s.vy * hit.ny + s.vz * hit.nz;
   if (into >= 0) return false; // already leaving the surface
-  s.vx = (s.vx - 2 * into * hit.nx) * BOUNCE_KEEP;
-  s.vy = (s.vy - 2 * into * hit.ny) * BOUNCE_KEEP;
-  s.vz = (s.vz - 2 * into * hit.nz) * BOUNCE_KEEP;
+  const keep = WEAPONS[s.weapon].thrown ? THROWN_BOUNCE_KEEP : BOUNCE_KEEP;
+  s.vx = (s.vx - 2 * into * hit.nx) * keep;
+  s.vy = (s.vy - 2 * into * hit.ny) * keep;
+  s.vz = (s.vz - 2 * into * hit.nz) * keep;
   if (Math.hypot(s.vx, s.vy, s.vz) < BOUNCE_MIN_MS) return false;
   s.x = hit.x + hit.nx * BOUNCE_CLEAR_M;
   s.y = hit.y + hit.ny * BOUNCE_CLEAR_M;
@@ -310,9 +413,10 @@ export const newHit = (): ShotHit => ({
   dz: -1,
   target: -1,
   bounced: false,
+  burst: false,
 });
 
-const _sight: Shot = { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, ageS: 0, weapon: 0, bounced: 0 };
+const _sight: Shot = { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, ageS: 0, weapon: 0, bounced: 0, lifeS: 0, lying: false };
 
 /**
  * What a straight line of sight meets: from (x, y, z) along the unit vector (dx, dy, dz), between `fromM` and `toM`

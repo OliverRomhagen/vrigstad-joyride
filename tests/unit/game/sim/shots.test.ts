@@ -33,7 +33,17 @@ function world(over: Partial<ShotWorld> = {}): ShotWorld {
 
 // a shot fired north from the origin, level, with no spread
 function shot(weapon = PICKADOLL): Shot {
-  return { x: 0, y: MUZZLE_M, z: 0, ...aimShot(WEAPONS[weapon], 0, 0), ageS: 0, weapon, bounced: 0 };
+  return {
+    x: 0,
+    y: MUZZLE_M,
+    z: 0,
+    ...aimShot(WEAPONS[weapon], 0, 0),
+    ageS: 0,
+    weapon,
+    bounced: 0,
+    lifeS: 0,
+    lying: false,
+  };
 }
 
 function fly(s: Shot, w: ShotWorld) {
@@ -102,7 +112,19 @@ describe('stepShot', () => {
   });
 
   it('is gone when it has hit nothing within its range', () => {
-    const s: Shot = { x: 0, y: 500, z: 0, vx: 0, vy: 0, vz: -1, ageS: 0, weapon: PICKADOLL, bounced: 0 };
+    const s: Shot = {
+      x: 0,
+      y: 500,
+      z: 0,
+      vx: 0,
+      vy: 0,
+      vz: -1,
+      ageS: 0,
+      weapon: PICKADOLL,
+      bounced: 0,
+      lifeS: 0,
+      lying: false,
+    };
     expect(fly(s, world({ collide: () => false }))).toBe('gone');
   });
 
@@ -150,6 +172,48 @@ describe('a shot that bounces', () => {
   });
 });
 
+describe('a thrown shot with a fuse', () => {
+  const GRANAT = WEAPONS.findIndex(w => w.id === 'granat'),
+    fuseS = WEAPONS[GRANAT].fuseS;
+
+  // steps until it goes off; says how many times it touched something before, and when it went off
+  function untilBurst(s: Shot, w: ShotWorld) {
+    const out = newHit();
+    let touches = 0;
+    for (let i = 0; i < 600; i++) {
+      const hit = stepShot(s, 1 / 60, w, out);
+      if (hit === 'gone') throw new Error('gone before its fuse');
+      if (hit?.burst) return { touches, hit };
+      if (hit) {
+        expect(hit.bounced).toBe(true); // it never stops on what it touches
+        touches++;
+      }
+    }
+    throw new Error('never went off');
+  }
+
+  it('bounces, comes to rest, and goes off when the fuse runs out, on the ground', () => {
+    const s = shot(GRANAT),
+      { touches, hit } = untilBurst(s, world({ collide: () => false }));
+    expect(touches).toBeGreaterThan(0);
+    expect(s.lifeS).toBeCloseTo(fuseS, 1);
+    expect(hit).toMatchObject({ kind: 'ground', y: 0, burst: true, bounced: false });
+  });
+
+  it('goes off in the air when the fuse runs out before it lands', () => {
+    const s: Shot = { ...shot(GRANAT), ...aimShot(WEAPONS[GRANAT], 0, 1.3) }; // thrown nearly straight up
+    const { touches, hit } = untilBurst(s, world({ collide: () => false }));
+    expect(touches).toBe(0);
+    expect(s.y).toBeGreaterThan(2);
+    expect(hit.y).toBe(0); // what it leaves lands on the ground below
+  });
+
+  it('goes off at once on a person', () => {
+    const hit = fly(shot(GRANAT), world({ people: [{ x: 0, z: -3, scale: 1 }] }));
+    expect(hit).toMatchObject({ kind: 'person', bounced: false });
+  });
+});
+
 describe('sight', () => {
   it('finds the wall a level line of sight meets, on its face', () => {
     const out = newHit();
@@ -180,7 +244,17 @@ describe('aimAt', () => {
       // a point on the house's south wall, 3 m up and a little to the east
       const { yaw, pitch } = aimAt(WEAPONS[weapon].speedMs, 0, MUZZLE_M, 0, 2, 3, -20, { yaw: 0, pitch: 0 });
       const hit = fly(
-        { x: 0, y: MUZZLE_M, z: 0, ...aimShot(WEAPONS[weapon], yaw, pitch), ageS: 0, weapon, bounced: 0 },
+        {
+          x: 0,
+          y: MUZZLE_M,
+          z: 0,
+          ...aimShot(WEAPONS[weapon], yaw, pitch),
+          ageS: 0,
+          weapon,
+          bounced: 0,
+          lifeS: 0,
+          lying: false,
+        },
         world(),
       );
       expect(hit).toMatchObject({ kind: 'wall' });

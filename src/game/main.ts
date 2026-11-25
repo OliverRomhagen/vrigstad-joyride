@@ -397,7 +397,7 @@ if (lab.on('toon')) import('./render/toon-style').then(m => loop.drawThrough(new
 // ?lab=pickadoll: weapons to try, and three answers to what a hit does (#17: src/game/pickadoll.ts). Stepped after the crowd, above
 let pickadoll: Pickadoll | null = null;
 if (lab.on('pickadoll')) Promise.all([import('./pickadoll'), import('./render/shot-fx')]).then(([m, fx]) => {
-  pickadoll = new m.Pickadoll({ win: window, canvas, $, coarse, game, view, calmMotion, player, world: { groundAt, collide }, crowd, cars, ragdolls, placeCar, rnd: makeRnd(1717), toast,
+  pickadoll = new m.Pickadoll({ win: window, canvas, $, coarse, game, view, calmMotion, hurtPlayer, player, world: { groundAt, collide }, crowd, cars, ragdolls, placeCar, rnd: makeRnd(1717), toast,
     fx: new fx.ShotFx({ scene, camera, coarse, groundAt, rnd: makeRnd(1718) }), mouseLocked: () => input.locked(), get menuOpen() { return !kmenu.hidden; }, get inside() { return !!places.inside; } });
 }).catch(err => console.warn('Lab: pickadoll failed', err));
 loop.start();
