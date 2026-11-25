@@ -41,7 +41,7 @@ export function parseLabFlags(search: string): LabId[] {
 
 /**
  * A query string with one experiment switched on or off, to load the page with. Every other parameter stays exactly as
- * it was written (`?dev` stays `?dev`, `at=1,2` keeps its comma), which URLSearchParams would rewrite. The experiments
+ * it was written (`?dev` stays `?dev`, `at=1,2` keeps its comma), which URLSearchParams would rewrite; only an empty part (`?a&&b`) goes. The experiments
  * that are on end up in one `lab` parameter, where the first one was, or last; ids that aren't experiments are dropped,
  * as parseLabFlags ignores them. With nothing on the parameter goes, and with nothing left the answer is ''.
  */
