@@ -552,7 +552,8 @@ export class Fleet {
         c.x += nx * push;
         c.z += nz * push;
         if (Math.abs(c.v) > 6 && o.mode === 'police') rammed(c, o);
-        if (o.mode === 'parked' || o.mode === 'idle') {
+        // a parked car gives a little; one for sale on Skroten's lot stands like a wall, as nothing would stop it leaving the yard
+        if ((o.mode === 'parked' || o.mode === 'idle') && !o.saleKr) {
           o.x -= nx * push * 0.4;
           o.z -= nz * push * 0.4;
           placeCar(o);

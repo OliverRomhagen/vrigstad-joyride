@@ -196,6 +196,19 @@ describe('drive', () => {
     expect(log.placed.has(parked)).toBe(true);
   });
 
+  it("never shoves a car for sale on Skroten's lot: it can't be pushed out of the yard", () => {
+    const { cars } = fleet();
+    const c = car('volvo', 0, 800, 0, 'player'),
+      forSale = car('saab', 0, 798, 0, 'parked');
+    forSale.saleKr = 2500;
+    cars.add(c);
+    cars.add(forSale);
+    c.v = 10;
+    cars.drive(c, 0, 0, false, DT);
+    expect(forSale.z).toBe(798);
+    expect(c.z).toBeGreaterThan(798); // yours is pushed back off it instead
+  });
+
   it('reports ramming a police car only at speed', () => {
     const { cars, log } = fleet();
     const c = car('volvo', 0, 800, 0, 'player'),
