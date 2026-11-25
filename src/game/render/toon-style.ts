@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { INK_FLAG } from './ink-flag';
 
 // The look follows the "Kraftig" (bold) cel shading of the art direction lab (v20).
 // Light per quarter of MeshToonMaterial's ramp, which it samples at `dot * 0.5 + 0.5` (dot of normal and light
@@ -28,8 +29,6 @@ const INK_OPACITY = 0.67;
 // polygonOffset. Scaling the lines about the mesh's origin instead moved them off meshes whose origin is far away, such
 // as the village's shells (one mesh at Torget).
 export const INK_PULL = 0.001;
-/** Set on an object's userData to give every opaque mesh under it ink lines in the toon style. */
-export const INK_FLAG = 'toonInk';
 
 type LitMaterial = THREE.MeshLambertMaterial | THREE.MeshPhongMaterial | THREE.MeshStandardMaterial;
 type MeshMaterial = THREE.Material | THREE.Material[];

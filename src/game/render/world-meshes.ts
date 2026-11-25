@@ -22,8 +22,8 @@ import type { StreetscapeLayout } from '../../world/streetscape';
 import { col } from '../../world/three-legacy';
 import { GAME_WATER } from '../../world/water-palette';
 import type { WaterBodies } from '../../world/water-shapes';
+import { INK_FLAG } from './ink-flag';
 import { mergeGeo } from './models';
-import { INK_FLAG } from './toon-style';
 
 // ---------- terrain ----------
 const SKIRT_DEPTH_M = 1.5; // the skirt round the edge, and the far ground plane, sit this far below height 0

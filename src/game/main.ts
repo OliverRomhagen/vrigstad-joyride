@@ -67,7 +67,6 @@ import { GroundTexture } from './render/ground-texture';
 import { BAR_BLUE, BAR_RED, barGeo, barMat, blob, blobTex, boxGeo, carGeo, carMat, GLASS, geoCache, PROFILES, paintMat, personParts, TRACTOR_CAB } from './render/models';
 import { buildStage, SUN_DIR, setUpRenderer } from './render/stage';
 import { addBridges, addBuildings, addRoadRibbons, addStreetscapeMeshes, addTerrain, addTrees, addWater } from './render/world-meshes';
-import { ToonStyle } from './render/toon-style';
 import { type CarType, specFor } from './sim/vehicle-spec';
 import { Tunables } from './sim/tunables';
 import { registerCarTunables } from './sim/car-tunables';
@@ -121,9 +120,6 @@ const maxAnisotropy = renderer.capabilities.getMaxAnisotropy();
 // After the WebGL check, so none starts behind the fail screen; one that fails to load or start should only warn
 const lab = LabFlags.fromSearch(location.search);
 if (lab.on('hello')) console.info('Lab: hello is on.'); // the smallest gate, for trying the flags
-// ?lab=toon draws the world cel-shaded (#206). Imported statically, not with import(): the first frame draws through
-// it, and the render modules import its INK_FLAG, so its module is in the page's bundle either way
-const toon = lab.on('toon') ? new ToonStyle(renderer) : null;
 
 // ---------- time of day: 05:00 to 19:00, then a short blend into the next morning (src/game/day-cycle.ts, src/game/render/daylight.ts) ----------
 // ?time=18.5 starts at that hour; ?cycle=off holds it there
@@ -388,13 +384,15 @@ function hurtPlayer(n: number) { if (!canHurt(health, n)) return; const was = he
 const prompt = new ActionPrompt({ $, game, places, wanted, get menuOpen() { return !kmenu.hidden; }, coarse, nearPlace, skrotenBuys: () => skroten.buys(), nearOwner: () => skroten.nearOwner(nearestCar()), nearCat, nearestCar, catFirst, carName, esc });
 
 // ---------- main loop (src/game/loop.ts) ----------
-const loop = new GameLoop({ $, renderer, toon, scene, camera, canvas, coarse, half: HALF, game, view, player, health, input, places, wanted, cars, startCam: START_CAM, barMat, barColours: [BAR_BLUE, BAR_RED], cameraRig: { update: placeCamera },
+const loop = new GameLoop({ $, renderer, scene, camera, canvas, coarse, half: HALF, game, view, player, health, input, places, wanted, cars, startCam: START_CAM, barMat, barColours: [BAR_BLUE, BAR_RED], cameraRig: { update: placeCamera },
   get toasting() { return hud.toasting; }, inWater, collide, groundAt, drive, updateTraffic, knockedOut, hurtPlayer, shake, toast, hideTitleCard: () => hud.hideTitleCard(),
   updateTrisslott: dt => trisslott.update(dt), updatePlaces: dt => { placeMeshes.update(dt); skrotenMeshes.update(dt, player); }, updateDriftFx, updateVehicles: (T, dt) => vehicleVisuals.update(T, dt), updateSmoke, updateBanknotes: dt => banknotes.update(dt), updateConfetti: dt => confetti.update(dt), updateNpcs: (T, dt) => { updateNpcs(T, dt); ragdolls.update(dt); ragdollMeshes.update(); }, updateCats,
   updateDrivers: (T, dt) => drivers.update(T, dt), updateBodies: (T, dt) => bodyMotion.update(T, dt), updateDaylight, drawHearts, updateHud: dt => hud.update(dt), drawMini,
   updateSign, catRideLines: () => crashes.catRideLines(), closeMenuIfLeft: () => menuPlate.closeIfLeft(), updatePrompt: () => prompt.update(), drawHealth,
   timeFrame: workStart => { if (!debugOverlay) return; const t = performance.now(); debugOverlay.frame(t, t - workStart, renderer.info); } });
 $('go').addEventListener('click', loop.startGame);
+// ?lab=toon draws the world cel-shaded (#206). The frames before its code arrives draw the default look, behind the intro
+if (lab.on('toon')) import('./render/toon-style').then(m => loop.drawThrough(new m.ToonStyle(renderer))).catch(err => console.warn('Lab: toon failed', err));
 loop.start();
 
 // ---------- test hook: read-only state for the smoke tests (src/game/test-hook.ts) ----------

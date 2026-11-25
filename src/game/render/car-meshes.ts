@@ -5,7 +5,7 @@ import { makeRnd } from '../../world/random';
 import type { Car } from '../cars';
 import type { CarType } from '../sim/vehicle-spec';
 import type { BodyMotion } from './body-motion';
-import { INK_FLAG } from './toon-style';
+import { INK_FLAG } from './ink-flag';
 import { pickVariant, type VehicleId } from './vehicle-registry';
 import type { VehicleVisuals } from './vehicle-visuals';
 

@@ -2,7 +2,7 @@
 // Moved from src/game/main.ts (#177); main.ts hands these to the modules that build the cars, people, cats and places.
 import * as THREE from 'three';
 import { col } from '../../world/three-legacy';
-import { INK_FLAG } from './toon-style';
+import { INK_FLAG } from './ink-flag';
 
 /** One part of a model: a geometry and its sRGB colour; the colour attribute is left out when the parts have none. */
 type Part = [geometry: THREE.BufferGeometry, colour?: string];

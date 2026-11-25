@@ -3,7 +3,7 @@
 // Moved from src/game/main.ts (#177); main.ts passes in the scene, the height lookup and the shared box geometry and paint.
 import * as THREE from 'three';
 import { type Door, KIOSK, type Places } from '../places';
-import { INK_FLAG } from './toon-style';
+import { INK_FLAG } from './ink-flag';
 
 const SAFE_COLOUR = 0x4fd27a,
   KIOSK_COLOUR = 0xf2c230,

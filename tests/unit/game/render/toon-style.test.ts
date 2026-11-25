@@ -1,9 +1,9 @@
 import * as THREE from 'three';
 import { expect, test, vi } from 'vitest';
+import { INK_FLAG } from '../../../../src/game/render/ink-flag';
 import {
   FINISH_LEVELS,
   finishOf,
-  INK_FLAG,
   INK_PULL,
   TOON_FILL_SCALE,
   TOON_LEVELS,
