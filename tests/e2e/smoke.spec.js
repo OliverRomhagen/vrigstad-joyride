@@ -230,6 +230,19 @@ test.describe('game (index.html)', () => {
     expect(errors).toEqual([]);
   });
 
+  test('?lab=toon draws the cel-shaded style without errors', async ({ page }, testInfo) => {
+    const errors = watchErrors(page);
+    await page.goto('/index.html?lab=toon');
+    await page.locator('#go').click();
+    expect(await state(page)).toMatchObject({ started: true, lab: ['toon'] });
+    // the style loads behind its flag, and a failure to load only warns: without this, the default look would pass
+    await expect.poll(async () => (await state(page)).styled).toBe(true);
+    await frames(page, 10); // the toon shaders compile and the ink lines are built on its first frames; an error there is logged
+    expect(await page.evaluate(() => document.getElementById('gl').getContext('webgl2').getError())).toBe(0);
+    await page.screenshot({ path: testInfo.outputPath('game-toon.png') });
+    expect(errors).toEqual([]);
+  });
+
   test('the wheel zooms the camera, and the browser zoom is blocked', async ({ page }) => {
     const errors = watchErrors(page);
     await page.goto('/index.html');
