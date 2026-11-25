@@ -493,6 +493,26 @@ describe('catParts', () => {
       expect(parts.map(p => p[6])).toContain(coat[0]);
     }
   });
+
+  it('draws the tuxedo exactly as the colony drew it before catParts', () => {
+    // the list CatColony built inline until catParts took it over, for the coat with a white chest and muzzle
+    const [coat, paws, chest] = ['#1e1e20', '#ece9e2', '#ece9e2'];
+    expect(catParts([coat, paws, chest])).toEqual([
+      [0.2, 0.17, 0.42, 0, 0.2, 0, coat],
+      [0.17, 0.15, 0.15, 0, 0.31, -0.25, coat],
+      [0.05, 0.06, 0.03, -0.05, 0.41, -0.26, paws],
+      [0.05, 0.06, 0.03, 0.05, 0.41, -0.26, paws],
+      [0.03, 0.03, 0.01, -0.04, 0.33, -0.33, '#c8d24a'],
+      [0.03, 0.03, 0.01, 0.04, 0.33, -0.33, '#c8d24a'],
+      [0.05, 0.13, 0.05, -0.07, 0.06, -0.15, paws],
+      [0.05, 0.13, 0.05, 0.07, 0.06, -0.15, paws],
+      [0.05, 0.13, 0.05, -0.07, 0.06, 0.15, paws],
+      [0.05, 0.13, 0.05, 0.07, 0.06, 0.15, paws],
+      [0.04, 0.3, 0.04, 0, 0.4, 0.22, coat],
+      [0.14, 0.12, 0.02, 0, 0.21, -0.215, chest],
+      [0.09, 0.05, 0.01, 0, 0.27, -0.33, chest],
+    ]);
+  });
 });
 
 describe('catMesh', () => {
@@ -500,6 +520,7 @@ describe('catMesh', () => {
     const built: unknown[] = [];
     const shadows: THREE.Object3D[] = [];
     const deps = {
+      geoCache: {},
       boxGeo: (parts: BoxPart[]) => {
         built.push(parts);
         return new THREE.BufferGeometry();
@@ -514,5 +535,24 @@ describe('catMesh', () => {
     expect(cat.scale.x).toBeCloseTo(1.225);
     expect(cat.material).toBe(deps.paintMat);
     expect(shadows).toEqual([cat]);
+  });
+
+  it('builds each coat’s geometry once and shares it', () => {
+    let builds = 0;
+    const deps = {
+      geoCache: {},
+      boxGeo: () => {
+        builds++;
+        return new THREE.BufferGeometry();
+      },
+      paintMat: new THREE.MeshBasicMaterial(),
+      blob: () => {},
+    };
+    const a = catMesh(CAT_COLS[0], deps),
+      b = catMesh(CAT_COLS[0], deps, 1.1);
+    expect(builds).toBe(1);
+    expect(b.geometry).toBe(a.geometry);
+    catMesh(CAT_COLS[1], deps);
+    expect(builds).toBe(2);
   });
 });
