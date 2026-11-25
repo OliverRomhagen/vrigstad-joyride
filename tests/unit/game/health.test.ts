@@ -145,7 +145,7 @@ describe('crashes', () => {
     expect(crashCars(0, HARD_MS, c, null).map(h => h.car)).toEqual([c]);
     const spared = car(),
       other = car();
-    expect(crashCars(0, HARD_MS, spared, other, spared).map(h => h.wrecked)).toEqual([false, false]);
+    expect(crashCars(0, HARD_MS, spared, other, k => k === spared).map(h => h.wrecked)).toEqual([false, false]);
     expect([spared.dmg, other.dmg]).toEqual([0, crashDamage(HARD_MS)]); // god mode spares the car you drive
   });
 

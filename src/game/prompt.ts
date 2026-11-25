@@ -2,6 +2,7 @@
 // DOM over the canvas. Moved from src/game/main.ts (#177); main.ts passes in what the prompt asks about.
 import type { Car } from './cars';
 import type { Cat } from './cats';
+import { fmtKr } from './economy';
 import { wrecked } from './health';
 import type { Place } from './places';
 import { tooFastToGetOut } from './player';
@@ -81,6 +82,9 @@ export class ActionPrompt {
     } else if (game.inCar && game.pcar && !coarse) {
       pr.hidden = tooFastToGetOut(game.pcar);
       pr.innerHTML = '<kbd>E</kbd>Get out';
+    } else if (c?.saleKr) {
+      pr.hidden = this.g.menuOpen || !!wanted.stars; // like the sell prompt, none when Plåt-Pelle would refuse: with stars
+      pr.innerHTML = '<kbd>E</kbd>Buy the ' + carName(c) + ' · ' + fmtKr(c.saleKr);
     } else if (c) {
       pr.hidden = false;
       pr.innerHTML =

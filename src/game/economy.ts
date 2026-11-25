@@ -30,6 +30,7 @@ const CAR_KR_BY_MODEL: Readonly<Record<string, number>> = {
   'micra-k11': 400,
   'duett-epa': 600,
 };
+const SALE_MARKUP = 2.5; // Plåt-Pelle sells a car on his lot for this many times what he pays for one whole
 
 /** How many tickets the trisslott vinstplan counts its wins in. */
 export const TRISS_TICKETS = 100_000;
@@ -82,11 +83,21 @@ export function trissPrize(r: number): number {
 
 /** What Skroten pays for a car of this type and model at this much damage, in round tens; null when it won't buy it. */
 export function carPrice(type: string, model: string | undefined, dmg: number): number | null {
-  const base = (model && CAR_KR_BY_MODEL[model]) || CAR_KR_BY_TYPE[type];
+  const base = wholeKr(type, model);
   if (!base) return null;
   const whole = 1 - Math.min(Math.max(dmg, 0), DMG_MAX) / DMG_MAX;
   return Math.round((SCRAP_KR + (base - SCRAP_KR) * whole) / 10) * 10;
 }
+
+/** What Plåt-Pelle asks for a car of this type and model on Skroten's lot, in round hundreds; null for one he would never buy. */
+export function salePrice(type: string, model: string | undefined): number | null {
+  const base = wholeKr(type, model);
+  return base ? Math.round((base * SALE_MARKUP) / 100) * 100 : null;
+}
+
+// what Skroten pays for an undamaged car: by its model, else by its type; undefined for a police car
+const wholeKr = (type: string, model: string | undefined): number | undefined =>
+  (model && CAR_KR_BY_MODEL[model]) || CAR_KR_BY_TYPE[type];
 
 /** The fine for Gripen! with this many stars; never more than the wallet holds. */
 export function fine(kr: number, stars: number): number {

@@ -102,17 +102,18 @@ export interface CrashHit<C extends Crashable> {
   smokeUp: boolean; // this hit made it smoke more, short of wrecking it
 }
 
+const noneSpared = () => false;
 const NO_HITS: never[] = []; // shared: a slow scrape along a wall calls crashCars every frame of contact
 
 /** A crash at this impact speed (m/s) of car a into car b, or into a wall when b is null, at clock nowS (s).
- * Damages each car not hit in the last CRASH_COOL_S (each keeps its own, so ramming a car that was just hit still damages yours)
- * and says what changed for it; empty when nothing took damage. */
+ * Damages each car not hit in the last CRASH_COOL_S (each keeps its own, so ramming a car that was just hit still damages yours),
+ * except those `spared` says take none, and says what changed for it; empty when nothing took damage. */
 export function crashCars<C extends Crashable>(
   nowS: number,
   impact: number,
   a: C,
   b: C | null,
-  spared: C | null = null, // takes the hit but no damage: the car you drive in god mode
+  spared: (car: C) => boolean = noneSpared, // takes the hit but no damage: the car you drive in god mode, a car for sale
 ): CrashHit<C>[] {
   const d = crashDamage(impact);
   if (d <= 0) return NO_HITS;
@@ -121,7 +122,7 @@ export function crashCars<C extends Crashable>(
     if (nowS - car.hitAt < CRASH_COOL_S) continue;
     car.hitAt = nowS;
     const smoke = smokeLevel(car.dmg),
-      w = car !== spared && damageCar(car, d);
+      w = !spared(car) && damageCar(car, d);
     hits.push({ car, wrecked: w, smokeUp: !w && smokeLevel(car.dmg) > smoke });
   }
   return hits;

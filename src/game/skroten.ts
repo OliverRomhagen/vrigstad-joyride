@@ -1,21 +1,25 @@
 // Skroten buys the car you drive in (#76): drive onto its ring, press E, and Plåt-Pelle makes an offer by the car's model and damage.
-// Not with the police after you, and never a police car. On foot you can talk to him. main.ts passes in the menu plate, the wallet and
-// what happens to the car. No three.js or DOM here.
-import type { Car } from './cars';
-import { carPrice, earn, fmtKr, type Wallet } from './economy';
+// He also sells the cars on his lot: press E by one for his price. Neither with the police after you, and he never buys a police car.
+// On foot you can talk to him. main.ts passes in the menu plate, the wallet and what happens to the car. No three.js or DOM here.
+import type { Car, CarForSale } from './cars';
+import { carPrice, earn, fmtKr, pay, salePrice, type Wallet } from './economy';
 import type { MenuItem } from './pets';
 import { tooFastToGetOut } from './player';
-import { OWNER_UV, yardToWorld } from './skroten-yard';
+import type { CarType } from './sim/vehicle-spec';
+import { OWNER_UV, type YardCar, yardHeading, yardToWorld } from './skroten-yard';
 import type { GameState } from './state';
 
 const OWNER_SAYS = 'Plåt-Pelle: ';
 const OWNER_AT = yardToWorld(OWNER_UV.u, OWNER_UV.v);
 const TALK_M = 3; // how close you stand to talk to him
+const SALE_REACH_M = 5; // his price stays on the plate while you stand this close to the car; a little over the reach to get in
+const CHASED = OWNER_SAYS + '”Inte mä snuten i hälarna! Kom tebaks när du ä av mä dom.”';
 /** What he says when you talk to him on foot, one after the other. */
 export const OWNER_LINES = [
   '”Tjena! Har du nån bil du vill bli av mä? Kör in den på ringen.”',
   '”Ja köper allt som rullar. Å dä mesta som inte gör dä.”',
   '”Polisbilar rör ja inte. Ja ä inte dum.”',
+  '”Bilarna vid skylten å under taket ä till salu. Fint skick. Nästan.”',
   '”Fråga inte var bilarna kommer ifrån, så frågar inte ja heller.”',
   '”Den där Volvon har stått här sen sjuttifem. Den blir aldrig klar.”',
 ];
@@ -35,6 +39,7 @@ export interface SkrotenDeps {
   toast(msg: string, secs?: number): void;
   atSkroten(): boolean; // the car you drive stands on Skroten's ring
   modelId(c: Car): string | undefined; // the model the car wears, if it has one
+  carName(c: Car): string;
   wallet: Wallet; // the HUD shows whatever it holds
   sellCar(c: Car): void; // puts you on foot beside the car, and takes the car away
 }
@@ -50,7 +55,7 @@ export class Skroten {
 
   // what Skroten pays for c, or the reason it won't buy it
   private offer(c: Car): number | string {
-    if (this.g.stars) return OWNER_SAYS + '”Inte mä snuten i hälarna! Kom tebaks när du ä av mä dom.”';
+    if (this.g.stars) return CHASED;
     return carPrice(c.type, this.g.modelId(c), c.dmg) ?? OWNER_SAYS + '”En polisbil? Ä du inte klok? Den rör ja inte.”';
   }
 
@@ -112,4 +117,62 @@ export class Skroten {
     earn(wallet, kr);
     toast(OWNER_SAYS + '”Affärer ä affärer. Ja frågar inte var den kommer ifrån.” +' + fmtKr(kr) + '.', 4);
   }
+
+  /** E by a car on his lot: his price on the menu plate, or a word about the police. */
+  offerCar = (c: Car) => {
+    const { stars, openMenu, toast, carName } = this.g;
+    if (stars) {
+      toast(CHASED, 3.5);
+      return;
+    }
+    const kr = c.saleKr;
+    openMenu(
+      'skrot-buy',
+      OWNER_SAYS + '”Den där ' + carName(c) + '? ' + fmtKr(kr) + ', å den ä din.”',
+      [
+        ['buy', 'Köp <small>' + fmtKr(kr) + '</small>'],
+        ['no', 'Nä, inte idag'],
+      ],
+      k => {
+        if (k === 'buy') this.buy(c);
+      },
+      () => this.standsByCar(c),
+    );
+  };
+
+  // you stand on foot by the car for sale, with no police after you: what keeps his menu open
+  private standsByCar(c: Car) {
+    const { game, player, stars } = this.g;
+    return !game.inCar && !stars && c.saleKr > 0 && Math.hypot(player.x - c.x, player.z - c.z) < SALE_REACH_M;
+  }
+
+  // all asked again at the moment of paying, as for a sale: stars can come while the menu is open, and you can walk off before it closes
+  private buy(c: Car) {
+    const { stars, toast, wallet } = this.g;
+    if (!c.saleKr) return;
+    if (!stars && !this.standsByCar(c)) return; // walked off or got in: no sale, and no word
+    if (stars) {
+      toast(CHASED, 3.5);
+      return;
+    }
+    const kr = c.saleKr;
+    if (!pay(wallet, kr)) toast(OWNER_SAYS + '”' + fmtKr(kr) + ', sa ja. Kom tebaks när du har pengarna.”', 3.5);
+    else {
+      c.saleKr = 0;
+      c.owned = true;
+      toast(OWNER_SAYS + '”Affärer ä affärer! Den ä din nu. Kör försiktigt.” −' + fmtKr(kr) + '.', 4);
+    }
+  }
+}
+
+/** Skroten's cars for sale as the fleet parks them: in the world, at Plåt-Pelle's price. `typeOf` gives a model's type; a model without one is left out. */
+export function carsForSale(lot: readonly YardCar[], typeOf: (model: string) => CarType | undefined): CarForSale[] {
+  const out: CarForSale[] = [];
+  for (const s of lot) {
+    const type = typeOf(s.model),
+      kr = type && salePrice(type, s.model);
+    if (!type || !kr) continue;
+    out.push({ ...yardToWorld(s.u, s.v), h: yardHeading(s.turn), type, model: s.model, colour: s.colour, kr });
+  }
+  return out;
 }

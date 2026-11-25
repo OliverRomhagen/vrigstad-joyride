@@ -66,11 +66,13 @@ export interface TestHookDeps {
 /** Puts the hook on `window.__joyride`. */
 export function installTestHook(g: TestHookDeps) {
   const { game, view, player, health, cars, vehicleVisuals, bodyMotion, skyDome, street } = g;
-  // installed before the first frame, while every car still stands where it was placed: the smallest gap between two (#409)
+  // installed before the first frame, while every car still stands where it was placed: the smallest gap between two (#409). Skroten's
+  // lot is left out of it: its cars stand side by side on purpose, FRESH_GAP_M apart (src/game/skroten-yard.ts)
   let startGapM = Infinity;
   for (let i = 0; i < cars.length; i++)
     for (let j = i + 1; j < cars.length; j++)
-      startGapM = Math.min(startGapM, Math.hypot(cars[i].x - cars[j].x, cars[i].z - cars[j].z));
+      if (!(cars[i].saleKr && cars[j].saleKr))
+        startGapM = Math.min(startGapM, Math.hypot(cars[i].x - cars[j].x, cars[i].z - cars[j].z));
   function furnitureState() {
     const { layout, draw, ms } = g.furniture;
     const count = (key: 'kind' | 'source', value: string) => layout.placements.filter(p => p[key] === value).length;
@@ -194,6 +196,7 @@ export function installTestHook(g: TestHookDeps) {
         body: game.pcar ? bodyMotion.state(game.pcar) : null,
         wheelbase: (game.pcar || displayCar)?.T.handling.wheelbaseM ?? 0,
         startGapM,
+        forSale: cars.filter(c => c.saleKr).map(c => ({ x: c.x, z: c.z, h: c.h, kr: c.saleKr })), // Skroten's lot
         traffic: cars.filter(c => c.mode === 'ai').map(c => ({ type: c.type, vehicle: vehicleVisuals.state(c) })),
         clouds: skyDome.state(),
         hour: g.day.hour,
