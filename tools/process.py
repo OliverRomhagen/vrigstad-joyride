@@ -414,6 +414,7 @@ BUILDING_SHIFT = {
 RETRACE_TOL_M = 0.1
 if os.environ.get('BUILDING_SHIFT'):   # the unit tests' own table, as JSON, so their small world needn't hold these ways
     BUILDING_SHIFT = {int(i): tuple(v) for i, v in json.loads(os.environ['BUILDING_SHIFT']).items()}
+    print('BUILDING_SHIFT taken from the environment, not from process.py', file=sys.stderr)
 shifted = set()   # BUILDING_SHIFT ways kept as buildings
 buildings, roads, water, waterways, land, labels = [], [], [], [], [], {}
 parking_areas, parking_spaces, crossings, kerbs, trees, furniture = [], [], [], [], [], []
@@ -496,7 +497,7 @@ for e in elements:
     if 'building' in t:
         if ring and e['type'] == 'way' and e['id'] in BUILDING_SHIFT:
             dx, dz, cx, cz = BUILDING_SHIFT[e['id']]
-            assert area(ring) > 0, f'way {e["id"]} has no area: re-check its BUILDING_SHIFT'
+            assert area(ring) > 1, f'way {e["id"]} has no area: re-check its BUILDING_SHIFT'
             mx, mz = area_centroid(ring)
             assert math.hypot(mx - cx, mz - cz) < RETRACE_TOL_M, f'way {e["id"]} was re-traced: re-check its BUILDING_SHIFT'
             ring = [(x + dx, z + dz) for x, z in ring]
