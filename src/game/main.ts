@@ -67,7 +67,7 @@ import { GroundTexture } from './render/ground-texture';
 import { BAR_BLUE, BAR_RED, barGeo, barMat, blob, blobTex, boxGeo, carGeo, carMat, GLASS, geoCache, PROFILES, paintMat, personParts, TRACTOR_CAB } from './render/models';
 import { buildStage, SUN_DIR, setUpRenderer } from './render/stage';
 import { addBridges, addBuildings, addRoadRibbons, addStreetscapeMeshes, addTerrain, addTrees, addWater } from './render/world-meshes';
-import { createToonStyle } from './render/toon-style';
+import { ToonStyle } from './render/toon-style';
 import { type CarType, specFor } from './sim/vehicle-spec';
 import { Tunables } from './sim/tunables';
 import { registerCarTunables } from './sim/car-tunables';
@@ -112,6 +112,8 @@ try { renderer = new THREE.WebGLRenderer({ canvas, antialias: true }); }
 catch { $('fail').hidden = false; $('ui').hidden = true; $('intro').hidden = true; return; }
 const coarse = matchMedia('(pointer: coarse)').matches;
 setUpRenderer(renderer, coarse);
+const { scene, camera, hemi, sun, skyDome } = buildStage(coarse, location.search);
+const maxAnisotropy = renderer.capabilities.getMaxAnisotropy();
 
 // ---------- lab: opt-in experiments, switched on with ?lab=<id>,<id> (src/lab/flags.ts) ----------
 // an experiment's code lives where it belongs, and lab.on('<id>') gates it here or where it's wired in below (#323);
@@ -119,12 +121,9 @@ setUpRenderer(renderer, coarse);
 // After the WebGL check, so none starts behind the fail screen; one that fails to load or start should only warn
 const lab = LabFlags.fromSearch(location.search);
 if (lab.on('hello')) console.info('Lab: hello is on.'); // the smallest gate, for trying the flags
-// ?lab=toon draws the world cel-shaded (#206), with its own, softer shadows. Imported statically, not with import():
-// it sets the shadow map type, which has to happen before buildStage's materials compile, and it only pulls in three
-const toon = lab.on('toon') ? createToonStyle(renderer) : null;
-
-const { scene, camera, hemi, sun, skyDome } = buildStage(coarse, location.search);
-const maxAnisotropy = renderer.capabilities.getMaxAnisotropy();
+// ?lab=toon draws the world cel-shaded (#206). Imported statically, not with import(): the first frame draws through
+// it, and the render modules import its INK_FLAG, so its module is in the page's bundle either way
+const toon = lab.on('toon') ? new ToonStyle(renderer) : null;
 
 // ---------- time of day: 05:00 to 19:00, then a short blend into the next morning (src/game/day-cycle.ts, src/game/render/daylight.ts) ----------
 // ?time=18.5 starts at that hour; ?cycle=off holds it there

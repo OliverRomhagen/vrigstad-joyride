@@ -1,7 +1,6 @@
 import * as THREE from 'three';
 import { expect, test, vi } from 'vitest';
 import {
-  createToonStyle,
   FINISH_LEVELS,
   finishOf,
   INK_FLAG,
@@ -78,10 +77,37 @@ test('light shifts from the fill to the sun while drawing, and back after', () =
   expect([fill.intensity, sun.intensity]).toEqual([2, 3]);
 });
 
-test('the toon style softens the shadows, as in the art direction lab', () => {
-  const renderer = { shadowMap: { type: THREE.PCFShadowMap as THREE.ShadowMapType }, render: () => {} };
-  createToonStyle(renderer as unknown as THREE.WebGLRenderer); // only shadowMap and render are touched
-  expect(renderer.shadowMap.type).toBe(THREE.PCFSoftShadowMap);
+test('a mesh the swap fails on leaves the materials and lights as they were, and fails only once', () => {
+  const scene = new THREE.Scene(),
+    fill = new THREE.HemisphereLight(0xffffff, 0x888888, 2),
+    paint = new THREE.MeshLambertMaterial(),
+    house = new THREE.Mesh(box, paint),
+    broken = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshLambertMaterial()); // no positions to find edges in
+  broken.userData[INK_FLAG] = true;
+  scene.add(fill, house, broken);
+  const renderer = recordingRenderer(scene),
+    style = new ToonStyle(renderer);
+  expect(() => style.render(scene, camera)).toThrow();
+  expect(renderer.render).not.toHaveBeenCalled();
+  expect(house.material).toBe(paint);
+  expect(fill.intensity).toBe(2);
+  style.render(scene, camera); // the mesh is skipped from then on, so the light isn't scaled twice
+  expect(renderer.render).toHaveBeenCalledOnce();
+  expect(fill.intensity).toBe(2);
+});
+
+test("a geometry's ink lines are disposed with it", () => {
+  const scene = new THREE.Scene(),
+    geometry = new THREE.BoxGeometry(),
+    crate = new THREE.Mesh(geometry, new THREE.MeshLambertMaterial());
+  crate.userData[INK_FLAG] = true;
+  scene.add(crate);
+  new ToonStyle({ render: () => {} }).render(scene, camera);
+  const disposed = vi.fn();
+  (crate.children[0] as THREE.LineSegments).geometry.addEventListener('dispose', disposed);
+  geometry.dispose();
+  geometry.dispose();
+  expect(disposed).toHaveBeenCalledOnce();
 });
 
 test('inked objects get crease lines on opaque meshes, once, sharing edges per geometry', () => {
@@ -187,6 +213,33 @@ test('material arrays, instanced trees and custom materials', () => {
   expect(renderer.seen.get(lake)).toBe(water);
   expect(building.material).toEqual([walls, glass]);
   expect(trees.material).toBe(walls);
+});
+
+test('a material swapped into a material array draws as its own toon copy', () => {
+  const scene = new THREE.Scene(),
+    red = new THREE.MeshLambertMaterial({ color: 0xff0000 }),
+    blue = new THREE.MeshLambertMaterial({ color: 0x0000ff }),
+    materials: THREE.Material[] = [new THREE.MeshLambertMaterial(), red],
+    building = new THREE.Mesh(box, materials);
+  scene.add(building);
+  const renderer = recordingRenderer(scene),
+    style = new ToonStyle(renderer);
+  style.render(scene, camera);
+  materials[1] = blue; // repainted in place: the same array
+  style.render(scene, camera);
+  const [, toon] = renderer.seen.get(building) as THREE.MeshToonMaterial[];
+  expect(toon.color.equals(blue.color)).toBe(true);
+});
+
+test('a flat-shaded material stays faceted', () => {
+  const scene = new THREE.Scene(),
+    stone = new THREE.Mesh(box, new THREE.MeshLambertMaterial({ flatShading: true })),
+    wall = new THREE.Mesh(box, new THREE.MeshLambertMaterial());
+  scene.add(stone, wall);
+  const renderer = recordingRenderer(scene);
+  new ToonStyle(renderer).render(scene, camera);
+  expect(renderer.seen.get(stone)).toMatchObject({ flatShading: true });
+  expect(renderer.seen.get(wall)).toMatchObject({ flatShading: false });
 });
 
 test('disposing a game material disposes its toon copy', () => {

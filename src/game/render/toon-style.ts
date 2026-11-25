@@ -69,7 +69,8 @@ export function toonGradient(levels: readonly number[] = TOON_LEVELS): THREE.Dat
  * and disposing its own materials and lights. What a material is made of (maps, vertex colours, sides) is copied
  * once; what the game animates (colour, emissive, opacity) is copied every frame.
  * Ink lines are the one lasting change: meshes under an object flagged with INK_FLAG get a line child, once.
- * Unlit and custom materials (sky, blob shadows, sparks, markers) are drawn as they are.
+ * Unlit and custom materials (sky, blob shadows, sparks, markers) are drawn as they are. A lit material with its own
+ * shader patch (the water) keeps its material too, but is lit by the shifted lights like everything else.
  */
 export class ToonStyle {
   private readonly gradients = new Map<Finish, THREE.DataTexture>();
@@ -101,6 +102,7 @@ export class ToonStyle {
     if (!edges) {
       edges = new THREE.EdgesGeometry(object.geometry, INK_CREASE_DEG);
       this.inkGeometries.set(object.geometry, edges);
+      this.disposeWith(object.geometry, edges);
     }
     const lines = new THREE.LineSegments(edges, this.inkMaterial);
     lines.renderOrder = 10;
@@ -125,8 +127,8 @@ export class ToonStyle {
   }
 
   render(scene: THREE.Scene, camera: THREE.Camera) {
-    scene.traverse(this.swapIn);
     try {
+      scene.traverse(this.swapIn); // inside the try: a throw halfway through the swap is put back too
       this.renderer.render(scene, camera);
     } finally {
       for (let i = 0; i < this.swapped.length; i++) this.swapped[i].material = this.originals[i];
@@ -136,6 +138,16 @@ export class ToonStyle {
       this.lights.length = 0;
       this.intensities.length = 0;
     }
+  }
+
+  /** Frees a geometry's ink lines with it, so line buffers don't build up as meshes come and go. */
+  private disposeWith(source: THREE.BufferGeometry, edges: THREE.BufferGeometry) {
+    const dispose = () => {
+      source.removeEventListener('dispose', dispose);
+      this.inkGeometries.delete(source);
+      edges.dispose();
+    };
+    source.addEventListener('dispose', dispose);
   }
 
   private scaleLight(light: THREE.Light, scale: number) {
@@ -150,7 +162,7 @@ export class ToonStyle {
     if (!toons) {
       toons = material.map(m => this.toonForOne(m));
       this.toonArrays.set(material, toons);
-    } else for (let i = 0; i < material.length; i++) this.toonForOne(material[i]); // keeps them in sync
+    } else for (let i = 0; i < material.length; i++) toons[i] = this.toonForOne(material[i]); // keeps them in sync
     return toons;
   }
 
@@ -197,16 +209,10 @@ export class ToonStyle {
       polygonOffsetUnits: source.polygonOffsetUnits,
       fog: source.fog,
     });
+    // not a MeshToonMaterial property in three's types, but the renderer reads it off any material and the toon shader
+    // has the define: faceted meshes (the shore stones) stay faceted
+    (toon as THREE.MeshToonMaterial & { flatShading: boolean }).flatShading = source.flatShading;
     source.addEventListener('dispose', () => toon.dispose());
     return toon;
   }
-}
-
-/**
- * The toon style for a renderer. Call it before anything is drawn: it switches the shadows to PCFSoftShadowMap, as
- * in the lab, and that only applies to shaders compiled afterwards.
- */
-export function createToonStyle(renderer: THREE.WebGLRenderer): ToonStyle {
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-  return new ToonStyle(renderer);
 }
