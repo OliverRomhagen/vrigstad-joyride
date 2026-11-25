@@ -1,0 +1,1 @@
+import{t as e}from"./DlB75Hc2.js";import"./C8dgaWq0.js";var t=e(`/`).replace(/wiki\/$/,``),n=`${t}map.html`;export{n,t};

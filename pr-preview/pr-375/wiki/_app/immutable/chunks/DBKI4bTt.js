@@ -1,1 +1,0 @@
-import{H as e,L as t,U as n,et as r,vt as i}from"./dT2E63LH.js";function a(a,o){var s=n(),c=r(s);t(c,()=>o.children??i),e(a,s)}export{a as t};
