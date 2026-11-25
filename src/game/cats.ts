@@ -529,6 +529,7 @@ export class CatColony {
     if (k.hop?.onto) k.hop.onto.cat = null;
     if (k.epa?.cat === k) k.epa.cat = null;
     k.ride = k.hop = k.epa = null;
+    if (k.shadow) k.shadow.position.y = BLOB_Y_M; // a hop cut short leaves it held down on the ground below
     k.mesh.parent?.remove(k.mesh);
     k.mesh.visible = true;
   }

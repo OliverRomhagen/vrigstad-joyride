@@ -439,6 +439,21 @@ describe('strays on the EPA flak', () => {
     expect(car.cat).toBeFalsy();
   });
 
+  it('your cat sent home mid-hop puts its blob back under it', () => {
+    const { c, cat, car, player, drive } = epaScene();
+    const shadow = new THREE.Object3D();
+    cat.mesh.add(shadow);
+    cat.shadow = shadow;
+    c.adopt(cat);
+    cat.x = 2; // within hopping reach of the EPA
+    drive.inCar = true;
+    drive.pcar = car;
+    for (let i = 0; i < 60 && !(cat.hop && cat.hop.p >= 0.5); i++) c.update(player, 1 / 30);
+    expect(shadow.position.y).toBeLessThan(0); // held down on the ground mid-hop
+    c.sendHome();
+    expect(shadow.position.y).toBe(0.06);
+  });
+
   it('your cat sent home mid-hop into your car leaves the car free', () => {
     const { c, cat, car, player, drive } = epaScene();
     c.adopt(cat);
