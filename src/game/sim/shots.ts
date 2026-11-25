@@ -15,33 +15,36 @@ export interface Weapon {
   power: number; // how hard a hit lands; 1 is the pickadoll's
   splatM: number; // radius of the mark a hit leaves
   blastM: number; // a hit also reaches everyone within this radius; 0 for none
+  bounces: number; // how many times a shot bounces off the ground, a wall or a car before it stops
 }
 
-/** The pistol ladder from #17, a scatter gun, the village-built bazooka and a minigun. */
+/** The pistol ladder from #17, a scatter gun, the village-built bazooka, a minigun and a legendary. */
 export const WEAPONS = [
   {
     id: 'artpuffra',
     name: 'Ärtpuffra',
     speedMs: 32,
-    coolS: 0.22,
+    coolS: 0.08,
     auto: false,
     pellets: 1,
     spreadRad: 0.012,
     power: 0.25,
     splatM: 0.2,
     blastM: 0,
+    bounces: 0,
   },
   {
     id: 'pickadoll',
     name: 'Pickadoll',
     speedMs: 70,
-    coolS: 0.3,
+    coolS: 0.1,
     auto: false,
     pellets: 1,
     spreadRad: 0.006,
     power: 1,
     splatM: 0.6,
     blastM: 0,
+    bounces: 0,
   },
   {
     id: 'pepprapuffra',
@@ -54,6 +57,7 @@ export const WEAPONS = [
     power: 0.5,
     splatM: 0.45,
     blastM: 0,
+    bounces: 0,
   },
   {
     id: 'hagelbossa',
@@ -66,6 +70,7 @@ export const WEAPONS = [
     power: 0.6,
     splatM: 0.4,
     blastM: 0,
+    bounces: 0,
   },
   {
     id: 'potatiskanon',
@@ -78,6 +83,7 @@ export const WEAPONS = [
     power: 4,
     splatM: 2.2,
     blastM: 4,
+    bounces: 0,
   },
   {
     id: 'minigun',
@@ -90,6 +96,21 @@ export const WEAPONS = [
     power: 0.4,
     splatM: 0.38,
     blastM: 0,
+    bounces: 0,
+  },
+  // the legendary one from #17: the weakest gun, but its peas bounce
+  {
+    id: 'guldartpuffra',
+    name: 'Guldärtpuffran',
+    speedMs: 30,
+    coolS: 0.08,
+    auto: false,
+    pellets: 1,
+    spreadRad: 0.012,
+    power: 0.3,
+    splatM: 0.24,
+    blastM: 0,
+    bounces: 12,
   },
 ] as const satisfies readonly Weapon[];
 
@@ -103,7 +124,10 @@ export type HitFlavour = (typeof HIT_FLAVOURS)[number]['id'];
 
 export const GRAVITY_MS2 = 9.8;
 export const MUZZLE_M = 1.35; // a shot leaves this far above the shooter's feet
-const RANGE_S = 4; // a shot that has hit nothing by then is gone
+const RANGE_S = 4; // a shot that has hit nothing by then is gone; a bounce starts the count again
+const BOUNCE_KEEP = 0.78, // the share of its speed a shot keeps in a bounce
+  BOUNCE_MIN_MS = 4, // slower than this after a bounce, it stops there
+  BOUNCE_CLEAR_M = 0.08; // a bounced shot starts this far off the surface, so it isn't hit again at once
 const STEP_M = 0.25; // a shot is checked every this far along its path, so it can't skip through a person
 const WALL_MAX_M = 9; // houses are taken to be this tall: a shot above it flies over
 const PERSON_TALL_M = 1.85; // a standard person, to the top of the head
@@ -120,6 +144,7 @@ export interface Shot {
   vz: number;
   ageS: number;
   weapon: number; // index in WEAPONS
+  bounced: number; // times it has bounced so far
 }
 
 /** What a shot can hit. */
@@ -147,6 +172,8 @@ export interface ShotHit {
   dz: number;
   /** index in world.people or world.cars for a person or a car, else -1 */
   target: number;
+  /** the shot bounced off and flies on; false when it stopped here */
+  bounced: boolean;
 }
 
 /**
@@ -175,10 +202,31 @@ export function stepShot(s: Shot, dt: number, world: ShotWorld, out: ShotHit): S
     s.z += s.vz * h;
     s.ageS += h;
     const hit = hitAt(s, world, out);
-    if (hit) return hit;
+    if (hit) {
+      hit.bounced = bounce(s, hit);
+      return hit;
+    }
     if (s.ageS > RANGE_S) return 'gone';
   }
   return null;
+}
+
+// off the ground, a wall or a car, if its weapon's shots bounce and it has bounces and speed left: the shot is turned
+// back from the surface and flies on from it. People stop a shot.
+function bounce(s: Shot, hit: ShotHit): boolean {
+  if (hit.kind === 'person' || s.bounced >= WEAPONS[s.weapon].bounces) return false;
+  const into = s.vx * hit.nx + s.vy * hit.ny + s.vz * hit.nz;
+  if (into >= 0) return false; // already leaving the surface
+  s.vx = (s.vx - 2 * into * hit.nx) * BOUNCE_KEEP;
+  s.vy = (s.vy - 2 * into * hit.ny) * BOUNCE_KEEP;
+  s.vz = (s.vz - 2 * into * hit.nz) * BOUNCE_KEEP;
+  if (Math.hypot(s.vx, s.vy, s.vz) < BOUNCE_MIN_MS) return false;
+  s.x = hit.x + hit.nx * BOUNCE_CLEAR_M;
+  s.y = hit.y + hit.ny * BOUNCE_CLEAR_M;
+  s.z = hit.z + hit.nz * BOUNCE_CLEAR_M;
+  s.bounced++;
+  s.ageS = 0;
+  return true;
 }
 
 // what the shot touches where it is now, if anything
@@ -261,9 +309,10 @@ export const newHit = (): ShotHit => ({
   dx: 0,
   dz: -1,
   target: -1,
+  bounced: false,
 });
 
-const _sight: Shot = { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, ageS: 0, weapon: 0 };
+const _sight: Shot = { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, ageS: 0, weapon: 0, bounced: 0 };
 
 /**
  * What a straight line of sight meets: from (x, y, z) along the unit vector (dx, dy, dz), between `fromM` and `toM`

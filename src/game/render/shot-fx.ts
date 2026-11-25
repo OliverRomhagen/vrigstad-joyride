@@ -76,11 +76,13 @@ export class ShotFx {
     }
   }
 
-  // cut out, not blended: crisp edges, and no sorting against the glass and the water
+  // The game keeps colour management off (src/world/three-legacy.ts), so every colour here is converted by hand.
+  // cut out, not blended: crisp edges, and no sorting against the glass and the water. Unlit: in full sun a lit splat
+  // on the ground washed out to pastel, so the colour is drawn as it is (and glows a little at night)
   private splatMaterial(colour?: string) {
-    return new THREE.MeshLambertMaterial({
+    return new THREE.MeshBasicMaterial({
       map: this.texture,
-      color: colour ?? '#ffffff',
+      color: new THREE.Color(colour ?? '#ffffff').convertSRGBToLinear(),
       alphaTest: 0.5,
       depthWrite: false, // splats that overlap are settled by the order they landed in, not by depth, where they would flicker
       side: THREE.DoubleSide,
@@ -96,7 +98,7 @@ export class ShotFx {
     for (let i = 0; i < n; i++) {
       const s = shots[i];
       this.shots.setMatrixAt(i, _m.makeTranslation(s.x, s.y, s.z));
-      this.shots.setColorAt(i, _c.set(colour(s)));
+      this.shots.setColorAt(i, _c.set(colour(s)).convertSRGBToLinear());
     }
     this.shots.count = n;
     this.shots.instanceMatrix.needsUpdate = true;
@@ -119,7 +121,7 @@ export class ShotFx {
     const i = this.next;
     this.next = (this.next + 1) % this.splats.instanceMatrix.count;
     this.splats.setMatrixAt(i, _m);
-    this.splats.setColorAt(i, _c.set(colour));
+    this.splats.setColorAt(i, _c.set(colour).convertSRGBToLinear());
     this.splats.count = Math.min(this.splats.count + 1, this.splats.instanceMatrix.count);
     this.splats.instanceMatrix.needsUpdate = true;
     if (this.splats.instanceColor) this.splats.instanceColor.needsUpdate = true;

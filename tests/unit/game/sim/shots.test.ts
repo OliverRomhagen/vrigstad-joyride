@@ -33,7 +33,7 @@ function world(over: Partial<ShotWorld> = {}): ShotWorld {
 
 // a shot fired north from the origin, level, with no spread
 function shot(weapon = PICKADOLL): Shot {
-  return { x: 0, y: MUZZLE_M, z: 0, ...aimShot(WEAPONS[weapon], 0, 0), ageS: 0, weapon };
+  return { x: 0, y: MUZZLE_M, z: 0, ...aimShot(WEAPONS[weapon], 0, 0), ageS: 0, weapon, bounced: 0 };
 }
 
 function fly(s: Shot, w: ShotWorld) {
@@ -102,7 +102,7 @@ describe('stepShot', () => {
   });
 
   it('is gone when it has hit nothing within its range', () => {
-    const s: Shot = { x: 0, y: 500, z: 0, vx: 0, vy: 0, vz: -1, ageS: 0, weapon: PICKADOLL };
+    const s: Shot = { x: 0, y: 500, z: 0, vx: 0, vy: 0, vz: -1, ageS: 0, weapon: PICKADOLL, bounced: 0 };
     expect(fly(s, world({ collide: () => false }))).toBe('gone');
   });
 
@@ -116,6 +116,37 @@ describe('stepShot', () => {
 describe('the weapons', () => {
   it('has a minigun that fires for as long as the trigger is held', () => {
     expect(WEAPONS.find(w => w.id === 'minigun')).toMatchObject({ auto: true });
+  });
+});
+
+describe('a shot that bounces', () => {
+  const GULD = WEAPONS.findIndex(w => w.id === 'guldartpuffra');
+
+  it('comes back off a wall the way it went in, slower, and flies on', () => {
+    // aimed a little up: a level pea is on the ground before the wall, 20 m away
+    const s: Shot = { ...shot(GULD), ...aimShot(WEAPONS[GULD], 0, 0.2) },
+      hit = fly(s, world());
+    expect(hit).toMatchObject({ kind: 'wall', bounced: true });
+    expect(s.vz).toBeGreaterThan(0); // it flew north, and now south
+    expect(Math.hypot(s.vx, s.vz)).toBeLessThan(WEAPONS[GULD].speedMs);
+    expect(s.bounced).toBe(1);
+  });
+
+  it('stops in the end: after its bounces, or when it has lost its speed', () => {
+    const s = shot(GULD),
+      w = world({ collide: () => false });
+    let hits = 0;
+    for (let hit = fly(s, w); hit !== 'gone' && hit.bounced; hit = fly(s, w)) hits++;
+    expect(hits).toBeGreaterThan(1);
+    expect(hits).toBeLessThanOrEqual(WEAPONS[GULD].bounces);
+  });
+
+  it('is stopped by a person, and a pickadoll shot never bounces', () => {
+    expect(fly(shot(GULD), world({ people: [{ x: 0, z: -10, scale: 1 }] }))).toMatchObject({
+      kind: 'person',
+      bounced: false,
+    });
+    expect(fly(shot(), world())).toMatchObject({ kind: 'wall', bounced: false });
   });
 });
 
@@ -148,7 +179,10 @@ describe('aimAt', () => {
     for (const weapon of [PICKADOLL, WEAPONS.findIndex(w => w.id === 'potatiskanon')]) {
       // a point on the house's south wall, 3 m up and a little to the east
       const { yaw, pitch } = aimAt(WEAPONS[weapon].speedMs, 0, MUZZLE_M, 0, 2, 3, -20, { yaw: 0, pitch: 0 });
-      const hit = fly({ x: 0, y: MUZZLE_M, z: 0, ...aimShot(WEAPONS[weapon], yaw, pitch), ageS: 0, weapon }, world());
+      const hit = fly(
+        { x: 0, y: MUZZLE_M, z: 0, ...aimShot(WEAPONS[weapon], yaw, pitch), ageS: 0, weapon, bounced: 0 },
+        world(),
+      );
       expect(hit).toMatchObject({ kind: 'wall' });
       if (hit !== 'gone') {
         expect(hit.x).toBeCloseTo(2, 0);

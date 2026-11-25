@@ -35,6 +35,7 @@ const ASSIST_CONE_RAD = 0.3,
   ASSIST_CONE_CAR_RAD = 0.6, // wider from a car: both thumbs are busy driving
   ASSIST_RANGE_M = 45;
 const SHOTS_MAX = 256; // in the air at once
+const PULL_KEEP_S = 0.12; // a click this long before the weapon is ready still fires when it is
 const INTRO_AFTER_S = 5.5; // the lab's own line comes this long after Start, once the start line is gone
 // pang: a hit throws people and shoves cars
 const PANG_THROW_MS = 5, // a person leaves at this, plus PANG_THROW_PER_POWER_MS for each point of the weapon's power
@@ -90,7 +91,7 @@ export class Pickadoll {
   private weapon = 1; // the pickadoll
   private flavour = 0;
   private held = false; // the trigger is down
-  private pulled = false; // and hasn't fired yet: a weapon that isn't automatic fires once per pull
+  private pulledS = -1; // s since a pull that hasn't fired yet, -1 for none: a weapon that isn't automatic fires once per pull
   private coolS = 0;
   private clockS = 0;
   private introS = INTRO_AFTER_S;
@@ -102,7 +103,8 @@ export class Pickadoll {
     this.g = g;
     this.world = { groundAt: g.world.groundAt, collide: g.world.collide, people: g.crowd.npcs, cars: [] };
     const pull = () => {
-      this.held = this.pulled = true;
+      this.held = true;
+      this.pulledS = 0;
     };
     const release = () => {
       this.held = false;
@@ -242,18 +244,23 @@ export class Pickadoll {
     const { yaw, pitch } = aimAt(weapon.speedMs, from.x, muzzleY, from.z, tx, ty, tz, this.aim);
     this.crosshair.hidden = !ready;
     this.crosshair.classList.toggle('on', onTarget);
-    if (ready && this.coolS <= 0 && (weapon.auto ? this.held : this.pulled)) {
-      this.pulled = false;
+    // a click a moment before the weapon is ready still fires; an older one is dropped, so clicks never queue up
+    if (this.pulledS >= 0) this.pulledS += dt;
+    if (!ready || this.pulledS > PULL_KEEP_S + dt) this.pulledS = -1;
+    if (ready && this.coolS <= 0 && (weapon.auto ? this.held : this.pulledS >= 0)) {
+      this.pulledS = -1;
       this.coolS = weapon.coolS;
       this.fire(from, car, yaw, pitch);
     }
-    if (!ready) this.pulled = false;
 
     for (let i = this.shots.length - 1; i >= 0; i--) {
       const s = this.shots[i],
         hit = stepShot(s, dt, this.world, this.hit);
       if (!hit) continue;
-      if (hit !== 'gone') this.land(s, hit);
+      if (hit !== 'gone') {
+        this.land(s, hit);
+        if (hit.bounced) continue; // it flies on
+      }
       this.shots[i] = this.shots[this.shots.length - 1];
       this.shots.pop();
     }
@@ -282,6 +289,7 @@ export class Pickadoll {
         vy: v.vy,
         vz: v.vz + cvz,
         ageS: 0,
+        bounced: 0,
         weapon: this.weapon,
         seed: rnd(),
         flavour,
