@@ -1,861 +1,402 @@
-// @ts-nocheck
-// Moved as-is from the single-file prototype (#44); it gets types as it is split into modules.
+// The game page: creates the modules and connects them (#177). What each does is in its own file; the sections below
+// say where.
 import * as THREE from 'three';
-import D from '../../data/vrigstad.json';
-import { BUILDING_CELL_M as BC, BuildingIndex } from '../world/buildings';
-import { ROAD_WIDTH_M as ROAD_W } from '../world/data';
+import { DebugOverlay } from './presentation/debug-overlay';
+import { filmGrain } from './presentation/grain-entry';
+import { cameraMoved } from './presentation/iso800-grain';
+import { AdoptHearts } from './render/adopt-heart';
+import { Banknotes } from './render/banknotes';
+import { DriftFx } from './render/drift-fx';
+import { VEHICLES, type VehicleId, vehicleDefinition } from './render/vehicle-registry';
+import { VehicleVisuals } from './render/vehicle-visuals';
+import { BodyMotion } from './render/body-motion';
+import { CarDamageFx } from './render/car-damage';
+import { CarMeshes, type RenderedCar } from './render/car-meshes';
+import { CameraRig } from './render/camera-rig';
+import { ShoutingDrivers } from './render/shouting-drivers';
+import data from '../../data/vrigstad.json';
+import '../fonts/barlow';
+import { LabFlags } from '../lab/flags';
+import { BridgeIndex } from '../world/bridges';
+import { BuildingIndex } from '../world/buildings';
+import { ROAD_WIDTH_M as ROAD_W, type WorldData } from '../world/data';
 import { Heightfield } from '../world/heightfield';
-import { clamp } from '../world/math';
-import { PaintedBuildingShells } from '../world/mesh/building-shells';
-import { RoadRibbons } from '../world/mesh/road-ribbons';
-import { TerrainMesh } from '../world/mesh/terrain';
-import { pointInPolygon as inPoly, polygonArea as polyArea, segmentDistance as segDist } from '../world/polygon';
+import { clamp, wrap } from '../world/math';
 import { makeRnd } from '../world/random';
-import { nodeKey, ROAD_CELL_M as RC, RoadNetwork } from '../world/roads';
-import { LEGACY_LIGHT } from '../world/three-legacy';
+import { RoadNetwork } from '../world/roads';
+import { buildStreetscape, sidewalkCentreM, StreetscapeIndex } from '../world/streetscape';
+import { STREETSCAPE_OVERRIDES } from '../world/streetscape-overrides';
+import { FURNITURE_OVERRIDES } from '../world/furniture/overrides';
+import { furnitureExclusions, placeFurniture } from '../world/furniture/placement';
+import { StreetFurniture } from '../world/mesh/street-furniture';
+import { classifyStreetscape } from '../world/streetscape-rules';
+import { col } from '../world/three-legacy';
 import { treeSpots } from '../world/trees';
+import { layoutShore } from '../world/shore';
 import { Water } from '../world/water';
+import { WaterBodies } from '../world/water-shapes';
+import { type Car, type CarMode, Fleet, newCar, TURBO_AT } from './cars';
 import { CatColony } from './cats';
+import { Hud } from './hud';
+import { Input } from './input';
+import { Actions, WANTED_LINES } from './actions';
+import { Crowd } from './pedestrians';
+import { ActionPrompt } from './prompt';
+import { Crashes } from './crashes';
+import { GameLoop } from './loop';
+import { installTestHook } from './test-hook';
+import { esc, MenuPlate } from './menu';
+import { KioskCatMenus } from './kiosk-cat-menus';
+import { Pets } from './pets';
+import { Commands } from './commands';
+import { CashRain } from './cash-rain';
+import { Confetti } from './confetti';
+import { DevConsole } from './devconsole';
+import { newWallet, registerWalletCommands } from './economy';
+import { Skroten } from './skroten';
+import { SKROT_CARPORT, SKROT_HALL, yardFloorAt, yardLayout } from './skroten-yard';
+import { SkrotenMeshes } from './render/skroten';
+import { KIOSK, type Place, Places } from './places';
+import { CAT_SCRATCH_HP, canHurt, LOW_HP, hurt, newHealth, registerHealthCommands } from './health';
+import { HOME } from './player';
+import { Wanted } from './police';
+import { Ragdolls } from './ragdolls';
+import { RagdollMeshes } from './render/ragdoll-meshes';
+import { PlaceMeshes } from './render/places';
+import { GroundTexture } from './render/ground-texture';
+import { BAR_BLUE, BAR_RED, barGeo, barMat, blob, blobTex, boxGeo, carGeo, carMat, GLASS, geoCache, PROFILES, paintMat, personParts, TRACTOR_CAB } from './render/models';
+import { buildStage, SUN_DIR, setUpRenderer } from './render/stage';
+import { addBridges, addBuildings, addRoadRibbons, addStreetscapeMeshes, addTerrain, addTrees, addWater } from './render/world-meshes';
+import { type CarType, specFor } from './sim/vehicle-spec';
+import { Tunables } from './sim/tunables';
+import { registerCarTunables } from './sim/car-tunables';
+import { registerTunableCommands } from './sim/tunable-commands';
+import { newGameState, newViewState } from './state';
+import { Trisslott, trisslottSeed } from './trisslott';
+import { makeClock, skyAt, START_H, tickClock } from './day-cycle';
+import { Daylight, type DaylightTargets } from './render/daylight';
 
 (function () {
 'use strict';
-const $ = id => document.getElementById(id);
+// the optional fields are absent from the JSON's inferred type when the snapshot has none, so read it as WorldData
+const D = data as unknown as WorldData;
+// every id asked for is in index.html
+const $ = (id: string) => document.getElementById(id) as HTMLElement;
 const S = D.size, HALF = S / 2;
-const wrap = a => { while (a > Math.PI) a -= 2 * Math.PI; while (a < -Math.PI) a += 2 * Math.PI; return a; };
 // seeded streams: rnd() drives the world and gameplay; side systems get their own stream so they don't shift its rolls
 const rnd = makeRnd(57355);
-const pick = a => a[Math.floor(rnd() * a.length)];
+const pick = <T>(a: readonly T[]) => a[Math.floor(rnd() * a.length)];
+// the shared state that the sections below and the modules read and write (src/game/state.ts)
+const game = newGameState();
+const START_CAM: [yaw: number, pitch: number] = [0.6, 0.34];   // camera yaw and pitch at Start
+const view = newViewState(START_CAM[0], START_CAM[1]);
 
-// ---------- terrain height (matches the mesh triangles exactly) ----------
+// ---------- terrain height (matches the mesh triangles exactly), with the rivers' channels and the lakes' shores cut in ----------
+// the water bodies read the uncut ground for their levels; everything else stands on the cut one (src/world/water-shapes.ts)
 // the world's queries are bound once, so the code below calls them as plain functions
-const heightfield = new Heightfield(D), hAt = heightfield.heightAt.bind(heightfield);
+const waterT0 = performance.now(), baseGround = new Heightfield(D), waterBodies = new WaterBodies(D, baseGround);
+const heightfield = new Heightfield(D, { cut: waterBodies }), hAt = heightfield.heightAt.bind(heightfield);
+// the mapped bridges (#238): their decks follow the ground before the channels are cut, so they span them at the
+// approaches' height; they are the ground within their footprints, carry the road ribbons, and keep reeds out from under them
+const bridges = new BridgeIndex(D, baseGround, heightfield);
+const shore = layoutShore(waterBodies, baseGround, (x, z) => bridges.onDeck(x, z)), waterCutMs = performance.now() - waterT0;
 const _n = new THREE.Vector3();
-const normalAt = (x, z) => heightfield.normalAt(x, z, _n);
+// what a car tilts with: on a bridge deck the uncut ground the deck follows, not the channel bank cut under it
+const normalAt = (x: number, z: number) => (bridges.onDeck(x, z) ? baseGround : heightfield).normalAt(x, z, _n);
 
-// ---------- renderer ----------
-const canvas = $('gl');
-let renderer;
+// ---------- renderer and stage: fog, lights, sky and camera (src/game/render/stage.ts) ----------
+const canvas = $('gl') as HTMLCanvasElement;
+let renderer: THREE.WebGLRenderer;
 try { renderer = new THREE.WebGLRenderer({ canvas, antialias: true }); }
-catch (err) { $('fail').hidden = false; $('ui').hidden = true; $('intro').hidden = true; return; }
+catch { $('fail').hidden = false; $('ui').hidden = true; $('intro').hidden = true; return; }
 const coarse = matchMedia('(pointer: coarse)').matches;
-renderer.setPixelRatio(Math.min(devicePixelRatio || 1, coarse ? 1.5 : 2));
-renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFShadowMap;
-// filmic tone mapping on an sRGB pipeline: colours below are written in sRGB and converted to linear with col()
-renderer.outputColorSpace = THREE.SRGBColorSpace;
-renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1;
-const col = c => new THREE.Color(c).convertSRGBToLinear();
-// three applies fog after the output colour space conversion, so the fog, clear and sky colours stay in sRGB
-const HORIZON = 0xd6e4e6, FOG_PER_M = 0.0007;   // FogExp2 density: about 40% haze at 1 km
-const scene = new THREE.Scene();
-scene.background = new THREE.Color(HORIZON);
-scene.fog = new THREE.FogExp2(HORIZON, FOG_PER_M);
-const camera = new THREE.PerspectiveCamera(58, 1, 0.8, 4200);
-scene.add(new THREE.HemisphereLight(0xffffff, col(0x9aa58a), 0.62 * LEGACY_LIGHT));
-const sun = new THREE.DirectionalLight(col(0xfff4dd), 0.95 * LEGACY_LIGHT);
-const SUN_DIR = new THREE.Vector3(-0.55, 0.75, 0.37).normalize();
-// sky: a gradient dome that follows the camera and fades into the fog at the horizon
-const dome = new THREE.Mesh(new THREE.SphereGeometry(3000, 32, 16), new THREE.ShaderMaterial({
-  side: THREE.BackSide, depthWrite: false, fog: false,
-  uniforms: { top: { value: new THREE.Color(0x5f97c9) }, hor: { value: new THREE.Color(HORIZON) }, sunC: { value: new THREE.Color(0xfff1d0) }, sunDir: { value: SUN_DIR } },
-  vertexShader: 'varying vec3 vDir; void main() { vDir = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
-  fragmentShader: `uniform vec3 top, hor, sunC, sunDir; varying vec3 vDir;
-    void main() { vec3 d = normalize(vDir); vec3 c = mix(hor, top, pow(max(d.y, 0.0), 0.55)); float s = max(dot(d, sunDir), 0.0);
-      gl_FragColor = vec4(c + sunC * (pow(s, 48.0) * 0.6 + pow(s, 6.0) * 0.12), 1.0); }` }));
-dome.renderOrder = -1; scene.add(dome);
-// soft round shadow under cars, people and trees, so nothing looks pasted onto the ground
-const blobTex = (function () { const cv = document.createElement('canvas'); cv.width = cv.height = 64; const x = cv.getContext('2d'), g = x.createRadialGradient(32, 32, 0, 32, 32, 32);
-  g.addColorStop(0, 'rgba(0,0,0,.9)'); g.addColorStop(0.5, 'rgba(0,0,0,.45)'); g.addColorStop(1, 'rgba(0,0,0,0)'); x.fillStyle = g; x.fillRect(0, 0, 64, 64); return cv; })();
-const blobMat = new THREE.MeshBasicMaterial({ color: 0x000000, map: new THREE.CanvasTexture(blobTex), transparent: true, opacity: 0.5, depthWrite: false,
-  polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -6 }), blobGeo = new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2);
-function blob(parent, w, l) { const m = new THREE.Mesh(blobGeo, blobMat); m.scale.set(w, 1, l); m.position.y = 0.06; m.renderOrder = 3; parent.add(m); return m; }
-sun.castShadow = true;
-sun.shadow.mapSize.set(2048, 2048);
-Object.assign(sun.shadow.camera, { left: -110, right: 110, top: 110, bottom: -110, near: 50, far: 800 });
-sun.shadow.bias = -0.0006; sun.shadow.normalBias = 0.05;
-scene.add(sun, sun.target);
+setUpRenderer(renderer, coarse);
+const { scene, camera, hemi, sun, skyDome } = buildStage(coarse, location.search);
+const maxAnisotropy = renderer.capabilities.getMaxAnisotropy();
 
-// ---------- ground texture (also feeds the minimap) ----------
-const CW = (coarse || renderer.capabilities.maxTextureSize < 4096) ? 2048 : 4096, K = CW / S;
-const tex2d = document.createElement('canvas'); tex2d.width = tex2d.height = CW;
-const ctx = tex2d.getContext('2d');
-const P = v => (v + HALF) * K;
-function trace(p, close) { ctx.moveTo(P(p[0]), P(p[1])); for (let i = 2; i < p.length; i += 2) ctx.lineTo(P(p[i]), P(p[i + 1])); if (close) ctx.closePath(); }
-const HOUSE_MIN_M2 = 40, HOUSE_MAX_M2 = 1500;   // footprints in this range count as homes and shops
-(function paint() {
-  const land = ['#a6c083', '#d9cf8b', '#b9b4a8', '#8fc072', '#93b77d', '#6f9a5e', '#7cc163'];
-  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-  ctx.fillStyle = '#9db87a'; ctx.fillRect(0, 0, CW, CW);
-  const fillLand = k => { ctx.fillStyle = land[k]; ctx.beginPath(); for (const l of D.l) if (l.k === k) trace(l.p, true); ctx.fill(); };
-  const GRASS = [0, 3];   // residential and grass/parks; farmland, industrial, cemetery, forest and pitches are filled over the mottling
-  GRASS.forEach(fillLand);
-  // mottled grass: its own generator, so the look doesn't shift the seeded rnd() sequence
-  let ns = 7; const nr = () => (ns = ns * 48271 % 2147483647) / 2147483647;
-  for (let i = 0; i < 2600; i++) { const cx = nr() * CW, cy = nr() * CW, r = (6 + nr() * 24) * K, g = ctx.createRadialGradient(cx, cy, 0, cx, cy, r), c = ['143,176,111', '169,196,134', '120,150,95', '179,201,141'][i % 4];
-    g.addColorStop(0, 'rgba(' + c + ',.35)'); g.addColorStop(1, 'rgba(' + c + ',0)'); ctx.fillStyle = g; ctx.fillRect(cx - r, cy - r, r * 2, r * 2); }
-  ctx.globalAlpha = 0.45;
-  for (const c of ['#86a866', '#b0c88e', '#7c9d5c', '#c3cf98']) { ctx.fillStyle = c; for (let i = 0; i < 40000; i++) ctx.fillRect(nr() * CW, nr() * CW, 1 + nr() * 1.5, 1 + nr() * 1.5); }
-  ctx.globalAlpha = 1;
-  for (let k = 0; k < 7; k++) if (!GRASS.includes(k)) fillLand(k);
-  ctx.strokeStyle = 'rgba(172,199,138,.55)'; ctx.lineWidth = 9 * K; ctx.beginPath();   // mown lawns around homes (not the church, barns or halls)
-  for (const b of D.b) { const a = polyArea(b.p); if (b.k !== 1 && a >= HOUSE_MIN_M2 && a <= HOUSE_MAX_M2) trace(b.p, true); } ctx.stroke();
-  ctx.strokeStyle = '#4f8fb8';
-  for (const w of D.ww) { ctx.lineWidth = (w.k === 0 ? 6 : 2) * K; ctx.beginPath(); trace(w.p); ctx.stroke(); }
-  ctx.fillStyle = '#4f8fb8';
-  for (const w of D.w) { ctx.beginPath(); for (const ring of w) trace(ring, true); ctx.fill('evenodd'); }
-  const fill = ['#55585a', '#5d6062', '#66696a', '#77776f', '#a08c6c', '#b8ab90'];
-  for (const pass of [2, 1, 0]) for (const c of [5, 4, 3, 2, 1, 0]) {   // 2: soft outer edge of the verge, 1: gravel verge, 0: the road
-    if (pass && c > 3) continue;
-    ctx.strokeStyle = pass === 2 ? 'rgba(179,167,140,.35)' : pass ? '#b3a78c' : fill[c]; ctx.lineWidth = (ROAD_W[c] + (pass === 2 ? 4.4 : pass ? 2.4 : 0)) * K;
-    ctx.beginPath(); for (const r of D.r) if (r.c === c) trace(r.p); ctx.stroke();
-  }
-  ctx.shadowColor = 'rgba(0,0,0,.45)'; ctx.shadowBlur = 3 * K;   // contact shadow around every footprint
-  ctx.fillStyle = '#8a8378'; ctx.beginPath(); for (const b of D.b) trace(b.p, true); ctx.fill();
-  ctx.shadowBlur = 0; ctx.shadowColor = 'transparent';
-})();
-const texture = new THREE.CanvasTexture(tex2d);
-texture.anisotropy = renderer.capabilities.getMaxAnisotropy(); texture.colorSpace = THREE.SRGBColorSpace;
+// ---------- lab: opt-in experiments, switched on with ?lab=<id>,<id> (src/lab/flags.ts) ----------
+// an experiment's code lives where it belongs, and lab.on('<id>') gates it here or where it's wired in below (#323);
+// code behind a gate is loaded with import(), so with everything off the game runs exactly as without the lab.
+// After the WebGL check, so none starts behind the fail screen; one that fails to load or start should only warn
+const lab = LabFlags.fromSearch(location.search);
+if (lab.on('hello')) console.info('Lab: hello is on.'); // the smallest gate, for trying the flags
 
-// ---------- terrain ----------
-const SKIRT_DEPTH_M = 1.5;   // the skirt round the edge, and the far ground plane, sit this far below height 0
-const terrain = new TerrainMesh(heightfield, { skirtDepthM: SKIRT_DEPTH_M, material: new THREE.MeshLambertMaterial({ map: texture }),
-  skirtMaterial: new THREE.MeshLambertMaterial({ color: col(0x6f8a58), side: THREE.DoubleSide }) });
-const far = new THREE.Mesh(new THREE.PlaneGeometry(14000, 14000), new THREE.MeshLambertMaterial({ color: col(0x6f9a5e) }));
-far.rotation.x = -Math.PI / 2; far.position.y = -SKIRT_DEPTH_M;
-scene.add(terrain.surface, far, terrain.skirt);
+// ---------- time of day: 05:00 to 19:00, then a short blend into the next morning (src/game/day-cycle.ts, src/game/render/daylight.ts) ----------
+// ?time=18.5 starts at that hour; ?cycle=off holds it there
+const dayQs = new URLSearchParams(location.search);
+const dayClock = makeClock(dayQs.get('time') ? Number(dayQs.get('time')) : START_H), dayRuns = dayQs.get('cycle') !== 'off';
+const daylight = new Daylight({ sun, hemi, sunDir: SUN_DIR, dome: skyDome.mesh.material.uniforms as DaylightTargets['dome'], fog: (scene.fog as THREE.FogExp2).color, background: scene.background as THREE.Color });
+const sky = skyAt(dayClock, { x: 0, y: 1, z: 0, sun: 1, warm: 0, light: 1 });
+daylight.apply(sky);
+// not on the title screen: Start begins at the start hour
+function updateDaylight(dt: number) { if (dayRuns && game.started) { tickClock(dayClock, dt); daylight.apply(skyAt(dayClock, sky)); } waterLook.tick(dt, daylight.sunIntensity > 0 ? sun.intensity / daylight.sunIntensity : 0); }   // no direct sun midway through the night skip: 0, not 0/0
+
+// ---------- ground texture (also feeds the minimap: src/game/render/ground-texture.ts) ----------
+const ground = new GroundTexture(D, { coarse, maxTextureSize: renderer.capabilities.maxTextureSize, maxAnisotropy, shore });
+const { canvas: tex2d, texture, K, P } = ground;
+
+// ---------- terrain (its mesh, and the roads', buildings', streetscape's and trees': src/game/render/world-meshes.ts) ----------
+const terrainMesh = addTerrain(scene, heightfield, texture);
 
 // ---------- roads: crisp ribbons on the terrain + lookup grid + junction graph ----------
-const roads = new RoadNetwork(D, heightfield), { lines: R, grid: roadGrid, junctions: nodes, driveable } = roads;
-const nearestRoad = roads.nearestRoad.bind(roads), groundAt = roads.groundAt.bind(roads);
-const ROAD_COLOURS = [0x4c4f52, 0x55585b, 0x606365, 0x74746d, 0xa08c6c, 0xbcae92] as const, CENTRE_LINE_COLOUR = 0xe9e7da;   // sRGB, by road class
-const asphalt = (() => {   // a light, speckled tile that the road colours tint, so asphalt and gravel aren't flat
-  const cv = document.createElement('canvas'); cv.width = cv.height = 256;
-  const x = cv.getContext('2d') as CanvasRenderingContext2D;
-  let seed = 11; const next = () => (seed = (seed * 48271) % 2147483647) / 2147483647;   // its own generator, so the look doesn't shift the seeded rnd() sequence
-  x.fillStyle = '#f7f7f7'; x.fillRect(0, 0, 256, 256); x.globalAlpha = 0.7;
-  for (const c of ['#ffffff', '#cdcdcd', '#dedede']) { x.fillStyle = c; for (let i = 0; i < 1600; i++) x.fillRect(next() * 256, next() * 256, 1, 1); }
-  const t = new THREE.CanvasTexture(cv); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace;
-  t.anisotropy = renderer.capabilities.getMaxAnisotropy(); return t;
-})();
-const roadRibbons = new RoadRibbons(roads, heightfield, { asphalt, roadColours: ROAD_COLOURS, centreLineColour: CENTRE_LINE_COLOUR });
-scene.add(...roadRibbons.meshes);
+const roads = new RoadNetwork(D, heightfield, bridges), { lines: R } = roads;
+let streetIndex: StreetscapeIndex | null = null;   // the streetscape's walkable height, built further down once the buildings and trees are known
+// what people, cats and cars stand on: the road, or the curb, pavement or parking area above it
+let floorAt: (x: number, z: number) => number | null = () => null;   // Skroten's workshop floor, set once its yard is laid out further down
+const groundAt = (x: number, z: number) => { const f = floorAt(x, z); if (f !== null) return f; const g = roads.groundAt(x, z), s = streetIndex && streetIndex.surfaceAt(x, z); return s !== null && s > g ? s : g; };
+const roadRibbons = addRoadRibbons(scene, roads, heightfield, maxAnisotropy, bridges);
 
-// ---------- water ----------
-const water = new Water(D, roads), inWater = water.inWater.bind(water);
+// ---------- water: wet where the cut ground is under a lake's or river's level; surfaces, reeds and stones ----------
+const water = new Water(D, roads, { bodies: waterBodies, ground: heightfield, decks: bridges }), inWater = water.inWater.bind(water);
+const waterT1 = performance.now(), waterLook = addWater(scene, waterBodies, shore, heightfield, { sunDir: SUN_DIR, horizon: (scene.fog as THREE.FogExp2).color, coarse }), waterMeshMs = performance.now() - waterT1;
 
 // ---------- buildings (painted in Swedish house colours) + collision grid ----------
-const buildings = new BuildingIndex(D), { footprints: bPolys, grid: bGrid } = buildings;
+const buildings = new BuildingIndex(D), { footprints: bPolys } = buildings;
 const addFootprint = buildings.addFootprint.bind(buildings), collide = buildings.collide.bind(buildings);
-// house details: windows (a texture on a skin just outside the walls), white corner boards and eave boards, a dark plinth, and a chimney on gabled roofs
-const WIN_W = 2.6, STOREY = 2.8;   // window spacing and storey height (m)
-const winTex = (function () {
-  const cv = document.createElement('canvas'); cv.width = cv.height = 128; const x = cv.getContext('2d'), u = v => v / WIN_W * 128, y = v => 128 - v / STOREY * 128;
-  x.fillStyle = '#f1efe8'; x.fillRect(u(0.8), y(2.15), u(1), y(0.9) - y(2.15));                    // frame: 1.0 x 1.25 m, sill 0.9 m up
-  x.fillStyle = '#26323a'; x.fillRect(u(0.88), y(2.07), u(0.84), y(0.98) - y(2.07));
-  x.fillStyle = '#f1efe8'; x.fillRect(u(1.265), y(2.07), u(0.07), y(0.98) - y(2.07)); x.fillRect(u(0.88), y(1.75), u(0.84), y(1.68) - y(1.75));   // cross bars
-  const t = new THREE.CanvasTexture(cv); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = renderer.capabilities.getMaxAnisotropy();
-  t.generateMipmaps = false; t.minFilter = THREE.LinearFilter; return t;   // mips average the mostly transparent tile below alphaTest, so windows would vanish at a distance
-})();
-(function () {
-  const c = new THREE.Color(), c2 = new THREE.Color(), c3 = new THREE.Color(), paint = { wall: c, wallFoot: c3, roof: c2 };
-  const wp = [], wu = [], tp = [], tc = [], WHITE = col('#f1efe8'), PLINTH = col('#5b5d5b');
-  const house = ['#9c3a2c', '#9c3a2c', '#a8452f', '#e8e2d2', '#e8e2d2', '#d9b65a', '#cfc8b8', '#8d9a8f'], big = ['#c9c5bb', '#b8b3a6', '#d6d0c0', '#a7aeb0'];
-  // a vertical quad from (x1, z1) to (x2, z2), bottom and top heights at each end
-  const quad = (out, x1, z1, x2, z2, b1, t1, b2, t2) => out.push(x1, b1, z1, x2, b2, z2, x2, t2, z2, x1, b1, z1, x2, t2, z2, x1, t1, z1);
-  const trim = (k, ...q) => { quad(tp, ...q); for (let i = 0; i < 6; i++) tc.push(k.r, k.g, k.b); };
-  const box = (emit, x, z, y0, y1, s, k) => { const h = s / 2, P = [[x - h, z - h], [x + h, z - h], [x + h, z + h], [x - h, z + h]], pos = [];
-    for (let i = 0; i < 4; i++) { const a = P[i], d = P[(i + 1) % 4]; quad(pos, a[0], a[1], d[0], d[1], y0, y1, y0, y1); }
-    pos.push(x - h, y1, z - h, x + h, y1, z + h, x + h, y1, z - h, x - h, y1, z - h, x - h, y1, z + h, x + h, y1, z + h);
-    for (let i = 0; i < pos.length; i += 3) emit(pos[i], pos[i + 1], pos[i + 2], k); };
-  // the colours roll rnd() once or twice per house, in data order, before any tree spot
-  const colours = ({ building: b, area }) => {
-    c.set(b.k === 2 ? '#9c3a2c' : b.k ? '#efece3' : area > 450 ? pick(big) : pick(house)).convertSRGBToLinear();
-    c2.set(b.k === 2 ? '#a8573f' : b.k ? '#3f4447' : rnd() < 0.35 ? '#4d4a48' : '#a8573f').convertSRGBToLinear();
-    c3.copy(c).multiplyScalar(0.62);   // walls darken towards the ground
-    return paint;
-  };
-  const details = ({ building: b, ring, yAt, base, top, hi, area, winding: wind }, emit) => {
-    if (b.k === 1 || area < HOUSE_MIN_M2 || area > HOUSE_MAX_M2) return;   // not the church and its tower, not sheds or barns
-    const m = ring.length, yb = hi + 0.2, yt = top - 0.25, rows = Math.max(1, Math.round((yt - yb) / STOREY));
-    for (let i = 0; i < m; i++) {
-      const a = ring[i], d = ring[(i + 1) % m], ex = d.x - a.x, ez = d.z - a.z, len = Math.hypot(ex, ez); if (len < 0.4) continue;
-      const ux = ex / len, uz = ez / len, ox = wind * uz, oz = -wind * ux, o = (k, s) => [a.x + ox * k - ux * s, a.z + oz * k - uz * s, d.x + ox * k + ux * s, d.z + oz * k + uz * s];
-      const nwin = Math.round(len / WIN_W);   // whole windows only: the tile stretches a little to fit the wall
-      if (len >= 1.6 && nwin > 0) { quad(wp, ...o(0.04, 0), yb, yt, yb, yt); wu.push(0, 0, nwin, 0, nwin, rows, 0, 0, nwin, rows, 0, rows); }
-      trim(PLINTH, ...o(0.05, 0.05), base, hi + 0.45, base, hi + 0.45);
-      trim(WHITE, ...o(0.06, 0.06), yAt(a) - 0.22, yAt(a) + 0.02, yAt(d) - 0.22, yAt(d) + 0.02);
-      for (const [v, p, s] of [[a, ring[(i + m - 1) % m], 1], [d, ring[(i + 2) % m], -1]]) {   // corner boards where the outline turns
-        const fx = s > 0 ? v.x - p.x : p.x - v.x, fz = s > 0 ? v.z - p.z : p.z - v.z, fl = Math.hypot(fx, fz) || 1;
-        if (Math.abs((fx * uz - fz * ux) / fl) < 0.3) continue;
-        const k = Math.min(0.18, len / 2), cx = v.x + ox * 0.07, cz = v.z + oz * 0.07;
-        trim(WHITE, cx, cz, cx + ux * k * s, cz + uz * k * s, base, yAt(v) - 0.2, base, yAt(v) - 0.2);
-      }
-    }
-    if (b.g) { const [ax, az, bx, bz] = b.g, cx = ax + (bx - ax) * 0.3, cz = az + (bz - az) * 0.3, ry = yAt({ x: cx, z: cz });   // chimney, in the shell's own mesh
-      if (inPoly(b.p, cx, cz)) box(emit, cx, cz, ry - 0.6, ry + 0.9, 0.6, hAt(cx, cz) * 7 % 1 < 0.5 ? col('#8a3b2d') : col('#d8d2c4')); }
-  };
-  scene.add(new PaintedBuildingShells(D, heightfield, { material: new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }), colours, extra: details }).mesh);
-  // window skin first, trim after: one mesh, two materials
-  const sg = new THREE.BufferGeometry(), nw = wp.length / 3, nt = tp.length / 3, sc = new Float32Array((nw + nt) * 3).fill(1);
-  sc.set(tc, nw * 3);
-  sg.setAttribute('position', new THREE.Float32BufferAttribute(wp.concat(tp), 3)); sg.setAttribute('uv', new THREE.Float32BufferAttribute(wu.concat(new Array(nt * 2).fill(0)), 2));
-  sg.setAttribute('color', new THREE.BufferAttribute(sc, 3)); sg.computeVertexNormals(); sg.addGroup(0, nw, 0); sg.addGroup(nw, nt, 1);
-  const skin = new THREE.Mesh(sg, [new THREE.MeshLambertMaterial({ map: winTex, alphaTest: 0.5, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -2 }),
-    new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -2 })]);
-  skin.receiveShadow = true; scene.add(skin);
-})();
+buildings.addBarrier(bridges);   // the bridges' railings stop cars, people and cats as walls do (#238)
+const yard = yardLayout(bPolys, hAt); for (const i of yard.passable) buildings.stopColliding(i);   // Skroten (src/game/skroten-yard.ts): its workshop and carport become walls you can drive between
+for (const p of yard.outlines) buildings.addSolid(p);   // its fence, workshop walls, hut, wrecks and heaps, before any car parks; solids, so crowds and cats don't take them for houses
+floorAt = (x, z) => yardFloorAt(yard, x, z, hAt);   // everyone stands on the even floors of Skroten's workshop and carport
+addBuildings(scene, D, heightfield, { rnd, pick, maxAnisotropy, skip: [SKROT_HALL, SKROT_CARPORT] });   // rolls rnd() for the house colours, before any tree spot
 
 // ---------- trees: spruces and birches, each with its own shade, size and lean ----------
 const TREE_M2_PER_TRY = 110, TREE_ROAD_CLEARANCE_M = 2.5;   // one try at a tree per this much of a wood's bounding box; no trunk closer to a road's edge
-(function () {
-  const spots = treeSpots(D, rnd, { squareMetresPerTry: TREE_M2_PER_TRY, minScale: 0.7, scaleSpread: 0.8, roads, roadClearanceM: TREE_ROAD_CLEARANCE_M });
-  // variety comes from a hash of the position, so the trees don't consume rnd() and shift the rest of the world
-  const hash = (x, z, k) => { const v = Math.sin(x * 12.9898 + z * 78.233 + k * 37.719) * 43758.5453; return v - Math.floor(v); };
-  const cone = (r, h, y) => new THREE.ConeGeometry(r, h, 7, 1, true).translate(0, y + h / 2, 0);
-  const KINDS = [
-    { crown: mergeGeo([[cone(3.2, 6.5, 1.4)], [cone(2.5, 5.6, 4.6)], [cone(1.7, 4.6, 7.9)]]), trunk: new THREE.CylinderGeometry(0.22, 0.3, 2.2, 7, 1, true).translate(0, 1.1, 0),
-      bark: '#5a4632', leaf: ['#2f5a36', '#4d7d48'] },                                                           // spruce
-    { crown: mergeGeo([[new THREE.SphereGeometry(2.7, 7, 5).scale(1, 1.25, 1).translate(0, 6.6, 0)], [new THREE.SphereGeometry(1.9, 6, 4).translate(0.9, 8.6, 0.4)],
-      [new THREE.SphereGeometry(1.6, 6, 4).translate(-1, 7.8, -0.6)]]), trunk: new THREE.CylinderGeometry(0.14, 0.2, 6, 6, 1, true).translate(0, 3, 0),
-      bark: '#e9e6dc', leaf: ['#5f8f3e', '#93b55a'] }                                                            // birch
-  ];
-  const BIRCH_SHARE = 0.3, m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), v = new THREE.Vector3(), s = new THREE.Vector3(), c = new THREE.Color();
-  const N = spots.length / 3, kind = i => hash(spots[i * 3], spots[i * 3 + 1], 1) < BIRCH_SHARE ? 1 : 0;
-  // one InstancedMesh per kind and cell, so the main and shadow passes cull whole cells (three bounds an InstancedMesh by its instances)
-  const TREE_CELL_M = 400, cellOf = v => Math.floor((v + HALF) / TREE_CELL_M);
-  KINDS.forEach((kd, ki) => {
-    const cells = new Map(); for (let i = 0; i < N; i++) if (kind(i) === ki) { const k = cellOf(spots[i * 3]) + ',' + cellOf(spots[i * 3 + 1]); let l = cells.get(k); if (!l) cells.set(k, l = []); l.push(i); }
-    const crownMat = new THREE.MeshLambertMaterial({ color: 0xffffff }), trunkMat = new THREE.MeshLambertMaterial({ color: col(kd.bark), side: THREE.DoubleSide });
-    const lo = col(kd.leaf[0]), hiC = col(kd.leaf[1]);
-    for (const idx of cells.values()) {
-      const crown = new THREE.InstancedMesh(kd.crown, crownMat, idx.length), trunk = new THREE.InstancedMesh(kd.trunk, trunkMat, idx.length);
-      idx.forEach((i, j) => { const x = spots[i * 3], z = spots[i * 3 + 1], sc = spots[i * 3 + 2];
-        e.set((hash(x, z, 2) - 0.5) * 0.1, hash(x, z, 3) * 6.283, (hash(x, z, 4) - 0.5) * 0.1); q.setFromEuler(e);
-        m4.compose(v.set(x, hAt(x, z) - 0.3, z), q, s.set(sc, sc * (0.85 + hash(x, z, 5) * 0.3), sc));
-        crown.setMatrixAt(j, m4); trunk.setMatrixAt(j, m4); crown.setColorAt(j, c.copy(lo).lerp(hiC, hash(x, z, 6))); });
-      for (const m of [crown, trunk]) { m.castShadow = true; scene.add(m); } }
-  });
-  // bake a soft shadow under every tree into the ground texture (the minimap shows them too)
-  ctx.globalAlpha = 0.5;
-  for (let i = 0; i < N; i++) { const r = 3.4 * spots[i * 3 + 2] * K; ctx.drawImage(blobTex, P(spots[i * 3]) - r, P(spots[i * 3 + 1]) - r, r * 2, r * 2); }
-  ctx.globalAlpha = 1; texture.needsUpdate = true;
-})();
+const forestSpots = treeSpots(D, rnd, { squareMetresPerTry: TREE_M2_PER_TRY, minScale: 0.7, scaleSpread: 0.8, roads, roadClearanceM: TREE_ROAD_CLEARANCE_M });
 
-// ---------- low-poly models ----------
-// one geometry from [geometry, sRGB colour] parts; the colour attribute is left out when the parts have no colour
-function mergeGeo(parts) {
-  const pos = [], nor = [], cs = [], c = new THREE.Color();
-  for (const [g0, hex] of parts) { const g = g0.index ? g0.toNonIndexed() : g0, a = g.attributes.position.array, n = g.attributes.normal.array;
-    if (hex) c.set(hex).convertSRGBToLinear();
-    for (let i = 0; i < a.length; i += 3) { pos.push(a[i], a[i + 1], a[i + 2]); nor.push(n[i], n[i + 1], n[i + 2]); if (hex) cs.push(c.r, c.g, c.b); } }
-  const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
-  if (cs.length) g.setAttribute('color', new THREE.Float32BufferAttribute(cs, 3)); return g;
-}
-const boxPart = p => [new THREE.BoxGeometry(p[0], p[1], p[2]).translate(p[3], p[4], p[5]), p[6]];   // [sx, sy, sz, x, y, z, colour]
-const boxGeo = parts => mergeGeo(parts.map(boxPart));
-// a side profile (z, y; the front is -z) extruded across the car, with rounded edges
-function extrude(pts, width, bevel) {
-  const s = new THREE.Shape(); s.moveTo(pts[0][0], pts[0][1]); for (const p of pts.slice(1)) s.lineTo(p[0], p[1]);
-  const depth = width - 2 * bevel, g = new THREE.ExtrudeGeometry(s, { depth, bevelEnabled: true, bevelThickness: bevel, bevelSize: bevel * 0.8, bevelSegments: 3, curveSegments: 4 });
-  return g.rotateY(-Math.PI / 2).translate(depth / 2, 0, 0);
-}
-const paintMat = new THREE.MeshLambertMaterial({ vertexColors: true });
-const carMat = new THREE.MeshPhongMaterial({ vertexColors: true, shininess: 60, specular: col(0x555555) });   // glossy paint and glass
-const GLASS = '#26323a', TYRE = '#1c1c1c';
-const lamps = z => [[0.34, 0.16, 0.06, -0.6, 0.72, -z, '#fff6c8'], [0.34, 0.16, 0.06, 0.6, 0.72, -z, '#fff6c8'], [0.34, 0.16, 0.06, -0.6, 0.72, z, '#c8261c'], [0.34, 0.16, 0.06, 0.6, 0.72, z, '#c8261c']];
-const TYPES = {
-  volvo: { name: 'Volvo 240', max: 38, acc: 7, off: 0.5, cols: ['#27406b', '#7a2530', '#c9bd9c', '#e6e4dc', '#2f5a41', '#8a8f93'] },
-  saab: { name: 'Saab 900', max: 42, acc: 8.5, off: 0.5, cols: ['#1d1d1f', '#8c1c1c', '#3d5a80', '#d8d4c8', '#55606a'] },
-  epa: { name: 'EPA-traktor', max: 8.33, acc: 4, off: 0.7, cols: ['#c8372d', '#2a2a2c', '#e8a020', '#3f6b8a'] },
-  traktor: { name: 'Traktor', max: 11, acc: 3.5, off: 1, cols: ['#2f7a3a', '#b5302a', '#2a5fa0'] },
-  polis: { name: 'Polisbil', max: 35, acc: 9, off: 0.6, cols: ['#f1f1ee'] }
-};
-// car bodies: a bevelled side profile, round wheels and big black bumpers
-const VOLVO_BODY = [[-2.4, 0.36], [2.4, 0.36], [2.4, 0.98], [-0.9, 0.98], [-2.4, 0.9]];
-const PROFILES = {
-  volvo: { body: VOLVO_BODY, glass: [[-0.9, 0.97], [2.1, 0.97], [1.95, 1.48], [-0.35, 1.48]], roof: [[-0.35, 1.47], [1.95, 1.47], [1.93, 1.54], [-0.33, 1.54]],
-    w: 1.74, gw: 1.56, wz: [-1.5, 1.45], len: 4.8 },
-  saab: { body: [[-2.3, 0.34], [2.3, 0.34], [2.3, 0.95], [-0.8, 0.92], [-2.3, 0.84]], glass: [[-0.8, 0.91], [2.15, 0.91], [2.1, 1.02], [0.75, 1.4], [-0.3, 1.4]],
-    roof: [[-0.3, 1.39], [0.75, 1.39], [0.73, 1.45], [-0.28, 1.45]], w: 1.7, gw: 1.5, wz: [-1.45, 1.35], len: 4.6 },
-  epa: { body: VOLVO_BODY, glass: [[-1.1, 0.97], [0.4, 0.97], [0.35, 1.5], [-0.7, 1.5]], roof: [[-0.7, 1.49], [0.35, 1.49], [0.33, 1.56], [-0.68, 1.56]],
-    w: 1.74, gw: 1.56, wz: [-1.5, 1.4], len: 4.8,
-    extra: c => [[1.74, 0.3, 0.08, 0, 1.1, 2.3, c], [0.08, 0.3, 1.8, -0.83, 1.1, 1.4, c], [0.08, 0.3, 1.8, 0.83, 1.1, 1.4, c], [0.5, 0.44, 0.05, 0, 1.2, 2.37, '#ff7a1a']] }
-};
-PROFILES.polis = Object.assign({}, PROFILES.volvo, { extra: () => [[1.78, 0.2, 3.2, 0, 0.7, 0.2, '#1f4fa3'], [1.79, 0.08, 3.2, 0, 0.56, 0.2, '#f2d21f']] });
-const tyreGeo = new THREE.CylinderGeometry(0.32, 0.32, 0.24, 16).rotateZ(Math.PI / 2), hubGeo = new THREE.CylinderGeometry(0.17, 0.17, 0.26, 10).rotateZ(Math.PI / 2);
-// tractor: big rear wheels, small front wheels, a sloped bonnet and a glass cab (same size as the old box model)
-function softTractor(c) {
-  const parts = [[extrude([[-2.15, 0.78], [0.35, 0.78], [0.35, 1.52], [-1.85, 1.52], [-2.15, 1.3]], 0.95, 0.08), c],
-    [extrude([[0.05, 1.38], [1.45, 1.38], [1.45, 2.62], [0.25, 2.62], [0.05, 2.3]], 1.35, 0.05), GLASS],
-    [extrude([[-0.02, 2.6], [1.52, 2.6], [1.52, 2.72], [-0.02, 2.72]], 1.45, 0.04), c],
-    [new THREE.CylinderGeometry(0.06, 0.06, 0.7, 8).translate(0.3, 1.85, -1.6), '#333']];
-  for (const x of [-1, 1]) {
-    parts.push([new THREE.CylinderGeometry(0.8, 0.8, 0.5, 20).rotateZ(Math.PI / 2).translate(x * 0.95, 0.8, 0.9), TYRE], [new THREE.CylinderGeometry(0.42, 0.42, 0.52, 12).rotateZ(Math.PI / 2).translate(x * 0.95, 0.8, 0.9), c],
-      [new THREE.CylinderGeometry(0.45, 0.45, 0.32, 16).rotateZ(Math.PI / 2).translate(x * 0.75, 0.45, -1.5), TYRE], [new THREE.CylinderGeometry(0.22, 0.22, 0.34, 10).rotateZ(Math.PI / 2).translate(x * 0.75, 0.45, -1.5), c]);
-  }
-  return mergeGeo(parts);
-}
-function softCar(t, c) {
-  if (t === 'traktor') return softTractor(c);
-  const P = PROFILES[t];
-  const parts = [[extrude(P.body, P.w, 0.07), c], [extrude(P.glass, P.gw, 0.05), GLASS], [extrude(P.roof, P.gw + 0.04, 0.03), c]];
-  for (const x of [-0.8, 0.8]) for (const z of P.wz) parts.push([tyreGeo.clone().translate(x, 0.32, z), TYRE], [hubGeo.clone().translate(x, 0.32, z), '#a3a39e']);
-  for (const z of [-1, 1]) parts.push(boxPart([P.w + 0.1, 0.17, 0.18, 0, 0.5, z * (P.len / 2 + 0.05), '#2b2b2b']));
-  for (const p of [...lamps(P.len / 2 + 0.07), ...(P.extra ? P.extra(c) : [])]) parts.push(boxPart(p));
-  return mergeGeo(parts);
-}
-const geoCache = {};
-const carGeo = (t, c) => geoCache[t + c] || (geoCache[t + c] = softCar(t, c));
-const BAR_BLUE = col(0x2f6bff), BAR_RED = col(0xff3b30);
-const barMat = new THREE.MeshBasicMaterial({ color: BAR_BLUE.clone() }), barGeo = new THREE.BoxGeometry(1.1, 0.16, 0.3);
-function personParts(shirt, pants, hair, arms) {     // arms: separate meshes that swing from the shoulder (two more draw calls, so only the player has them)
-  hair = hair || '#5a4632';
-  const bk = shirt + hair + (arms ? '+arms' : ''), body = geoCache[bk] || (geoCache[bk] = boxGeo([[0.5, 0.65, 0.28, 0, 1.13, 0, shirt], [0.27, 0.27, 0.27, 0, 1.62, 0, '#e2b796'], [0.29, 0.1, 0.29, 0, 1.78, 0, hair]]
-    .concat(arms ? [] : [[0.14, 0.6, 0.16, -0.33, 1.12, 0, shirt], [0.14, 0.6, 0.16, 0.33, 1.12, 0, shirt]])));
-  const leg = geoCache[pants] || (geoCache[pants] = boxGeo([[0.19, 0.8, 0.21, 0, -0.4, 0, pants]]));
-  const g = new THREE.Group(), b = new THREE.Mesh(body, paintMat), l = new THREE.Mesh(leg, paintMat), r = new THREE.Mesh(leg, paintMat);
-  l.position.set(-0.13, 0.8, 0); r.position.set(0.13, 0.8, 0); b.castShadow = l.castShadow = r.castShadow = true;
-  g.add(b, l, r); g.legs = [l, r]; g.blob = blob(g, 0.9, 0.9);
-  if (arms) { const ag = geoCache['arm' + shirt] || (geoCache['arm' + shirt] = boxGeo([[0.14, 0.6, 0.16, 0, -0.3, 0, shirt]]));
-    g.arms = [-0.33, 0.33].map(x => { const a = new THREE.Mesh(ag, paintMat); a.position.set(x, 1.42, 0); a.castShadow = true; g.add(a); return a; }); }
-  return g;
-}
+// ---------- streetscape: curbs, pavements, verges, crossings and parking from OSM, rules where OSM says nothing (#187) ----------
+const DEBUG_STREETSCAPE = new URLSearchParams(location.search).get('debug') === 'streetscape';   // ?debug=streetscape tints by evidence
+const street = (function () {
+  const t0 = performance.now(), sides = classifyStreetscape(D, roads, buildings, STREETSCAPE_OVERRIDES);
+  const layout = buildStreetscape({ data: D, roads, heightfield, buildings, water, sides, avoidTrees: forestSpots.filter((_, i) => i % 3 < 2), treeRoadClearanceM: TREE_ROAD_CLEARANCE_M });
+  streetIndex = new StreetscapeIndex(layout, D, heightfield);
+  const { meshes, tris } = addStreetscapeMeshes(scene, layout, D, heightfield, roadRibbons.materials, DEBUG_STREETSCAPE);
+  return { layout, sides, meshes, tris, ms: performance.now() - t0 };
+})();
+// on a bridge its walkway or inside its railings; else the pavement's centre line where a side has one, else today's walking line on the shoulder
+const walkOffset = (ri: number, side: number) => { const onBridge = bridges.walkOffsetM(ri); if (onBridge !== undefined) return onBridge; const sp = side < 0 ? street.sides[ri].left : street.sides[ri].right; return sidewalkCentreM(sp, R[ri].c) ?? ROAD_W[R[ri].c] / 2 + 0.8; };
+// the bridges' walkways carry on the pavements they meet, and ramp down where there is none (#238)
+bridges.fitWalkways(R, (ri, side) => (side < 0 ? street.sides[ri].left : street.sides[ri].right).sidewalk === 'present');
+const bridgeMeshes = addBridges(scene, bridges, heightfield);
+// the forests' trees and the street trees, with a soft shadow under each baked into the ground texture (the minimap shows them too)
+const allTreeSpots = addTrees(scene, forestSpots, street.layout.trees, heightfield, HALF);   // every tree drawn, [x, z, scale, ...]: the street furniture keeps clear of them too
+ground.bakeTreeShadows(allTreeSpots, blobTex);
 
 // ---------- cars ----------
-const cars = [], police = [];
-const _f = new THREE.Vector3(), _r = new THREE.Vector3(), _m = new THREE.Matrix4();
-function placeCar(c) {
-  const n = normalAt(c.x, c.z);
-  _f.set(Math.sin(c.h), 0, -Math.cos(c.h)); _f.addScaledVector(n, -_f.dot(n)).normalize(); _r.crossVectors(_f, n);
-  _m.makeBasis(_r, n, _f.negate()); c.mesh.quaternion.setFromRotationMatrix(_m);
-  c.mesh.position.set(c.x, groundAt(c.x, c.z) - (c.wet ? 0.55 : 0), c.z);
-  if (c.slip) c.mesh.rotateZ(c.slip * DRIFT_ROLL);           // lean out of the slide
+// the rules (driving, traffic, the parked cars) are in src/game/cars.ts; the meshes in src/game/render/car-meshes.ts
+// the getters are read when they are used, so they can name things declared further down
+const bodyMotion = new BodyMotion();
+const vehicleVisuals = new VehicleVisuals(coarse, (c, body) => bodyMotion.addNode(c as RenderedCar, body));
+const carMeshes = new CarMeshes({ scene, groundAt, normalAt, carGeo, carMat, blob, barGeo, barMat, vehicleVisuals, bodyMotion });
+const placeCar = carMeshes.placeCar.bind(carMeshes);
+// every car has its meshes: addCar attaches them before the Fleet holds it, so the sim's Car is a RenderedCar here
+const meshed = (c: Car) => c as RenderedCar;
+// the car gets its meshes, then the Fleet holds it, so a car in the list always has them; the rolls keep their order: the model (its own stream), then the colour (rnd)
+function addCar(type: CarType, x: number, z: number, h: number, mode: CarMode, assetId: VehicleId | undefined = carMeshes.pickModel(type)) {
+  const T = specFor(type, vehicleDefinition(assetId ?? null));
+  return fleet.add(carMeshes.attach(newCar(type, x, z, h, mode, T, pick(T.cols)), assetId));
 }
-function addCar(type, x, z, h, mode) {
-  const T = TYPES[type], mesh = new THREE.Mesh(carGeo(type, pick(T.cols)), carMat); mesh.castShadow = true; blob(mesh, 2.8, 5.8);
-  if (type === 'polis') { const bar = new THREE.Mesh(barGeo, barMat); bar.position.set(0, 1.62, 0.2); mesh.add(bar); }
-  const c = { type, T, mesh, x, z, h, vh: h, v: 0, slip: 0, drift: 0, charge: 0, yr: 0, spin: 0, loose: 0, flickDir: 0, flickT: 9, boost: 0, mode, wet: false, owned: false, blocked: 0, ghost: 0, stuck: 0, rev: 0, revSteer: 1 };
-  scene.add(mesh); cars.push(c); placeCar(c); return c;
-}
-function removeCar(c) { scene.remove(c.mesh); const i = cars.indexOf(c); if (i >= 0) cars.splice(i, 1); }
-const civType = () => { const r = rnd(); return r < 0.45 ? 'volvo' : r < 0.75 ? 'saab' : r < 0.9 ? 'epa' : 'traktor'; };
-// parked cars along streets and driveways
-(function () {
-  let count = 0;
-  for (let tries = 0; tries < 900 && count < 58; tries++) {
-    const r = pick(R); if (r.c !== 2 && r.c !== 3) continue;
-    const i = 1 + Math.floor(rnd() * (r.p.length - 1)), a = r.p[i - 1], b = r.p[i], L = Math.hypot(b[0] - a[0], b[1] - a[1]); if (L < 6) continue;
-    const t = rnd(), dx = (b[0] - a[0]) / L, dz = (b[1] - a[1]) / L, side = rnd() < 0.5 ? 1 : -1, off = (ROAD_W[r.c] / 2 + 1.35) * side;
-    const o = { x: a[0] + (b[0] - a[0]) * t - dz * off, z: a[1] + (b[1] - a[1]) * t + dx * off };
-    if (Math.abs(o.x) > HALF - 20 || Math.abs(o.z) > HALF - 20) continue;
-    const ox = o.x, oz = o.z; if (collide(o, 2.6) || inWater(ox, oz)) continue;
-    if (cars.some(c => Math.hypot(c.x - ox, c.z - oz) < 7)) continue;
-    addCar(civType(), ox, oz, Math.atan2(dx, -dz) + (side < 0 ? Math.PI : 0), 'parked'); count++;
-  }
-})();
-// traffic that follows the street network
-function advance(c, graph) {
-  const b = c.a + c.dir, l = (graph || nodes).get(nodeKey(R[c.ri].p[b])) || [], opts = []; let straight = null;
-  for (let i = 0; i < l.length; i += 2) { const ri = l[i], vi = l[i + 1], len = R[ri].p.length;
-    for (const dir of [1, -1]) { if (dir > 0 ? vi >= len - 1 : vi <= 0) continue;
-      if (ri === c.ri && vi === b && dir === -c.dir) continue;
-      const o = { ri, a: vi, dir }; opts.push(o); if (ri === c.ri && vi === b && dir === c.dir) straight = o; } }
-  const o = straight && rnd() < 0.65 ? straight : opts.length ? pick(opts) : { ri: c.ri, a: b, dir: -c.dir };
-  c.ri = o.ri; c.a = o.a; c.dir = o.dir;
-}
-function spawnTraffic(farFrom) {
-  for (let t = 0; t < 40; t++) {
-    const ri = pick(driveable), r = R[ri], a = Math.floor(rnd() * (r.p.length - 1)), p = r.p[a];
-    if (farFrom && Math.hypot(p[0] - farFrom.x, p[1] - farFrom.z) < 260) continue;
-    const type = rnd() < 0.5 ? 'volvo' : rnd() < 0.7 ? 'saab' : 'epa', c = addCar(type, p[0], p[1], 0, 'ai');
-    c.ri = ri; c.a = a; c.dir = 1; c.t = 0; c.first = true; return c;
-  }
-}
+function removeCar(c: Car) { carMeshes.detach(meshed(c)); fleet.remove(c); }
+const fleet = new Fleet({ roads, buildings, water, half: HALF, rnd, pick, addCar: (t, x, z, h, m, model) => addCar(t, x, z, h, m, model as VehicleId | undefined), placeCar: c => placeCar(meshed(c)), crash: (c, o, impact) => crashes.crash(c, o, impact),
+  canPark: (x, z) => streetIndex!.surfaceAt(x, z) === null,   // streetIndex is built before parkCars runs
+  rammed: c => { if (c === game.pcar && game.ramCool <= 0) { game.ramCool = 6; wanted.addStar(pickLine(WANTED_LINES) + ' Ramming a police car. That will not help.'); } },
+  get player() { return player; }, get inCar() { return game.inCar; } });
+const cars = fleet.cars as RenderedCar[], drive = fleet.drive.bind(fleet), advance = fleet.advance.bind(fleet), spawnTraffic = fleet.spawnTraffic.bind(fleet), updateTraffic = fleet.updateTraffic.bind(fleet);
+const selectedVehicle = vehicleDefinition(new URLSearchParams(location.search).get('vehicle'));
+// dev mode (#218): on with npm run dev, or with ?dev on any build (preview links too). § or ` then opens the dev console.
+const DEV = import.meta.env.DEV || new URLSearchParams(location.search).has('dev');
+// in dev mode, uncaught errors show over the game (a phone has no devtools), and the console's fps shows frame times (src/game/presentation/debug-overlay.ts)
+const debugOverlay = DEV ? new DebugOverlay($('stage'), __BUILD__) : null;
+const calmMotion = matchMedia('(prefers-reduced-motion: reduce)');
+// gameplay numbers (#217): the cars' are in the registry so far. In dev mode, ?tune=driving.grip:8,vehicle.volvo.top-speed:45
+// overrides them at load, and the console's tune set, get, list and reset change them while you play (#357)
+const tunables = new Tunables();
+registerCarTunables(tunables);
+const tuneParam = new URLSearchParams(location.search).get('tune');
+if (tuneParam && !DEV) console.warn('?tune= works in dev mode only: add ?dev');
+else for (const err of tunables.override(tuneParam ?? '')) console.warn('?tune=', err);
+let displayCar: RenderedCar | null = null;
+function carName(c: Car) { return vehicleVisuals.definition(meshed(c))?.name || c.T.name; }
+// the car parked by Torget, next to where you start; first, so the parked cars and traffic keep clear of it (#409)
+(function () { const o = { x: HOME.x + 7, z: HOME.z + 3 }; collide(o, 2.6); displayCar = addCar(selectedVehicle?.archetype || 'volvo', o.x, o.z, 0.6, 'parked', selectedVehicle?.id ?? 'volvo240'); })();
+fleet.parkCars();   // parked cars along streets and driveways
 for (let i = 0; i < 18; i++) spawnTraffic(null);
-function updateTraffic(c, dt, T) {
-  const r = R[c.ri]; let A = r.p[c.a], B = r.p[c.a + c.dir], L = Math.max(0.01, Math.hypot(B[0] - A[0], B[1] - A[1]));
-  const fx = Math.sin(c.h), fz = -Math.cos(c.h); let blocked = false;
-  if (c.ghost > 0) c.ghost -= dt;
-  else { for (const o of cars) { if (o === c) continue; const dx = o.x - c.x, dz = o.z - c.z, fw = dx * fx + dz * fz;
-      if (fw > 0 && fw < 11 && Math.abs(-dx * fz + dz * fx) < 1.7) { blocked = true; break; } }
-    if (!blocked && !inCar) { const dx = player.x - c.x, dz = player.z - c.z, fw = dx * fx + dz * fz; if (fw > 0 && fw < 9 && Math.abs(-dx * fz + dz * fx) < 1.8) blocked = true; } }
-  c.blocked = blocked ? c.blocked + dt : 0; if (c.blocked > 6) { c.ghost = 3; c.blocked = 0; }
-  const target = blocked ? 0 : Math.min(c.T.max, [13.9, 11, 8.3][R[c.ri].c]);
-  c.v += clamp(target - c.v, -9 * dt, 3 * dt);
-  c.t += c.v * dt;
-  for (let g = 0; c.t >= L && g < 8; g++) { c.t -= L; advance(c); const q = R[c.ri]; A = q.p[c.a]; B = q.p[c.a + c.dir]; L = Math.max(0.01, Math.hypot(B[0] - A[0], B[1] - A[1])); }
-  const dx = (B[0] - A[0]) / L, dz = (B[1] - A[1]) / L, off = R[c.ri].c === 2 ? 1.4 : 2;
-  const tx = A[0] + dx * c.t - dz * off, tz = A[1] + dz * c.t + dx * off, k = c.first ? 1 : Math.min(1, dt * 7);
-  c.x += (tx - c.x) * k; c.z += (tz - c.z) * k;
-  c.h = c.first ? Math.atan2(dx, -dz) : c.h + wrap(Math.atan2(dx, -dz) - c.h) * Math.min(1, dt * 5); c.first = false;
-  placeCar(c);
-}
-// Drifting (player only): brake plus steering at speed breaks the rear loose. The car keeps sliding along its line of
-// travel (c.vh) while the nose (c.h) swings into the turn. Holding a slide charges a mini-turbo, fired when the brake is let go.
-const DRIFT_MIN_V = 7.5, DRIFT_KEEP_V = 4;     // m/s to start a drift, and below which it fizzles out
-const GRIP = 12, DRIFT_GRIP = 1.6;             // 1/s: how fast the line of travel swings round to where the nose points
-const DRIFT_YAW = 1.7, DRIFT_MAX_SLIP = 1.0;   // yaw rate multiplier in a drift; rad, the most the nose can point off the line (no spin-outs)
-const DRIFT_DRAG = 2.5, DRIFT_THR = 0.35;      // m/s² lost to sideways scrub; share of normal acceleration the throttle still gives
-const DRIFT_ROLL = 0.08;                       // rad of body lean per rad of slip
-const RECOVER_S = 0.9, SPIN_DECAY = 2.5;       // s for grip to come back after a drift; 1/s fade of the yaw the nose carries out of it (counter-steer to catch it)
-const FLICK_LOOSE = 0.5, FLICK_S = 0.6;        // s of looseness each quick left-right reversal adds (up to RECOVER_S); s apart that still counts as quick
-const FLICK_SPIN = 1.5;                        // rad/s the rear's swing adds to the new direction at full looseness, on top of the steering
-const CATCH = 0.8;                             // share of the grip that swings the nose back to the path, not the path to the nose, at full opposite lock
-const TURBO_AT = [1, 2.2], TURBO_S = [0.7, 1.3];   // s of sliding for a blue / an orange spark; how long each boost lasts (s)
-const TURBO_ACC = 14, TURBO_TOP = 1.2;         // m/s² of boost; top speed multiplier while boosting
-// shared driving model for the player and the police; only the player passes canDrift
-function drive(c, thr, steer, brake, dt, canDrift) {
-  const road = nearestRoad(c.x, c.z).d < 0.6; c.wet = inWater(c.x, c.z);
-  if (c.drift) { if (!brake || c.v < DRIFT_KEEP_V || c.wet) { const t = c.charge > TURBO_AT[1] ? 1 : c.charge > TURBO_AT[0] ? 0 : -1;
-      if (!brake && t >= 0) c.boost = TURBO_S[t]; c.drift = 0; c.loose = RECOVER_S; c.spin = c.yr; } }
-  else if (canDrift && brake && c.v > DRIFT_MIN_V && Math.abs(steer) > 0.3 && !c.wet) { c.drift = Math.sign(steer); c.charge = 0; }
-  if (canDrift) { c.flickT += dt; if (Math.abs(steer) > 0.5) { const d = Math.sign(steer);   // throwing the weight left-right-left breaks the rear loose a little more each time
-      if (d !== c.flickDir && c.flickT < FLICK_S && c.v > DRIFT_MIN_V && !c.drift && !c.wet) { c.loose = Math.min(RECOVER_S, c.loose + FLICK_LOOSE); c.spin = d * (Math.abs(c.yr) + FLICK_SPIN * c.loose / RECOVER_S); }
-      c.flickDir = d; c.flickT = 0; } }
-  if (c.drift) { c.v += ((thr > 0 ? c.T.acc * DRIFT_THR * thr : 0) - DRIFT_DRAG) * dt; if (Math.abs(c.slip) > 0.25) c.charge += dt; }
-  else if (brake) c.v -= Math.sign(c.v) * Math.min(Math.abs(c.v), 26 * dt);
-  else if (c.loose > 0 && Math.abs(c.slip) > 0.1 && c.v > DRIFT_KEEP_V) c.v += ((thr > 0 ? c.T.acc * DRIFT_THR * thr : 0) - DRIFT_DRAG) * dt;   // still scrubbing sideways, or tapping Space would beat holding it
-  else if (thr > 0) c.v += (c.v < 0 ? 20 : c.T.acc * (1 - 0.6 * Math.max(0, c.v) / c.T.max)) * thr * dt;
-  else if (thr < 0) c.v += (c.v > 0.5 ? 20 : c.T.acc * 0.6) * thr * dt;
-  else c.v -= Math.sign(c.v) * Math.min(Math.abs(c.v), (road ? 2 : 5) * dt);
-  if (c.boost > 0) { c.boost -= dt; if (c.wet) c.boost = 0; }   // water puts the turbo out
-  const max = (c.wet ? 2.5 : c.T.max * (road ? 1 : c.T.off)) * (c.boost > 0 ? TURBO_TOP : 1);
-  if (c.boost > 0 && c.v < max) c.v = Math.min(max, c.v + TURBO_ACC * dt);   // only up to the limit, so it never cancels the overspeed braking below
-  if (c.v > max) c.v = Math.max(max, c.v - 14 * dt);
-  if (c.v < -7) c.v = -7;
-  const s = c.drift ? c.drift * (0.6 + 0.4 * steer * c.drift) : steer;   // in a drift the nose always swings the drift's way; steering tightens or widens it
-  c.yr = c.v / 2.7 * Math.tan(s * 0.6 / (1 + Math.abs(c.v) / 11)) * (c.drift ? DRIFT_YAW : 1);   // rad/s
-  if (c.loose > 0) { c.loose -= dt; c.spin *= Math.exp(-SPIN_DECAY * dt); } else c.spin = 0;
-  c.h = wrap(c.h + (c.yr * c.spin > 0 ? (Math.abs(c.yr) > Math.abs(c.spin) ? c.yr : c.spin) : c.yr + c.spin) * dt);   // steering into the slide doesn't stack on the carried yaw; counter-steer cancels it
-  const grip = c.drift ? DRIFT_GRIP : c.loose > 0 ? DRIFT_GRIP + (GRIP - DRIFT_GRIP) * (1 - c.loose / RECOVER_S) ** 2 : GRIP;   // rear grip comes back slowly, so the slide carries on
-  if (canDrift) { const fix = wrap(c.h - c.vh) * Math.min(1, grip * dt), k = c.loose > 0 ? CATCH * Math.max(0, -steer * Math.sign(c.slip)) : 0;
-    c.h = wrap(c.h - fix * k); c.vh = wrap(c.vh + fix * (1 - k));   // counter-steer catches the slide: the car straightens along its line instead of carving on
-    c.slip = clamp(wrap(c.h - c.vh), -DRIFT_MAX_SLIP, DRIFT_MAX_SLIP); c.vh = wrap(c.h - c.slip); }
-  else { c.vh = c.h; c.slip = 0; }
-  c.x += Math.sin(c.vh) * c.v * dt; c.z -= Math.cos(c.vh) * c.v * dt;
-  c.x = clamp(c.x, -HALF + 4, HALF - 4); c.z = clamp(c.z, -HALF + 4, HALF - 4);
-  if (collide(c, 1.5)) { c.v *= Math.pow(0.02, dt); c.drift = c.loose = c.boost = 0; }     // a wall ends the slide, and the turbo with it (charged or firing)
-  for (const o of cars) { if (o === c) continue; const dx = c.x - o.x, dz = c.z - o.z, d = Math.hypot(dx, dz);
-    if (d < 2.7 && d > 0.01) { const push = 2.7 - d; c.x += dx / d * push; c.z += dz / d * push;
-      if (Math.abs(c.v) > 6 && c === pcar && o.mode === 'police' && ramCool <= 0) { ramCool = 6; addStar('Ramming a police car. That will not help.'); }
-      if (o.mode === 'parked' || o.mode === 'idle') { o.x -= dx / d * push * 0.4; o.z -= dz / d * push * 0.4; placeCar(o); }
-      c.v *= Math.pow(0.05, dt); } }
-  placeCar(c);
-}
 
-// ---------- drift effects: sparks at the rear wheels (white, then blue and orange as the turbo charges), a flame while boosting, skid marks ----------
-const SKID_N = 600, SKID_STEP_M = 0.6, SPARK_COLS = [col(0xfff2c0), col(0x4aa8ff), col(0xff8a1f)];
-const fxRnd = makeRnd(4242);                   // own stream: the flicker rolls every frame
-const sparkMat = new THREE.MeshBasicMaterial({ color: SPARK_COLS[0].clone() }), sparkGeo = new THREE.OctahedronGeometry(0.22);
-const sparks = [0, 1].map(() => { const m = new THREE.Mesh(sparkGeo, sparkMat); m.visible = false; scene.add(m); return m; });
-const flame = new THREE.Mesh(new THREE.ConeGeometry(0.22, 1, 8).rotateX(Math.PI / 2).translate(0, 0, 0.5), new THREE.MeshBasicMaterial({ color: col(0xffb347) }));
-flame.visible = false; scene.add(flame);
-const skids = new THREE.InstancedMesh(new THREE.PlaneGeometry(0.24, 1).rotateX(-Math.PI / 2).translate(0, 0, 0.5),
-  new THREE.MeshBasicMaterial({ color: 0x111111, transparent: true, opacity: 0.4, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 }), SKID_N);
-skids.count = 0; skids.frustumCulled = false; scene.add(skids);
-const skidLast = [null, null], _sp = new THREE.Vector3(), _sq = new THREE.Quaternion(), _ss = new THREE.Vector3(), _up = new THREE.Vector3(0, 1, 0);
-let skidI = 0;
-function laySkid(w, x, z) {
-  const l = skidLast[w]; if (!l) { skidLast[w] = { x, z }; return; }
-  const dx = x - l.x, dz = z - l.z, L = Math.hypot(dx, dz); if (L < SKID_STEP_M) return;
-  _sp.set(l.x, groundAt(l.x, l.z) + 0.02, l.z); _sq.setFromAxisAngle(_up, Math.atan2(dx, dz)); _ss.set(1, 1, L);
-  skids.setMatrixAt(skidI, _m.compose(_sp, _sq, _ss)); skidI = (skidI + 1) % SKID_N; skids.count = Math.min(SKID_N, skids.count + 1);   // a ring: the oldest mark goes first
-  skids.instanceMatrix.needsUpdate = true; l.x = x; l.z = z;
-}
-function updateDriftFx(c) {
-  const on = !!c && !c.wet && (c.drift !== 0 || Math.abs(c.slip) > 0.3), back = c ? (c.type === 'traktor' ? 1.5 : PROFILES[c.type].wz[1]) : 0;
-  const fx = c ? Math.sin(c.h) : 0, fz = c ? -Math.cos(c.h) : 0;
-  for (let w = 0; w < 2; w++) {
-    if (!on) { sparks[w].visible = false; skidLast[w] = null; continue; }
-    const side = w ? 0.8 : -0.8, x = c.x - fx * back - fz * side, z = c.z - fz * back + fx * side;
-    laySkid(w, x, z);
-    const sx = x - fx * 0.45, sz = z - fz * 0.45;                 // just behind the tyre, which would hide it
-    const tier = c.charge > TURBO_AT[1] ? 2 : c.charge > TURBO_AT[0] ? 1 : 0, sp = sparks[w];
-    sp.visible = c.drift !== 0; sp.position.set(sx, groundAt(sx, sz) + 0.18, sz); sp.scale.setScalar((0.6 + tier * 0.35) * (0.6 + fxRnd() * 0.8));
-    sp.rotation.set(fxRnd() * 3, fxRnd() * 3, 0); if (!w) sparkMat.color.copy(SPARK_COLS[tier]);
-  }
-  flame.visible = !!c && c.boost > 0;
-  if (flame.visible) { const x = c.x - fx * (back + 0.95), z = c.z - fz * (back + 0.95);
-    flame.position.set(x, groundAt(x, z) + 0.45, z); flame.rotation.set(0, -c.h, 0); flame.scale.set(1, 1, 0.7 + fxRnd() * 0.8); }   // the cone's tip is local +Z, which -h turns to the car's rear
-}
+// ---------- camera: follows you, shakes on a crash; the sun and sky follow it (src/game/render/camera-rig.ts) ----------
+// the getters are read every frame, so they can name things declared further down
+const dmgRnd = makeRnd(808);                   // own stream for the shake and the smoke puffs, which roll every frame
+const cameraRig = new CameraRig({ camera, sun, skyDome, game, view, get dragging() { return input.dragging; }, get inside() { return !!places.inside; },
+  groundAt, heightAt: hAt, rnd: dmgRnd, calmMotion, get sunIntensity() { return daylight.sunIntensity; } });
+const shake = cameraRig.shake;
+// the ISO 800 grain (src/game/presentation/) runs faster while the camera moves; it compares with the camera last frame
+const grainPos = new THREE.Vector3(), grainQuat = new THREE.Quaternion();
+function placeCamera(T: { x: number; z: number }, now: number, dt: number) { cameraRig.update(T, now, dt);
+  if (filmGrain.enabled) { filmGrain.setMoving(cameraMoved(grainPos, grainQuat, camera.position, camera.quaternion)); grainPos.copy(camera.position); grainQuat.copy(camera.quaternion); } }
 
-// ---------- pedestrians: walk the streets and footpaths, now and then stop for a while ----------
-// Each 50 m cell gets a density (0..1): how built-up the cell and its neighbours are, plus a boost near named places.
-// NPC_ZONES hand-tunes spots on top of that (m multiplies the density within r metres).
-const NPC_ZONES = [{ x: -8.9, z: 30.1, r: 80, m: 1.8 }];       // Torget
-const NPC_MAX = coarse ? 26 : 42, NPC_NEAR = 200, NPC_FAR = 250;
-const dens = new Map(), densAt = (x, z) => dens.get(Math.floor(x / RC) + ',' + Math.floor(z / RC)) || 0;
-(function () {
-  const cnt = new Map();
-  for (const b of bPolys) { const k = Math.floor((b.x0 + b.x1) / 2 / RC) + ',' + Math.floor((b.z0 + b.z1) / 2 / RC); cnt.set(k, (cnt.get(k) || 0) + 1); }
-  for (const k of roadGrid.keys()) { const [x, z] = k.split(',').map(Number), cx = (x + 0.5) * RC, cz = (z + 0.5) * RC; let n = 0;
-    for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) n += cnt.get((x + i) + ',' + (z + j)) || 0;
-    let d = 0.04 + Math.min(1, n / 16) * 0.66;
-    for (const l of D.labels) if (l.k === 'p') d += 0.45 * Math.max(0, 1 - Math.hypot(l.x - cx, l.z - cz) / 110);
-    for (const o of NPC_ZONES) if (Math.hypot(o.x - cx, o.z - cz) < o.r) d *= o.m;
-    dens.set(k, Math.min(1, d)); }
-})();
-// every road and path is walkable: junction graph plus a grid of segments to spawn on
-const wnodes = new Map(), walkGrid = new Map();
-R.forEach((r, ri) => r.p.forEach((p, vi) => { const k = nodeKey(p); let l = wnodes.get(k); if (!l) wnodes.set(k, l = []); l.push(ri, vi);
-  if (!vi) return; const q = r.p[vi - 1], g = Math.floor((p[0] + q[0]) / 2 / RC) + ',' + Math.floor((p[1] + q[1]) / 2 / RC);
-  let s = walkGrid.get(g); if (!s) walkGrid.set(g, s = []); s.push(ri, vi - 1); }));
-const npcs = [], SHIRTS = ['#b5463a', '#3f6b8a', '#5c7a4a', '#7a5a8a', '#d8d4c8', '#2b3a55', '#c9862f', '#8c1c1c', '#4d4a48'],
-  PANTS = ['#3a3a3a', '#2b3a55', '#4a4038', '#5a6470', '#23272b'], HAIR = ['#5a4632', '#2a2320', '#c9a560', '#8a8580', '#7a3f22'];
-const segLen = (r, a, b) => Math.max(0.01, Math.hypot(r.p[b][0] - r.p[a][0], r.p[b][1] - r.p[a][1]));
-function spawnNpc(T, minD) {
-  for (let t = 0; t < 12; t++) {
-    const ang = rnd() * Math.PI * 2, dist = minD + rnd() * (NPC_NEAR - minD), x = T.x + Math.sin(ang) * dist, z = T.z + Math.cos(ang) * dist;
-    const l = walkGrid.get(Math.floor(x / RC) + ',' + Math.floor(z / RC)); if (!l || rnd() > densAt(x, z)) continue;
-    const i = Math.floor(rnd() * l.length / 2) * 2, ri = l[i], fwd = rnd() < 0.5, a = fwd ? l[i + 1] : l[i + 1] + 1;
-    const n = { ri, a, dir: fwd ? 1 : -1, t: rnd() * segLen(R[ri], l[i + 1], l[i + 1] + 1), side: rnd() < 0.5 ? 1 : -1, speed: 1.05 + rnd() * 0.45,
-      idle: rnd() < 0.3 ? 2 + rnd() * 10 : 0, walk: 10 + rnd() * 30, x: 0, z: 0, h: 0, phase: 0, first: true, mesh: personParts(pick(SHIRTS), pick(PANTS), pick(HAIR)) };
-    n.mesh.scale.setScalar(0.92 + rnd() * 0.14); scene.add(n.mesh); npcs.push(n); return;
-  }
-}
-function updateNpc(n, dt) {
-  const d0 = densAt(n.x, n.z);
-  if (n.idle > 0) { n.idle -= dt; n.phase *= 0.8; }
-  else { n.t += n.speed * dt; n.phase += n.speed * dt * 2.1; n.walk -= dt;
-    if (n.walk <= 0) { n.idle = 3 + rnd() * 12; n.walk = 12 + rnd() * 40 * (1.2 - d0); } }    // busy places: shorter walks between stops
-  let r = R[n.ri], L = segLen(r, n.a, n.a + n.dir);
-  for (let g = 0; n.t >= L && g < 8; g++) { n.t -= L; advance(n, wnodes); r = R[n.ri]; L = segLen(r, n.a, n.a + n.dir); }
-  const A = r.p[n.a], B = r.p[n.a + n.dir], dx = (B[0] - A[0]) / L, dz = (B[1] - A[1]) / L, off = r.c <= 3 ? (ROAD_W[r.c] / 2 + 0.8) * n.side : 0;
-  const k = n.first ? 1 : Math.min(1, dt * 4);
-  n.x += (A[0] + dx * n.t - dz * off - n.x) * k; n.z += (A[1] + dz * n.t + dx * off - n.z) * k;
-  for (const c of cars) { const ex = n.x - c.x, ez = n.z - c.z, d = Math.hypot(ex, ez); if (d < 2.3 && d > 0.01) { n.x += ex / d * (2.3 - d); n.z += ez / d * (2.3 - d); } }
-  if (!inCar) { const ex = n.x - player.x, ez = n.z - player.z, d = Math.hypot(ex, ez); if (d < 0.75 && d > 0.01) { n.x += ex / d * (0.75 - d); n.z += ez / d * (0.75 - d); } }
-  collide(n, 0.35);
-  // walking: face the way along the path; standing around: glance at the player when they come close
-  const ph = Math.hypot(player.x - n.x, player.z - n.z), want = n.idle > 0 ? (ph < 8 ? Math.atan2(player.x - n.x, -(player.z - n.z)) : n.h) : Math.atan2(dx, -dz);
-  n.h = n.first ? want : wrap(n.h + wrap(want - n.h) * Math.min(1, dt * 5)); n.first = false;
-  const sw = Math.sin(n.phase) * 0.6; n.mesh.legs[0].rotation.x = sw; n.mesh.legs[1].rotation.x = -sw;
-  n.mesh.position.set(n.x, groundAt(n.x, n.z), n.z); n.mesh.rotation.y = -n.h;
-}
-// keep a crowd around the player that matches how busy the area is; refill everything after a teleport
-let npcT = 0, npcX = 1e9, npcZ = 1e9;
-function updateNpcs(T, dt) {
-  npcT -= dt;
-  if (npcT <= 0) { npcT = 0.4;
-    const jump = Math.hypot(T.x - npcX, T.z - npcZ) > 120; npcX = T.x; npcZ = T.z;
-    for (let i = npcs.length - 1; i >= 0; i--) if (Math.hypot(npcs[i].x - T.x, npcs[i].z - T.z) > NPC_FAR) { scene.remove(npcs[i].mesh); npcs.splice(i, 1); }
-    let s = 0; for (let i = -4; i <= 4; i++) for (let j = -4; j <= 4; j++) s += densAt(T.x + i * RC, T.z + j * RC);
-    const want = Math.round(NPC_MAX * Math.min(1, s / 81 * 2.2));
-    for (let i = 0; i < (jump ? 60 : 3) && npcs.length < want; i++) spawnNpc(T, jump ? 0 : 90);
-  }
-  for (const n of npcs) updateNpc(n, dt);
-}
+// ---------- drift effects: sparks at the rear wheels, a flame while boosting, skid marks (src/game/render/drift-fx.ts) ----------
+const driftFx = new DriftFx({ scene, groundAt, profiles: PROFILES, turboAt: TURBO_AT }), updateDriftFx = driftFx.update.bind(driftFx);
+
+// ---------- pedestrians: walk the streets and footpaths, now and then stop for a while (src/game/pedestrians.ts) ----------
+// the getters are read when the pedestrians use them, so they can name things declared further down
+const crowd = new Crowd({ scene, roads, buildings, labels: D.labels, groundAt, walkOffset, coarse, rnd, pick, personParts, advance, cars,
+  get player() { return player; }, get inCar() { return game.inCar; }, get hit() { return ragdolls.hit; } });
+const updateNpcs = crowd.update.bind(crowd);
+
+// ---------- ragdolls: people your car knocks over fly and tumble, get up again, and cost you a star (src/game/ragdolls.ts) ----------
+// the getter and the star are read when someone is hit, so they can name things declared further down
+const ragdolls = new Ragdolls({ world: { groundAt, collide }, crowd, coarse, get pcar() { return game.inCar ? game.pcar : null; },
+  knockedDown: () => wanted.addStar('”Aj! Va gör du?!” Someone calls the police.') });
+const ragdollMeshes = new RagdollMeshes({ scene, groundAt, geoCache, boxGeo, paintMat, ragdolls });
 
 // ---------- cats: lounge by the house walls, wander a little, bolt from cars and running feet (src/game/cats.ts) ----------
-const TREAT_BAG = 3, TREAT_MAX = 9;                                  // treats per bag from the kiosk; how many fit in your pockets
-let treats = 0;
 // the getters are read when the cats use them, so they can name things declared further down
-const colony = new CatColony({ scene, buildings, inWater, groundAt, half: HALF, coarse, wrap, geoCache, boxGeo, paintMat, blob, cars, toast,
-  get player() { return player; }, get keys() { return keys; }, get joy() { return joy; }, get kmenu() { return kmenu; }, get inCar() { return inCar; }, get inside() { return inside; },
-  useTreat() { if (treats <= 0) return false; treats--; drawTreats(); return true; } });
-const { cats } = colony, updateCats = colony.update.bind(colony), catFirst = colony.catFirst.bind(colony), nearCat = colony.nearest.bind(colony), petCat = colony.pet.bind(colony);
-function buyTreats() {
-  if (treats >= TREAT_MAX) { toast('”Nämen, du har ju fickera fulla redan!”', 2.5); return; }
-  treats = Math.min(TREAT_MAX, treats + TREAT_BAG); drawTreats(); toast('”En påse kattgodis, varsågo. Kattera ä tôcka i dä.”', 4);
-}
-function drawTreats() { const el = $('treats'); el.hidden = false; el.textContent = 'Cat treats: ' + treats; }
+const colony = new CatColony({ scene, buildings, inWater, groundAt, half: HALF, coarse, geoCache, boxGeo, paintMat, blob, cars, toast,
+  get player() { return player; }, get keys() { return keys; }, get joy() { return joy; }, get kmenu() { return kmenu; }, get inCar() { return game.inCar; }, get pcar() { return game.pcar && meshed(game.pcar); }, get inside() { return places.inside; },
+  useTreat() { if (game.treats <= 0) return false; game.treats--; drawTreats(); return true; }, scratched() { hurtPlayer(CAT_SCRATCH_HP); } });
+const { cats } = colony, updateCats = colony.update.bind(colony), catFirst = colony.catFirst.bind(colony), nearCat = colony.nearest.bind(colony);
 
-// ---------- player ----------
-const HOME = { x: -8.9, z: 30.1 };
-const JUMP_V = 5.2, GRAVITY = 16;   // m/s up at take-off, m/s² down: a hop about 0.85 m high that lasts 0.65 s
+// ---------- crashes: what you say and feel when you hit something, and what you say to your cat riding along (src/game/crashes.ts) ----------
+const crashes = new Crashes({ game, colony, get viewer() { return camera.position; }, toast, hurtPlayer, get god() { return health.god; }, shake });
+const { pickLine } = crashes;
+
+// ---------- your pets: P (or the Pets button) calls them, sends them home or sets them free (src/game/pets.ts) ----------
+// small menus on one plate (the kiosk, a cat, your pets, naming a pet: src/game/menu.ts)
+// the getters are read when the plate uses them, so they can name things declared further down
+const kmenu = $('kmenu');
+const menuPlate = new MenuPlate({ kmenu, canvas, doc: document, get input() { return input; }, get hasPets() { return !!colony.owned; }, openPets: () => openPets(), toast,
+  get consoleRelock() { return devcon.freedCursor; }, closeConsole: () => devcon.close() });
+const { openMenu, closeMenu, openRename, menuKey } = menuPlate;
+// the getter is read when a pet is called, so it can name things declared further down
+const pets = new Pets({ colony, button: $('pets'), openMenu, openRename, esc, get caller() { return game.inCar && game.pcar ? game.pcar : player; }, get inCar() { return game.inCar; }, showHeart: cat => showHeart(cat) });
+const openPets = pets.open.bind(pets), drawPets = pets.draw.bind(pets);
+// ---------- the adopt heart: hovers over a stray once it has had a good pet, a third fuller for each good pet in a row (src/game/render/adopt-heart.ts) ----------
+const adoptHearts = new AdoptHearts({ scene, colony }), showHeart = adoptHearts.show.bind(adoptHearts), drawHearts = adoptHearts.update.bind(adoptHearts);
+$('pets').addEventListener('click', () => { if (menuPlate.menuKind === 'pets') closeMenu(); else openPets(); canvas.focus(); });   // from the kiosk or adopt menu too
+function drawTreats() { const el = $('treats'); el.hidden = false; el.textContent = 'Cat treats: ' + game.treats; }
+
+// ---------- player (walking, jumping, getting out: src/game/player.ts) ----------
 const player = { x: HOME.x, z: HOME.z, y: 0, vy: 0, h: 0, speed: 0, phase: 0, mesh: personParts('#f2c230', '#2b3a55', null, true) };   // y: metres above the ground
 collide(player, 0.6); scene.add(player.mesh);
-let jumpQ = false;   // set by a fresh Space / Jump press on foot, used up by the next frame: a held key (braking, then getting out) never jumps, a tap between frames isn't lost
-const jumpOk = () => !inCar && !inside && bigT <= 0;   // queue only where a jump can start, so a press inside a safehouse or under Gripen! can't fire as it ends
-(function () { const o = { x: player.x + 7, z: player.z + 3 }; collide(o, 2.6); addCar('volvo', o.x, o.z, 0.6, 'parked'); })();
-let inCar = false, pcar = null, stars = 0, evade = 0, bustT = 0, stolen = 0, ramCool = 0, started = false, bigT = 0;
-let inside = null, hideT = 0, trissT = 0, trissN = 0, trissWon = 0, trissLast = '';
-const peds = [], trissLog = [];
+const jumpOk = () => !game.inCar && !places.inside && game.titleCardT <= 0;   // queue only where a jump can start, so a press inside a safehouse or under Gripen! can't fire as it ends
+const health = newHealth();
+const wallet = newWallet();
+const wanted = new Wanted({ roads, rnd, pick, removeCar, drive, toast,
+  spawnCar: (x, z, h) => addCar('polis', x, z, h, 'police'),
+  drawStars: () => drawStars(), showEvading: on => $('stars').classList.toggle('evading', on), caught: n => busted(n),
+  get lyingLow() { return !!places.inside; }, get god() { return health.god; } });
 
 // ---------- places: safehouses (lie low to lose your stars) and the trisslott kiosk ----------
-const SAFE_SECS = 60, SAFE_SEEN = 60;            // seconds inside to lose the stars; police closer than this (m) see you go in
-const places = [];
-const ringGeo = new THREE.RingGeometry(0.95, 1.25, 28); ringGeo.rotateX(-Math.PI / 2);
-const gemGeo = new THREE.OctahedronGeometry(0.42);
-function addPlace(kind, name, x, z, color) {
-  const mat = new THREE.MeshBasicMaterial({ color: col(color), transparent: true, opacity: 0.8, side: THREE.DoubleSide, depthWrite: false });
-  const y = hAt(x, z), ring = new THREE.Mesh(ringGeo, mat), gem = new THREE.Mesh(gemGeo, mat);
-  ring.position.set(x, y + 0.4, z); gem.position.set(x, y + 3.6, z); scene.add(ring, gem);
-  const p = { kind, name, x, z, gem }; places.push(p); return p;
-}
-// safehouses: real houses picked by a point inside their footprint; the door goes on the wall that faces the nearest street
-[['Gästgivaregatan', 39.9, -43.6], ['Göransgatan', -379.5, -157.8], ['Sigfridsvägen', 340.2, 271.5]].forEach(s => {
-  const b = bPolys.find(b => inPoly(b.p, s[1], s[2])); if (!b) return;
-  const p = b.p; let best = 1e9, door = null;
-  for (let i = 0, j = p.length - 2; i < p.length; j = i, i += 2) {
-    const ex = p[i] - p[j], ez = p[i + 1] - p[j + 1], len = Math.hypot(ex, ez); if (len < 2.5) continue;
-    const mx = (p[i] + p[j]) / 2, mz = (p[i + 1] + p[j + 1]) / 2; let d = 1e9;
-    for (const r of R) if (r.c < 4) for (let k = 1; k < r.p.length; k++) d = Math.min(d, segDist(mx, mz, r.p[k - 1][0], r.p[k - 1][1], r.p[k][0], r.p[k][1]));
-    if (d < best) { best = d; let nx = ez / len, nz = -ex / len; if (inPoly(p, mx + nx * 0.5, mz + nz * 0.5)) { nx = -nx; nz = -nz; } door = { mx, mz, nx, nz }; }
-  }
-  if (!door) return;
-  const m = new THREE.Mesh(boxGeo([[1.4, 2.35, 0.1, 0, 1.17, 0, '#f2c230'], [1.05, 2.1, 0.16, 0, 1.05, 0, '#2f5a41'], [0.1, 0.1, 0.24, 0.36, 1.05, 0, '#f2c230']]), paintMat);
-  m.position.set(door.mx, hAt(door.mx, door.mz), door.mz); m.rotation.y = Math.atan2(door.nx, door.nz); scene.add(m);
-  addPlace('safe', s[0], door.mx + door.nx * 1.4, door.mz + door.nz * 1.4, 0x4fd27a);
-});
-// kiosk on Torget, counter facing south towards the spawn point; it collides like a building
-(function () {
-  const x = -13, z = 25.5, y = hAt(x, z), W = '#e8e2d2', RED = '#c8372d';
-  const m = new THREE.Mesh(boxGeo([[3, 2.3, 2.2, 0, 1.15, 0, W], [3.5, 0.18, 3, 0, 2.39, 0.25, RED], [1.9, 0.9, 0.06, 0, 1.55, 1.1, GLASS], [2.2, 0.1, 0.5, 0, 1.05, 1.3, '#7a4a3c'],
-    [2.4, 0.5, 0.1, 0, 2.75, 1.2, '#f2c230'], [0.5, 2.3, 0.04, -1.25, 1.15, 1.1, RED], [0.5, 2.3, 0.04, 1.25, 1.15, 1.1, RED]]), paintMat);
-  m.position.set(x, y, z); m.castShadow = true; scene.add(m);
-  addFootprint([x - 1.5, z - 1.1, x + 1.5, z - 1.1, x + 1.5, z + 1.1, x - 1.5, z + 1.1]);
-  addPlace('kiosk', 'Kiosken', x, z + 2.3, 0xf2c230);
+// the getter is read when a place uses it, so it follows the stars
+const places = new Places({ footprints: bPolys, roads: R, police: wanted.police, lieLow: secs => wanted.lieLow(secs), toast, get stars() { return wanted.stars; } });
+const placeMeshes = new PlaceMeshes({ scene, places, heightAt: hAt, col, boxGeo, paintMat, glass: GLASS });
+const skrotenMeshes = new SkrotenMeshes({ scene, heightAt: hAt, layout: yard, coarse, carModel: d => vehicleVisuals.template(d) });
+addFootprint([KIOSK.x - KIOSK.w / 2, KIOSK.z - KIOSK.d / 2, KIOSK.x + KIOSK.w / 2, KIOSK.z - KIOSK.d / 2, KIOSK.x + KIOSK.w / 2, KIOSK.z + KIOSK.d / 2, KIOSK.x - KIOSK.w / 2, KIOSK.z + KIOSK.d / 2]);   // the kiosk collides like a building
+// ---------- street furniture: lamps, benches and bins from OSM, rules where OSM says nothing (#144, src/world/furniture/) ----------
+// after the trees, the streetscape and the places, which it keeps clear of; the kiosk is a footprint by now
+const DEBUG_FURNITURE = new URLSearchParams(location.search).get('debug') === 'furniture';   // ?debug=furniture tints by source
+const furniture = (function () {
+  const t0 = performance.now(), exclusions = furnitureExclusions(places.list);
+  const layout = placeFurniture({ data: D, roads, heightfield, buildings, water, trees: allTreeSpots, street: street.layout, exclusions, overrides: FURNITURE_OVERRIDES });
+  const draw = new StreetFurniture(layout.placements, { groundAt, debugSources: DEBUG_FURNITURE }); scene.add(...draw.meshes);
+  return { layout, draw, ms: performance.now() - t0 };
 })();
-// one lucka, several things to buy: E opens a small menu (1 / 2 / Esc, or tap), walking away closes it
-const kmenu = $('kmenu');
-let relock = false;                                             // the kiosk menu needs the cursor: free it while the menu is open, and take it back after
-function openKiosk() { kmenu.hidden = false; relock = locked(); if (relock) document.exitPointerLock(); }
-function closeKiosk() { kmenu.hidden = true; if (relock) { relock = false; lockMouse(); } }
-function kioskPick(k) { closeKiosk(); if (k === 'triss') scratch(); else if (k === 'treats') buyTreats(); }
-kmenu.addEventListener('click', e => { const b = e.target.closest('button'); if (b) { kioskPick(b.dataset.k); canvas.focus(); } });
-function nearPlace() { if (inCar) return null; for (const p of places) if (Math.hypot(p.x - player.x, p.z - player.z) < 2.2) return p; return null; }
-function enterHouse(p) {
-  if (police.some(c => Math.hypot(c.x - p.x, c.z - p.z) < SAFE_SEEN)) { toast('The police can see you. Get further ahead of them before you go inside.', 3); return; }
-  inside = p; hideT = SAFE_SECS; player.x = p.x; player.z = p.z; player.speed = 0; player.mesh.visible = false;
-  toast(stars ? 'You slip inside. Stay put for a minute and the police give up.' : 'Home sweet home. Nobody is looking for you.');
-}
-function leaveHouse() { if (!inside) return; inside = null; player.mesh.visible = true; $('hide').hidden = true; if (stars) toast('Back outside, and still wanted.', 2.5); }
-// trisslott: one win in a thousand, and the temper gets worse with every losing ticket scratched inside the window
-const TRISS_ODDS = 0.001, TRISS_WINDOW = 25;
-const TRISS = [
-  ['Järnspikar, ingen vinst denna gång heller.', 'Äsch, dä va la synd.', 'Nä, inget dänna gången heller.', 'Jaja, nästa lott så.'],
-  ['Men jösses, inte ett öre!', 'Tusan hakar, en nitlott te!', 'Dä här börjar likna lurendrejeri.', 'Sjutton gubbar, nu får dä la ändå vända!'],
-  ['Fy sjutton, dä ä ju rena fusket!', 'Jäklar anamma, inte en krona!', 'Va i hela fridens namn hôller di på mä?!', 'Nu blir ja förbannad på riktigt!'],
-  ['Fan i helvete, dä ä ju bedrägeri!', 'Satans jävla skitlotter!', 'Jävlar i min lilla låda, ge mej en te!', 'Helvetes förbannade skrapskit, ja ska anmäla hela Svenska Spel!']
-];
-function scratch() { if (trissT > 0) return; trissT = 0.9; toast('Skrap, skrap, skrap…', 1.5); }
-function trissResult() {
-  trissN++;
-  if (Math.random() < TRISS_ODDS) { trissWon++; trissLog.length = 0; toast('”VINST! Dä va som sjutton, ja visste väl dä!” You won on a trisslott. That never happens.', 8, 'win'); }
-  else {
-    const t = performance.now() / 1000; while (trissLog.length && t - trissLog[0] > TRISS_WINDOW) trissLog.shift(); trissLog.push(t);
-    const n = trissLog.length, lines = TRISS[n < 3 ? 0 : n < 5 ? 1 : n < 8 ? 2 : 3]; let line = trissN === 1 ? lines[0] : pick(lines);
-    while (line === trissLast) line = pick(lines);
-    trissLast = line; toast('”' + line + '”', 3);
-  }
-  const el = $('triss'); el.hidden = false; el.textContent = 'Trisslotter: ' + trissN + ' · Vinster: ' + trissWon;
-}
-let camYaw = 0.6, camPitch = 0.34, lookOff = 0, lookIdle = 9;
+// the kiosk's and the cats' menus (src/game/kiosk-cat-menus.ts); trisslott is declared further down
+const kioskCatMenus = new KioskCatMenus({ game, player, colony, health, openMenu, esc, toast, scratch: () => trisslott.scratch(), wallet, nearPlace, showHeart, drawPets, drawTreats, drawHealth });
+const { openKiosk, petCat, openOwnCat } = kioskCatMenus;
+// Skroten, which buys the car you drive in (src/game/skroten.ts); actions is declared further down
+const atSkroten = () => !!(game.inCar && game.pcar && places.skrotenAt(game.pcar.x, game.pcar.z));
+const skroten = new Skroten({ game, player, get stars() { return wanted.stars; }, openMenu, toast, atSkroten,
+  modelId: c => vehicleVisuals.definition(meshed(c))?.id, wallet,
+  sellCar: c => { colony.hopOffCar(meshed(c)); actions.getOut(); removeCar(c); fleet.replaceSold(c, player); } });
+function nearPlace() { return game.inCar ? null : places.nearest(player.x, player.z); }
+function enterHouse(p: Place) { if (places.enter(p, player)) player.mesh.visible = false; }
+function leaveHouse() { if (!places.leave()) return; player.mesh.visible = true; $('hide').hidden = true; }
+// ---------- car damage: cracked glass, and smoke from the bonnet (src/game/render/car-damage.ts) ----------
+const carDamage = new CarDamageFx({ scene, groundAt, profiles: PROFILES, tractorCab: TRACTOR_CAB, vehicleVisuals, rnd: dmgRnd, cars }), updateSmoke = carDamage.updateSmoke.bind(carDamage);
 
-// ---------- input ----------
-const keys = {}, joy = { x: 0, y: 0, on: false };
-const KEYMAP = { KeyW: 'up', ArrowUp: 'up', KeyS: 'down', ArrowDown: 'down', KeyA: 'left', ArrowLeft: 'left', KeyD: 'right', ArrowRight: 'right', Space: 'brake', ShiftLeft: 'run', ShiftRight: 'run' };
-addEventListener('keydown', e => { if (!started) return; const k = KEYMAP[e.code];
-  if (!kmenu.hidden && /^(Digit|Numpad)[12]$|^Escape$/.test(e.code)) { kioskPick(e.code === 'Escape' ? 'no' : e.code.endsWith('1') ? 'triss' : 'treats'); return; }
-  if (kmenu.contains(e.target)) return;                       // Enter / Space on a focused menu button: let the button's own click handle it
-  if (k) { keys[k] = true; e.preventDefault(); if (k === 'brake' && !e.repeat && jumpOk()) jumpQ = true; } else if ((e.code === 'KeyE' || e.code === 'KeyF' || e.code === 'Enter') && !e.repeat) action(); else if (e.code === 'KeyR') respawn(); });
-addEventListener('keyup', e => { const k = KEYMAP[e.code]; if (k) keys[k] = false; });
-addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
-// mouse look: a click on the game locks the pointer, and the mouse then turns the camera with no button held. Esc frees the cursor.
-// Touch, and a mouse in a browser that refuses the lock, turn the camera by dragging.
-const LOCK_K = 0.4;   // a locked mouse turns this much less per pixel than a drag: it travels much further
-const LOCK_MAX_PX = 120;   // per event; some browsers report a huge movementX right after locking, which would spin the camera
-const locked = () => document.pointerLockElement === canvas;
-function lockMouse() { if (locked() || !canvas.requestPointerLock) return; try { const p = canvas.requestPointerLock(); if (p && p.catch) p.catch(() => {}); } catch (err) {} }
-document.addEventListener('pointerlockchange', () => { if (!locked() && started && kmenu.hidden && toastT <= 0) toast('Click the game to look around with the mouse again.', 3); });
-let dragId = null, lx = 0, ly = 0;
-canvas.addEventListener('pointerdown', e => { dragId = e.pointerId; lx = e.clientX; ly = e.clientY; try { canvas.setPointerCapture(e.pointerId); } catch (err) {}
-  if (started && kmenu.hidden && e.pointerType === 'mouse') lockMouse(); });   // the kiosk menu needs the cursor
-// Only the mouse takes the locked path: a finger dragging while the mouse holds the lock keeps drag speed. The locked mouse's
-// clientX is frozen, so it must not touch lx / ly, or the next touch move jumps.
-canvas.addEventListener('pointermove', e => { const lk = locked() && e.pointerType === 'mouse'; if (!lk && e.pointerId !== dragId) return;
-  let dx, dy;
-  if (lk) { dx = clamp(e.movementX, -LOCK_MAX_PX, LOCK_MAX_PX) * LOCK_K; dy = clamp(e.movementY, -LOCK_MAX_PX, LOCK_MAX_PX) * LOCK_K; }
-  else { dx = e.clientX - lx; dy = e.clientY - ly; lx = e.clientX; ly = e.clientY; }
-  if (inCar) { lookOff = wrap(lookOff + dx * 0.006); lookIdle = 0; } else camYaw = wrap(camYaw + dx * 0.006);
-  camPitch = clamp(camPitch + dy * 0.004, 0.06, 1.25); });
-const endDrag = e => { if (e.pointerId === dragId) dragId = null; };
-canvas.addEventListener('pointerup', endDrag); canvas.addEventListener('pointercancel', endDrag);
-const joyEl = $('joy'), knob = $('knob'); let joyId = null;
-function joyMove(e) { const r = joyEl.getBoundingClientRect(); let dx = e.clientX - r.left - r.width / 2, dy = e.clientY - r.top - r.height / 2;
-  const L = Math.hypot(dx, dy), m = 44; if (L > m) { dx *= m / L; dy *= m / L; }
-  joy.x = dx / m; joy.y = -dy / m; knob.style.transform = 'translate(' + dx + 'px,' + dy + 'px)'; }
-joyEl.addEventListener('pointerdown', e => { joyId = e.pointerId; joy.on = true; try { joyEl.setPointerCapture(e.pointerId); } catch (err) {} joyMove(e); });
-joyEl.addEventListener('pointermove', e => { if (e.pointerId === joyId) joyMove(e); });
-const joyEnd = e => { if (e.pointerId !== joyId) return; joyId = null; joy.on = false; joy.x = joy.y = 0; knob.style.transform = ''; };
-joyEl.addEventListener('pointerup', joyEnd); joyEl.addEventListener('pointercancel', joyEnd);
-const hold = (el, k) => { el.addEventListener('pointerdown', e => { keys[k] = true; e.preventDefault(); });
-  for (const t of ['pointerup', 'pointercancel', 'pointerleave']) el.addEventListener(t, () => { keys[k] = false; }); };
-hold($('p-brake'), 'brake'); $('p-brake').addEventListener('pointerdown', () => { if (jumpOk()) jumpQ = true; });
-$('p-act').addEventListener('click', () => action());
-function showTouch() { $('joy').hidden = false; $('pad').hidden = false; }
-if (coarse) showTouch(); else addEventListener('touchstart', showTouch, { once: true, passive: true });
+// ---------- låt det regna: L throws money in the air (src/game/cash-rain.ts) as banknotes that flutter down (src/game/render/banknotes.ts) ----------
+const cashRnd = makeRnd(1000);                               // own stream for the banknotes and the confetti, so they don't shift the world's rolls
+const banknotes = new Banknotes({ scene, doc: document, groundAt, rnd: cashRnd, calmMotion });
+const cashRain = new CashRain({ game, player, wallet, toast, pickLine, dropNotes: around => banknotes.drop(around), stare: (around, m, secs) => crowd.stare(around, m, secs),
+  sayLater: line => loop.sayLater(line), get lyingLow() { return !!places.inside; }, get menuOpen() { return !kmenu.hidden; }, get calmMotion() { return calmMotion.matches; } });
 
-// ---------- HUD ----------
-let toastT = 0;
-function toast(msg, secs, cls) { const t = $('toast'); t.textContent = msg; t.className = 'plate' + (cls ? ' ' + cls : ''); t.hidden = false; t.style.opacity = 1; toastT = secs || 3.5; }
-function drawStars() { const el = $('stars'); el.textContent = '';
-  for (let i = 0; i < 3; i++) { const s = document.createElement(i < stars ? 'b' : 'span'); s.textContent = '★'; el.appendChild(s); } }
+// trisslott (src/game/trisslott.ts): the vinstplan is in economy.ts; a win fires confetti (src/game/confetti.ts), and a big one rains banknotes too
+const confetti = new Confetti($('confetti') as HTMLCanvasElement, cashRnd, calmMotion);
+// the tickets' own stream, so scratching doesn't shift the world's rolls; ?seed=n pins it
+const trissRnd = makeRnd(trisslottSeed(new URLSearchParams(location.search), () => crypto.getRandomValues(new Uint32Array(1))[0]));
+const trisslott = new Trisslott({ random: trissRnd, pick, now: () => performance.now() / 1000, toast, wallet,
+  celebrate: kr => confetti.celebrate(kr), rainNotes: () => cashRain.showerWin(),
+  draw: (bought, won, wonKr) => hud.drawTrisslott(bought, won, wonKr) });
+// ?at=x,z[,yaw[,pitch]] starts the player there, looking that way: for review screenshots, such as the streetscape's (#187)
+(function () { const at = (new URLSearchParams(location.search).get('at') || '').split(',').map(Number);
+  if (at.length < 2 || !at.every(Number.isFinite)) return; player.x = at[0]; player.z = at[1]; if (at.length > 2) view.camYaw = START_CAM[0] = at[2]; if (at.length > 3) START_CAM[1] = clamp(at[3], 0.06, 1.25); })();
+
+// ---------- dev console: § in dev mode; each module registers its own commands (src/game/devconsole.ts) ----------
+// before the input, whose pointerdown listener has to come after the console's
+const commands = new Commands();
+const devcon = new DevConsole({ root: $('devcon'), commands, canvas, doc: document, get input() { return input; }, get enabled() { return DEV; }, get menuOpen() { return !kmenu.hidden; } });
+registerWalletCommands(commands, wallet);
+pets.registerCommands(commands);
+wanted.registerCommands(commands);
+registerHealthCommands(commands, health, drawHealth);
+registerTunableCommands(commands, tunables);
+// go <place>: you, or the car you drive, straight there, out of any safehouse first
+places.registerCommands(commands, (x, z, name) => { leaveHouse(); const c = game.inCar ? game.pcar : null;
+  if (c) { c.x = x; c.z = z; c.v = c.slip = c.drift = c.boost = 0; c.vh = c.h; placeCar(meshed(c)); } else { player.x = x; player.z = z; player.speed = 0; } return 'You are at ' + name + '.'; });
+fleet.registerCommands(commands, new Map<string, CarType>([...VEHICLES.filter(v => !v.police).map(v => [v.id, v.archetype] as const), ['traktor', 'traktor']]), () => view.camYaw, c => carName(c));   // car <model>
+debugOverlay?.registerCommands(commands);
+
+// ---------- input: keys, mouse look and the touch controls (src/game/input.ts) ----------
+// the dev console sees each key first, then the menus (src/game/menu.ts)
+const input = new Input({ win: window, doc: document, canvas, $, coarse, menuKey: e => devcon.takeKey(e) || menuKey(e),
+  get started() { return game.started; }, get menuOpen() { return !kmenu.hidden; },
+  action: () => action(), respawn: () => respawn(), rain: () => cashRain.makeItRain(),
+  jump: () => { if (jumpOk()) game.jumpQ = true; },   // queue only where a jump can start (see jumpOk)
+  look: (dx, dy) => { if (game.inCar) { view.lookOff = wrap(view.lookOff + dx * 0.006); view.lookIdle = 0; } else view.camYaw = wrap(view.camYaw + dx * 0.006);
+    view.camPitch = clamp(view.camPitch + dy * 0.004, 0.06, 1.25); },
+  zoom: f => cameraRig.zoom(f),
+  lockLost: () => { if (!devcon.isOpen && !hud.toasting) toast('Click the game to look around with the mouse again.', 3); } });
+const { keys, joy } = input;
+
+// ---------- HUD (src/game/hud.ts) ----------
+// the getters are read when the HUD uses them, so they can name things that change during play
+const hud = new Hud({ $, ground: tex2d, P, K, paintBridgeRoads: ctx => ground.paintBridgeRoads(ctx), roads, labels: D.labels, cars, places: places.list,
+  get stars() { return wanted.stars; }, get pcar() { return game.pcar; }, get blink() { return loop.blink; }, get kr() { return wallet.kr; } });
+// a declaration, not a bound const, so the sections above can pass toast on before the HUD exists
+function toast(msg: string, secs?: number, cls?: string) { hud.toast(msg, secs, cls); }
+const drawStars = hud.drawStars.bind(hud), drawMini = hud.drawMini.bind(hud), updateSign = hud.updateSign.bind(hud);
 drawStars();
-const mini = $('mini'), mctx = mini.getContext('2d'), MW = mini.width, MR = 210;
-function drawMini(T) {
-  mctx.fillStyle = '#6f9a5e'; mctx.fillRect(0, 0, MW, MW);
-  mctx.drawImage(tex2d, P(T.x - MR), P(T.z - MR), MR * 2 * K, MR * 2 * K, 0, 0, MW, MW);
-  const q = v => (v / MR * 0.5 + 0.5) * MW;
-  for (const c of cars) { const dx = c.x - T.x, dz = c.z - T.z; if (c === pcar || Math.abs(dx) > MR || Math.abs(dz) > MR) continue;
-    mctx.fillStyle = c.mode === 'police' ? (blink ? '#2f6bff' : '#ff3b30') : '#ffffff'; const s = c.mode === 'police' ? 12 : 6;
-    mctx.fillRect(q(dx) - s / 2, q(dz) - s / 2, s, s); }
-  mctx.lineWidth = 3; mctx.strokeStyle = '#1a1a14';
-  for (const p of places) { let dx = p.x - T.x, dz = p.z - T.z; const L = Math.hypot(dx, dz), edge = MR * 0.88;
-    if (L > edge) { if (p.kind !== 'safe') continue; dx *= edge / L; dz *= edge / L; }        // safehouses stay pinned to the rim so they can be found
-    const x = q(dx), y = q(dz); mctx.beginPath();
-    if (p.kind === 'safe') { mctx.moveTo(x, y - 12); mctx.lineTo(x + 11, y - 2); mctx.lineTo(x + 8, y - 2); mctx.lineTo(x + 8, y + 9); mctx.lineTo(x - 8, y + 9); mctx.lineTo(x - 8, y - 2); mctx.lineTo(x - 11, y - 2); mctx.closePath(); mctx.fillStyle = '#4fd27a'; }
-    else { mctx.arc(x, y, 8, 0, Math.PI * 2); mctx.fillStyle = '#f2c230'; }
-    mctx.stroke(); mctx.fill(); }
-  mctx.save(); mctx.translate(MW / 2, MW / 2); mctx.rotate(T.h);
-  mctx.fillStyle = '#f2c230'; mctx.strokeStyle = '#1a1a14'; mctx.lineWidth = 3;
-  mctx.beginPath(); mctx.moveTo(0, -15); mctx.lineTo(10, 11); mctx.lineTo(0, 5); mctx.lineTo(-10, 11); mctx.closePath(); mctx.stroke(); mctx.fill(); mctx.restore();
-}
-let signT = 0, blink = false, blinkT = 0;
-function updateSign(T) {
-  const n = nearestRoad(T.x, T.z); let best = null, bd = 130;
-  for (const l of D.labels) { const d = Math.hypot(l.x - T.x, l.z - T.z); if (d < bd) { bd = d; best = l; } }
-  $('street').textContent = n.ri >= 0 && n.d < 9 && R[n.ri].n ? R[n.ri].n : best && bd < 45 ? best.t : 'Vrigstad';
-  $('near').textContent = best && $('street').textContent !== best.t ? 'near ' + best.t : '';
-}
+function drawHealth() { hud.drawHealth(health.hp, game.inCar && game.pcar ? game.pcar.dmg : null); }
+// the title card (Gripen!, Däckad!) stays up this long
+function titleCard(title: string, msg: string) { hud.showTitleCard(title, msg); game.titleCardT = 3; }
 
-// ---------- stealing, police, getting caught ----------
-function nearestCar() { let best = null, bd = 4.4;
-  for (const c of cars) { if (c.mode === 'police') continue; const d = Math.hypot(c.x - player.x, c.z - player.z); if (d < bd) { bd = d; best = c; } } return best; }
-function action() {
-  if (!started || bigT > 0) return;
-  if (inside) { leaveHouse(); return; }
-  const pl = nearPlace(), kt = nearCat();
-  if (catFirst(kt, pl)) { petCat(kt); return; }
-  if (pl) { if (pl.kind === 'safe') enterHouse(pl); else if (kmenu.hidden) openKiosk(); else closeKiosk(); return; }
-  if (inCar) {
-    if (Math.abs(pcar.v) > 3) { toast('Slow down before you get out.', 2); return; }
-    player.x = pcar.x - Math.cos(pcar.h) * 2; player.z = pcar.z - Math.sin(pcar.h) * 2; player.h = pcar.h; collide(player, 0.5);
-    pcar.mode = 'idle'; pcar.v = pcar.slip = pcar.drift = pcar.boost = 0; placeCar(pcar); pcar = null; inCar = false; jumpQ = false; player.mesh.visible = true; camYaw = wrap(camYaw + lookOff); lookOff = 0; return;
-  }
-  const c = nearestCar(); if (!c) return;
-  if (c.mode === 'ai') {
-    const p = personParts(pick(['#b5463a', '#3f6b8a', '#5c7a4a', '#7a5a8a']), '#3a3a3a');
-    p.position.set(c.x - Math.cos(c.h) * 2.2, 0, c.z - Math.sin(c.h) * 2.2); p.position.y = groundAt(p.position.x, p.position.z); p.ttl = 14; scene.add(p); peds.push(p);
-    toast(pick(['”Hörru! Det där är min bil!”', '”Men va fan gör du?!”', '”Polisen! Han tar min ' + c.T.name + '!”']) + ' The driver calls the police.');
-    addStar(); spawnTraffic(player);
-  } else if (!c.owned) {
-    if (police.length || rnd() < 0.35) addStar('A neighbour saw you take the ' + c.T.name + ' and called the police.');
-    else toast(c.type === 'epa' ? 'EPA-traktor: legally limited to 30 km/h. Good luck outrunning anyone.' : 'You took the ' + c.T.name + '. Nobody noticed.');
-  }
-  if (!c.owned) { c.owned = true; stolen++; $('count').textContent = 'Cars stolen: ' + stolen; }
-  c.mode = 'player'; c.vh = c.h; c.slip = c.drift = c.boost = c.loose = 0; pcar = c; inCar = true; player.y = player.vy = 0; player.mesh.visible = false; lookOff = 0; camYaw = c.h;
-}
-function addStar(msg) { if (stars < 3) stars++; evade = 0; drawStars(); if (msg) toast(msg); }
-function spawnPolice() {
-  const T = inCar ? pcar : player; let spot = null;
-  for (let t = 0; t < 60 && !spot; t++) { const r = R[pick(driveable)], p = pick(r.p), d = Math.hypot(p[0] - T.x, p[1] - T.z); if (d > 200 && d < 480) spot = p; }
-  if (!spot) spot = pick(R[pick(driveable)].p);
-  const c = addCar('polis', spot[0], spot[1], Math.atan2(T.x - spot[0], -(T.z - spot[1])), 'police'); police.push(c);
-}
-function clearWanted() { stars = 0; evade = 0; bustT = 0; for (const p of police) removeCar(p); police.length = 0; drawStars(); $('stars').classList.remove('evading'); }
-function respawn() { leaveHouse(); if (inCar) { pcar.mode = 'idle'; pcar.v = pcar.slip = pcar.drift = pcar.boost = 0; placeCar(pcar); pcar = null; inCar = false; player.mesh.visible = true; }
-  player.x = HOME.x; player.z = HOME.z; player.y = player.vy = 0; jumpQ = false; collide(player, 0.6); }
-function busted() { clearWanted(); respawn(); bigT = 3; $('big').hidden = false; }
-function updatePolice(c, dt, T, tv) {
-  const dx = T.x - c.x, dz = T.z - c.z, d = Math.hypot(dx, dz), diff = wrap(Math.atan2(dx, -dz) - c.h);
-  let thr = Math.abs(diff) < 1.1 ? 1 : 0.45, steer = clamp(diff * 2.2, -1, 1), brake = false;
-  if (d < 9) { thr = 0; brake = c.v > Math.max(1, tv); }
-  if (c.rev > 0) { c.rev -= dt; thr = -1; steer = c.revSteer; brake = false; }
-  else if (Math.abs(c.v) < 0.8 && d > 9) { c.stuck += dt; if (c.stuck > 1.1) { c.stuck = 0; c.rev = 1.3; c.revSteer = rnd() < 0.5 ? 1 : -1; } } else c.stuck = 0;
-  drive(c, thr, steer, brake, dt);
-  return d;
-}
+// ---------- stealing and getting caught (the wanted level and the police: src/game/police.ts) ----------
+// the driver of a car you steal gets out, and stands there shouting for a while (src/game/render/shouting-drivers.ts)
+const drivers = new ShoutingDrivers({ scene, groundAt, personParts, pick }), driverOut = drivers.driverOut;
+// what E does, and putting you back on your feet after Gripen! or a knock-out (src/game/actions.ts)
+const actions = new Actions({ game, view, player, cars, places, wanted, health, wallet, menuOpen: () => !kmenu.hidden, closeMenu, showPlayer: v => { player.mesh.visible = v; }, nearPlace, openSkroten: skroten.open, nearOwner: () => skroten.nearOwner(nearestCar()), talkToOwner: skroten.talk, enterHouse, leaveHouse, nearCat, catFirst, openOwnCat, petCat, openKiosk, collide, placeCar, rnd, pick, toast, carName,
+  spokenName: c => vehicleVisuals.definition(meshed(c))?.spokenName, driverOut, replaceTaken: (c, p) => fleet.replaceTaken(c, p), drawStolen: () => { $('count').textContent = 'Cars stolen: ' + game.stolen; }, drawHealth, titleCard, sayLater: line => loop.sayLater(line), pickLine });
+const { nearestCar, action, respawn, busted, knockedOut } = actions;
+function hurtPlayer(n: number) { if (!canHurt(health, n)) return; const was = health.hp;
+  hud.flashHurt(n); hurt(health, n); drawHealth();
+  if (was >= LOW_HP && health.hp < LOW_HP && health.hp > 0) loop.sayLater('”Ja behöver nog en korv me brö.”'); }   // a hint at the kiosk
 
-// ---------- main loop ----------
-function resize() { const w = canvas.clientWidth, h = canvas.clientHeight; if (!w || !h) return;
-  renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); }
-addEventListener('resize', resize); if (window.ResizeObserver) new ResizeObserver(resize).observe(canvas);
-let last = performance.now();
-function frame(now) {
-  requestAnimationFrame(frame);
-  const dt = clamp((now - last) / 1000, 0, 0.05); last = now;
-  const mx = started ? clamp((keys.right ? 1 : 0) - (keys.left ? 1 : 0) + joy.x, -1, 1) : 0, my = started ? clamp((keys.up ? 1 : 0) - (keys.down ? 1 : 0) + joy.y, -1, 1) : 0;
-  if (bigT > 0) { bigT -= dt; if (bigT <= 0) $('big').hidden = true; }
-  if (ramCool > 0) ramCool -= dt;
-  if (trissT > 0) { trissT -= dt; if (trissT <= 0) trissResult(); }
-  for (const p of places) p.gem.rotation.y += dt * 1.6;
+// ---------- the E prompt and the speed plate (src/game/prompt.ts) ----------
+const prompt = new ActionPrompt({ $, game, places, wanted, get menuOpen() { return !kmenu.hidden; }, coarse, nearPlace, skrotenBuys: () => skroten.buys(), nearOwner: () => skroten.nearOwner(nearestCar()), nearCat, nearestCar, catFirst, carName, esc });
 
-  const jump = jumpQ; jumpQ = false;
-  if (inCar) { drive(pcar, my, mx, !!keys.brake, dt, true); player.x = pcar.x; player.z = pcar.z; player.h = pcar.h; player.speed = Math.abs(pcar.v); }
-  else {
-    const mag = Math.min(1, Math.hypot(mx, my)), wet = inWater(player.x, player.z);
-    if (mag > 0.08 && bigT <= 0 && !inside) {
-      const fx = Math.sin(camYaw), fz = -Math.cos(camYaw), dx = fx * my - fz * mx, dz = fz * my + fx * mx, L = Math.hypot(dx, dz);
-      const sp = (wet ? 1.6 : keys.run || joy.on ? 8 : 4.6) * mag;
-      player.x = clamp(player.x + dx / L * sp * dt, -HALF + 2, HALF - 2); player.z = clamp(player.z + dz / L * sp * dt, -HALF + 2, HALF - 2);
-      player.h += wrap(Math.atan2(dx, -dz) - player.h) * Math.min(1, dt * 12); player.speed = sp; player.phase += sp * dt * 2.1;
-    } else { player.speed = 0; player.phase *= 0.8; }
-    collide(player, 0.5);
-    if (!inside) for (const c of cars) { const dx = player.x - c.x, dz = player.z - c.z, d = Math.hypot(dx, dz); if (d < 1.6 && d > 0.01) { player.x += dx / d * (1.6 - d); player.z += dz / d * (1.6 - d); } }
-    const wetNow = inWater(player.x, player.z);                // after this frame's move: take-off and wading depth follow where the player stands now
-    if (player.y === 0 && jump && !wetNow && !inside && bigT <= 0) player.vy = JUMP_V;   // on foot, Space and the touch Brake button jump
-    if (player.y > 0 || player.vy > 0) { player.y += (player.vy - GRAVITY * dt / 2) * dt; player.vy -= GRAVITY * dt; if (player.y <= 0) player.y = player.vy = 0; }   // exact for constant gravity: same hop at any frame rate
-    // walking: arms swing against the legs and the body bobs; in the air: legs apart and both arms up
-    const air = player.y > 0, sw = air ? 0.5 : Math.sin(player.phase) * 0.75, lift = player.y + (air ? 0 : Math.abs(Math.sin(player.phase)) * 0.05), m = player.mesh;
-    m.legs[0].rotation.x = sw; m.legs[1].rotation.x = -sw; m.arms[0].rotation.x = air ? 2.4 : -sw * 0.8; m.arms[1].rotation.x = air ? 2.4 : sw * 0.8;
-    m.blob.position.y = 0.06 - lift;                          // the blob shadow stays on the ground
-    m.position.set(player.x, groundAt(player.x, player.z) - (wetNow ? 0.95 : 0) + lift, player.z); m.rotation.y = -player.h;
-  }
-  updateDriftFx(inCar ? pcar : null);
-  const T = inCar ? pcar : player;
-  for (const c of cars) if (c.mode === 'ai') updateTraffic(c, dt, T);
-  updateNpcs(T, dt);
-  updateCats(T, dt);
-  while (police.length < stars) spawnPolice();
-  if (stars > 0) {
-    let md = 1e9; for (const p of police) md = Math.min(md, updatePolice(p, dt, T, player.speed));
-    if (md > 170) { evade += dt; if (evade > 18) { clearWanted(); toast('You lost them.'); } } else evade = 0;
-    $('stars').classList.toggle('evading', evade > 2);
-    if (inside) { hideT -= dt; if (hideT <= 0) { clearWanted(); toast('The police gave up. The coast is clear.'); } }
-    else if (md < 7.5 && player.speed < 2.5) { bustT += dt; if (bustT > 1.6) busted(); } else bustT = Math.max(0, bustT - dt);
-    blinkT += dt; if (blinkT > 0.22) { blinkT = 0; blink = !blink; barMat.color.copy(blink ? BAR_RED : BAR_BLUE); }
-  }
-  for (let i = peds.length - 1; i >= 0; i--) { const p = peds[i]; p.ttl -= dt; p.rotation.y = -Math.atan2(T.x - p.position.x, -(T.z - p.position.z));
-    if (p.ttl <= 0) { scene.remove(p); peds.splice(i, 1); } }
+// ---------- main loop (src/game/loop.ts) ----------
+const loop = new GameLoop({ $, renderer, scene, camera, canvas, coarse, half: HALF, game, view, player, health, input, places, wanted, cars, startCam: START_CAM, barMat, barColours: [BAR_BLUE, BAR_RED], cameraRig: { update: placeCamera },
+  get toasting() { return hud.toasting; }, inWater, collide, groundAt, drive, updateTraffic, knockedOut, hurtPlayer, shake, toast, hideTitleCard: () => hud.hideTitleCard(),
+  updateTrisslott: dt => trisslott.update(dt), updatePlaces: dt => { placeMeshes.update(dt); skrotenMeshes.update(dt, player); }, updateDriftFx, updateVehicles: (T, dt) => vehicleVisuals.update(T, dt), updateSmoke, updateBanknotes: dt => banknotes.update(dt), updateConfetti: dt => confetti.update(dt), updateNpcs: (T, dt) => { updateNpcs(T, dt); ragdolls.update(dt); ragdollMeshes.update(); }, updateCats,
+  updateDrivers: (T, dt) => drivers.update(T, dt), updateBodies: (T, dt) => bodyMotion.update(T, dt), updateDaylight, drawHearts, updateHud: dt => hud.update(dt), drawMini,
+  updateSign, catRideLines: () => crashes.catRideLines(), closeMenuIfLeft: () => menuPlate.closeIfLeft(), updatePrompt: () => prompt.update(), drawHealth,
+  timeFrame: workStart => { if (!debugOverlay) return; const t = performance.now(); debugOverlay.frame(t, t - workStart, renderer.info); } });
+$('go').addEventListener('click', loop.startGame);
+// ?lab=toon draws the world cel-shaded (#206). The frames before its code arrives draw the default look, behind the intro
+if (lab.on('toon')) import('./render/toon-style').then(m => loop.drawThrough(new m.ToonStyle(renderer))).catch(err => console.warn('Lab: toon failed', err));
+loop.start();
 
-  // camera
-  let dist, ty = groundAt(T.x, T.z);
-  if (!started) { camYaw = wrap(camYaw + dt * 0.07); dist = 46; camPitch = 0.42; }
-  else if (inCar) { lookIdle += dt; if (lookIdle > 1.2 && dragId === null) lookOff *= Math.pow(0.02, dt);
-    camYaw += wrap(pcar.h - pcar.slip * 0.6 + lookOff - camYaw) * Math.min(1, dt * 4.5); dist = 10 + Math.abs(pcar.v) * 0.09; }
-  else dist = inside ? 15 : 6.2;
-  const cp = Math.cos(camPitch), cx = T.x - Math.sin(camYaw) * dist * cp, cz = T.z + Math.cos(camYaw) * dist * cp;
-  camera.position.set(cx, Math.max(ty + 1.5 + dist * Math.sin(camPitch), hAt(cx, cz) + 0.8), cz);
-  camera.lookAt(T.x, ty + 1.5, T.z);
-  sun.target.position.set(T.x, ty, T.z); sun.position.copy(sun.target.position).addScaledVector(SUN_DIR, 400);
-  dome.position.copy(camera.position);
-
-  // HUD
-  if (toastT > 0) { toastT -= dt; if (toastT <= 0.3) $('toast').style.opacity = 0; if (toastT <= 0) $('toast').hidden = true; }
-  signT -= dt; if (signT <= 0) { signT = 0.25; updateSign(T);
-    const pr = $('prompt'), pl = started && !inside ? nearPlace() : null, kt = started ? nearCat() : null, c = started && !inCar && !inside ? nearestCar() : null;
-    $('hide').hidden = !inside;
-    if (!kmenu.hidden && (!pl || pl.kind !== 'kiosk')) closeKiosk();
-    if (inside) { $('hide').innerHTML = stars ? 'Lying low<b>' + Math.floor(Math.ceil(Math.max(0, hideT)) / 60) + ':' + String(Math.ceil(Math.max(0, hideT)) % 60).padStart(2, '0') + '</b>' : 'Safehouse · ' + inside.name;
-      pr.hidden = false; pr.innerHTML = '<kbd>E</kbd>Go outside'; }
-    else if (catFirst(kt, pl)) { pr.hidden = false; pr.innerHTML = '<kbd>E</kbd>Pet the cat' + (treats ? ' (offer a treat)' : ''); }
-    else if (pl) { pr.hidden = !kmenu.hidden; pr.innerHTML = '<kbd>E</kbd>' + (pl.kind === 'safe' ? 'Go inside the safehouse' : 'Handla i kiosken'); }
-    else if (inCar && !coarse) { pr.hidden = Math.abs(pcar.v) > 3; pr.innerHTML = '<kbd>E</kbd>Get out'; }
-    else if (c) { pr.hidden = false; pr.innerHTML = '<kbd>E</kbd>' + (c.owned ? 'Get in the ' : 'Steal the ') + c.T.name; }
-    else pr.hidden = true;
-    const bl = inCar ? 'Brake' : 'Jump'; if ($('p-brake').textContent !== bl) $('p-brake').textContent = bl;
-    $('speed').hidden = !inCar; if (inCar) { $('kmh').textContent = Math.round(Math.abs(pcar.v) * 3.6); $('carname').textContent = pcar.T.name; } }
-  drawMini(T);
-  renderer.render(scene, camera);
-}
-$('go').addEventListener('click', e => { started = true; $('intro').hidden = true; camYaw = 0.6; camPitch = 0.34; canvas.focus();
-  if (e.pointerType ? e.pointerType === 'mouse' : !coarse) lockMouse();   // by how Start was pressed: a tap on a touchscreen laptop shouldn't lock
-  toast('Find a car and press E to take it. Occupied cars always get you a wanted star.', 5); });
-resize(); requestAnimationFrame(frame);
-
-// ---------- test hook: read-only state for the smoke tests (tests/e2e), so they do not have to read pixels ----------
-window.__joyride = { state: () => { const n = nearestCar(); return { started, x: player.x, z: player.z, y: player.y, yaw: camYaw, inCar, car: pcar ? pcar.type : null, near: n ? n.mode : null, speed: pcar ? pcar.v : 0, drift: pcar ? pcar.drift : 0, boost: pcar ? pcar.boost : 0, charge: pcar ? pcar.charge : 0, loose: pcar ? pcar.loose : 0, flickDir: pcar ? pcar.flickDir : 0, stars, cats: cats.length, treats }; } };
+// ---------- test hook: read-only state for the smoke tests (src/game/test-hook.ts) ----------
+installTestHook({ game, view, player, health, cars, labs: lab.list(), get styled() { return loop.styled; }, get ragdolls() { return ragdolls.count; }, get stars() { return wanted.stars; }, get cats() { return cats.length; }, get ownCat() { return !!colony.owned; }, get displayCar() { return displayCar; },
+  vehicleVisuals: { state: c => vehicleVisuals.state(meshed(c)) }, bodyMotion: { state: c => bodyMotion.state(meshed(c)) }, skyDome, street, debugStreetscape: DEBUG_STREETSCAPE, bridges: { index: bridges, draw: bridgeMeshes, groundAt }, furniture, water: { bodies: waterBodies, surface: waterLook.surface, props: waterLook.props, shore, terrainTriangles: terrainMesh.triangles, refinedCells: heightfield.refinedCells, buildMs: waterCutMs + waterMeshMs, inWater, hAt }, debugFurniture: DEBUG_FURNITURE, nearestCar,
+  get kr() { return wallet.kr; }, get banknotes() { return banknotes.live; }, get confetti() { return confetti.live; }, get devcon() { return devcon.isOpen; }, build: __BUILD__, get fps() { return !!debugOverlay?.shown; }, day: { get hour() { return dayClock.hour; }, get night() { return dayClock.night; }, get sunLight() { return sky.sun; } } });
 })();

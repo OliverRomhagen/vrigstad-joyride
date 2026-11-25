@@ -6,14 +6,19 @@ const PORT = Number(process.env.E2E_PORT) || 8043;
 
 export default defineConfig({
   testDir: 'tests/e2e',
-  timeout: 120_000,                 // headless WebGL (SwiftShader in CI) renders only a few frames a second
+  fullyParallel: true, // every test loads its own page, so spread them over the workers, not one file per worker
+  timeout: 120_000, // headless WebGL (SwiftShader in CI) renders only a few frames a second
   expect: { timeout: 30_000 },
   forbidOnly: !!process.env.CI,
-  retries: process.env.CI ? 1 : 0,  // the fonts load from a CDN; do not fail a PR on one network blip
+  retries: process.env.CI ? 1 : 0, // do not fail a PR on one flaky run; the fonts no longer load from a CDN (#75), so try 0 next
   reporter: process.env.CI ? [['github'], ['list']] : 'list',
-  use: { baseURL: `http://127.0.0.1:${PORT}`, viewport: { width: 1280, height: 720 }, trace: 'retain-on-failure',
+  use: {
+    baseURL: `http://127.0.0.1:${PORT}`,
+    viewport: { width: 1280, height: 720 },
+    trace: 'retain-on-failure',
     // Software WebGL everywhere, so a local run takes the same render path as CI (which has no GPU).
-    launchOptions: { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] } },
+    launchOptions: { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] },
+  },
   webServer: {
     command: `python3 -m http.server ${PORT} --bind 127.0.0.1 --directory dist`,
     url: `http://127.0.0.1:${PORT}/index.html`,

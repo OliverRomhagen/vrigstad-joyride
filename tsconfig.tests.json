@@ -1,0 +1,7 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": ["vite/client", "node"]
+  },
+  "include": ["tests/unit", "tools/streetscape-report.ts", "vite.config.ts", "vitest.config.ts"]
+}

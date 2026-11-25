@@ -1,0 +1,10 @@
+// AGENTS.md, architecture rule 2: the world and the simulation don't listen to the page. noRestrictedGlobals catches a
+// bare addEventListener; this catches one on any object, such as an element handed in by main.ts.
+language js
+
+or {
+  `$target.addEventListener($...)`,
+  `$target.removeEventListener($...)`
+} as $listen where {
+  register_diagnostic(span=$listen, message="The world and the simulation don't listen to the page: read intents or state instead (AGENTS.md, architecture rule 2).", severity="error")
+}

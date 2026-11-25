@@ -9,7 +9,7 @@ const ONE_CORNER = [0, 0, 0, 0, 0, 0, 0, 0, 100];
 
 describe('heightAt', () => {
   it('reads the samples at grid points, in metres above the lowest', () => {
-    const field = new Heightfield(makeWorld({ elev: EAST_SLOPE.map((e) => e + 500) }));
+    const field = new Heightfield(makeWorld({ elev: EAST_SLOPE.map(e => e + 500) }));
     expect(field.heightAt(-50, 0)).toBeCloseTo(0);
     expect(field.heightAt(0, 0)).toBeCloseTo(1);
   });
@@ -42,7 +42,7 @@ describe('heightAt', () => {
   });
 
   it('reports the lowest and highest samples above sea level', () => {
-    const field = new Heightfield(makeWorld({ elev: EAST_SLOPE.map((e) => e + 500) }), { exaggeration: 2 });
+    const field = new Heightfield(makeWorld({ elev: EAST_SLOPE.map(e => e + 500) }), { exaggeration: 2 });
     expect(field.minElevationM).toBe(50);
     expect(field.maxElevationM).toBe(52);
   });
@@ -75,7 +75,8 @@ describe('sampleHeight', () => {
 
   it('matches heightAt exactly at the samples', () => {
     const field = new Heightfield(makeWorld({ elev: UNEVEN }), { exaggeration: 2 });
-    for (let j = 0; j < 2; j++) for (let i = 0; i < 2; i++) expect(field.sampleHeight(i, j)).toBe(field.heightAt(-50 + 50 * i, -50 + 50 * j));
+    for (let j = 0; j < 2; j++)
+      for (let i = 0; i < 2; i++) expect(field.sampleHeight(i, j)).toBe(field.heightAt(-50 + 50 * i, -50 + 50 * j));
   });
 
   it('reads the last row and column', () => {
@@ -87,7 +88,51 @@ describe('sampleHeight', () => {
 describe('sampleCoord', () => {
   it('puts the samples where heightAt reads them, from edge to edge', () => {
     const field = new Heightfield(makeWorld({ elev: EAST_SLOPE }));
-    expect([0, 1, 2].map((i) => field.sampleCoord(i))).toEqual([-50, 0, 50]);
+    expect([0, 1, 2].map(i => field.sampleCoord(i))).toEqual([-50, 0, 50]);
     for (let i = 0; i < 3; i++) expect(field.heightAt(field.sampleCoord(i), 0)).toBeCloseTo(field.sampleHeight(i, 1));
+  });
+});
+
+describe('Heightfield with a cut', () => {
+  // a 4 m deep, 10 m wide trench along x = 5, the rest untouched
+  const trench = {
+    detail: (x0: number, _z0: number, x1: number) => (x0 < 20 && x1 > -10 ? 10 : 0),
+    cutAt: (x: number, _z: number, base: number) => (Math.abs(x - 5) < 5 ? base - 4 * (1 - Math.abs(x - 5) / 5) : base),
+  };
+  const world = makeWorld({ elev: EAST_SLOPE });
+
+  it('is exactly as before without one', () => {
+    const plain = new Heightfield(world);
+    const again = new Heightfield(world, {});
+    for (const [x, z] of [
+      [-37, 12],
+      [3, -44],
+      [25, 25],
+    ])
+      expect(again.heightAt(x, z)).toBe(plain.heightAt(x, z));
+    expect(plain.refinedCells).toBe(0);
+  });
+
+  it('reads the cut on the refined grid, and the plain grid elsewhere', () => {
+    const plain = new Heightfield(world);
+    const cut = new Heightfield(world, { cut: trench });
+    expect(cut.refinedCells).toBe(2); // the two cells from x = 0 to 50 the trench runs through, along z
+    expect(cut.heightAt(5, -25)).toBeCloseTo(plain.heightAt(5, -25) - 4, 5);
+    expect(cut.heightAt(5, 25)).toBeCloseTo(plain.heightAt(5, 25) - 4, 5);
+    expect(cut.heightAt(30, 10)).toBeCloseTo(plain.heightAt(30, 10), 5);
+    expect(cut.heightAt(-30, 10)).toBe(plain.heightAt(-30, 10));
+  });
+
+  it('doubles the cut with the exaggeration', () => {
+    const cut = new Heightfield(world, { cut: trench });
+    const doubled = new Heightfield(world, { cut: trench, exaggeration: 2 });
+    expect(doubled.heightAt(5, 10)).toBeCloseTo(cut.heightAt(5, 10) * 2, 5);
+  });
+
+  it('keeps a refined edge shared with a plain cell straight, so the mesh has no crack', () => {
+    const cut = new Heightfield(world, { cut: trench });
+    const plain = new Heightfield(world);
+    // the edge at x = 0 is shared with the plain cell to the west: the trench reaches it, but the edge stays straight
+    for (let z = -50; z <= 50; z += 5) expect(cut.heightAt(0.0001, z)).toBeCloseTo(plain.heightAt(0, z), 3);
   });
 });
