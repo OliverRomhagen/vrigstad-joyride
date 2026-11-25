@@ -16,9 +16,14 @@ export interface LabExperiment {
 export const LAB_EXPERIMENTS = [
   { id: 'hello', name: 'Hello lab', cost: 'Nothing: logs one line, as the smallest example of a gate' },
   {
+    id: 'toon',
+    name: 'Cel-shaded style',
+    cost: 'Every lit material swapped each frame, and an extra line draw per inked mesh, the village shells included',
+  },
+  {
     id: 'garage',
     name: 'Plåt-Pelle’s garage',
-    cost: 'Nothing until you open it on the lift: one more screen of DOM, loaded then',
+    cost: 'A small download and the showroom’s meshes at page load; one more screen of DOM when you open it on the lift',
   },
 ] as const satisfies readonly LabExperiment[];
 

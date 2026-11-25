@@ -3,6 +3,7 @@
 // The layout comes from skroten-yard.ts; the static parts are baked into one mesh, so the yard costs a handful of draw calls.
 import * as THREE from 'three';
 import { makeRnd } from '../../world/random';
+import type { BoxPart } from '../box-part';
 import {
   type Carport,
   CONTAINERS,
@@ -28,9 +29,6 @@ import {
 import { boxGeo, carGeo, mergeGeo, type Person, paintMat, personParts } from './models';
 import { SKROT_COLOUR } from './places';
 import { BODY_NODE, CIVILIAN_CAR_TYPES, VEHICLES } from './vehicle-registry';
-
-/** One box: size, position and colour, as boxGeo takes it. */
-type BoxPart = [sx: number, sy: number, sz: number, x: number, y: number, z: number, colour: string];
 
 const LIFT_RING_LIFT_M = 0.02; // the lift's ring stands this far off the floor
 const PANEL_M = 3; // a sheet of the fence, and the gap between its posts
@@ -141,9 +139,7 @@ export class SkrotenMeshes {
         put(
           boxGeo([
             [step + 0.02, h, 0.05, 0, h / 2, 0, FENCE_COLOURS[Math.floor(rnd() * FENCE_COLOURS.length)]],
-            ...WIRE_HEIGHTS_M.map(
-              wy => [step, 0.025, 0.025, 0, wy, 0, WIRE] as [number, number, number, number, number, number, string],
-            ),
+            ...WIRE_HEIGHTS_M.map(wy => [step, 0.025, 0.025, 0, wy, 0, WIRE] as BoxPart),
           ]),
           mu,
           my,
