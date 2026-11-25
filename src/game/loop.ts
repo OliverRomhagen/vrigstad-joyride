@@ -99,6 +99,11 @@ export class GameLoop {
     this.style = style;
   }
 
+  /** Whether frames are drawn through a style. */
+  get styled() {
+    return this.style !== null;
+  }
+
   // a line that waits for the toast and any title card to clear, so it doesn't cut off what was just said
   sayLater = (line: string) => {
     this.laterLine = line;
