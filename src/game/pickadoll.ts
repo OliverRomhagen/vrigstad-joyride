@@ -217,6 +217,7 @@ export class Pickadoll {
     aim.addEventListener('click', () => this.keepAim(!this.aimKept));
     this.aimButton = aim;
     g.$('pad').prepend(fire, aim);
+    g.$('pad').classList.add('lab'); // four buttons: index.html stacks them on a narrow phone
     this.crosshair = document.createElement('div');
     this.crosshair.id = 'lab-crosshair';
     this.crosshair.hidden = true;
