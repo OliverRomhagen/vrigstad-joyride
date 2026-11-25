@@ -196,6 +196,20 @@ describe('drive', () => {
     expect(log.placed.has(parked)).toBe(true);
   });
 
+  it('never shoves a parked car into a wall', () => {
+    // a house north of the road's south end, its south wall at z = 700; the parked car stands with its nose 0.1 m from it
+    const { cars, log } = fleet({ r: [MAIN_ROAD], b: [{ p: square(-20, 660, 40), h: 5, k: BuildingKind.OTHER }] });
+    const parked = car('saab', 0, 0, 0, 'parked'),
+      c = car('volvo', 0, 0, 0, 'player');
+    parked.z = 700.1 + parked.T.lengthM / 2;
+    c.z = parked.z + (parked.T.lengthM + c.T.lengthM) / 2 + 2;
+    cars.add(c);
+    cars.add(parked);
+    driveFor(cars, c, 3, 1, 0, false); // full throttle into its tail, for 3 s
+    expect(log.crashes).toContainEqual([c, parked]);
+    expect(parked.z - parked.T.lengthM / 2).toBeGreaterThan(699.8); // the same margin as a car you drive into the wall
+  });
+
   it("never shoves a car for sale on Skroten's lot: it can't be pushed out of the yard", () => {
     const { cars } = fleet();
     const c = car('volvo', 0, 800, 0, 'player'),

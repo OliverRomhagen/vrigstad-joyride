@@ -87,7 +87,6 @@ export interface Car extends Point {
   mode: CarMode;
   wet: boolean;
   owned: boolean; // you've taken it: stolen, bought or parked by the `car` command
-  bought: boolean; // you paid Plåt-Pelle for it, so a save (#77) can keep it and leave stolen cars out
   saleKr: number; // what Plåt-Pelle asks for it on Skroten's lot; 0 when it isn't for sale
   blocked: number; // traffic: s stuck behind something; then it drives through it as a ghost for `ghost` s
   ghost: number;
@@ -132,7 +131,6 @@ export function newCar(
     mode,
     wet: false,
     owned: false,
-    bought: false,
     saleKr: 0,
     blocked: 0,
     ghost: 0,
@@ -556,6 +554,7 @@ export class Fleet {
         if ((o.mode === 'parked' || o.mode === 'idle') && !o.saleKr) {
           o.x -= nx * push * 0.4;
           o.z -= nz * push * 0.4;
+          pushBodyOut(o, this.collideBuildings); // or shove by shove it would go through a wall or a fence
           placeCar(o);
         }
         c.v *= 0.05 ** dt;
