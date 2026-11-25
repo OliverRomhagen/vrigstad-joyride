@@ -79,7 +79,7 @@ const ROAD_W = [9, 7.5, 5.5, 3.5, 2.6, 1.5];
 const ROAD_FILL = ['#55585a', '#5d6062', '#66696a', '#77776f', '#a08c6c', '#b8ab90'];
 const LAND = ['#a6c083', '#d9cf8b', '#b9b4a8', '#8fc072', '#93b77d', '#6f9a5e', '#7cc163'];
 
-function trace(ctx: CanvasRenderingContext2D, p: number[], close: boolean) {
+function trace(ctx: CanvasPath, p: number[], close: boolean) {
   ctx.moveTo(p[0], p[1]);
   for (let i = 2; i < p.length; i += 2) ctx.lineTo(p[i], p[i + 1]);
   if (close) ctx.closePath();
@@ -93,30 +93,20 @@ function paintMap(ctx: CanvasRenderingContext2D) {
   ctx.fillRect(-HALF, -HALF, D.size, D.size);
   for (let k = 0; k < LAND.length; k++) {
     ctx.fillStyle = LAND[k];
-    ctx.beginPath();
-    for (const l of D.l) if (l.k === k) trace(ctx, l.p, true);
-    ctx.fill();
+    ctx.fill(layers.land[k]);
   }
   ctx.strokeStyle = ctx.fillStyle = '#4f8fb8';
-  for (const w of D.ww) {
-    ctx.lineWidth = w.k === 0 ? 6 : 2;
-    ctx.beginPath();
-    trace(ctx, w.p, false);
-    ctx.stroke();
-  }
-  for (const w of D.w) {
-    ctx.beginPath();
-    for (const ring of w) trace(ctx, ring, true);
-    ctx.fill('evenodd');
-  }
+  ctx.lineWidth = 6;
+  ctx.stroke(layers.rivers);
+  ctx.lineWidth = 2;
+  ctx.stroke(layers.streams);
+  ctx.fill(layers.lakes, 'evenodd');
   for (const verge of [true, false])
     for (let cls = 5; cls >= 0; cls--) {
       if (verge && cls > 3) continue;
       ctx.strokeStyle = verge ? '#b3a78c' : ROAD_FILL[cls];
       ctx.lineWidth = ROAD_W[cls] + (verge ? 2.4 : 0);
-      ctx.beginPath();
-      for (const r of D.r) if (r.c === cls) trace(ctx, r.p, false);
-      ctx.stroke();
+      ctx.stroke(layers.roads[cls]);
     }
   ctx.fillStyle = 'rgba(0,0,0,.22)';
   ctx.translate(0.8, 0.8);
@@ -125,6 +115,36 @@ function paintMap(ctx: CanvasRenderingContext2D) {
   ctx.fillStyle = '#8a8378';
   ctx.fill(buildings);
 }
+// each layer traced once into a Path2D, so a frame only fills and strokes them: tracing the whole 2.2 km map every frame was
+// slow on phones
+const path = (lines: readonly number[][], close: boolean) => {
+  const p = new Path2D();
+  for (const l of lines) trace(p, l, close);
+  return p;
+};
+const layers = {
+  land: LAND.map((_, k) =>
+    path(
+      D.l.filter(l => l.k === k).map(l => l.p),
+      true,
+    ),
+  ),
+  rivers: path(
+    D.ww.filter(w => w.k === 0).map(w => w.p),
+    false,
+  ),
+  streams: path(
+    D.ww.filter(w => w.k !== 0).map(w => w.p),
+    false,
+  ),
+  lakes: path(D.w.flat(), true), // one even-odd fill: the lakes don't overlap, and their islands are holes
+  roads: ROAD_W.map((_, cls) =>
+    path(
+      D.r.filter(r => r.c === cls).map(r => r.p),
+      false,
+    ),
+  ),
+};
 const buildings = new Path2D();
 for (const b of D.b) {
   buildings.moveTo(b.p[0], b.p[1]);
@@ -577,7 +597,8 @@ function pickCar(type: CarType) {
     card.querySelector('.pick')!.textContent = on ? 'In the getaway ✓' : 'Take this one';
   }
   $('gName').textContent = (type === 'epa' ? 'an ' : 'a ') + CARS[type].name;
-  if (running) start();
+  if (running)
+    reset(); // the loop already runs: start() would add a second one
   else draw();
 }
 
@@ -718,6 +739,12 @@ for (const ev of ['pointerup', 'pointercancel'] as const)
     lastScratch = null;
     if (scratchedShare() > 0.5) reveal();
   });
+// Enter or Space on the focused card scratches it all at once, for the keyboard and screen readers
+ticketCanvas.addEventListener('keydown', e => {
+  if (revealed || (e.key !== 'Enter' && e.key !== ' ')) return;
+  e.preventDefault();
+  reveal();
+});
 $('tNew').addEventListener('click', newTicket);
 
 // ---------- hero ----------

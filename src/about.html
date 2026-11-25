@@ -6,7 +6,7 @@
 <title>Vrigstad Joyride</title>
 <meta name="description" content="An open-world driving game set in the real village of Vrigstad, Sweden. Borrow a Volvo 240, outrun the police, scratch a trisslott. Free in your browser.">
 <meta property="og:title" content="Vrigstad Joyride: nothing ever happens here">
-<meta property="og:description" content="881 buildings, every real street, one borrowed Volvo 240. Free in your browser.">
+<meta property="og:description" content="Every building and real street in Vrigstad, one borrowed Volvo 240. Free in your browser.">
 <meta property="og:image" content="https://oliverromhagen.github.io/vrigstad-joyride/media/poster.png">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@600;700&display=swap">
 <style>
@@ -78,9 +78,9 @@ nav .links a:hover { color: var(--gold); }
 #wanted b.on { color: var(--gold); transform: scale(1.12); }
 .hint { display: block; font: 500 13px var(--body); color: var(--dim); margin-top: 6px; }
 /* Three stars on the hero: the page gets blue lights. */
-body.sirens::before, body.sirens::after { content: ""; position: fixed; top: 0; bottom: 0; width: 26vw; pointer-events: none; z-index: 50; animation: siren .5s steps(2) infinite; }
+body.sirens::before, body.sirens::after { content: ""; position: fixed; top: 0; bottom: 0; width: 26vw; pointer-events: none; z-index: 50; animation: siren .8s steps(2) infinite; }
 body.sirens::before { left: 0; background: linear-gradient(90deg, rgba(31,95,168,.55), transparent); }
-body.sirens::after { right: 0; background: linear-gradient(-90deg, rgba(31,95,168,.55), transparent); animation-delay: .25s; }
+body.sirens::after { right: 0; background: linear-gradient(-90deg, rgba(31,95,168,.55), transparent); animation-delay: .4s; } /* the two sides flash 2.5 times a second together: under WCAG 2.3.1's three */
 @keyframes siren { 50% { opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { body.sirens::before, body.sirens::after { animation: none; opacity: .5; } }
 
@@ -264,8 +264,8 @@ footer a { color: var(--ink); }
       <button class="btn small" id="tNew" type="button" hidden>Köp en till</button>
     </div>
     <div class="ticket" id="ticket">
-      <div class="under"><div><b id="tHead"></b><q id="tLine"></q></div></div>
-      <canvas id="tCv" aria-label="Scratch card. Drag across it to scratch."></canvas>
+      <div class="under" aria-live="polite"><div><b id="tHead"></b><q id="tLine"></q></div></div>
+      <canvas id="tCv" tabindex="0" role="button" aria-label="Scratch card. Drag across it to scratch, or press Enter."></canvas>
     </div>
   </div>
 </section>
