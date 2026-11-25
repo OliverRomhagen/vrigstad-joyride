@@ -14,7 +14,7 @@ A small open-world driving game set in the real village of Vrigstad, Sweden (57.
   <img src="media/poster.png" width="360" alt="Poster: a red Volvo 240 ahead of the police under the line “Nothing ever happens here”, with the title Vrigstad Joyride">
 </p>
 
-The teaser and poster are rendered from the game itself by the scripts in `tools/trailer/` (`npm install` in the repo root and in `tools/trailer/`, then `npm run trailer` and `npm run poster`; needs Node and Chrome).
+The teaser and poster are rendered from the game itself by the scripts in `tools/trailer/` (`npm install` in the repo root and in `tools/trailer/`, then `npm run trailer` and `npm run poster`; needs Node and Chrome). `npm run timelapse` there renders `media/timelapse.mp4`: the same police chase in every release (the `v*` tags) and then today's game, cut fast between cameras, to show how it grew.
 
 ## Play
 

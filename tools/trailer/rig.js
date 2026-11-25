@@ -1,4 +1,4 @@
-// Capture rig: drives a hooked copy of the built game in headless Chrome on a virtual clock,
+// Capture rig: drives a build of the game, opened with ?capture, in headless Chrome on a virtual clock,
 // so every frame is rendered deterministically at 30 fps regardless of how fast the machine is.
 const puppeteer = require('puppeteer-core');
 const path = require('path');
@@ -8,28 +8,20 @@ const ROOT = path.join(__dirname, '..', '..');
 const WORK = path.join(__dirname, '.work');
 const CHROME = process.env.CHROME || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 
-// Builds .work/index.html: the game with a window.__G handle on its internals and a per-frame camera hook,
-// added to src/game/main.ts as Vite transforms it. The shipped game files are not modified.
+// Builds .work/index.html: the game from this checkout. Opened with ?capture, it puts its internals on window.__G and calls
+// window.__cam before each frame (src/game/capture-hook.ts).
 async function buildCaptureCopy() {
   const { build } = await import('vite');
-  const boot = 'resize(); requestAnimationFrame(frame);', render = 'renderer.render(scene, camera);\n}';
-  const hook = `window.__G = { THREE, player, cars, police, keys, joy, R, D, hAt, camera, scene, action, addStar, toast, respawn, places, nearestRoad, TYPES, addCar, removeCar, clearWanted, sun, SUN_DIR, renderer, placeCar, nodes, nodeKey, driveable,
-  get inCar() { return inCar; }, get pcar() { return pcar; }, get stars() { return stars; }, get camYaw() { return camYaw; }, set camYaw(v) { camYaw = v; }, set camPitch(v) { camPitch = v; },
-  set hideT(v) { hideT = v; }, get hideT() { return hideT; }, set lookOff(v) { lookOff = v; lookIdle = 0; } };\n`;
-  const hooks = { name: 'capture-hooks', enforce: 'pre', transform(src, id) {
-    if (!id.endsWith('/src/game/main.ts')) return;
-    if (src.split(boot).length !== 2 || src.split(render).length !== 2) throw new Error('src/game/main.ts no longer matches the capture hooks in rig.js');
-    return src.replace(boot, hook + boot).replace(render, 'if (window.__cam) window.__cam(camera, T);\n  renderer.render(scene, camera);\n}');
-  } };
-  await build({ configFile: path.join(ROOT, 'vite.config.ts'), root: path.join(ROOT, 'src'), logLevel: 'warn', plugins: [hooks],
+  await build({ configFile: path.join(ROOT, 'vite.config.ts'), root: path.join(ROOT, 'src'), logLevel: 'warn',
     build: { outDir: WORK, emptyOutDir: false, rollupOptions: { input: path.join(ROOT, 'src', 'index.html') } } });
   return path.join(WORK, 'index.html');
 }
 
-async function open({ width = 1280, height = 720, scale = 1.5 } = {}) {
-  const file = await buildCaptureCopy();
+/** Opens a hooked game page: `file` if given, else a fresh build of this checkout. */
+async function open({ width = 1280, height = 720, scale = 1.5, file = null } = {}) {
+  file = file || await buildCaptureCopy();
   const browser = await puppeteer.launch({ executablePath: CHROME, headless: 'new',
-    args: ['--use-angle=metal', '--enable-gpu', '--ignore-gpu-blocklist', '--hide-scrollbars', `--window-size=${width},${height}`] });
+    args: ['--use-angle=metal', '--enable-gpu', '--ignore-gpu-blocklist', '--hide-scrollbars', '--allow-file-access-from-files', `--window-size=${width},${height}`] });
   const page = await browser.newPage();
   await page.setViewport({ width, height, deviceScaleFactor: scale });
   page.on('pageerror', e => console.error('PAGE ERROR', e.message));
@@ -41,11 +33,29 @@ async function open({ width = 1280, height = 720, scale = 1.5 } = {}) {
     window.__pre = null;
     window.__step = (n = 1) => { for (let i = 0; i < n; i++) { vt += 1000 / 30; if (window.__pre) window.__pre(1 / 30); const l = cbs; cbs = []; for (const c of l) c(vt); } };
   });
-  await page.goto('file://' + file);
-  await page.waitForFunction('window.__G && document.fonts.status === "loaded"', { timeout: 60000 });
+  // an error while the game boots (a renamed internal, say) fails now instead of after the timeout;
+  // listen before goto, since most boot errors are thrown while the page loads
+  let onError;
+  const failed = new Promise((_, reject) => { onError = reject; page.on('pageerror', onError); });
+  failed.catch(() => {});
+  try { await page.goto('file://' + file + '?capture');
+    await Promise.race([page.waitForFunction('window.__G && window.__G.player && document.fonts.status === "loaded"', { timeout: 60000 }), failed]); }
+  catch (e) { await browser.close(); throw e; }
+  finally { page.off('pageerror', onError); }
   await page.evaluate(fs.readFileSync(path.join(__dirname, 'inpage.js'), 'utf8'));
   await page.evaluate(() => document.fonts.ready);
   return { browser, page };
 }
 
-module.exports = { open, WORK, ROOT };
+// Detailed car models load in the background (src/game/render/vehicle-visuals.ts) while the virtual clock stands still, so a shot
+// waits until no car is still loading one, then renders a frame to show them; otherwise it can catch the box cars they replace.
+// A car made in a shot's setup stays idle until VehicleVisuals' next refresh (every 0.35 s), so step past one first.
+const REFRESH_STEPS = 11;
+async function modelsReady(page, timeout = 30000) {
+  await page.evaluate(n => __step(n), REFRESH_STEPS);
+  await page.waitForFunction(() => { const V = __G.vehicleVisuals; if (!V || !V.state) return true;
+    return __G.cars.every(c => { const s = V.state(c); return !s || s.status !== 'loading'; }); }, { timeout, polling: 100 });
+  await page.evaluate(() => __step(1));
+}
+
+module.exports = { open, modelsReady, buildCaptureCopy, WORK, ROOT };
