@@ -156,6 +156,9 @@ export function addBridges(scene: THREE.Scene, bridges: BridgeIndex, heightfield
 // walls of gabled roofs, ending in a white fascia board, a white board under flat roofs, and a chimney on gabled roofs
 const WIN_W = 2.6,
   STOREY = 2.8; // window spacing and storey height (m)
+const BOARD_M = 0.2, // the width of a timber house's panel boards in the toon style (m)
+  BOARD_SEAM_ALPHA = 0.28,
+  TIMBER_MAX_M2 = 450; // the same size that gives a house the big buildings' plaster colours
 const PLINTH_OUT_M = 0.08,
   CORNER_OUT_M = 0.07,
   EAVE_M = 0.35, // how far a gabled roof runs on past the walls
@@ -170,13 +173,15 @@ export interface BuildingMeshOptions {
   skip?: readonly { x: number; z: number }[];
   /** Walls in one colour, without darkening towards the ground: the toon style's bands read better on them (#413). */
   flatWalls?: boolean;
+  /** The seams between the panel boards on timber houses, for the toon style (#413). */
+  boardSeams?: boolean;
 }
 /** The house shells in their colours with their trim, and one mesh of windows. Rolls rnd() once or twice per house, in data order. */
 export function addBuildings(
   scene: THREE.Scene,
   D: WorldData,
   heightfield: Heightfield,
-  { rnd, pick, maxAnisotropy, skip = [], flatWalls = false }: BuildingMeshOptions,
+  { rnd, pick, maxAnisotropy, skip = [], flatWalls = false, boardSeams = false }: BuildingMeshOptions,
 ) {
   const isSkipped = (p: readonly number[]) => skip.some(s => inPoly(p as number[], s.x, s.z));
   const hAt = (x: number, z: number) => heightfield.heightAt(x, z);
@@ -208,6 +213,8 @@ export function addBuildings(
       paint = { wall: c, wallFoot: c3, roof: c2 };
     const wp: number[] = [],
       wu: number[] = [],
+      bp: number[] = [], // the board seams' skin, its positions and uvs
+      bu: number[] = [],
       WHITE = col('#f1efe8'),
       PLINTH = col('#5b5d5b');
     const house = ['#9c3a2c', '#9c3a2c', '#a8452f', '#e8e2d2', '#e8e2d2', '#d9b65a', '#cfc8b8', '#8d9a8f'],
@@ -320,6 +327,12 @@ export function addBuildings(
           [w1x, w1z, w2x, w2z] = o(0, PLINTH_OUT_M),
           [p1x, p1z, p2x, p2z] = o(PLINTH_OUT_M, PLINTH_OUT_M), // its ends run on, so the corners close
           OUT: Corner = [ox, 0, oz];
+        if (boardSeams && area <= TIMBER_MAX_M2 && len >= 1) {
+          // between the wall and the windows' skin, from the plinth up to the eaves; u counts boards along the wall
+          const under = b.g ? FASCIA_M : 0.22;
+          quad(bp, ...o(0.02, 0), py, ya - under, py, yd - under);
+          bu.push(0, 0, len / BOARD_M, 0, len / BOARD_M, 1, 0, 0, len / BOARD_M, 1, 0, 1);
+        }
         face(emit, PLINTH, OUT, [p1x, base, p1z], [p2x, base, p2z], [p2x, py, p2z], [p1x, py, p1z]);
         face(emit, PLINTH, UP, [w1x, py, w1z], [w2x, py, w2z], [p2x, py, p2z], [p1x, py, p1z]);
         if (b.g) {
@@ -452,6 +465,36 @@ export function addBuildings(
     );
     skin.receiveShadow = true;
     scene.add(skin);
+    if (bp.length) {
+      // the seams: a dark line at one edge of each board, half transparent so it darkens any wall colour, unlit so the
+      // toon style leaves it alone; its mips fade it out with distance instead of shimmering
+      const cv = document.createElement('canvas');
+      cv.width = 32;
+      cv.height = 4;
+      const x = cv.getContext('2d')!;
+      x.fillStyle = `rgba(16, 21, 28, ${BOARD_SEAM_ALPHA})`;
+      x.fillRect(0, 0, 2, 4);
+      const t = new THREE.CanvasTexture(cv);
+      t.wrapS = t.wrapT = THREE.RepeatWrapping;
+      t.anisotropy = maxAnisotropy;
+      const bg = new THREE.BufferGeometry();
+      bg.setAttribute('position', new THREE.Float32BufferAttribute(bp, 3));
+      bg.setAttribute('uv', new THREE.Float32BufferAttribute(bu, 2));
+      scene.add(
+        new THREE.Mesh(
+          bg,
+          new THREE.MeshBasicMaterial({
+            map: t,
+            transparent: true,
+            depthWrite: false,
+            side: THREE.DoubleSide,
+            polygonOffset: true,
+            polygonOffsetFactor: -1,
+            polygonOffsetUnits: -1,
+          }),
+        ),
+      );
+    }
   })();
 }
 
