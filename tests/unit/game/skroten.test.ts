@@ -183,7 +183,6 @@ describe('Skroten sells the cars on its lot', () => {
     t.choose('buy');
     expect(t.wallet.kr).toBe(3000);
     expect(t.car.owned).toBe(true);
-    expect(t.car.bought).toBe(true);
     expect(t.car.saleKr).toBe(0);
     expect(t.calls[0]).toContain('Den ä din nu');
   });

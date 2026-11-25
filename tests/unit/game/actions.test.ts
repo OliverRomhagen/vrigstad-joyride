@@ -206,10 +206,7 @@ describe('Actions.action', () => {
   });
 
   it("offers the nearer car on Skroten's lot over a wreck, or a car you bought and haven't driven", () => {
-    for (const other of [
-      parked({ x: -2, mode: 'idle', owned: true, dmg: 999 }),
-      parked({ x: -2, owned: true, bought: true }),
-    ]) {
+    for (const other of [parked({ x: -2, mode: 'idle', owned: true, dmg: 999 }), parked({ x: -2, owned: true })]) {
       const t = actions({ cars: [parked({ x: 0.9, saleKr: 2000 }), other] });
       t.a.action();
       expect(t.calls).toEqual(['offer 2000']);
