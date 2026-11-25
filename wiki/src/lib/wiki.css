@@ -13,13 +13,8 @@
   --muted: #b8b09c;
   --gold: #e8b44a;
   --sign-blue: #0b5aa2; /* a Swedish place-name sign: white letters and border on blue */
-  --glass: #1d1f24cc; /* a dark pane over the sky or a scene */
   --hairline: #ffffff2a; /* a pane's edge */
-  /* a pane lifted off what is behind it: a hair of light round its edge, a tight shadow and a wide soft one */
-  --lift: 0 0 0 1px #ffffff1f, 0 1px 2px #0004, 0 10px 30px #0005;
   --font: "Barlow Condensed", "Avenir Next Condensed", "Arial Narrow", system-ui, sans-serif;
-  /* hand-painted signs, such as Skroten's gate: the display font until the game has a handwritten one */
-  --hand: var(--font);
   --body: system-ui, -apple-system, "Segoe UI", sans-serif;
   color-scheme: dark;
 }
@@ -85,28 +80,6 @@ h1 {
 h2 {
   font-size: 1.75rem;
   margin-top: 40px;
-}
-
-/* ---------- into the garage and out of it (routes/+layout.svelte starts it) ---------- */
-/* the page you leave fades and softens, quickly; the one you come to fades up a moment later, from a little closer in, as
-   if stepping through the gate. Out is shorter and plainer than in, here and wherever something leaves. Browsers without view transitions never match these, and change page at once. */
-:root[data-transition="garage"]::view-transition-old(root) {
-  animation: 160ms ease-in both garage-leave;
-}
-:root[data-transition="garage"]::view-transition-new(root) {
-  animation: 380ms 60ms ease-out both garage-arrive;
-}
-@keyframes garage-leave {
-  to {
-    opacity: 0;
-    filter: blur(4px);
-  }
-}
-@keyframes garage-arrive {
-  from {
-    opacity: 0;
-    scale: 1.015;
-  }
 }
 
 /* for a screen reader only: text that says what the page shows another way */
