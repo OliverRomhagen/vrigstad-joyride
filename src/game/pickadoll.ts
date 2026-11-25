@@ -2,7 +2,6 @@
 // weapon from the start; Q changes the weapon, G what a hit does, and the mouse button, X or the Fire button fires, on
 // foot and from a car. The rules are in ./sim/shots.ts and the drawing in ./render/shot-fx.ts; this file reads the
 // controls, shows the two HUD buttons and decides what each hit does to the world. A page module: it uses the DOM.
-import { clamp } from '../world/math';
 import type { Rnd } from '../world/random';
 import type { Npc } from './pedestrians';
 import type { PlayerState } from './player';
@@ -10,28 +9,28 @@ import type { Ragdolls } from './ragdolls';
 import type { RenderedCar } from './render/car-meshes';
 import { GEGGA, type ShotFx } from './render/shot-fx';
 import {
+  aimAt,
   aimShot,
-  assistYaw,
+  assistTarget,
   HIT_FLAVOURS,
   type HitFlavour,
-  landing,
   MUZZLE_M,
   newHit,
   type Shot,
   type ShotHit,
   type ShotWorld,
+  sight,
   stepShot,
   WEAPONS,
 } from './sim/shots';
 import type { GameState, ViewState } from './state';
 
-// aiming with the camera you already have: looking level with the default camera fires level, a lower camera fires up at
-// the walls, a higher one down at the street
-const AIM_LEVEL_PITCH = 0.34, // the camera pitch (rad) that fires level
-  AIM_PITCH_K = 0.75, // rad of aim per rad of camera pitch
-  AIM_UP_MAX = 0.35,
-  AIM_DOWN_MAX = 0.6;
-// the soft lock on a touch screen, where there is no fine aim: the shot turns to the nearest target near where you look
+// aiming: a crosshair fixed on screen, a little above your head, and shots go to what is under it, as in any shooter.
+// The shot still leaves from you, not from the camera, so something close beside you can be in its way
+const CROSSHAIR_NDC_Y = 0.3, // how far above the middle of the screen, as a share of half its height; #lab-crosshair's top is the same point
+  SIGHT_M = 160; // the line of sight looks this far past you
+const TARGET_UP_M = 1; // the soft lock aims this far above its target's feet
+// the soft lock on a touch screen, where there is no fine aim: the shot goes to the nearest person or car near where you look
 const ASSIST_CONE_RAD = 0.3,
   ASSIST_CONE_CAR_RAD = 0.6, // wider from a car: both thumbs are busy driving
   ASSIST_RANGE_M = 45;
@@ -82,6 +81,9 @@ export class Pickadoll {
   private readonly dancers: { npc: Npc; leftS: number }[] = [];
   private readonly hit = newHit();
   private readonly aimHit = newHit();
+  private readonly line = { x: 0, y: 0, z: 0, dx: 0, dy: 0, dz: -1 };
+  private readonly aim = { yaw: 0, pitch: 0 };
+  private readonly crosshair: HTMLElement;
   private readonly world: ShotWorld & { cars: RenderedCar[] };
   private readonly weaponButton: HTMLButtonElement;
   private readonly flavourButton: HTMLButtonElement;
@@ -131,6 +133,10 @@ export class Pickadoll {
     fire.addEventListener('pointerup', release);
     fire.addEventListener('pointercancel', release);
     g.$('pad').prepend(fire);
+    this.crosshair = document.createElement('div');
+    this.crosshair.id = 'lab-crosshair';
+    this.crosshair.hidden = true;
+    g.$('stage').append(this.crosshair);
     this.weaponButton = this.hudButton('Q', () => this.nextWeapon());
     this.flavourButton = this.hudButton('G', () => this.nextFlavour());
     this.drawHud();
@@ -208,10 +214,34 @@ export class Pickadoll {
     for (const c of this.g.cars) if (c !== car) cars.push(c);
 
     const ready = game.started && !this.g.menuOpen && !this.g.inside && game.titleCardT <= 0;
-    let yaw = view.camYaw;
-    if (coarse)
-      yaw = assistYaw(from.x, from.z, yaw, this.world, car ? ASSIST_CONE_CAR_RAD : ASSIST_CONE_RAD, ASSIST_RANGE_M);
-    const pitch = clamp((AIM_LEVEL_PITCH - view.camPitch) * AIM_PITCH_K, -AIM_DOWN_MAX, AIM_UP_MAX);
+    // what is under the crosshair: the line of sight from the camera, looked along from where it passes you
+    const line = fx.sightLine(CROSSHAIR_NDC_Y, this.line),
+      muzzleY = this.g.world.groundAt(from.x, from.z) + MUZZLE_M,
+      pastM = Math.hypot(from.x - line.x, muzzleY - line.y, from.z - line.z),
+      seen = sight(line.x, line.y, line.z, line.dx, line.dy, line.dz, pastM, pastM + SIGHT_M, this.world, this.aimHit);
+    let tx = this.aimHit.x,
+      ty = this.aimHit.y,
+      tz = this.aimHit.z,
+      onTarget = seen && (this.aimHit.kind === 'person' || this.aimHit.kind === 'car');
+    if (coarse && !onTarget) {
+      const t = assistTarget(
+        from.x,
+        from.z,
+        view.camYaw,
+        this.world,
+        car ? ASSIST_CONE_CAR_RAD : ASSIST_CONE_RAD,
+        ASSIST_RANGE_M,
+      );
+      if (t) {
+        tx = t.x;
+        tz = t.z;
+        ty = this.g.world.groundAt(tx, tz) + TARGET_UP_M;
+        onTarget = true;
+      }
+    }
+    const { yaw, pitch } = aimAt(weapon.speedMs, from.x, muzzleY, from.z, tx, ty, tz, this.aim);
+    this.crosshair.hidden = !ready;
+    this.crosshair.classList.toggle('on', onTarget);
     if (ready && this.coolS <= 0 && (weapon.auto ? this.held : this.pulled)) {
       this.pulled = false;
       this.coolS = weapon.coolS;
@@ -228,7 +258,6 @@ export class Pickadoll {
       this.shots.pop();
     }
     fx.drawShots(this.shots, this.colourOf);
-    fx.aim(ready ? landing(this.weapon, from.x, from.z, yaw, pitch, this.world, this.aimHit) : null);
     this.dance(dt);
   }
 

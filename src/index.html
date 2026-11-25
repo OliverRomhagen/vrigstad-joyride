@@ -120,6 +120,9 @@ body { isolation: isolate; }
 #card .fine { font-size: 11px; color: var(--dim); margin-top: 12px; }
 #card .fine a { color: inherit; }
 #fail { position: absolute; inset: 0; display: grid; place-items: center; padding: 24px; text-align: center; font-size: 15px; color: #16201c; }
+/* the pickadoll lab's crosshair: 35% down is 0.3 of half the height above the middle (CROSSHAIR_NDC_Y); gold over a person or a car */
+#lab-crosshair { position: absolute; left: 50%; top: 35%; width: 16px; height: 16px; margin: -10px 0 0 -10px; border: 2px solid rgba(255, 255, 255, .9); border-radius: 50%; box-shadow: 0 0 0 1.5px rgba(16, 20, 15, .45), inset 0 0 0 1.5px rgba(16, 20, 15, .45); pointer-events: none; }
+#lab-crosshair.on { border-color: var(--gold); }
 #pets, .lab-weapon { border: 0; cursor: pointer; pointer-events: auto; }
 #pets kbd, .lab-weapon kbd { font-size: 12px; min-width: 16px; padding: 0 4px; }
 @media (pointer: coarse) { #pets kbd, .lab-weapon kbd { display: none; } #pets, .lab-weapon { min-height: 44px; padding: 0 16px; } }   /* a finger-sized target */

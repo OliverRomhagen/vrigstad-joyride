@@ -109,7 +109,6 @@ const WALL_MAX_M = 9; // houses are taken to be this tall: a shot above it flies
 const PERSON_TALL_M = 1.85; // a standard person, to the top of the head
 const CAR_TALL_M = 1.5;
 const WALL_PROBE_M = 0.05; // the radius of the circle that feels for a wall
-const AIM_STEP_S = 1 / 30; // the aim mark's path is stepped this coarsely
 
 /** One shot in the air. Metres and m/s; y is up. */
 export interface Shot {
@@ -264,57 +263,99 @@ export const newHit = (): ShotHit => ({
   target: -1,
 });
 
+const _sight: Shot = { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, ageS: 0, weapon: 0 };
+
 /**
- * Where a shot fired from (x, z) at `yaw` and `pitch` would land, with no spread: the aim mark. Writes it to `out`
- * and returns it, or null when the shot would fly out of range.
+ * What a straight line of sight meets: from (x, y, z) along the unit vector (dx, dy, dz), between `fromM` and `toM`
+ * along it. The crosshair's target. Writes the point to `out` and returns true; when the line meets nothing, `out` is
+ * its far end and the answer false.
  */
-export function landing(
-  weapon: number,
+export function sight(
   x: number,
+  y: number,
   z: number,
-  yaw: number,
-  pitch: number,
+  dx: number,
+  dy: number,
+  dz: number,
+  fromM: number,
+  toM: number,
   world: ShotWorld,
   out: ShotHit,
-): ShotHit | null {
-  const s: Shot = {
-    x,
-    y: world.groundAt(x, z) + MUZZLE_M,
-    z,
-    ...aimShot(WEAPONS[weapon], yaw, pitch),
-    ageS: 0,
-    weapon,
-  };
-  for (let t = 0; t < RANGE_S; t += AIM_STEP_S) {
-    const hit = stepShot(s, AIM_STEP_S, world, out);
-    if (hit === 'gone') return null;
-    if (hit) return hit;
+): boolean {
+  const s = _sight;
+  s.vx = dx;
+  s.vy = dy;
+  s.vz = dz;
+  for (let d = fromM; d <= toM; d += STEP_M) {
+    s.x = x + dx * d;
+    s.y = y + dy * d;
+    s.z = z + dz * d;
+    if (hitAt(s, world, out)) return true;
   }
-  return null;
+  surface(out, 'ground', -1, 0, 1, 0);
+  out.x = x + dx * toM;
+  out.y = y + dy * toM;
+  out.z = z + dz * toM;
+  return false;
 }
 
-/** The soft lock: the heading to the nearest person or car within `coneRad` of `yaw` and `rangeM` of (x, z), or `yaw` when there is none. */
-export function assistYaw(
+/**
+ * The yaw and pitch that send a shot at `speedMs` from (x, y, z) through (tx, ty, tz), allowing for its drop: the
+ * flattest way there, or 45° up when the point is out of reach.
+ */
+export function aimAt(
+  speedMs: number,
+  x: number,
+  y: number,
+  z: number,
+  tx: number,
+  ty: number,
+  tz: number,
+  out: { yaw: number; pitch: number },
+) {
+  const fx = tx - x,
+    fz = tz - z,
+    flat = Math.hypot(fx, fz),
+    up = ty - y,
+    v2 = speedMs * speedMs,
+    reach = v2 * v2 - GRAVITY_MS2 * (GRAVITY_MS2 * flat * flat + 2 * up * v2);
+  out.yaw = Math.atan2(fx, -fz);
+  out.pitch =
+    flat < 0.01
+      ? Math.sign(up) * (Math.PI / 2)
+      : reach < 0
+        ? Math.PI / 4
+        : Math.atan((v2 - Math.sqrt(reach)) / (GRAVITY_MS2 * flat));
+  return out;
+}
+
+/**
+ * The soft lock: the nearest person or car within `coneRad` of the heading `yaw` and `rangeM` of (x, z), or null
+ * when there is none.
+ */
+export function assistTarget(
   x: number,
   z: number,
   yaw: number,
   world: Pick<ShotWorld, 'people' | 'cars'>,
   coneRad: number,
   rangeM: number,
-): number {
-  let best = yaw,
+): { x: number; z: number } | null {
+  let best: { x: number; z: number } | null = null,
     bestOff = coneRad;
-  const consider = (tx: number, tz: number) => {
-    const d = Math.hypot(tx - x, tz - z);
-    if (d > rangeM || d < 1) return;
-    const to = Math.atan2(tx - x, -(tz - z)),
-      off = Math.abs(Math.atan2(Math.sin(to - yaw), Math.cos(to - yaw)));
-    if (off < bestOff) {
-      bestOff = off;
-      best = to;
+  for (let pass = 0; pass < 2; pass++) {
+    const list: readonly { x: number; z: number; down?: boolean }[] = pass ? world.cars : world.people;
+    for (const t of list) {
+      if (t.down) continue;
+      const d = Math.hypot(t.x - x, t.z - z);
+      if (d > rangeM || d < 1) continue;
+      const to = Math.atan2(t.x - x, -(t.z - z)),
+        off = Math.abs(Math.atan2(Math.sin(to - yaw), Math.cos(to - yaw)));
+      if (off < bestOff) {
+        bestOff = off;
+        best = t;
+      }
     }
-  };
-  for (const p of world.people) if (!p.down) consider(p.x, p.z);
-  for (const c of world.cars) consider(c.x, c.z);
+  }
   return best;
 }

@@ -1,13 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import {
+  aimAt,
   aimShot,
-  assistYaw,
+  assistTarget,
   GRAVITY_MS2,
-  landing,
   MUZZLE_M,
   newHit,
   type Shot,
   type ShotWorld,
+  sight,
   stepShot,
   WEAPONS,
 } from '../../../../src/game/sim/shots';
@@ -118,27 +119,61 @@ describe('the weapons', () => {
   });
 });
 
-describe('landing', () => {
-  it('is where a shot with no spread lands', () => {
-    const w = world(),
-      mark = landing(PICKADOLL, 0, 0, 0, 0, w, newHit());
-    expect(mark).toMatchObject({ kind: 'wall' });
-    expect(mark!.z).toBeCloseTo((fly(shot(), w) as { z: number }).z, 0);
+describe('sight', () => {
+  it('finds the wall a level line of sight meets, on its face', () => {
+    const out = newHit();
+    expect(sight(0, 1.5, 0, 0, 0, -1, 0, 100, world(), out)).toBe(true);
+    expect(out).toMatchObject({ kind: 'wall' });
+    expect(out.z).toBeCloseTo(-20);
+  });
+
+  it('starts looking where it is told to, past what stands nearer', () => {
+    const people = [{ x: 0, z: -3, scale: 1 }],
+      out = newHit();
+    sight(0, 1.5, 0, 0, 0, -1, 0, 100, world({ people }), out);
+    expect(out.kind).toBe('person');
+    sight(0, 1.5, 0, 0, 0, -1, 5, 100, world({ people }), out);
+    expect(out.kind).toBe('wall');
+  });
+
+  it('gives its far end when it meets nothing', () => {
+    const out = newHit();
+    expect(sight(0, 1.5, 0, 1, 0, 0, 0, 50, world(), out)).toBe(false);
+    expect(out).toMatchObject({ x: 50, y: 1.5, z: 0 });
   });
 });
 
-describe('assistYaw', () => {
+describe('aimAt', () => {
+  it('sends a shot through the point it is aimed at, drop and all', () => {
+    for (const weapon of [PICKADOLL, WEAPONS.findIndex(w => w.id === 'potatiskanon')]) {
+      // a point on the house's south wall, 3 m up and a little to the east
+      const { yaw, pitch } = aimAt(WEAPONS[weapon].speedMs, 0, MUZZLE_M, 0, 2, 3, -20, { yaw: 0, pitch: 0 });
+      const hit = fly({ x: 0, y: MUZZLE_M, z: 0, ...aimShot(WEAPONS[weapon], yaw, pitch), ageS: 0, weapon }, world());
+      expect(hit).toMatchObject({ kind: 'wall' });
+      if (hit !== 'gone') {
+        expect(hit.x).toBeCloseTo(2, 0);
+        expect(hit.y).toBeCloseTo(3, 0);
+      }
+    }
+  });
+
+  it('fires at 45 degrees at a point out of reach', () => {
+    expect(aimAt(10, 0, 0, 0, 0, 0, -500, { yaw: 0, pitch: 0 }).pitch).toBeCloseTo(Math.PI / 4);
+  });
+});
+
+describe('assistTarget', () => {
   const people = [
     { x: 2, z: -20, scale: 1 }, // a little right of north
     { x: -20, z: 0, scale: 1 }, // due west
   ];
 
-  it('turns to the nearest target inside the cone', () => {
-    expect(assistYaw(0, 0, 0, { people, cars: [] }, 0.3, 45)).toBeCloseTo(Math.atan2(2, 20));
+  it('is the nearest target inside the cone', () => {
+    expect(assistTarget(0, 0, 0, { people, cars: [] }, 0.3, 45)).toBe(people[0]);
   });
 
-  it('keeps the heading when nobody is inside the cone or the range', () => {
-    expect(assistYaw(0, 0, Math.PI, { people, cars: [] }, 0.3, 45)).toBe(Math.PI);
-    expect(assistYaw(0, 0, 0, { people, cars: [] }, 0.3, 10)).toBe(0);
+  it('is nobody when nobody is inside the cone or the range', () => {
+    expect(assistTarget(0, 0, Math.PI, { people, cars: [] }, 0.3, 45)).toBeNull();
+    expect(assistTarget(0, 0, 0, { people, cars: [] }, 0.3, 10)).toBeNull();
   });
 });

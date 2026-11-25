@@ -12,7 +12,6 @@ const SPLAT_ORDER = 1, // splats are drawn after the walls and cars they sit on
   STUCK_ORDERS = 4096;
 const LIFT_M = 0.03; // a splat sits this far off its surface, so the two don't flicker
 const SHOT_R_M = 0.07;
-const AIM_MARK_PER_M = 0.09; // the aim mark grows this much per metre from the camera, so it stays as big on screen
 const SLOPE_STEP_M = 0.5; // the ground's slope under a splat is read over this distance
 const TEX_PX = 128;
 // where a splat lands on a person: on the front, the back or a side of the body's box (m, as personParts builds it)
@@ -27,7 +26,7 @@ export const GEGGA = ['#ff3b6b', '#ffd400', '#22d3a0', '#2e9bff', '#b45cff', '#f
 
 export interface ShotFxDeps {
   scene: THREE.Scene;
-  camera: THREE.Object3D; // the aim mark keeps its size on screen
+  camera: THREE.Camera; // the line of sight starts here
   coarse: boolean;
   groundAt(x: number, z: number): number;
   rnd(): number; // its own stream: the shape of the splat
@@ -47,7 +46,6 @@ export class ShotFx {
   private readonly g: ShotFxDeps;
   private readonly shots: THREE.InstancedMesh;
   private readonly splats: THREE.InstancedMesh;
-  private readonly aimMark: THREE.Mesh;
   private readonly quad = new THREE.PlaneGeometry(1, 1);
   private readonly texture: THREE.CanvasTexture;
   private readonly stuckMats = new Map<string, THREE.Material>();
@@ -76,19 +74,6 @@ export class ShotFx {
       mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
       g.scene.add(mesh);
     }
-    // a white ring over a dark one, so it shows against a pale wall and a dark road alike; drawn over everything
-    const ring = (inner: number, outer: number, color: string, opacity: number, order: number) => {
-      const mesh = new THREE.Mesh(
-        new THREE.RingGeometry(inner, outer, 24),
-        new THREE.MeshBasicMaterial({ color, transparent: true, opacity, depthTest: false }),
-      );
-      mesh.renderOrder = order;
-      return mesh;
-    };
-    this.aimMark = ring(0.12, 0.18, '#ffffff', 0.9, 11);
-    this.aimMark.add(ring(0.09, 0.21, '#10140f', 0.45, 10));
-    this.aimMark.visible = false;
-    g.scene.add(this.aimMark);
   }
 
   // cut out, not blended: crisp edges, and no sorting against the glass and the water
@@ -203,15 +188,20 @@ export class ShotFx {
     return mesh;
   }
 
-  /** Shows where the next shot would land, or hides the mark with null. */
-  aim(hit: Pick<ShotHit, 'x' | 'y' | 'z' | 'nx' | 'ny' | 'nz'> | null) {
-    this.aimMark.visible = !!hit;
-    if (!hit) return;
-    this.aimMark.quaternion.copy(this.g.camera.quaternion); // faces you, wherever it lands
-    this.aimMark.position.set(hit.x, hit.y, hit.z);
-    this.aimMark.scale.setScalar(
-      Math.max(1, this.aimMark.position.distanceTo(this.g.camera.position) * AIM_MARK_PER_M),
-    );
+  /**
+   * The line of sight through a point on screen: `ndcY` is how far above the middle it is, as a share of half the
+   * screen's height. Writes where it starts (the camera) and its direction, a unit vector, to `out`.
+   */
+  sightLine(ndcY: number, out: { x: number; y: number; z: number; dx: number; dy: number; dz: number }) {
+    const { camera } = this.g;
+    _p.set(0, ndcY, 0.5).unproject(camera).sub(camera.position).normalize();
+    out.x = camera.position.x;
+    out.y = camera.position.y;
+    out.z = camera.position.z;
+    out.dx = _p.x;
+    out.dy = _p.y;
+    out.dz = _p.z;
+    return out;
   }
 }
 
