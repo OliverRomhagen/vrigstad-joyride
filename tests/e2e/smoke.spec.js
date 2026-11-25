@@ -799,8 +799,10 @@ test.describe('map (map.html)', () => {
 test.describe('marketing page (about.html)', () => {
   test('loads with no console errors, starts a getaway and scratches a trisslott', async ({ page }, testInfo) => {
     const errors = watchErrors(page);
-    // The deploy copies media/ next to the built pages (.github/workflows/pages.yml); dist/ alone doesn't have it.
-    await page.route('**/media/**', route => route.fulfill({ path: new URL(route.request().url()).pathname.slice(1) }));
+    // The page loads the teaser from the live site (only the deploy copies media/ next to the pages): serve the checkout's copy.
+    await page.route('**/media/**', route =>
+      route.fulfill({ path: 'media/' + new URL(route.request().url()).pathname.split('/media/')[1] }),
+    );
     await page.goto('/about.html');
     await expect(page.locator('a.btn.go').first()).toHaveAttribute('href', 'index.html');
     await page.screenshot({ path: testInfo.outputPath('about-hero.png') });

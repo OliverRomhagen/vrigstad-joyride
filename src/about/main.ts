@@ -264,6 +264,7 @@ function start() {
   $('cStart').hidden = true;
   $('cEnd').hidden = true;
   running = true;
+  $('chase').classList.add('running');
   lastFrame = performance.now();
   canvas.focus({ preventScroll: true });
   requestAnimationFrame(frame);
@@ -271,6 +272,7 @@ function start() {
 
 function end(caught: boolean) {
   running = false;
+  $('chase').classList.remove('running');
   pointer = null;
   keys.clear();
   const t = formatTime(elapsed),
@@ -469,7 +471,6 @@ function draw() {
   ctx.translate(-player.x, -player.z);
   paintMap(ctx);
   ctx.restore();
-  const toScreen = (m: Mover) => [viewW / 2 + (m.x - player.x) * zoom, viewH / 2 + (m.z - player.z) * zoom];
   if (pointer) {
     ctx.strokeStyle = 'rgba(242,194,48,.9)';
     ctx.lineWidth = 2;
@@ -478,7 +479,8 @@ function draw() {
     ctx.stroke();
   }
   for (const p of police) {
-    const [x, y] = toScreen(p);
+    const x = viewW / 2 + (p.x - player.x) * zoom,
+      y = viewH / 2 + (p.z - player.z) * zoom;
     if (x > -20 && x < viewW + 20 && y > -20 && y < viewH + 20) drawCar(ctx, x, y, p.heading, zoom, '', true, t);
     else {
       // off-screen: an arrow on the edge pointing at it

@@ -92,7 +92,8 @@ body.sirens::after { right: 0; background: linear-gradient(-90deg, rgba(31,95,16
 #getaway { background: var(--asphalt); }
 .head { display: flex; justify-content: space-between; align-items: end; gap: 24px; flex-wrap: wrap; margin-bottom: 28px; }
 #chase { position: relative; border-radius: 6px; overflow: hidden; background: var(--grass); border: 3px solid var(--plate); }
-#chase canvas { display: block; width: 100%; height: clamp(360px, 60vh, 560px); touch-action: none; cursor: crosshair; }
+#chase canvas { display: block; width: 100%; height: clamp(360px, 60vh, 560px); cursor: crosshair; }
+#chase.running canvas { touch-action: none; } /* only while driving: otherwise a swipe on it scrolls the page */
 .hud { position: absolute; inset: 0; pointer-events: none; display: flex; justify-content: space-between; align-items: flex-start; padding: 12px; gap: 8px; }
 .hud .plate { background: var(--plate); border-radius: 4px; padding: 4px 10px; }
 #cStars { font-size: 24px; line-height: 1; letter-spacing: 3px; color: rgba(244,241,230,.35); padding: 3px 10px 5px; }
@@ -206,7 +207,7 @@ footer a { color: var(--ink); }
   <div class="wrap">
     <p class="kicker">The teaser · turn the sound on</p>
     <h2>Fifty seconds of <em>Småland</em></h2>
-    <div class="screen"><video controls playsinline preload="metadata" src="media/teaser.mp4#t=0.5" aria-label="Teaser trailer: the village from the air, a red Volvo 240 chased by three police cars, an EPA-traktor at 30 km/h, and the title card"></video></div>
+    <div class="screen"><video controls playsinline preload="metadata" src="https://oliverromhagen.github.io/vrigstad-joyride/media/teaser.mp4#t=0.5" aria-label="Teaser trailer: the village from the air, a red Volvo 240 chased by three police cars, an EPA-traktor at 30 km/h, and the title card"></video></div>
   </div>
 </section>
 
