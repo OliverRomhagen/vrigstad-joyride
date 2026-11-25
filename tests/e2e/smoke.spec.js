@@ -702,12 +702,12 @@ test.describe('game (index.html)', () => {
   test('Plåt-Pelle sells you a car from his lot, and it is yours to drive', async ({ page }, testInfo) => {
     const errors = watchErrors(page);
     await page.setViewportSize({ width: 640, height: 360 });
-    await page.goto('/index.html?dev');
-    const lot = (await state(page)).forSale;
+    // one load: start 3.5 m behind the first car of the fresh row (906.6, 93.2), worked out from the yard's layout (src/game/skroten-yard.ts)
+    await page.goto('/index.html?dev&at=907,89.75,0');
+    const { forSale: lot, x, z } = await state(page);
     expect(lot.length).toBeGreaterThanOrEqual(8);
-    // stand 3.5 m behind the first car (its nose points along (sin h, -cos h)): the cars stand side by side, noses to the yard
-    const c = lot[0];
-    await page.goto(`/index.html?dev&at=${c.x - Math.sin(c.h) * 3.5},${c.z + Math.cos(c.h) * 3.5},0`);
+    const c = lot.reduce((a, b) => (Math.hypot(b.x - x, b.z - z) < Math.hypot(a.x - x, a.z - z) ? b : a));
+    expect(Math.hypot(c.x - x, c.z - z)).toBeLessThan(4.4); // in reach: if the yard moved, start next to its new lot
     await page.locator('#go').click();
     await page.keyboard.press('Backquote');
     await page.keyboard.type('kr 5000');
