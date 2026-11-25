@@ -151,7 +151,7 @@ For anything a person sees and touches: the HUD, menus, the map's tools and the 
 
 - **What leaves is quicker and plainer than what comes.** An exit is shorter than its entrance and travels less: a fade, with a slight blur at most.
 - **Things that arrive together step in**, in small groups a short beat apart (about 100 ms), not as one block.
-- **Nothing moves by itself for someone who asked for less motion.** Put animations and transitions inside `@media (prefers-reduced-motion: no-preference)`; code that moves something (a camera, a turntable) checks `matchMedia('(prefers-reduced-motion: reduce)')`.
+- **Nothing moves by itself for someone who asked for less motion.** Put animations and transitions inside `@media (prefers-reduced-motion: no-preference)`; code that moves something on its own (a showcase camera, a turntable) checks `matchMedia('(prefers-reduced-motion: reduce)')`.
 - **Hover styles are for pointers that hover:** inside `@media (hover: hover)`, as `:hover` stays stuck on a touch screen after a tap.
 - **CSS before JavaScript for motion**, and a newer browser feature (view transitions, `@starting-style`) only where a browser without it gets the plain behaviour, not a broken one.
 - **Subtle first.** Start with less movement, less contrast and more see-through than seems right, and add from there.
