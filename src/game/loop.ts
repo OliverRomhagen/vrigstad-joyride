@@ -11,6 +11,7 @@ import { hop, type PlayerState, ride, walk } from './player';
 import type { Wanted } from './police';
 import type { CameraRig } from './render/camera-rig';
 import type { Person } from './render/models';
+import type { ToonStyle } from './render/toon-style';
 import { bodyRadius, nearestOnSpine, PERSON_RADIUS_M } from './sim/car-body';
 import type { GameState, ViewState } from './state';
 
@@ -85,11 +86,22 @@ export class GameLoop {
   private signT = 0;
   private blinkT = 0;
   private laterLine: string | null = null;
+  private style: Pick<ToonStyle, 'render'> | null = null;
   /** the police lights' phase, so the minimap blinks with them */
   blink = false;
 
   constructor(g: GameLoopDeps) {
     this.g = g;
+  }
+
+  /** Draws every later frame through a style: ?lab=toon's (#206), once its code has loaded. */
+  drawThrough(style: Pick<ToonStyle, 'render'>) {
+    this.style = style;
+  }
+
+  /** Whether frames are drawn through a style. */
+  get styled() {
+    return this.style !== null;
   }
 
   // a line that waits for the toast and any title card to clear, so it doesn't cut off what was just said
@@ -251,7 +263,8 @@ export class GameLoop {
       g.drawHealth();
     }
     g.drawMini(T);
-    g.renderer.render(g.scene, g.camera);
+    if (this.style) this.style.render(g.scene, g.camera);
+    else g.renderer.render(g.scene, g.camera);
     g.timeFrame(workStart);
   };
 }

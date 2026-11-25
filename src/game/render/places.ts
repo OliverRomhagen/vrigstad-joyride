@@ -2,7 +2,9 @@
 // and Skroten's ring, wide enough for a car (its yard is render/skroten.ts).
 // Moved from src/game/main.ts (#177); main.ts passes in the scene, the height lookup and the shared box geometry and paint.
 import * as THREE from 'three';
+import type { BoxPart } from '../box-part';
 import { type Door, KIOSK, type Places } from '../places';
+import { INK_FLAG } from './ink-flag';
 
 const SAFE_COLOUR = 0x4fd27a,
   KIOSK_COLOUR = 0xf2c230,
@@ -12,9 +14,6 @@ const GEM_SPIN = 1.6; // rad/s
 const WHITE = '#e8e2d2',
   RED = '#c8372d',
   YELLOW = '#f2c230';
-
-/** One box of a model: size, position and colour, as `boxGeo` in models.ts takes it. */
-type BoxPart = [sx: number, sy: number, sz: number, x: number, y: number, z: number, colour: string];
 
 /** What the places' meshes read from the rest of the game. */
 export interface PlaceMeshDeps {
@@ -75,6 +74,7 @@ function door(d: Door, heightAt: PlaceMeshDeps['heightAt'], boxGeo: PlaceMeshDep
   );
   m.position.set(d.mx, heightAt(d.mx, d.mz), d.mz);
   m.rotation.y = Math.atan2(d.nx, d.nz);
+  m.userData[INK_FLAG] = true;
   return m;
 }
 
@@ -99,5 +99,6 @@ function kiosk(
   );
   m.position.set(x, heightAt(x, z), z);
   m.castShadow = true;
+  m.userData[INK_FLAG] = true;
   return m;
 }
