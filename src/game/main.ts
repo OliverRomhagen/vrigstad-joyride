@@ -216,6 +216,8 @@ if (tuneParam && !DEV) console.warn('?tune= works in dev mode only: add ?dev');
 else for (const err of tunables.override(tuneParam ?? '')) console.warn('?tune=', err);
 let displayCar: RenderedCar | null = null;
 function carName(c: Car) { return vehicleVisuals.definition(meshed(c))?.name || c.T.name; }
+// the car parked by Torget, next to where you start; first, so the parked cars and traffic keep clear of it (#409)
+(function () { const o = { x: HOME.x + 7, z: HOME.z + 3 }; collide(o, 2.6); displayCar = addCar(selectedVehicle?.archetype || 'volvo', o.x, o.z, 0.6, 'parked', selectedVehicle?.id ?? 'volvo240'); })();
 fleet.parkCars();   // parked cars along streets and driveways
 for (let i = 0; i < 18; i++) spawnTraffic(null);
 
@@ -275,7 +277,6 @@ function drawTreats() { const el = $('treats'); el.hidden = false; el.textConten
 const player = { x: HOME.x, z: HOME.z, y: 0, vy: 0, h: 0, speed: 0, phase: 0, mesh: personParts('#f2c230', '#2b3a55', null, true, true) };   // y: metres above the ground
 collide(player, 0.6); scene.add(player.mesh);
 const jumpOk = () => !game.inCar && !places.inside && game.titleCardT <= 0;   // queue only where a jump can start, so a press inside a safehouse or under Gripen! can't fire as it ends
-(function () { const o = { x: player.x + 7, z: player.z + 3 }; collide(o, 2.6); displayCar = addCar(selectedVehicle?.archetype || 'volvo', o.x, o.z, 0.6, 'parked', selectedVehicle?.id ?? 'volvo240'); })();
 const health = newHealth();
 const wallet = newWallet();
 const wanted = new Wanted({ roads, rnd, pick, removeCar, drive, toast,
@@ -358,7 +359,7 @@ const { keys, joy } = input;
 
 // ---------- HUD (src/game/hud.ts) ----------
 // the getters are read when the HUD uses them, so they can name things that change during play
-const hud = new Hud({ $, ground: tex2d, P, K, roads, labels: D.labels, cars, places: places.list,
+const hud = new Hud({ $, ground: tex2d, P, K, paintBridgeRoads: ctx => ground.paintBridgeRoads(ctx), roads, labels: D.labels, cars, places: places.list,
   get stars() { return wanted.stars; }, get pcar() { return game.pcar; }, get blink() { return loop.blink; }, get kr() { return wallet.kr; } });
 // a declaration, not a bound const, so the sections above can pass toast on before the HUD exists
 function toast(msg: string, secs?: number, cls?: string) { hud.toast(msg, secs, cls); }
@@ -390,10 +391,12 @@ const loop = new GameLoop({ $, renderer, scene, camera, canvas, coarse, half: HA
   updateSign, catRideLines: () => crashes.catRideLines(), closeMenuIfLeft: () => menuPlate.closeIfLeft(), updatePrompt: () => prompt.update(), drawHealth,
   timeFrame: workStart => { if (!debugOverlay) return; const t = performance.now(); debugOverlay.frame(t, t - workStart, renderer.info); } });
 $('go').addEventListener('click', loop.startGame);
+// ?lab=toon draws the world cel-shaded (#206). The frames before its code arrives draw the default look, behind the intro
+if (lab.on('toon')) import('./render/toon-style').then(m => loop.drawThrough(new m.ToonStyle(renderer))).catch(err => console.warn('Lab: toon failed', err));
 loop.start();
 
 // ---------- test hook: read-only state for the smoke tests (src/game/test-hook.ts) ----------
-installTestHook({ game, view, player, health, cars, labs: lab.list(), get ragdolls() { return ragdolls.count; }, get stars() { return wanted.stars; }, get cats() { return cats.length; }, get ownCat() { return !!colony.owned; }, get displayCar() { return displayCar; },
+installTestHook({ game, view, player, health, cars, labs: lab.list(), get styled() { return loop.styled; }, get ragdolls() { return ragdolls.count; }, get stars() { return wanted.stars; }, get cats() { return cats.length; }, get ownCat() { return !!colony.owned; }, get displayCar() { return displayCar; },
   vehicleVisuals: { state: c => vehicleVisuals.state(meshed(c)) }, bodyMotion: { state: c => bodyMotion.state(meshed(c)) }, skyDome, street, debugStreetscape: DEBUG_STREETSCAPE, bridges: { index: bridges, draw: bridgeMeshes, groundAt }, furniture, water: { bodies: waterBodies, surface: waterLook.surface, props: waterLook.props, shore, terrainTriangles: terrainMesh.triangles, refinedCells: heightfield.refinedCells, buildMs: waterCutMs + waterMeshMs, inWater, hAt }, debugFurniture: DEBUG_FURNITURE, nearestCar,
   get kr() { return wallet.kr; }, get banknotes() { return banknotes.live; }, get confetti() { return confetti.live; }, get devcon() { return devcon.isOpen; }, build: __BUILD__, get fps() { return !!debugOverlay?.shown; }, day: { get hour() { return dayClock.hour; }, get night() { return dayClock.night; }, get sunLight() { return sky.sun; } } });
 })();

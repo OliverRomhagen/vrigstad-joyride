@@ -60,8 +60,16 @@ describe('command', () => {
   it('shows the usage line for a missing argument, a bad word and extra words', () => {
     const c = withCommand(command({ help: 'x', args: [choice('place', PLACES)], run: ({ place }) => place }));
     expect(c.run('t')).toBe('Usage: t <place>');
-    expect(c.run('t gnosjö')).toBe('No place called gnosjö. Usage: t <place>');
+    expect(c.run('t gnosjö')).toBe('No place called gnosjö. Pick one of: skroten, Slättsjön, torget. Usage: t <place>');
     expect(c.run('t torget skroten')).toBe('Too many words. Usage: t <place>');
+  });
+
+  it('lists a choice of up to 8 words when a word matches none, so the console works without Tab', () => {
+    const nine = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i'];
+    const c = withCommand(command({ help: 'x', args: [choice('letter', () => nine)], run: ({ letter }) => letter }));
+    expect(c.run('t z')).toBe('No letter called z. Usage: t <letter>');
+    nine.pop();
+    expect(c.run('t z')).toBe('No letter called z. Pick one of: a, b, c, d, e, f, g, h. Usage: t <letter>');
   });
 
   it('gives a rest argument the rest of the line', () => {
@@ -89,7 +97,7 @@ describe('command', () => {
   it('reads a choice list on each use, so it can change while the game runs', () => {
     const models = ['volvo'];
     const c = withCommand(command({ help: 'x', args: [choice('car', () => models)], run: ({ car }) => car }));
-    expect(c.run('t saab')).toBe('No car called saab. Usage: t <car>');
+    expect(c.run('t saab')).toBe('No car called saab. Pick one of: volvo. Usage: t <car>');
     models.push('saab');
     expect(c.run('t saab')).toBe('saab');
     expect(c.complete('t s')).toEqual(['saab']);
@@ -143,6 +151,23 @@ describe('argument types', () => {
     expect(() => read(n, 'tre')).toThrow('stars is a whole number.');
   });
 
+  it('int: -0 comes through as 0', () => {
+    expect(Object.is(read(int('stars', { min: 0 }), '-0'), 0)).toBe(true);
+    expect(Object.is(read(int('n'), '-000'), 0)).toBe(true);
+  });
+
+  it('int: a number too long to hold exactly is out of range, not "not a whole number"', () => {
+    expect(read(int('n'), '9007199254740991')).toBe(9007199254740991);
+    expect(() => read(int('n'), '9007199254740992')).toThrow('n is out of range.');
+    expect(() => read(int('n'), '-12345678901234567890')).toThrow('n is out of range.');
+    expect(read(int('n'), '1234567890123456')).toBe(1234567890123456);
+    expect(() => read(int('stars', { min: 0, max: 3 }), '99999999999999999999')).toThrow('stars is from 0 to 3.');
+    // Past an open end the range isn't broken, so it isn't named.
+    expect(() => read(int('n', { min: 0 }), '99999999999999999999')).toThrow('n is out of range.');
+    expect(() => read(int('n', { max: 3 }), '-99999999999999999999')).toThrow('n is out of range.');
+    expect(() => read(int('n', { min: 0 }), '-99999999999999999999')).toThrow('n is from 0 to ….');
+  });
+
   it('num: decimals, with a point or a Swedish comma', () => {
     const g = num('gravity', { min: 0 });
     expect(read(g, '9.8')).toBe(9.8);
@@ -150,6 +175,11 @@ describe('argument types', () => {
     expect(read(g, '.5')).toBe(0.5);
     expect(() => read(g, '-1')).toThrow('gravity is from 0 to ….');
     expect(() => read(g, '1e3')).toThrow('gravity is a number.');
+  });
+
+  it('num: -0 comes through as 0', () => {
+    const g = num('gravity', { min: 0 });
+    for (const w of ['-0', '-0.0', '-0,0']) expect(Object.is(read(g, w), 0)).toBe(true);
   });
 
   it('toggle: on and off in English or Swedish', () => {

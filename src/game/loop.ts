@@ -11,9 +11,12 @@ import { hop, type PlayerState, ride, walk } from './player';
 import type { Wanted } from './police';
 import type { CameraRig } from './render/camera-rig';
 import type { Person } from './render/models';
+import type { ToonStyle } from './render/toon-style';
+import { bodyRadius, nearestOnSpine, PERSON_RADIUS_M } from './sim/car-body';
 import type { GameState, ViewState } from './state';
 
 type Point = { x: number; z: number };
+const _onCar = { x: 0, z: 0 }; // nearestOnSpine writes here: no allocation per car per frame
 const SIGN_S = 0.25; // the street sign, the prompt and the speed plate redraw this often (s)
 const BLINK_S = 0.22; // the police lights change colour this often (s)
 const START_LINE = 'Find a car and press E to take it. Occupied cars always get you a wanted star.';
@@ -83,11 +86,22 @@ export class GameLoop {
   private signT = 0;
   private blinkT = 0;
   private laterLine: string | null = null;
+  private style: Pick<ToonStyle, 'render'> | null = null;
   /** the police lights' phase, so the minimap blinks with them */
   blink = false;
 
   constructor(g: GameLoopDeps) {
     this.g = g;
+  }
+
+  /** Draws every later frame through a style: ?lab=toon's (#206), once its code has loaded. */
+  drawThrough(style: Pick<ToonStyle, 'render'>) {
+    this.style = style;
+  }
+
+  /** Whether frames are drawn through a style. */
+  get styled() {
+    return this.style !== null;
   }
 
   // a line that waits for the toast and any title card to clear, so it doesn't cut off what was just said
@@ -174,12 +188,15 @@ export class GameLoop {
       g.collide(player, 0.5);
       if (!places.inside)
         for (const c of cars) {
-          const dx = player.x - c.x,
-            dz = player.z - c.z,
-            d = Math.hypot(dx, dz);
-          if (d < 1.6 && d > 0.01) {
-            player.x += (dx / d) * (1.6 - d);
-            player.z += (dz / d) * (1.6 - d);
+          if (Math.abs(player.x - c.x) > c.T.lengthM || Math.abs(player.z - c.z) > c.T.lengthM) continue;
+          nearestOnSpine(c, player.x, player.z, _onCar);
+          const dx = player.x - _onCar.x,
+            dz = player.z - _onCar.z,
+            d = Math.hypot(dx, dz),
+            apart = bodyRadius(c) + PERSON_RADIUS_M;
+          if (d < apart && d > 0.01) {
+            player.x += (dx / d) * (apart - d);
+            player.z += (dz / d) * (apart - d);
             const a = c.mode === 'ai' ? c.h : c.vh,
               n = runOverHurt(impactSpeed(Math.sin(a) * c.v, -Math.cos(a) * c.v, -dx / d, -dz / d)); // the car's speed towards you
             if (n > 0 && game.clockS - this.runOverAt >= CRASH_COOL_S) {
@@ -246,7 +263,8 @@ export class GameLoop {
       g.drawHealth();
     }
     g.drawMini(T);
-    g.renderer.render(g.scene, g.camera);
+    if (this.style) this.style.render(g.scene, g.camera);
+    else g.renderer.render(g.scene, g.camera);
     g.timeFrame(workStart);
   };
 }

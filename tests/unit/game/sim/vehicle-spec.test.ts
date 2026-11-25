@@ -27,6 +27,13 @@ describe('specFor', () => {
     expect(xc70.suspension.maxRollRad).toBeGreaterThan(saab.suspension.maxRollRad);
     expect(xc70.max).toBe(saab.max);
   });
+  it('takes the model’s size for its hitbox, so a Micra is shorter than an Impala (#201)', () => {
+    const micra = specFor('saab', vehicleDefinition('micra-k11')),
+      impala = specFor('volvo', vehicleDefinition('impala1970'));
+    expect([micra.lengthM, micra.widthM]).toEqual([3.7, 1.59]);
+    expect([impala.lengthM, impala.widthM]).toEqual([5.49, 2.03]);
+    expect(VEHICLE_SPECS.saab.lengthM).toBe(4.6);
+  });
   it('keeps every rear axle between the wheels', () => {
     for (const { handling } of Object.values(VEHICLE_SPECS)) {
       expect(handling.rearAxleM).toBeGreaterThan(0);

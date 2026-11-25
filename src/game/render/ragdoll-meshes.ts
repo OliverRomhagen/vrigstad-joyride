@@ -1,12 +1,11 @@
 // Draws the people your car knocked over (src/game/ragdolls.ts): the same boxes as personParts, but each limb on its own,
 // while the pedestrian's own mesh is hidden; once they are up, their own mesh comes back where they stand.
 import * as THREE from 'three';
+import type { BoxPart } from '../box-part';
 import type { KnockedDown } from '../ragdolls';
 import { HEAD, L_FOOT, L_HAND, L_HIP, L_SHOULDER, R_FOOT, R_HAND, R_HIP, R_SHOULDER } from '../sim/ragdoll';
 
 const SKIN = '#e2b796'; // personParts' skin colour
-
-type BoxPart = [number, number, number, number, number, number, string]; // [sx, sy, sz, x, y, z, colour], as boxGeo in ./models.ts takes it
 
 /** What the ragdoll meshes read from the rest of the game. */
 export interface RagdollMeshDeps {

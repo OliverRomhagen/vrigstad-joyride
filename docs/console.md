@@ -155,7 +155,9 @@ commands.register('go', command({
 - `command()` (`src/game/command-args.ts`) builds a `Command` from typed arguments: `int`, `num` (a Swedish comma
   works), `word`, `toggle` (on/off, ja/nej), `choice` and `rest`, each `optional()` at the end. From that one list come
   the parsing, the usage line (`<place> [speed]`), the error lines (`No place called gnosjö. Usage: go <place>
-  [speed]`) and Tab completion. `run` gets the values by name, typed: a choice is its own union of words.
+  [speed]`) and Tab completion. `run` gets the values by name, typed: a choice is its own union of words. A choice of
+  up to 8 words lists them in its error (`Pick one of: kiosk, skroten, torget.`), since the console on a phone has no
+  Tab; a longer one, such as the tunables' keys, keeps the short line.
 - A `choice` given a function reads it on every use, so a list that grows while the game runs (car models, unlocked
   places) completes and parses without registering again.
 - The plain shape still works: `register(name, { usage, help, run(words) })`, throwing `UsageError` for bad
@@ -290,8 +292,9 @@ Each step is a PR of its own, in this order; the first two are what #218 asks fo
 1. **Tab and a hint in the box.** Tab completes from `complete()` (twice shows the choices), and the input shows the
    usage line of the command being typed. Page code in `devconsole.ts`; a smoke step types a command and checks it ran.
 2. **The core dev commands** (#356), each in the module that owns the state, with `command()`: `god [mode]`
-   (`health.ts`), `stars <0-3>` (`police.ts`), and `fps [on]` and `errors clear` (the dev overlay,
-   `presentation/debug-overlay.ts`) are built; `go <place>` (from #346's spots) and `car <model>` follow. Each one's rule gets a unit test in its module.
+   (`health.ts`), `stars <0-3>` (`police.ts`), `go <place>` (also `tp`, `places.ts`), `car <model>` (`cars.ts`), and
+   `fps [on]` and `errors clear` (the dev overlay, `presentation/debug-overlay.ts`) are built. Each one's rule gets a
+   unit test in its module.
 3. **Tunables** (#217, built in #357). `src/game/sim/tunable-commands.ts` turns the registry's entries into
    `tune set <tunable> <value>`, `tune get <tunable>`, `tune list [prefix]` and `tune reset [tunable]`, with the key as
    a `choice` and the value as a `num` that the registry checks against the entry's range. They sit under `tune`, so
