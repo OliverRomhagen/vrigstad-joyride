@@ -76,7 +76,7 @@ const street = way(
 );
 const elements = [
   way(48762655, church, { building: 'church' }),
-  // the bank museum, moved off Jönköpingsvägen; centred where BUILDING_SHIFT expects its outline
+  // a house the tests' own BUILDING_SHIFT moves; centred where that table expects its outline
   way(48807861, ring(-80.5, -26.1, 10, 10), { building: 'yes' }),
   street,
   street, // a duplicate, as a union of selectors can return
@@ -159,8 +159,13 @@ const elements = [
   ),
 ];
 
+// The tests' own table of moved outlines, in place of process.py's: way id -> [dx, dz, centroid x, centroid z].
+// So this world needn't hold a way for every house the real table lists.
+const MOVED_WAY = 48807861;
+const BUILDING_SHIFT: Record<number, number[]> = { [MOVED_WAY]: [-1.5, -5, -75.5, -21.1] };
+
 // runs tools/process.py on an Overpass answer in a temp dir; a failed assert throws with the script's stderr
-const runProcess = (els: readonly unknown[]) => {
+const runProcess = (els: readonly unknown[], shift = BUILDING_SHIFT) => {
   const dir = mkdtempSync(join(tmpdir(), 'process-'));
   try {
     copyFileSync('data/raw/tile.png', join(dir, 'tile.png'));
@@ -168,6 +173,7 @@ const runProcess = (els: readonly unknown[]) => {
     const log = execFileSync('python3', ['tools/process.py', dir, join(dir, 'out.json')], {
       encoding: 'utf8',
       stdio: 'pipe',
+      env: { ...process.env, BUILDING_SHIFT: JSON.stringify(shift) },
     });
     return { log, out: JSON.parse(readFileSync(join(dir, 'out.json'), 'utf8')) as WorldData };
   } finally {
@@ -207,26 +213,45 @@ describe('tools/process.py buildings', () => {
     expect(out.b.map(b => b.p)).toContainEqual([-82, -31.1, -72, -31.1, -72, -21.1, -82, -21.1]);
   });
 
-  // the fixture with the bank museum's way replaced, or dropped for undefined
-  const withMuseum = (museum: ReturnType<typeof way> | undefined) =>
-    elements.flatMap(e => (e.type === 'way' && e.id === 48807861 ? (museum ? [museum] : []) : [e]));
-  const museumRing = ring(-80.5, -26.1, 10, 10);
+  // the fixture with the moved way replaced, or dropped for undefined
+  const withMoved = (moved: ReturnType<typeof way> | undefined) =>
+    elements.flatMap(e => (e.type === 'way' && e.id === MOVED_WAY ? (moved ? [moved] : []) : [e]));
+  const movedRing = ring(-80.5, -26.1, 10, 10);
 
   it('fails the build when a listed outline was re-traced', () => {
-    const retraced = way(48807861, ring(-79.5, -26.1, 10, 10), { building: 'yes' }); // 1 m east
-    expect(() => runProcess(withMuseum(retraced))).toThrow(/way 48807861 was re-traced/);
+    const retraced = way(MOVED_WAY, ring(-80.3, -26.1, 10, 10), { building: 'yes' }); // 0.2 m east
+    expect(() => runProcess(withMoved(retraced))).toThrow(/way 48807861 was re-traced/);
   });
 
   it('keeps a listed outline that only gained a corner on an edge', () => {
-    const [a, b, ...rest] = museumRing;
-    const entrance = way(48807861, [a, [(a[0] + b[0]) / 2, a[1]], b, ...rest], { building: 'yes' });
-    expect(() => runProcess(withMuseum(entrance))).not.toThrow();
+    const [a, b, ...rest] = movedRing;
+    const entrance = way(MOVED_WAY, [a, [(a[0] + b[0]) / 2, a[1]], b, ...rest], { building: 'yes' });
+    expect(() => runProcess(withMoved(entrance))).not.toThrow();
   });
 
   it('fails the build when a listed way is no longer a building outline', () => {
-    const msg = /BUILDING_SHIFT ways not found as building outlines in osm\.json: \{48807861\}/;
-    expect(() => runProcess(withMuseum(undefined))).toThrow(msg);
-    expect(() => runProcess(withMuseum(way(48807861, museumRing, { amenity: 'bank' })))).toThrow(msg);
+    const msg = /BUILDING_SHIFT ways not found as building outlines in osm\.json .*: \[48807861\]/;
+    expect(() => runProcess(withMoved(undefined))).toThrow(msg);
+    expect(() => runProcess(withMoved(way(MOVED_WAY, movedRing, { amenity: 'bank' })))).toThrow(msg);
+  });
+
+  it('fails the build when the offset moves a listed outline out of the world', () => {
+    const farEast = { [MOVED_WAY]: [2000, 0, -75.5, -21.1] };
+    expect(() => runProcess(elements, farEast)).toThrow(/way 48807861 is moved out of the world/);
+  });
+
+  it('fails the build when a listed outline has no area', () => {
+    const flat = way(
+      MOVED_WAY,
+      [
+        [-80, -21],
+        [-75, -21],
+        [-70, -21],
+        [-80, -21],
+      ],
+      { building: 'yes' },
+    );
+    expect(() => runProcess(withMoved(flat))).toThrow(/way 48807861 has no area/);
   });
 });
 
