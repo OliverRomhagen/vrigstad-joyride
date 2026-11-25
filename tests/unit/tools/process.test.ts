@@ -141,6 +141,7 @@ const elements = [
   node(26, 22, 20, { highway: 'bus_stop', name: 'Vrigstad Torget', kerb: 'raised' }),
   node(27, 5000, 20, { amenity: 'bench' }), // outside the world: dropped
   node(28, 24, 20, { leisure: 'picnic_table' }), // counted only
+  node(31, 26, 20, { man_made: 'street_cabinet' }),
   way(
     29,
     [
@@ -198,6 +199,7 @@ describe('tools/process.py street furniture data', () => {
       { i: 24, e: 'w', k: FurnitureCode.BENCH, x: 31, z: 30.3 }, // a way: nodes and ways number separately
       { i: 25, k: FurnitureCode.WASTE_BASKET, x: 18, z: 20 },
       { i: 26, k: FurnitureCode.BUS_STOP, x: 22, z: 20 },
+      { i: 31, k: FurnitureCode.STREET_CABINET, x: 26, z: 20 },
     ]);
     expect(log).toContain('picnic tables 1 (counted only); 1 outside the world');
   });
