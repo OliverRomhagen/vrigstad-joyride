@@ -5,9 +5,10 @@ import '../fonts/barlow';
 import { trissPrize } from '../game/economy';
 import { EVADE_DIST_M, EVADE_S as EVADE_TIME_S } from '../game/police';
 import { type CarType as GameCarType, VEHICLE_SPECS } from '../game/sim/vehicle-spec';
-import { TEMPER_LINES, temper } from '../game/trisslott';
+import { BIG_WIN_KR, TEMPER_LINES, temper } from '../game/trisslott';
 import { ROAD_WIDTH_M as ROAD_W, type WorldData } from '../world/data';
 import { clamp } from '../world/math';
+import { segmentDistance } from '../world/polygon';
 import { makeRnd } from '../world/random';
 import { RoadNetwork } from '../world/roads';
 
@@ -169,11 +170,22 @@ function maskAt(x: number, z: number, channel: 0 | 1) {
 const onRoad = (x: number, z: number) => maskAt(x, z, 0);
 const inBuilding = (x: number, z: number) => maskAt(x, z, 1);
 
-// the street sign asks the game's road lookup, as the game's own sign does
+// the street sign: the nearest *named* road within reach, so an unnamed footpath or service road doesn't blank it
+const STREET_REACH_M = 20;
 const roads = new RoadNetwork(D as unknown as WorldData, { heightAt: () => 0 }); // the page is flat: no heights needed
 function nearestStreet(x: number, z: number) {
-  const near = roads.nearestRoad(x, z);
-  return near.ri >= 0 && near.d < 20 ? (roads.lines[near.ri].n ?? '') : '';
+  let name = '',
+    best = STREET_REACH_M;
+  roads.forEachSegmentNear(x, z, STREET_REACH_M, (ax, az, bx, bz, ri) => {
+    const road = roads.lines[ri];
+    if (!road.n) return;
+    const d = segmentDistance(x, z, ax, az, bx, bz) - ROAD_W[road.c] / 2;
+    if (d < best) {
+      best = d;
+      name = road.n;
+    }
+  });
+  return name;
 }
 
 // ---------- getaway state ----------
@@ -595,7 +607,8 @@ function newTicket() {
   if (won) {
     head.textContent = 'Vinst! ' + prize + ' kr';
     head.className = 'win';
-    line.textContent = 'Dä va som sjutton, ja visste väl dä!';
+    // the game's own two lines: the big one only for a big win (trisslott.ts)
+    line.textContent = prize >= BIG_WIN_KR ? 'Dä va som sjutton, ja visste väl dä!' : 'Dä ä la nåt.';
   } else {
     const lines = TEMPER_LINES[temper(lossStreak)];
     let pick = lines[Math.floor(rnd() * lines.length)];
