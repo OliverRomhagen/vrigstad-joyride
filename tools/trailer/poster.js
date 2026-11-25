@@ -1,7 +1,7 @@
 // Renders media/poster.png (2000x3000, portrait) from a staged chase in the real game, with the title set over it.
 const path = require('path');
 const fs = require('fs');
-const { open, ROOT } = require('./rig');
+const { open, modelsReady, ROOT } = require('./rig');
 
 (async () => {
   const { browser, page } = await open({ width: 1000, height: 1500, scale: 2 });
@@ -36,6 +36,7 @@ const { open, ROOT } = require('./rig');
         <div class="fine">Map data © OpenStreetMap contributors. Elevation: Mapzen terrain tiles.</div></div>`;
     document.getElementById('stage').appendChild(po);
     __step(1); });
+  await modelsReady(page);
   const out = path.join(ROOT, 'media', 'poster.png');
   fs.mkdirSync(path.dirname(out), { recursive: true });
   await page.screenshot({ path: out, type: 'png' });
