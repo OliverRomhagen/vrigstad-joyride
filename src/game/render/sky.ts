@@ -191,6 +191,11 @@ export class Sky {
     this.sunFactor = 1 - CLOUD_PRESETS[this.cfg.cover].sunDim * this.shade;
   }
 
+  /** how much of the sun a cloud covers right now, 0–1; eased like sunFactor */
+  get sunShade() {
+    return Math.max(0, this.shade);
+  }
+
   /** read-only state for the test hook */
   state() {
     const { cover, seed, windFromDeg, windSpeedMps, quality } = this.cfg;
@@ -201,7 +206,7 @@ export class Sky {
       windSpeedMps,
       quality,
       timeS: this.timeS,
-      sunShade: Math.max(0, this.shade),
+      sunShade: this.sunShade,
       sunFactor: this.sunFactor,
     };
   }
