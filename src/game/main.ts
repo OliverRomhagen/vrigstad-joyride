@@ -230,7 +230,7 @@ const cameraRig = new CameraRig({ camera, sun, skyDome, game, view, get dragging
 const shake = cameraRig.shake;
 // the ISO 800 grain (src/game/presentation/) runs faster while the camera moves; it compares with the camera last frame
 const grainPos = new THREE.Vector3(), grainQuat = new THREE.Quaternion();
-function placeCamera(T: { x: number; z: number }, now: number, dt: number) { cameraRig.update(T, now, dt);
+function placeCamera(T: { x: number; z: number }, now: number, dt: number) { cameraRig.update(T, now, dt); pickadoll?.aimCamera();   // the lab's over-the-shoulder aim (declared at the end)
   if (filmGrain.enabled) { filmGrain.setMoving(cameraMoved(grainPos, grainQuat, camera.position, camera.quaternion)); grainPos.copy(camera.position); grainQuat.copy(camera.quaternion); } }
 
 // ---------- drift effects: sparks at the rear wheels, a flame while boosting, skid marks (src/game/render/drift-fx.ts) ----------
@@ -352,7 +352,7 @@ const input = new Input({ win: window, doc: document, canvas, $, coarse, menuKey
   get started() { return game.started; }, get menuOpen() { return !kmenu.hidden; },
   action: () => action(), respawn: () => respawn(), rain: () => cashRain.makeItRain(),
   jump: () => { if (jumpOk()) game.jumpQ = true; },   // queue only where a jump can start (see jumpOk)
-  look: (dx, dy) => { if (game.inCar) { view.lookOff = wrap(view.lookOff + dx * 0.006); view.lookIdle = 0; } else view.camYaw = wrap(view.camYaw + dx * 0.006);
+  look: (dx, dy) => { if (pickadoll?.aimLook(dx, dy)) return; if (game.inCar) { view.lookOff = wrap(view.lookOff + dx * 0.006); view.lookIdle = 0; } else view.camYaw = wrap(view.camYaw + dx * 0.006);
     view.camPitch = clamp(view.camPitch + dy * 0.004, 0.06, 1.25); },
   zoom: f => cameraRig.zoom(f),
   lockLost: () => { if (!devcon.isOpen && !hud.toasting) toast('Click the game to look around with the mouse again.', 3); } });
@@ -397,7 +397,7 @@ if (lab.on('toon')) import('./render/toon-style').then(m => loop.drawThrough(new
 // ?lab=pickadoll: weapons to try, and three answers to what a hit does (#17: src/game/pickadoll.ts). Stepped after the crowd, above
 let pickadoll: Pickadoll | null = null;
 if (lab.on('pickadoll')) Promise.all([import('./pickadoll'), import('./render/shot-fx')]).then(([m, fx]) => {
-  pickadoll = new m.Pickadoll({ win: window, canvas, $, coarse, game, view, player, world: { groundAt, collide }, crowd, cars, ragdolls, placeCar, rnd: makeRnd(1717), toast,
+  pickadoll = new m.Pickadoll({ win: window, canvas, $, coarse, game, view, calmMotion, player, world: { groundAt, collide }, crowd, cars, ragdolls, placeCar, rnd: makeRnd(1717), toast,
     fx: new fx.ShotFx({ scene, camera, coarse, groundAt, rnd: makeRnd(1718) }), mouseLocked: () => input.locked(), get menuOpen() { return !kmenu.hidden; }, get inside() { return !!places.inside; } });
 }).catch(err => console.warn('Lab: pickadoll failed', err));
 loop.start();

@@ -26,7 +26,7 @@ export const GEGGA = ['#ff3b6b', '#ffd400', '#22d3a0', '#2e9bff', '#b45cff', '#f
 
 export interface ShotFxDeps {
   scene: THREE.Scene;
-  camera: THREE.Camera; // the line of sight starts here
+  camera: THREE.PerspectiveCamera; // the line of sight starts here, and aiming moves it
   coarse: boolean;
   groundAt(x: number, z: number): number;
   rnd(): number; // its own stream: the shape of the splat
@@ -39,7 +39,8 @@ const _m = new THREE.Matrix4(),
   _n = new THREE.Vector3(),
   _s = new THREE.Vector3(),
   _c = new THREE.Color(),
-  Z = new THREE.Vector3(0, 0, 1);
+  Z = new THREE.Vector3(0, 0, 1),
+  UP = new THREE.Vector3(0, 1, 0);
 
 /** Shots, splats and the aim mark. */
 export class ShotFx {
@@ -51,12 +52,14 @@ export class ShotFx {
   private readonly stuckMats = new Map<string, THREE.Material>();
   private readonly stuck: THREE.Mesh[] = [];
   private readonly stuckMax: number;
+  private readonly fov: number; // the camera's usual field of view
   private next = 0; // the splat painted over next
   /** splats left so far, the painted-over ones included */
   splatted = 0;
 
   constructor(g: ShotFxDeps) {
     this.g = g;
+    this.fov = g.camera.fov;
     this.texture = splatTexture(g.rnd);
     const max = g.coarse ? SPLATS_MAX_COARSE : SPLATS_MAX;
     this.stuckMax = g.coarse ? STUCK_MAX_COARSE : STUCK_MAX;
@@ -188,6 +191,24 @@ export class ShotFx {
     this.stuck.push(mesh);
     this.splatted++;
     return mesh;
+  }
+
+  /**
+   * Moves the camera `k` of the way (0..1) from where the game put it to (x, y, z), looking at (lx, ly, lz), with the
+   * field of view `zoom` times the usual at k = 1. Call it every frame, after the game's camera is placed; k = 0 only
+   * puts the field of view back.
+   */
+  aimCamera(k: number, x: number, y: number, z: number, lx: number, ly: number, lz: number, zoom: number) {
+    const { camera } = this.g,
+      fov = this.fov * (1 + (zoom - 1) * k);
+    if (camera.fov !== fov) {
+      camera.fov = fov;
+      camera.updateProjectionMatrix();
+    }
+    if (k <= 0) return;
+    _spin.setFromRotationMatrix(_m.lookAt(_p.set(x, y, z), _n.set(lx, ly, lz), UP));
+    camera.position.lerp(_p, k);
+    camera.quaternion.slerp(_spin, k);
   }
 
   /**

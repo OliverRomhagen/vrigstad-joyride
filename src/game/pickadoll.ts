@@ -2,6 +2,7 @@
 // weapon from the start; Q changes the weapon, G what a hit does, and the mouse button, X or the Fire button fires, on
 // foot and from a car. The rules are in ./sim/shots.ts and the drawing in ./render/shot-fx.ts; this file reads the
 // controls, shows the two HUD buttons and decides what each hit does to the world. A page module: it uses the DOM.
+import { clamp, wrap } from '../world/math';
 import type { Rnd } from '../world/random';
 import type { Npc } from './pedestrians';
 import type { PlayerState } from './player';
@@ -30,6 +31,19 @@ import type { GameState, ViewState } from './state';
 const CROSSHAIR_NDC_Y = 0.3, // how far above the middle of the screen, as a share of half its height; #lab-crosshair's top is the same point
   SIGHT_M = 160; // the line of sight looks this far past you
 const TARGET_UP_M = 1; // the soft lock aims this far above its target's feet
+// hold to aim (the right mouse button, C, or the Aim button): the camera tucks in over your right shoulder and turns
+// about it, so you can look nearly straight up and down, the crosshair sits in the middle, and you face where you aim
+const AIM_BACK_M = 3, // the camera sits this far behind your shoulder
+  AIM_SIDE_M = 0.6, // and this far to the right of your middle
+  AIM_UP_M = 1.6, // at this height above your feet
+  AIM_PITCH_MAX = 1.25, // rad up or down from level
+  AIM_LOOK_K = 0.7, // the look is this much slower while aiming, for finer aim
+  AIM_IN_PER_S = 14, // how fast the camera goes over to the shoulder and back (1/s)
+  AIM_ZOOM = 0.9, // the field of view while aiming, times the usual
+  AIM_ROOM_M = 0.25, // the camera keeps this far from walls
+  AIM_MUZZLE_SIDE_M = 0.3, // while aiming, shots leave from your right side, nearer the camera's line
+  LOOK_YAW_K = 0.006, // rad per pixel of look, as the game's own camera
+  LOOK_PITCH_K = 0.004;
 // the soft lock on a touch screen, where there is no fine aim: the shot goes to the nearest person or car near where you look
 const ASSIST_CONE_RAD = 0.3,
   ASSIST_CONE_CAR_RAD = 0.6, // wider from a car: both thumbs are busy driving
@@ -61,7 +75,8 @@ export interface PickadollDeps {
   coarse: boolean;
   game: Pick<GameState, 'started' | 'inCar' | 'pcar' | 'titleCardT'>;
   view: Pick<ViewState, 'camYaw' | 'camPitch'>;
-  player: PlayerState;
+  calmMotion: { readonly matches: boolean }; // prefers-reduced-motion: the camera changes place at once
+  player: PlayerState & { mesh: { rotation: { y: number } } };
   world: Pick<ShotWorld, 'groundAt' | 'collide'>;
   crowd: { readonly npcs: Npc[]; stare(o: Point, r: number, s: number): boolean };
   cars: readonly RenderedCar[];
@@ -84,6 +99,7 @@ export class Pickadoll {
   private readonly aimHit = newHit();
   private readonly line = { x: 0, y: 0, z: 0, dx: 0, dy: 0, dz: -1 };
   private readonly aim = { yaw: 0, pitch: 0 };
+  private readonly probe = { x: 0, z: 0 };
   private readonly crosshair: HTMLElement;
   private readonly world: ShotWorld & { cars: RenderedCar[] };
   private readonly weaponButton: HTMLButtonElement;
@@ -95,6 +111,11 @@ export class Pickadoll {
   private coolS = 0;
   private clockS = 0;
   private introS = INTRO_AFTER_S;
+  private aimHeld = false; // the right mouse button is down
+  private aimKept = false; // aiming was switched on with C or the Aim button
+  private aimK = 0; // 0 the game's camera, 1 over the shoulder
+  private aimPitch = 0; // rad above level, while aiming
+  private ready = false;
   /** shots fired and hits landed so far, for the test hook */
   fired = 0;
   hits = 0;
@@ -114,15 +135,25 @@ export class Pickadoll {
       if (e.pointerType === 'mouse' && e.button === 0 && g.mouseLocked()) pull();
     });
     g.canvas.addEventListener('pointerup', e => {
-      if (e.pointerType === 'mouse') release();
+      if (e.pointerType !== 'mouse') return;
+      if (e.button === 2) this.aimHeld = false;
+      else release();
     });
-    g.win.addEventListener('blur', release);
+    g.canvas.addEventListener('pointerdown', e => {
+      if (e.pointerType === 'mouse' && e.button === 2 && g.mouseLocked()) this.aimHeld = true;
+    });
+    g.canvas.addEventListener('contextmenu', e => e.preventDefault()); // the right button aims
+    g.win.addEventListener('blur', () => {
+      release();
+      this.aimHeld = false;
+    });
     g.win.addEventListener('keydown', e => {
       if (!g.game.started || g.menuOpen || e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
       if ((e.target as Element | null)?.closest?.('input, textarea')) return; // the dev console, naming a pet
       if (e.code === 'KeyX') pull();
       else if (e.code === 'KeyQ') this.nextWeapon();
       else if (e.code === 'KeyG') this.nextFlavour();
+      else if (e.code === 'KeyC') this.aimKept = !this.aimKept;
     });
     g.win.addEventListener('keyup', e => {
       if (e.code === 'KeyX') release();
@@ -134,7 +165,15 @@ export class Pickadoll {
     fire.addEventListener('pointerdown', pull);
     fire.addEventListener('pointerup', release);
     fire.addEventListener('pointercancel', release);
-    g.$('pad').prepend(fire);
+    const aim = document.createElement('button');
+    aim.type = 'button';
+    aim.id = 'p-aim';
+    aim.textContent = 'Aim';
+    aim.addEventListener('click', () => {
+      this.aimKept = !this.aimKept;
+      aim.setAttribute('aria-pressed', String(this.aimKept));
+    });
+    g.$('pad').prepend(fire, aim);
     this.crosshair = document.createElement('div');
     this.crosshair.id = 'lab-crosshair';
     this.crosshair.hidden = true;
@@ -188,6 +227,7 @@ export class Pickadoll {
       splats: this.g.fx.splatted,
       weapon: WEAPONS[this.weapon].id,
       flavour: HIT_FLAVOURS[this.flavour].id,
+      aiming: this.aimK > 0.5,
     };
   }
 
@@ -204,8 +244,8 @@ export class Pickadoll {
       if (this.introS <= 0)
         this.g.toast(
           coarse
-            ? 'Lab: pickadoll. Fire fires; tap the weapon and the hit at the top to change them.'
-            : 'Lab: pickadoll. Click or hold X to fire, Q changes the weapon, G what a hit does.',
+            ? 'Lab: pickadoll. Fire fires, Aim aims; tap the weapon and the hit at the top to change them.'
+            : 'Lab: pickadoll. Click or X fires, right button or C aims, Q changes the weapon, G the hit.',
           6,
         );
     }
@@ -216,8 +256,23 @@ export class Pickadoll {
     for (const c of this.g.cars) if (c !== car) cars.push(c);
 
     const ready = game.started && !this.g.menuOpen && !this.g.inside && game.titleCardT <= 0;
+    this.ready = ready;
+    const aiming = this.aiming;
+    // going over to the shoulder: the crosshair moves to the middle of the screen with the camera
+    if (aiming && this.aimK === 0) this.aimPitch = clamp(Math.asin(this.line.dy), -AIM_PITCH_MAX, AIM_PITCH_MAX); // keep looking where you looked
+    this.aimK = this.g.calmMotion.matches
+      ? aiming
+        ? 1
+        : 0
+      : clamp(this.aimK + (aiming ? 1 : -1) * AIM_IN_PER_S * dt, 0, 1);
+    const crossY = CROSSHAIR_NDC_Y * (1 - this.aimK);
+    this.crosshair.style.top = 50 - crossY * 50 + '%';
+    if (aiming) {
+      player.h = view.camYaw; // you face where you aim, and walk sideways
+      player.mesh.rotation.y = -player.h;
+    }
     // what is under the crosshair: the line of sight from the camera, looked along from where it passes you
-    const line = fx.sightLine(CROSSHAIR_NDC_Y, this.line),
+    const line = fx.sightLine(crossY, this.line),
       muzzleY = this.g.world.groundAt(from.x, from.z) + MUZZLE_M,
       pastM = Math.hypot(from.x - line.x, muzzleY - line.y, from.z - line.z),
       seen = sight(line.x, line.y, line.z, line.dx, line.dy, line.dz, pastM, pastM + SIGHT_M, this.world, this.aimHit);
@@ -268,6 +323,58 @@ export class Pickadoll {
     this.dance(dt);
   }
 
+  // on foot only: from a car you aim with the car's own camera
+  private get aiming() {
+    return this.ready && !this.g.game.inCar && (this.aimHeld || this.aimKept);
+  }
+
+  /** The look while aiming: true when it took the mouse or the drag, so the game's camera doesn't. */
+  aimLook(dx: number, dy: number): boolean {
+    if (!this.aiming) return false;
+    const { view } = this.g;
+    view.camYaw = wrap(view.camYaw + dx * LOOK_YAW_K * AIM_LOOK_K);
+    this.aimPitch = clamp(this.aimPitch - dy * LOOK_PITCH_K * AIM_LOOK_K, -AIM_PITCH_MAX, AIM_PITCH_MAX);
+    return true;
+  }
+
+  /** After the game's camera is placed: moves it over your shoulder while you aim, and back when you stop. */
+  aimCamera() {
+    if (this.aimK <= 0) {
+      this.g.fx.aimCamera(0, 0, 0, 0, 0, 0, 0, 1);
+      return;
+    }
+    const { player, view, world, fx } = this.g,
+      yaw = view.camYaw,
+      cp = Math.cos(this.aimPitch),
+      fx_ = Math.sin(yaw) * cp,
+      fy = Math.sin(this.aimPitch),
+      fz = -Math.cos(yaw) * cp,
+      ground = world.groundAt(player.x, player.z);
+    // the shoulder, pulled in when a wall is beside you
+    let side = AIM_SIDE_M;
+    for (; side > 0; side -= 0.2)
+      if (this.clear(player.x + Math.cos(yaw) * side, player.z + Math.sin(yaw) * side)) break;
+    side = Math.max(0, side);
+    const sx = player.x + Math.cos(yaw) * side,
+      sy = ground + player.y + AIM_UP_M,
+      sz = player.z + Math.sin(yaw) * side;
+    // back from the shoulder as far as there is room: not into a wall, not under the ground
+    let back = AIM_BACK_M;
+    for (; back > 0.3; back -= 0.25) {
+      const x = sx - fx_ * back,
+        z = sz - fz * back;
+      if (this.clear(x, z) && sy - fy * back > world.groundAt(x, z) + AIM_ROOM_M) break;
+    }
+    fx.aimCamera(this.aimK, sx - fx_ * back, sy - fy * back, sz - fz * back, sx + fx_, sy + fy, sz + fz, AIM_ZOOM);
+  }
+
+  // no wall within AIM_ROOM_M of (x, z)
+  private clear(x: number, z: number) {
+    this.probe.x = x;
+    this.probe.z = z;
+    return !this.g.world.collide(this.probe, AIM_ROOM_M);
+  }
+
   private readonly colourOf = (s: { seed: number; flavour: HitFlavour }) =>
     s.flavour === 'gegga' ? GEGGA[Math.floor(s.seed * GEGGA.length)] : s.flavour === 'dans' ? DANCE_COLOUR : SCUFF;
 
@@ -276,15 +383,16 @@ export class Pickadoll {
       weapon = WEAPONS[this.weapon],
       flavour = HIT_FLAVOURS[this.flavour].id;
     if (!car) player.h = yaw; // you turn to face where you fire
+    const side = this.aimK * AIM_MUZZLE_SIDE_M;
     // a shot from a moving car keeps the car's speed
     const cvx = car ? Math.sin(car.vh) * car.v : 0,
       cvz = car ? -Math.cos(car.vh) * car.v : 0;
     for (let i = 0; i < weapon.pellets && this.shots.length < SHOTS_MAX; i++) {
       const v = aimShot(weapon, yaw, pitch, rnd() * 2 - 1, rnd() * 2 - 1);
       this.shots.push({
-        x: from.x,
+        x: from.x + Math.cos(yaw) * side,
         y: world.groundAt(from.x, from.z) + MUZZLE_M,
-        z: from.z,
+        z: from.z + Math.sin(yaw) * side,
         vx: v.vx + cvx,
         vy: v.vy,
         vz: v.vz + cvz,
