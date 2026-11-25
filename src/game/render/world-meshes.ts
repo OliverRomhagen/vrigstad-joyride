@@ -22,7 +22,7 @@ import type { StreetscapeLayout } from '../../world/streetscape';
 import { col } from '../../world/three-legacy';
 import { GAME_WATER } from '../../world/water-palette';
 import type { WaterBodies } from '../../world/water-shapes';
-import { INK_FLAG } from './ink-flag';
+import { INK_COLOR, INK_FLAG } from './ink-flag';
 import { mergeGeo } from './models';
 
 // ---------- terrain ----------
@@ -278,7 +278,9 @@ export function addBuildings(
     };
     // the colours roll rnd() once or twice per house, in data order, before any tree spot
     const colours = ({ building: b, area }: BuildingShape) => {
-      c.set(b.k === 2 ? '#9c3a2c' : b.k ? '#efece3' : area > 450 ? pick(big) : pick(house)).convertSRGBToLinear();
+      c.set(
+        b.k === 2 ? '#9c3a2c' : b.k ? '#efece3' : area > TIMBER_MAX_M2 ? pick(big) : pick(house),
+      ).convertSRGBToLinear();
       c2.set(b.k === 2 ? '#a8573f' : b.k ? '#3f4447' : rnd() < 0.35 ? '#4d4a48' : '#a8573f').convertSRGBToLinear();
       if (isSkipped(b.p)) return null; // after the rolls above, so the houses after it keep their colours
       c3.copy(c).multiplyScalar(flatWalls ? 1 : 0.62); // walls darken towards the ground
@@ -298,6 +300,10 @@ export function addBuildings(
         const l = Math.hypot(q.x - p.x, q.z - p.z) || 1;
         return [(wind * (q.z - p.z)) / l, (-wind * (q.x - p.x)) / l];
       };
+      let seamTo = -1, // the boards run on along a straight wall that roofParts split at the ridge: where the last seams ended
+        seamU = 0,
+        seamUx = 0,
+        seamUz = 0;
       for (let i = 0; i < m; i++) {
         const a = ring[i],
           d = ring[(i + 1) % m],
@@ -327,11 +333,17 @@ export function addBuildings(
           [w1x, w1z, w2x, w2z] = o(0, PLINTH_OUT_M),
           [p1x, p1z, p2x, p2z] = o(PLINTH_OUT_M, PLINTH_OUT_M), // its ends run on, so the corners close
           OUT: Corner = [ox, 0, oz];
-        if (boardSeams && area <= TIMBER_MAX_M2 && len >= 1) {
+        if (boardSeams && !b.k && area <= TIMBER_MAX_M2) {
           // between the wall and the windows' skin, from the plinth up to the eaves; u counts boards along the wall
-          const under = b.g ? FASCIA_M : 0.22;
+          const under = b.g ? FASCIA_M : 0.22,
+            u0 = seamTo === i && ux * seamUx + uz * seamUz > 0.999 ? seamU : 0,
+            u1 = u0 + len / BOARD_M;
           quad(bp, ...o(0.02, 0), py, ya - under, py, yd - under);
-          bu.push(0, 0, len / BOARD_M, 0, len / BOARD_M, 1, 0, 0, len / BOARD_M, 1, 0, 1);
+          bu.push(u0, 0, u1, 0, u1, 1, u0, 0, u1, 1, u0, 1);
+          seamTo = i + 1;
+          seamU = u1;
+          seamUx = ux;
+          seamUz = uz;
         }
         face(emit, PLINTH, OUT, [p1x, base, p1z], [p2x, base, p2z], [p2x, py, p2z], [p1x, py, p1z]);
         face(emit, PLINTH, UP, [w1x, py, w1z], [w2x, py, w2z], [p2x, py, p2z], [p1x, py, p1z]);
@@ -472,28 +484,32 @@ export function addBuildings(
       cv.width = 32;
       cv.height = 4;
       const x = cv.getContext('2d')!;
-      x.fillStyle = `rgba(16, 21, 28, ${BOARD_SEAM_ALPHA})`;
+      x.globalAlpha = BOARD_SEAM_ALPHA;
+      x.fillStyle = `#${INK_COLOR.toString(16).padStart(6, '0')}`; // the ink lines' colour
       x.fillRect(0, 0, 2, 4);
       const t = new THREE.CanvasTexture(cv);
+      t.colorSpace = THREE.SRGBColorSpace;
       t.wrapS = t.wrapT = THREE.RepeatWrapping;
       t.anisotropy = maxAnisotropy;
       const bg = new THREE.BufferGeometry();
       bg.setAttribute('position', new THREE.Float32BufferAttribute(bp, 3));
       bg.setAttribute('uv', new THREE.Float32BufferAttribute(bu, 2));
-      scene.add(
-        new THREE.Mesh(
-          bg,
-          new THREE.MeshBasicMaterial({
-            map: t,
-            transparent: true,
-            depthWrite: false,
-            side: THREE.DoubleSide,
-            polygonOffset: true,
-            polygonOffsetFactor: -1,
-            polygonOffsetUnits: -1,
-          }),
-        ),
+      // one mesh for the village, sorted by its origin at Torget: drawn first among the transparent things instead, so
+      // smoke, drift sprites and the place markers in front of a house stay in front of its seams
+      const seams = new THREE.Mesh(
+        bg,
+        new THREE.MeshBasicMaterial({
+          map: t,
+          transparent: true,
+          depthWrite: false,
+          side: THREE.DoubleSide,
+          polygonOffset: true,
+          polygonOffsetFactor: -1,
+          polygonOffsetUnits: -1,
+        }),
       );
+      seams.renderOrder = -1;
+      scene.add(seams);
     }
   })();
 }
