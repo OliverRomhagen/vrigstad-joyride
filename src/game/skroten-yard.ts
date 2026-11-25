@@ -60,7 +60,6 @@ export interface YardCar {
   pitch: number; // radians about its width: nose or tail down
   model: YardCarModel;
   colour: string; // sRGB: faded or rusting on a wreck, fresh on a car for sale
-  wrecked: boolean; // a wreck sags on flat tyres; a car for sale stands straight
   stack: 0 | 1 | 2; // 0 alone, 1 with another car on it (squashed a little), 2 lying on the car below
 }
 export interface Heap {
@@ -351,7 +350,7 @@ const FRESH_COLOURS = ['#b9bab4', '#1f3b6a', '#8c1c1c', '#e8e4d8', '#2b2b2b', '#
 /** The TILL SALU sign, in front of the row of cars for sale, facing the yard. */
 export const SALE_SIGN = { u: 21, v: 25.2, w: 5 } as const; // w: the TILL SALU board's width (m), its posts inside it
 const WRECK_GAP_M = 2.6; // between the middles of neighbours in a row
-const FRESH_GAP_M = 2.9; // the same for the cars for sale: wider than two cars' collision reach (2.7 m), so none nudges its neighbours
+const FRESH_GAP_M = 2.9; // the same for the cars for sale: about a metre between two cars' sides, room to walk in and stand by the one you want
 const WRECK_HALF_LEN_M = 2.7; // half the longest car's length, for the row's outline
 const WRECK_SPREAD_M = 0.5; // how far a wreck's jitter (±0.4 m, ±0.15 rad) can carry its ends past its row's line
 const TRACTORS = [
@@ -534,7 +533,6 @@ export function yardLayout(
             pitch: 0,
             model: pick(YARD_CAR_MODELS),
             colour: pick(FRESH_COLOURS),
-            wrecked: false,
             stack: 0,
           } // noses to the yard, in a straight line
         : {
@@ -545,7 +543,6 @@ export function yardLayout(
             pitch: (rnd() - 0.5) * 0.12,
             model: pick(YARD_CAR_MODELS),
             colour: pick(WRECK_COLOURS),
-            wrecked: true,
             stack: 0,
           };
       (row.fresh ? forSale : yardCars).push(below);
@@ -573,7 +570,6 @@ export function yardLayout(
       tilt: broken ? 0.16 : 0,
       pitch: broken ? -0.05 : 0,
       model: 'traktor',
-      wrecked: broken,
       stack: 0,
     });
     if (!broken) continue; // the one for sale is a car you can drive away, with no outline of its own, like the others on the lot
@@ -595,7 +591,6 @@ export function yardLayout(
         pitch: 0,
         model: pick(YARD_CAR_MODELS),
         colour: pick(FRESH_COLOURS),
-        wrecked: false,
         stack: 0,
       });
     }

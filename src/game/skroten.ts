@@ -395,7 +395,6 @@ export class Skroten {
     else {
       c.saleKr = 0;
       c.owned = true;
-      c.bought = true;
       toast(OWNER_SAYS + '”Affärer ä affärer! Den ä din nu. Kör försiktigt.” −' + fmtKr(kr) + '.', 4);
     }
   }

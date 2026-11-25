@@ -5,7 +5,7 @@ import type { Decal } from '../sim/paint-jobs';
 import { decalMeshes, disposeDecal, type Panel } from './paint-decals';
 import { BODY_NODE, type VehicleId, vehicleDefinition, WHEEL_NODES } from './vehicle-registry';
 
-type Car = { mesh: THREE.Object3D; x: number; z: number; h: number };
+type Car = { mesh: THREE.Object3D; x: number; z: number; h: number; saleKr?: number };
 type Definition = NonNullable<ReturnType<typeof vehicleDefinition>>;
 type Wheel = { pivot: THREE.Group; spin: THREE.Group; front: boolean };
 type View = {
@@ -237,10 +237,12 @@ export class VehicleVisuals {
       this.views.sort((a, b) => a.distance - b.distance);
       let count = 0;
       for (const view of this.views) {
+        // a car for sale on Skroten's lot always shows its model, outside the cap: it's what you're asked to pay for, and the
+        // lot's cars would fill the cap between them and leave the car you came in as a box
         view.selected =
           view.status !== 'failed' &&
           view.distance < DETAIL_RANGE_M &&
-          count++ < (this.coarse ? DETAIL_CAP_COARSE : DETAIL_CAP_DESKTOP);
+          (!!view.car.saleKr || count++ < (this.coarse ? DETAIL_CAP_COARSE : DETAIL_CAP_DESKTOP));
         if (view.selected) this.loadModel(view);
         this.updateVisibility(view);
       }
