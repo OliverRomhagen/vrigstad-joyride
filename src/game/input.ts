@@ -54,8 +54,9 @@ export const MouseButton = { LEFT: 1, RIGHT: 2 } as const;
 export type MouseButton = (typeof MouseButton)[keyof typeof MouseButton];
 /**
  * What a module's control is held by, and what holding it does. A press counts only while the game is played: not
- * before Start, and not while a menu is open. One that is already held when a menu opens stays held until it is let
- * go, so the module still decides what holding it does then.
+ * before Start, and not while a menu is open. A key or a touch button already held when a menu opens stays held until
+ * it is let go, so the module still decides what holding it does then; a mouse button is let go at once, as the menu
+ * takes the lock.
  */
 export interface ControlSpec {
   codes?: readonly string[]; // keys, as KeyboardEvent.code. With ctrl, alt or ⌘ held they are the browser's
