@@ -460,6 +460,7 @@ test.describe('game (index.html)', () => {
   });
 
   test('Space held from braking does not jump on getting out', async ({ page }) => {
+    await page.setViewportSize({ width: 640, height: 360 }); // keep software WebGL affordable while walking to the interaction
     const errors = watchErrors(page);
     await page.goto('/index.html');
     await page.locator('#go').click();
@@ -494,6 +495,7 @@ test.describe('game (index.html)', () => {
   test('cats are around, and the kiosk sells cat treats and food from its menu, for money', async ({
     page,
   }, testInfo) => {
+    await page.setViewportSize({ width: 640, height: 360 }); // keep software WebGL affordable while walking to the interaction
     const errors = watchErrors(page);
     await page.goto('/index.html');
     await page.locator('#go').click();
@@ -527,6 +529,22 @@ test.describe('game (index.html)', () => {
     await expect(page.locator('#kmenu')).toBeHidden();
     await expect(page.locator('#toast')).toContainText('mätt');
     expect(await state(page)).toMatchObject({ hp: 100, kr: 195 }); // and it costs nothing
+    expect(errors).toEqual([]);
+  });
+
+  test('draws the sunlight streaks and the sun disc facing a low evening sun (#212)', async ({ page }, testInfo) => {
+    const errors = watchErrors(page);
+    // Torget looking west at 18:30, the clock held and the sky clear, so nothing covers the sun
+    await page.goto('/index.html?time=18.5&cycle=off&clouds=clear&at=-60,-10,-1.45,0.06');
+    await page.setViewportSize({ width: 640, height: 360 });
+    await expectWebGL(page);
+    await page.locator('#go').click();
+    await frames(page, 5);
+    const { sunStreaks: s } = await state(page);
+    expect(s).toMatchObject({ streaks: true, disc: true });
+    expect(s.light).toBeGreaterThan(0.5);
+    expect(s.presence).toBeGreaterThan(0);
+    await page.screenshot({ path: testInfo.outputPath('game-sun-streaks.png') });
     expect(errors).toEqual([]);
   });
 
