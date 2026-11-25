@@ -70,6 +70,14 @@ export function registerCarTunables(t: Tunables): void {
     },
     TURBO_ACC: { name: 'turbo-acceleration', unit: 'm/s²', min: 0, max: 60, help: 'the mini-turbo push' },
     TURBO_TOP: { name: 'turbo-top-speed', unit: '×', min: 1, max: 3, help: 'top speed while the mini-turbo lasts' },
+    FLAT_PULL: {
+      name: 'flat-pull',
+      unit: 'share',
+      min: 0,
+      max: 1,
+      help: 'of full lock a flat tyre steers towards its side',
+    },
+    FLAT_TOP: { name: 'flat-top-speed', unit: '×', min: 0.1, max: 1, help: 'top speed with a flat tyre' },
   });
   t.addFields('steering', STEERING, {
     MAX_LOCK_RAD: {

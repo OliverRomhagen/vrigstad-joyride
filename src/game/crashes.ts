@@ -1,10 +1,10 @@
 // A crash: both cars take the damage (crashCars in health.ts), and the player too if they're in one. This adds what you
-// hear and feel: a line, the hurt, the camera's jolt. Also what you say to your cat while it rides along.
+// hear and feel: a line, the hurt, the camera's jolt, and maybe a burst tyre. Also what you say to your cat while it rides along.
 // Moved from src/game/main.ts (#177); main.ts passes in the HUD's toast, the player's hurt and the camera's shake.
 import { makeRnd } from '../world/random';
 import type { Car } from './cars';
 import type { Cat } from './cats';
-import { crashCars, crashDamage, driverHurt, smokeLevel } from './health';
+import { crashCars, crashDamage, driverHurt, puncture, smokeLevel } from './health';
 import type { GameState } from './state';
 
 type Point = { x: number; z: number };
@@ -25,6 +25,7 @@ const WRECK_LINES = [
   '”Nu ä ho fördärvad, hela bilen.”',
 ];
 const POLICE_WRECK_LINES = ['”Hoppsan, nu ä länsmans bil fördärvad.”', '”Dä där fick snuten inte betalt för.”'];
+const FLAT_LINES = ['”PANG! Dä va däcket, dä.”', '”Punka! Klart dä skulle hända nu.”', '”Nu small dä i ett däck.”'];
 const SMOKE_LINES = [null, '”Hörru, dä ryker ur motorn!”', '”Svart rök… dä ä inte bra, dä.”']; // by smokeLevel
 const CAT_FAST_MS = 25,
   CAT_CALM_MS = 20; // above ~90 km/h with your cat along you tell it to hold on; it can come again once you've been below ~72 km/h
@@ -47,6 +48,7 @@ export class Crashes {
   private catFastSaid = false;
   // what you say about a crash (#213 moves these into a speech bubble over you); picked from their own random stream, so they don't shift the world's rolls
   private readonly lineRnd = makeRnd(213);
+  private readonly flatRnd = makeRnd(517); // which crash bursts a tyre, on its own stream for the same reason
 
   constructor(g: CrashDeps) {
     this.g = g;
@@ -65,8 +67,9 @@ export class Crashes {
       { catAboard, pickLine } = this;
     const hits = crashCars(game.clockS, impact, c, o, god ? game.pcar : null);
     if (!hits.length) return;
-    let said = false; // one line per crash: wrecked, then smoke, then the crash itself
+    let said = false; // one line per crash: wrecked, then a flat tyre, then smoke, then the crash itself
     for (const { car: k, wrecked: w, smokeUp } of hits) {
+      const flat = !(god && k === game.pcar) && puncture(k, impact, this.flatRnd);
       if (w && k === game.pcar) {
         const cat = catAboard();
         toast(
@@ -77,6 +80,9 @@ export class Crashes {
         said = true;
       } else if (w && k.mode === 'police' && Math.hypot(k.x - viewer.x, k.z - viewer.z) < POLICE_WRECK_SEEN_M) {
         toast(pickLine(POLICE_WRECK_LINES) + ' The police car is wrecked.', 3);
+        said = true;
+      } else if (flat && k === game.pcar) {
+        toast(pickLine(FLAT_LINES) + ' A tyre is flat.', 3);
         said = true;
       } else if (smokeUp && k === game.pcar) {
         toast(SMOKE_LINES[smokeLevel(k.dmg)]!, 3);

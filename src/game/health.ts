@@ -26,6 +26,8 @@ export const SMOKE_AT = 50,
 export const LIMP_AT = 50,
   LIMP_TOP = 0.45; // past LIMP_AT the top speed falls, down to this share just before it's wrecked
 export const CRACK_AT = [20, 50, 75]; // cracked glass: the windscreen and rear window, then the side windows, then everything badly
+export const FLAT_MIN_MS = 14,
+  FLAT_CHANCE = 0.35; // a hit from ~50 km/h can burst a tyre, about one in three: a few hard crashes, not every one
 
 export interface Health {
   hp: number;
@@ -81,6 +83,14 @@ export function topSpeedShare(dmg: number) {
   if (dmg >= DMG_MAX) return 0;
   if (dmg <= LIMP_AT) return 1;
   return 1 - ((1 - LIMP_TOP) * (dmg - LIMP_AT)) / (DMG_MAX - LIMP_AT);
+}
+
+/** Rolls for a burst tyre after a hit at this impact speed (m/s). On a puncture it sets `flat` to the wheel, 0–3 (front
+ * left, front right, rear left, rear right), and returns true. A car has at most one flat; `rnd` rolls only above FLAT_MIN_MS. */
+export function puncture(c: { flat: number }, impact: number, rnd: () => number): boolean {
+  if (c.flat >= 0 || impact < FLAT_MIN_MS || rnd() >= FLAT_CHANCE) return false;
+  c.flat = Math.floor(rnd() * 4);
+  return true;
 }
 
 /** 0 none, 1 grey smoke, 2 black smoke. */

@@ -8,12 +8,15 @@ import {
   DMG_MAX,
   damageCar,
   driverHurt,
+  FLAT_CHANCE,
+  FLAT_MIN_MS,
   HP_MAX,
   heal,
   hurt,
   impactSpeed,
   LIMP_TOP,
   newHealth,
+  puncture,
   REGEN_DELAY_S,
   REGEN_HP_S,
   regen,
@@ -207,5 +210,27 @@ describe('god mode', () => {
     expect(hurt(h, HP_MAX)).toBe(true);
     expect(c.run('god maybe')).toBe('mode is on or off. Usage: god [mode]');
     expect(drawn).toBe(3);
+  });
+});
+
+describe('puncture', () => {
+  const rolls =
+    (...r: number[]) =>
+    () =>
+      r.shift()!;
+
+  it('bursts no tyre below FLAT_MIN_MS, and rolls nothing there', () => {
+    const c = { flat: -1 };
+    expect(puncture(c, FLAT_MIN_MS - 0.1, () => expect.fail('rolled'))).toBe(false);
+    expect(c.flat).toBe(-1);
+  });
+
+  it('bursts the rolled wheel on a lucky roll, and only one tyre per car', () => {
+    const c = { flat: -1 };
+    expect(puncture(c, FLAT_MIN_MS, rolls(FLAT_CHANCE + 0.01))).toBe(false);
+    expect(puncture(c, FLAT_MIN_MS, rolls(0, 0.6))).toBe(true);
+    expect(c.flat).toBe(2); // rear left
+    expect(puncture(c, 40, rolls(0, 0))).toBe(false);
+    expect(c.flat).toBe(2);
   });
 });
