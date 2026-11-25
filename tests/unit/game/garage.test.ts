@@ -50,9 +50,9 @@ function onLift(o: { type?: CarType; car?: Partial<Car>; kr?: number } = {}) {
   });
   const garage = new Garage({ skroten, game, wallet, carName: () => 'Volvo 240' });
   // picks the choice named `name` on shelf `cat`
-  const pick = (cat: Parameters<Garage['setCat']>[0], name: string) => {
+  const pick = (cat: Parameters<Garage['setShelf']>[0], name: string) => {
     garage.setTab(cat === 'paint' || cat === 'special' || cat === 'decal' ? 'paint' : 'work');
-    garage.setCat(cat);
+    garage.setShelf(cat);
     const i = garage.choices().findIndex(c => c.name === name);
     expect(i, name + ' on ' + cat).toBeGreaterThanOrEqual(0);
     garage.pick(i);
@@ -76,7 +76,7 @@ describe("Plåt-Pelle's garage (?lab=garage)", () => {
       other = specFor('volvo').cols[1]!;
     t.skroten.open();
     t.garage.setTab('paint');
-    t.garage.setCat('paint');
+    t.garage.setShelf('paint');
     t.garage.pick(t.garage.choices().findIndex(c => c.swatch === other));
     expect(t.car.color).toBe(other);
     expect(t.garage.bill()).toEqual({ jobs: 1, kr: RESPRAY_KR });
@@ -102,7 +102,7 @@ describe("Plåt-Pelle's garage (?lab=garage)", () => {
     expect(t.car.decal).toBe('flames');
     expect(t.garage.bill().jobs).toBe(0);
     t.garage.setTab('work');
-    t.garage.setCat('engine');
+    t.garage.setShelf('engine');
     expect(t.garage.choices()[0]).toMatchObject({ name: 'Standard', locked: true }); // an upgrade doesn't come off again
     expect(t.garage.choices()[1]!.price).toBe('Fitted');
   });
@@ -115,6 +115,35 @@ describe("Plåt-Pelle's garage (?lab=garage)", () => {
     expect(t.garage.pay()).toBe(false);
     expect(t.wallet.kr).toBe(100);
     expect(t.car.mods.engine).toBe(false);
+  });
+
+  it('keeps the car’s own look when E opens it again while it’s open', () => {
+    const t = onLift(),
+      own = t.car.color,
+      other = specFor('volvo').cols[1]!;
+    t.skroten.open();
+    t.garage.setTab('paint');
+    t.garage.setShelf('paint');
+    t.garage.pick(t.garage.choices().findIndex(c => c.swatch === other));
+    expect(t.skroten.open()).toBe(true); // E again, through the lift
+    t.garage.close();
+    expect(t.car.color).toBe(own);
+  });
+
+  it('shows the new price, and takes nothing, when the car is knocked while the garage is open', () => {
+    const t = onLift({ car: { dmg: 40 }, kr: 5000 });
+    t.skroten.open();
+    t.pick('fix', 'Laga');
+    const billed = t.garage.bill().kr;
+    t.car.dmg = 80;
+    expect(t.garage.pay()).toBe(false);
+    expect(t.wallet.kr).toBe(5000);
+    expect(t.car.dmg).toBe(80);
+    const rebilled = t.garage.bill().kr;
+    expect(rebilled).toBeGreaterThan(billed); // the bill now says what it costs
+    expect(t.garage.pay()).toBe(true);
+    expect(t.wallet.kr).toBe(5000 - rebilled);
+    expect(t.car.dmg).toBe(0);
   });
 
   it('takes every pick back off with Ångra', () => {
@@ -182,7 +211,7 @@ describe("Plåt-Pelle's garage (?lab=garage)", () => {
     const t = onLift({ type: 'traktor' });
     t.skroten.open();
     t.garage.setTab('paint');
-    t.garage.setCat('decal');
+    t.garage.setShelf('decal');
     expect(t.garage.choices().map(c => c.name)).toEqual(['Ingen']);
   });
 });

@@ -19,13 +19,13 @@ import {
 import type { LiftJob, LiftOffer, Skroten } from './skroten';
 import type { GameState } from './state';
 
-export type GarageCat = 'fix' | Upgrade | 'paint' | 'special' | 'decal';
+export type GarageShelf = 'fix' | Upgrade | 'paint' | 'special' | 'decal';
 export const GARAGE_TABS = [
   { id: 'work', label: 'Verkstan', cats: ['fix', 'engine', 'springs', 'body'] },
   { id: 'paint', label: 'Lack & dekor', cats: ['paint', 'special', 'decal'] },
-] as const satisfies readonly { id: string; label: string; cats: readonly GarageCat[] }[];
+] as const satisfies readonly { id: string; label: string; cats: readonly GarageShelf[] }[];
 export type GarageTab = (typeof GARAGE_TABS)[number]['id'];
-export const CAT_LABELS: Readonly<Record<GarageCat, string>> = {
+export const SHELF_LABELS: Readonly<Record<GarageShelf, string>> = {
   fix: 'Laga',
   engine: 'Motor',
   springs: 'Fjädring',
@@ -84,7 +84,7 @@ export class Garage {
   };
   private said: string | null = null;
   tab: GarageTab = 'work';
-  cat: GarageCat = 'fix';
+  cat: GarageShelf = 'fix';
   version = 0; // goes up whenever what the HUD draws changes
   turn = 0; // rad: how far the turntable has turned the car's model from the way the car faces; the car itself doesn't turn
 
@@ -101,6 +101,7 @@ export class Garage {
 
   /** Opens on the car on the lift: false when Plåt-Pelle won't work on it. */
   open(c: Car): boolean {
+    if (this.c) return true; // already open: a second E mustn't take the tried-on look as the car's own
     const offer = this.g.skroten.liftOffer(c);
     if (typeof offer === 'string') return false;
     this.c = c;
@@ -146,18 +147,18 @@ export class Garage {
     const i = GARAGE_TABS.findIndex(t => t.id === this.tab);
     this.setTab(GARAGE_TABS[(i + d + GARAGE_TABS.length) % GARAGE_TABS.length]!.id);
   }
-  setCat(cat: GarageCat) {
+  setShelf(cat: GarageShelf) {
     this.cat = cat;
     this.said = null;
     this.version++;
   }
-  stepCat(d: 1 | -1) {
+  stepShelf(d: 1 | -1) {
     const cats = this.cats(),
       i = cats.indexOf(this.cat);
-    this.setCat(cats[(i + d + cats.length) % cats.length]!);
+    this.setShelf(cats[(i + d + cats.length) % cats.length]!);
   }
   /** The open tab's shelves. */
-  cats(): readonly GarageCat[] {
+  cats(): readonly GarageShelf[] {
     return GARAGE_TABS.find(t => t.id === this.tab)!.cats;
   }
 
@@ -166,11 +167,11 @@ export class Garage {
     return this.shelf().map(s => s.choice);
   }
   /** What's picked on a shelf, for the menu of shelves. */
-  pickedName(cat: GarageCat): string {
+  pickedName(cat: GarageShelf): string {
     return this.shelf(cat).find(s => s.choice.picked)?.choice.name ?? '';
   }
   /** The shelf has a pick that isn't on the car yet. */
-  changed(cat: GarageCat): boolean {
+  changed(cat: GarageShelf): boolean {
     const w = this.want;
     if (cat === 'fix') return w.fix;
     if (cat === 'paint' || cat === 'special')
@@ -210,6 +211,17 @@ export class Garage {
       jobs = this.jobs(),
       kr = jobs.reduce((s, j) => s + j.kr, 0);
     if (!c || !jobs.length) return false;
+    // asked again first: a knock while the garage was open changes the repair, so show the new bill instead of charging it
+    const fresh = this.g.skroten.liftOffer(c);
+    if (typeof fresh === 'string') {
+      this.close();
+      return false;
+    }
+    if (fresh.fixKr !== this.offer?.fixKr) {
+      this.offer = fresh;
+      this.version++;
+      return false;
+    }
     if (kr > this.g.wallet.kr) {
       this.said = '”' + fmtKr(kr) + ', sa ja. Kom tebaks när du har pengarna.”';
       this.version++;
@@ -329,7 +341,7 @@ export class Garage {
       w = this.want,
       out: { job: LiftJob; kr: number }[] = [];
     if (!o || !c) return out;
-    if (w.fix && o.fixKr) out.push({ job: { kind: 'fix' }, kr: o.fixKr });
+    if (w.fix && o.fixKr) out.push({ job: { kind: 'fix', kr: o.fixKr }, kr: o.fixKr });
     for (const u of o.upgrades)
       if (w.mods[u.upgrade] && !u.fitted) out.push({ job: { kind: 'upgrade', upgrade: u.upgrade }, kr: u.kr });
     const paint = o.paints.find(p => p.paint === w.paint);
@@ -343,7 +355,7 @@ export class Garage {
   }
 
   // the choices on a shelf, each with what picking it does
-  private shelf(cat: GarageCat = this.cat): Choice[] {
+  private shelf(cat: GarageShelf = this.cat): Choice[] {
     const o = this.offer,
       c = this.c,
       w = this.want;

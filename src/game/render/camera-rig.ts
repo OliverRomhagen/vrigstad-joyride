@@ -100,7 +100,6 @@ export class CameraRig {
     } else if (game.inCar && game.pcar) {
       if (this.showing) this.leaveShowroom();
       view.lookIdle += dt;
-      view.lookIdle += dt;
       if (view.lookIdle > 1.2 && !this.g.dragging) view.lookOff *= 0.02 ** dt;
       view.camYaw += wrap(game.pcar.h - game.pcar.slip * 0.6 + view.lookOff - view.camYaw) * Math.min(1, dt * 4.5);
       dist = 10 + Math.abs(game.pcar.v) * 0.09;

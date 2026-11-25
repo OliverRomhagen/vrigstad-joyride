@@ -9,6 +9,7 @@ const ROOM_R_M = 11, // takes in the camera, which stands about 7 m off the car
   PLATE_R_M = 3.1, // a Volvo 240 is 4.8 m long
   PLATE_TOP_M = 0.012, // just over the floor, so the wheels stand on it
   MARKS = 16; // studs round the plate's rim, which show it turn
+const enableShowroom = (o: THREE.Object3D) => o.layers.enable(SHOWROOM_LAYER); // one function, not a closure a frame
 
 /** What the showroom draws into. */
 export interface ShowroomDeps {
@@ -109,7 +110,7 @@ export class Showroom {
     }
     this.room.visible = !!car;
     if (!car) return;
-    car.traverse(o => o.layers.enable(SHOWROOM_LAYER)); // every frame: a decal tried on hangs a new mesh on the car
+    car.traverse(enableShowroom); // every frame: a decal tried on hangs a new mesh on the car
     const { x, z } = car.position;
     this.room.position.set(x, groundAt(x, z), z);
     this.plate.rotation.y = -yaw;

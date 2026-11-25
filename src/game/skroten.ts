@@ -54,7 +54,7 @@ const specialDone = (name: string) => '”' + name + '! Den kommer folk å prata
 
 /** One job on the lift, as the lab garage (#3) asks for it; the lift's menus offer the same jobs. */
 export type LiftJob =
-  | { kind: 'fix' }
+  | { kind: 'fix'; kr: number } // kr: the price on the bill; a changed price isn't charged
   | { kind: 'upgrade'; upgrade: Upgrade }
   | { kind: 'paint'; paint: string }
   | { kind: 'decal'; decal: Decal | null };
@@ -365,7 +365,7 @@ export class Skroten {
 
   /** Does one job on c and takes its price, as the lift's menus do, asked again now: for the lab garage (#3). True when it was done. */
   liftJob(c: Car, job: LiftJob): boolean {
-    if (job.kind === 'fix') return this.repair(c, this.repairKr(c));
+    if (job.kind === 'fix') return this.repair(c, job.kr);
     if (job.kind === 'upgrade') return this.upgrade(c, job.upgrade);
     if (job.kind === 'paint') {
       const { paint } = job,

@@ -1,7 +1,7 @@
 // The lab garage's screen (#3, ?lab=garage): DOM over the canvas that draws Garage (garage.ts) and sends it what you pick.
 // The camera circles the car meanwhile (render/camera-rig.ts), so the plates keep to the edges and leave the middle to it.
 import { fmtKr, type Wallet } from './economy';
-import { CAT_LABELS, GARAGE_TABS, type Garage, type GarageCat, type GarageTab } from './garage';
+import { GARAGE_TABS, type Garage, type GarageShelf, type GarageTab, SHELF_LABELS } from './garage';
 import { esc } from './menu';
 
 /** What the garage's screen draws into and reads. */
@@ -28,7 +28,7 @@ export class GarageHud {
 
   constructor(g: GarageHudDeps) {
     this.g = g;
-    g.root.addEventListener('click', this.click);
+    g.root.addEventListener('click', this.runAction);
   }
 
   /** Every frame: shows or hides the screen, and draws it again when the garage or the wallet changed. */
@@ -50,14 +50,14 @@ export class GarageHud {
   }
 
   /** The garage sees each key first while it's open; true when it used it. */
-  key = (e: KeyboardEvent): boolean => {
+  takeKey = (e: KeyboardEvent): boolean => {
     const { garage } = this.g;
     if (!garage.isOpen) return false;
     const n = /^(?:Digit|Numpad)([1-9])$/.exec(e.code),
       onButton = e.target instanceof HTMLButtonElement;
     if (e.code === 'Escape' || e.code === 'KeyE') garage.close();
     else if (e.code === 'ArrowLeft' || e.code === 'ArrowRight') garage.stepTab(e.code === 'ArrowLeft' ? -1 : 1);
-    else if (e.code === 'ArrowUp' || e.code === 'ArrowDown') garage.stepCat(e.code === 'ArrowUp' ? -1 : 1);
+    else if (e.code === 'ArrowUp' || e.code === 'ArrowDown') garage.stepShelf(e.code === 'ArrowUp' ? -1 : 1);
     else if (n) garage.pick(Number(n[1]) - 1);
     else if ((e.code === 'Enter' || e.code === 'NumpadEnter') && !onButton) garage.pay();
     else if (e.code === 'Backspace') garage.undo();
@@ -67,13 +67,13 @@ export class GarageHud {
     return true;
   };
 
-  private click = (e: MouseEvent) => {
+  private runAction = (e: MouseEvent) => {
     const el = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-act]');
     if (!el || el.disabled) return;
     const { garage } = this.g,
       [act, arg] = el.dataset.act!.split(':');
     if (act === 'tab') garage.setTab(arg as GarageTab);
-    else if (act === 'cat') garage.setCat(arg as GarageCat);
+    else if (act === 'cat') garage.setShelf(arg as GarageShelf);
     else if (act === 'pick') garage.pick(Number(arg));
     else if (act === 'pay') garage.pay();
     else if (act === 'undo') garage.undo();
@@ -95,7 +95,7 @@ export class GarageHud {
       .cats()
       .map(
         c =>
-          `<button type="button" class="g-row" data-act="cat:${c}" aria-pressed="${c === garage.cat}"><span class="g-name">${CAT_LABELS[c]}</span><span class="g-sub">${esc(garage.pickedName(c))}</span><span class="g-dot">${garage.changed(c) ? '●' : ''}</span></button>`,
+          `<button type="button" class="g-row" data-act="cat:${c}" aria-pressed="${c === garage.cat}"><span class="g-name">${SHELF_LABELS[c]}</span><span class="g-sub">${esc(garage.pickedName(c))}</span><span class="g-dot">${garage.changed(c) ? '●' : ''}</span></button>`,
       )
       .join('');
     const choices = garage
