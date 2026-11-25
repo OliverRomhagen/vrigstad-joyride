@@ -12,6 +12,11 @@ const SPLAT_ORDER = 1, // splats are drawn after the walls and cars they sit on
   STUCK_ORDERS = 4096;
 const LIFT_M = 0.03; // a splat sits this far off its surface, so the two don't flicker
 const SHOT_R_M = 0.07;
+const ARC_MAX = 64, // dots in a throw's arc
+  ARC_DOT_M = 0.045;
+const ARM_M = 0.6, // the player's arm, shoulder to hand (models.ts)
+  ARM_HALF_THICK_M = 0.08,
+  GUN_GRIP_M = 0.08; // the hand holds the gun this far in from its end
 const SPIKES_MAX = 140, // fotanglar drawn at once
   SPIKE_M = 0.16;
 const SLOPE_STEP_M = 0.5; // the ground's slope under a splat is read over this distance
@@ -50,6 +55,9 @@ export class ShotFx {
   private readonly shots: THREE.InstancedMesh;
   private readonly splats: THREE.InstancedMesh;
   private readonly spikes: THREE.InstancedMesh;
+  private readonly arc: THREE.InstancedMesh;
+  private readonly arcEnd: THREE.Mesh;
+  private readonly gun: THREE.Mesh;
   private readonly quad = new THREE.PlaneGeometry(1, 1);
   private readonly texture: THREE.CanvasTexture;
   private readonly stuckMats = new Map<string, THREE.Material>();
@@ -82,6 +90,20 @@ export class ShotFx {
     this.spikes.frustumCulled = false;
     this.spikes.castShadow = true;
     g.scene.add(this.spikes);
+    // a throw's arc: pale dots, and a ring on the ground where it ends
+    const pale = new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.75, depthWrite: false });
+    this.arc = new THREE.InstancedMesh(new THREE.SphereGeometry(ARC_DOT_M, 6, 4), pale, ARC_MAX);
+    this.arc.count = 0;
+    this.arc.frustumCulled = false;
+    this.arcEnd = new THREE.Mesh(new THREE.RingGeometry(0.92, 1, 40).rotateX(-Math.PI / 2), pale);
+    this.arcEnd.visible = false;
+    // a placeholder gun: one dark box, sized for the weapon held (no models yet)
+    this.gun = new THREE.Mesh(
+      new THREE.BoxGeometry(1, 1, 1),
+      new THREE.MeshLambertMaterial({ color: new THREE.Color('#2a2f33').convertSRGBToLinear() }),
+    );
+    this.gun.castShadow = true;
+    g.scene.add(this.arc, this.arcEnd);
     for (const mesh of [this.shots, this.splats]) {
       mesh.setColorAt(0, _c.set('#ffffff')); // makes the colour buffer before the first frame compiles the material
       mesh.count = 0;
@@ -120,6 +142,35 @@ export class ShotFx {
     this.shots.count = n;
     this.shots.instanceMatrix.needsUpdate = true;
     if (this.shots.instanceColor) this.shots.instanceColor.needsUpdate = true;
+  }
+
+  /**
+   * Draws a throw's arc: `n` points, x, y, z after each other in `points`, as a dotted line, and a ring of `ringM`
+   * metres on the ground where it ends. n = 0 hides it.
+   */
+  drawArc(points: readonly number[], n: number, ringM: number) {
+    const dots = Math.min(n, ARC_MAX);
+    for (let i = 0; i < dots; i++)
+      this.arc.setMatrixAt(i, _m.makeTranslation(points[i * 3], points[i * 3 + 1], points[i * 3 + 2]));
+    this.arc.count = dots;
+    this.arc.instanceMatrix.needsUpdate = true;
+    this.arcEnd.visible = n > 0;
+    if (n > 0) {
+      this.arcEnd.position.set(points[(n - 1) * 3], points[(n - 1) * 3 + 1] + LIFT_M * 2, points[(n - 1) * 3 + 2]);
+      this.arcEnd.scale.setScalar(ringM);
+    }
+  }
+
+  /** Puts a placeholder gun in a hand: `arm` hangs from its shoulder, so the gun points the way the arm does. */
+  giveGun(arm: THREE.Object3D) {
+    arm.add(this.gun);
+  }
+
+  /** The gun's length and thickness (m), for the weapon held. */
+  sizeGun(lengthM: number, thickM: number) {
+    this.gun.scale.set(thickM, lengthM, thickM);
+    // on top of the hand when the arm is raised (the arm's -z is up then), so it shows over the arm from behind
+    this.gun.position.set(0, -ARM_M - lengthM / 2 + GUN_GRIP_M * 2, -(ARM_HALF_THICK_M + thickM / 2));
   }
 
   /** Draws the fotanglar that lie on the ground. Call it when the list changes. */

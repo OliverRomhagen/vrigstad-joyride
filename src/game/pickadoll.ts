@@ -8,11 +8,13 @@ import type { Npc } from './pedestrians';
 import type { PlayerState } from './player';
 import type { Ragdolls } from './ragdolls';
 import type { RenderedCar } from './render/car-meshes';
+import type { Person } from './render/models';
 import { GEGGA, type ShotFx } from './render/shot-fx';
 import {
   aimAt,
   aimShot,
   assistTarget,
+  flightPath,
   HIT_FLAVOURS,
   type HitFlavour,
   MUZZLE_M,
@@ -64,6 +66,25 @@ const DANCE_S = 6,
   DANCE_HOP_M = 0.22,
   DANCE_HOP_HZ = 3.2,
   DANCE_COLOUR = '#ff5fd2';
+// throwing: hold to see the arc, let go to throw
+const ARC_STEP_S = 1 / 20, // the arc has a dot this often along the flight
+  ARC_POINTS = 64,
+  ARC_RING_M = 0.7; // the ring where it lands, for a throwable with no blast
+// the stance: the right arm comes up along the aim while you aim, hold the trigger or have just fired
+const RAISED_S = 1.2, // the arm stays up this long after a shot
+  WIND_UP_RAD = -0.9; // the arm goes back this far while you hold a throw
+// the placeholder gun in the hand, by weapon: its length and thickness (m). No models yet
+const GUN_M: Record<string, readonly [number, number]> = {
+  artpuffra: [0.5, 0.04],
+  pickadoll: [0.3, 0.08],
+  pepprapuffra: [0.4, 0.1],
+  hagelbossa: [0.65, 0.09],
+  potatiskanon: [0.85, 0.2],
+  minigun: [0.75, 0.17],
+  guldartpuffra: [0.5, 0.05],
+  granat: [0.14, 0.14],
+  fotanglar: [0.12, 0.16],
+};
 const BLAST_DROPS = 7; // a blast of gegga leaves this many more splats around the hit
 // fotanglar: they lie where they land for a while. Someone who steps on one hops on and walks slowly; a car that
 // drives over one has a puncture and limps; you are hurt, unless you jump over
@@ -91,7 +112,7 @@ export interface PickadollDeps {
   game: Pick<GameState, 'started' | 'inCar' | 'pcar' | 'titleCardT'>;
   view: Pick<ViewState, 'camYaw' | 'camPitch'>;
   calmMotion: { readonly matches: boolean }; // prefers-reduced-motion: the camera changes place at once
-  player: PlayerState & { mesh: { rotation: { y: number } } };
+  player: PlayerState & { mesh: Person };
   world: Pick<ShotWorld, 'groundAt' | 'collide'>;
   crowd: { readonly npcs: Npc[]; stare(o: Point, r: number, s: number): boolean };
   cars: readonly RenderedCar[];
@@ -114,6 +135,10 @@ export class Pickadoll {
   private readonly spikes: { x: number; y: number; z: number; turn: number; leftS: number }[] = [];
   private readonly limping: { npc: Npc; leftS: number; speed: number }[] = [];
   private spikeHurtS = 0; // s until a fotangel can hurt you again
+  private readonly arc: number[] = [];
+  private readonly arcEnd = newHit();
+  private wound = false; // a throw is held back, its arc showing
+  private raisedS = 0; // s the arm stays up
   private readonly hit = newHit();
   private readonly aimHit = newHit();
   private readonly line = { x: 0, y: 0, z: 0, dx: 0, dy: 0, dz: -1 };
@@ -197,6 +222,7 @@ export class Pickadoll {
     this.crosshair.id = 'lab-crosshair';
     this.crosshair.hidden = true;
     g.$('stage').append(this.crosshair);
+    if (g.player.mesh.arms) g.fx.giveGun(g.player.mesh.arms[1]);
     this.weaponButton = this.hudButton('Q', () => this.nextWeapon());
     this.flavourButton = this.hudButton('G', () => this.nextFlavour());
     this.drawHud();
@@ -224,6 +250,8 @@ export class Pickadoll {
       button.replaceChildren(kbd, name);
     };
     label(this.weaponButton, 'Q', WEAPONS[this.weapon].name);
+    const [lengthM, thickM] = GUN_M[WEAPONS[this.weapon].id];
+    this.g.fx.sizeGun(lengthM, thickM);
     label(this.flavourButton, 'G', HIT_FLAVOURS[this.flavour].name);
   }
 
@@ -323,10 +351,44 @@ export class Pickadoll {
     // a click a moment before the weapon is ready still fires; an older one is dropped, so clicks never queue up
     if (this.pulledS >= 0) this.pulledS += dt;
     if (!ready || this.pulledS > PULL_KEEP_S + dt) this.pulledS = -1;
-    if (ready && this.coolS <= 0 && (weapon.auto ? this.held : this.pulledS >= 0)) {
+    // a throwable is held back while the trigger is down, with its arc showing, and thrown when you let go
+    let thrown = false;
+    if (weapon.thrown && ready && this.held && this.coolS <= 0) this.wound = true;
+    else if (this.wound) {
+      thrown = weapon.thrown && ready && !this.held;
+      this.wound = false;
+    }
+    if (this.wound) {
+      const side = this.aimK * AIM_MUZZLE_SIDE_M,
+        flown = {
+          x: from.x + Math.cos(yaw) * side,
+          y: muzzleY,
+          z: from.z + Math.sin(yaw) * side,
+          ...aimShot(weapon, yaw, pitch),
+          ageS: 0,
+          bounced: 0,
+          lifeS: 0,
+          lying: false,
+          weapon: this.weapon,
+        };
+      fx.drawArc(
+        this.arc,
+        flightPath(flown, this.world, ARC_STEP_S, ARC_POINTS, this.arc, this.arcEnd),
+        weapon.blastM || ARC_RING_M,
+      );
+    } else fx.drawArc(this.arc, 0, 0);
+    if (ready && this.coolS <= 0 && (weapon.thrown ? thrown : weapon.auto ? this.held : this.pulledS >= 0)) {
       this.pulledS = -1;
       this.coolS = weapon.coolS;
+      this.raisedS = RAISED_S;
       this.fire(from, car, yaw, pitch);
+    }
+    // the stance, drawn over the walk's arm swing: the right arm along the aim, or back for a throw
+    this.raisedS -= dt;
+    const arms = player.mesh.arms;
+    if (arms && !car && ready) {
+      if (this.wound) arms[1].rotation.x = WIND_UP_RAD;
+      else if (aiming || this.raisedS > 0 || (this.held && !weapon.thrown)) arms[1].rotation.x = Math.PI / 2 + pitch;
     }
 
     for (let i = this.shots.length - 1; i >= 0; i--) {

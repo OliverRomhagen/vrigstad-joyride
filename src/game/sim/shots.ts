@@ -416,6 +416,36 @@ export const newHit = (): ShotHit => ({
   burst: false,
 });
 
+/**
+ * The path a shot would fly: where it is every `stepS` seconds, as x, y, z after each other in `out`, at most `max`
+ * points, until it stops, goes off or is out of range. `s` is flown there, so pass a shot made for it. Returns the
+ * number of points; the last one is where it ends, which `end` also holds.
+ */
+export function flightPath(s: Shot, world: ShotWorld, stepS: number, max: number, out: number[], end: ShotHit): number {
+  let n = 0;
+  const put = (x: number, y: number, z: number) => {
+    out[n * 3] = x;
+    out[n * 3 + 1] = y;
+    out[n * 3 + 2] = z;
+    n++;
+  };
+  while (n < max - 1) {
+    put(s.x, s.y, s.z);
+    const hit = stepShot(s, stepS, world, end);
+    if (hit === 'gone') return n;
+    if (s.lying) {
+      // where a shot with a fuse comes to rest is where it will go off
+      end.x = s.x;
+      end.y = s.y;
+      end.z = s.z;
+      break;
+    }
+    if (hit && !hit.bounced) break;
+  }
+  put(end.x, end.y, end.z);
+  return n;
+}
+
 const _sight: Shot = { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, ageS: 0, weapon: 0, bounced: 0, lifeS: 0, lying: false };
 
 /**

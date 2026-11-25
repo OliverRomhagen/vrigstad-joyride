@@ -3,6 +3,7 @@ import {
   aimAt,
   aimShot,
   assistTarget,
+  flightPath,
   GRAVITY_MS2,
   MUZZLE_M,
   newHit,
@@ -211,6 +212,35 @@ describe('a thrown shot with a fuse', () => {
   it('goes off at once on a person', () => {
     const hit = fly(shot(GRANAT), world({ people: [{ x: 0, z: -3, scale: 1 }] }));
     expect(hit).toMatchObject({ kind: 'person', bounced: false });
+  });
+});
+
+describe('flightPath', () => {
+  it('ends where the shot itself lands, with the points on its way there', () => {
+    const w = world({ collide: () => false }),
+      points: number[] = [],
+      end = newHit(),
+      n = flightPath(shot(), w, 1 / 20, 64, points, end),
+      hit = fly(shot(), w) as { z: number };
+    expect(n).toBeGreaterThan(2);
+    expect(points.slice(0, 3)).toEqual([0, MUZZLE_M, 0]); // it starts at the muzzle
+    expect(points[(n - 1) * 3 + 2]).toBeCloseTo(hit.z, 0);
+    expect(points[(n - 1) * 3 + 1]).toBe(0); // and ends on the ground
+  });
+
+  it('follows a grenade through its bounces to where it comes to rest', () => {
+    const GRANAT = WEAPONS.findIndex(w => w.id === 'granat'),
+      points: number[] = [],
+      end = newHit(),
+      n = flightPath(shot(GRANAT), world({ collide: () => false }), 1 / 20, 64, points, end);
+    // thrown level at 15 m/s from 1.35 m, it first lands about 7.9 m out, and rests further on
+    expect(-points[(n - 1) * 3 + 2]).toBeGreaterThan(7.9);
+    expect(-points[(n - 1) * 3 + 2]).toBeLessThan(14);
+  });
+
+  it('never gives more points than asked for', () => {
+    const points: number[] = [];
+    expect(flightPath(shot(), world({ collide: () => false }), 1 / 200, 10, points, newHit())).toBeLessThanOrEqual(10);
   });
 });
 
