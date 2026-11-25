@@ -85,6 +85,7 @@ const GUN_M: Record<string, readonly [number, number]> = {
   granat: [0.14, 0.14],
   fotanglar: [0.12, 0.16],
 };
+const HIT_MARK_S = 0.1; // the crosshair's ticks stay this long after a hit on a person or a car, then fade (index.html)
 const BLAST_DROPS = 7; // a blast of gegga leaves this many more splats around the hit
 // fotanglar: they lie where they land for a while. Someone who steps on one hops on and walks slowly; a car that
 // drives over one has a puncture and limps; you are hurt, unless you jump over
@@ -139,6 +140,8 @@ export class Pickadoll {
   private readonly arcEnd = newHit();
   private wound = false; // a throw is held back, its arc showing
   private raisedS = 0; // s the arm stays up
+  private markS = 0; // s the crosshair's hit ticks stay on
+  private marked = 0; // hits on a person or a car, for the test hook
   private readonly hit = newHit();
   private readonly aimHit = newHit();
   private readonly line = { x: 0, y: 0, z: 0, dx: 0, dy: 0, dz: -1 };
@@ -271,6 +274,7 @@ export class Pickadoll {
     return {
       fired: this.fired,
       hits: this.hits,
+      marked: this.marked,
       splats: this.g.fx.splatted,
       weapon: WEAPONS[this.weapon].id,
       flavour: HIT_FLAVOURS[this.flavour].id,
@@ -348,6 +352,8 @@ export class Pickadoll {
     const { yaw, pitch } = aimAt(weapon.speedMs, from.x, muzzleY, from.z, tx, ty, tz, this.aim);
     this.crosshair.hidden = !ready;
     this.crosshair.classList.toggle('on', onTarget);
+    this.markS -= dt;
+    this.crosshair.classList.toggle('hit', this.markS > 0);
     // a click a moment before the weapon is ready still fires; an older one is dropped, so clicks never queue up
     if (this.pulledS >= 0) this.pulledS += dt;
     if (!ready || this.pulledS > PULL_KEEP_S + dt) this.pulledS = -1;
@@ -516,6 +522,7 @@ export class Pickadoll {
     if (person) this.hitPerson(person, s.flavour, hit.dx, hit.dz, hit.y, weapon.power, weapon.splatM, colour, s.seed);
     else if (car) this.hitCar(car, s.flavour, hit, weapon.power, weapon.splatM, colour, s.seed);
     else fx.splat(hit, s.flavour === 'gegga' ? weapon.splatM : weapon.splatM * 0.45, colour, s.seed);
+    if (person || car) this.mark();
     if (!weapon.blastM) return;
     for (const n of crowd.npcs) {
       const ex = n.x - hit.x,
@@ -523,6 +530,7 @@ export class Pickadoll {
         d = Math.hypot(ex, ez);
       if (n === person || n.down || d > weapon.blastM || d < 0.01) continue;
       this.hitPerson(n, s.flavour, ex / d, ez / d, hit.y + 1, weapon.power * 0.6, weapon.splatM, colour, rnd());
+      this.mark();
     }
     if (s.flavour === 'pang')
       for (const c of this.world.cars) {
@@ -544,6 +552,12 @@ export class Pickadoll {
           rnd(),
         );
       }
+  }
+
+  // tells you a shot landed on someone or something that counts, however far off it was
+  private mark() {
+    this.marked++;
+    this.markS = HIT_MARK_S;
   }
 
   // (dx, dz): the way the hit pushes them, a unit vector along the ground

@@ -23,7 +23,7 @@ export interface TestHookDeps {
   labs: readonly string[]; // the lab experiments switched on
   readonly styled: boolean; // frames are drawn through a style (?lab=toon), which loads after the page
   readonly ragdolls: number; // people knocked over right now
-  readonly pickadoll: object | null; // ?lab=pickadoll once its code runs: shots fired, hits, splats, the weapon and the flavour
+  readonly pickadoll: object | null; // ?lab=pickadoll once its code runs: shots fired, hits, hits that got a mark, splats, the weapon and the flavour
   readonly stars: number;
   readonly cats: number;
   readonly ownCat: boolean;
