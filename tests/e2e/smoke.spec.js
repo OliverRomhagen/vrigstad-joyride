@@ -789,7 +789,7 @@ test.describe('marketing page (about.html)', () => {
 
     await page.locator('#cGo').click();
     await expect(page.locator('#cStart')).toBeHidden();
-    await expect(page.locator('#cStars b')).toHaveText('★');         // the getaway starts at one star
+    await expect(page.locator('#cStars b')).toHaveText('★'); // the getaway starts at one star
     await page.keyboard.down('KeyW');
     await expect(page.locator('#cKmh')).not.toHaveText('0');
     await page.keyboard.up('KeyW');
@@ -800,7 +800,8 @@ test.describe('marketing page (about.html)', () => {
     const box = await card.boundingBox();
     await page.mouse.move(box.x + 4, box.y + 4);
     await page.mouse.down();
-    for (let y = 4; y < box.height; y += 16) {   // scratch the whole card, one row at a time
+    for (let y = 4; y < box.height; y += 16) {
+      // scratch the whole card, one row at a time
       await page.mouse.move(box.x + 4, box.y + y);
       await page.mouse.move(box.x + box.width - 4, box.y + y, { steps: 8 });
     }

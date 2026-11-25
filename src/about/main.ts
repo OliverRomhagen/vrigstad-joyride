@@ -1,40 +1,75 @@
 // The marketing page (about.html): a hero, a small top-down getaway on the real map, the garage and a trisslott.
 // It reads the same processed map data as the game, but none of the game code: this is a toy, not the simulation.
 import D from '../../data/vrigstad.json';
+import { clamp } from '../world/math';
+import { makeRnd } from '../world/random';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
-const clamp = (v: number, lo: number, hi: number) => (v < lo ? lo : v > hi ? hi : v);
 const HALF = D.size / 2;
+// its own stream, seeded fresh each visit, so the police spawn and the tickets come out differently every time
+const rnd = makeRnd(crypto.getRandomValues(new Uint32Array(1))[0]);
 
 // ---------- vehicles (top speeds and off-road factors copied from the game's car types) ----------
 
 type CarType = 'volvo' | 'saab' | 'epa' | 'traktor';
-interface CarSpec { name: string; maxSpeedMs: number; accelMs2: number; offRoad: number; color: string; blurb: string }
+interface CarSpec {
+  name: string;
+  maxSpeedMs: number;
+  accelMs2: number;
+  offRoad: number;
+  color: string;
+  blurb: string;
+}
 const CARS: Record<CarType, CarSpec> = {
-  volvo: { name: 'Volvo 240', maxSpeedMs: 38, accelMs2: 7, offRoad: 0.5, color: '#a8232d',
-    blurb: 'Square, safe and parked on every other driveway. The keys are probably in it.' },
-  saab: { name: 'Saab 900', maxSpeedMs: 42, accelMs2: 8.5, offRoad: 0.5, color: '#e6e4dc',
-    blurb: 'The fastest thing in Vrigstad. Your best bet with three stars.' },
-  epa: { name: 'EPA-traktor', maxSpeedMs: 8.33, accelMs2: 4, offRoad: 0.7, color: '#e8a020',
-    blurb: 'Legally limited to 30 km/h. Good luck outrunning anyone.' },
-  traktor: { name: 'Traktor', maxSpeedMs: 11, accelMs2: 3.5, offRoad: 1, color: '#2f7a3a',
-    blurb: 'Slow on the road and exactly as slow across a field. Fields are shortcuts.' },
+  volvo: {
+    name: 'Volvo 240',
+    maxSpeedMs: 38,
+    accelMs2: 7,
+    offRoad: 0.5,
+    color: '#a8232d',
+    blurb: 'Square, safe and parked on every other driveway. The keys are probably in it.',
+  },
+  saab: {
+    name: 'Saab 900',
+    maxSpeedMs: 42,
+    accelMs2: 8.5,
+    offRoad: 0.5,
+    color: '#e6e4dc',
+    blurb: 'The fastest thing in Vrigstad. Your best bet with three stars.',
+  },
+  epa: {
+    name: 'EPA-traktor',
+    maxSpeedMs: 8.33,
+    accelMs2: 4,
+    offRoad: 0.7,
+    color: '#e8a020',
+    blurb: 'Legally limited to 30 km/h. Good luck outrunning anyone.',
+  },
+  traktor: {
+    name: 'Traktor',
+    maxSpeedMs: 11,
+    accelMs2: 3.5,
+    offRoad: 1,
+    color: '#2f7a3a',
+    blurb: 'Slow on the road and exactly as slow across a field. Fields are shortcuts.',
+  },
 };
 const FASTEST_MS = 42;
 let carType: CarType = 'volvo';
 
 // ---------- getaway tuning ----------
 
-const MASK_PX_PER_M = 0.5;       // resolution of the road/building lookup
-const ZOOM_PX_PER_M = 5;         // CSS pixels per metre on screen (less on phones)
-const CAR_LEN_M = 4.6, CAR_W_M = 1.9;
-const POLICE_MAX_MS = 35;        // a little slower than a Volvo flat out, so a clean line gets away
+const MASK_PX_PER_M = 0.5; // resolution of the road/building lookup
+const ZOOM_PX_PER_M = 5; // CSS pixels per metre on screen (less on phones)
+const CAR_LEN_M = 4.6,
+  CAR_W_M = 1.9;
+const POLICE_MAX_MS = 35; // a little slower than a Volvo flat out, so a clean line gets away
 const POLICE_OFFROAD = 0.6;
 const POLICE_TURN_RAD_S = 1.6;
 const CATCH_DIST_M = 4.5;
-const EVADE_DIST_M = 170;        // the game's rule: this far from every police car...
-const EVADE_TIME_S = 18;         // ...for this long, and they give up
-const STAR_UP_S = 12;            // a new star (and police car) every this many seconds while they can see you
+const EVADE_DIST_M = 170; // the game's rule: this far from every police car...
+const EVADE_TIME_S = 18; // ...for this long, and they give up
+const STAR_UP_S = 12; // a new star (and police car) every this many seconds while they can see you
 const SPAWN_DIST_M = [110, 160];
 const TORGET = { x: 0, z: 0 };
 
@@ -52,36 +87,68 @@ function trace(ctx: CanvasRenderingContext2D, p: number[], close: boolean) {
 
 // Paints the map in world metres; the caller sets the transform.
 function paintMap(ctx: CanvasRenderingContext2D) {
-  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-  ctx.fillStyle = '#9db87a'; ctx.fillRect(-HALF, -HALF, D.size, D.size);
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.fillStyle = '#9db87a';
+  ctx.fillRect(-HALF, -HALF, D.size, D.size);
   for (let k = 0; k < LAND.length; k++) {
-    ctx.fillStyle = LAND[k]; ctx.beginPath();
+    ctx.fillStyle = LAND[k];
+    ctx.beginPath();
     for (const l of D.l) if (l.k === k) trace(ctx, l.p, true);
     ctx.fill();
   }
   ctx.strokeStyle = ctx.fillStyle = '#4f8fb8';
-  for (const w of D.ww) { ctx.lineWidth = w.k === 0 ? 6 : 2; ctx.beginPath(); trace(ctx, w.p, false); ctx.stroke(); }
-  for (const w of D.w) { ctx.beginPath(); for (const ring of w) trace(ctx, ring, true); ctx.fill('evenodd'); }
-  for (const verge of [true, false]) for (let cls = 5; cls >= 0; cls--) {
-    if (verge && cls > 3) continue;
-    ctx.strokeStyle = verge ? '#b3a78c' : ROAD_FILL[cls];
-    ctx.lineWidth = ROAD_W[cls] + (verge ? 2.4 : 0);
-    ctx.beginPath(); for (const r of D.r) if (r.c === cls) trace(ctx, r.p, false); ctx.stroke();
+  for (const w of D.ww) {
+    ctx.lineWidth = w.k === 0 ? 6 : 2;
+    ctx.beginPath();
+    trace(ctx, w.p, false);
+    ctx.stroke();
   }
-  ctx.fillStyle = 'rgba(0,0,0,.22)'; ctx.translate(0.8, 0.8); ctx.fill(buildings); ctx.translate(-0.8, -0.8);  // cheap drop shadow
-  ctx.fillStyle = '#8a8378'; ctx.fill(buildings);
+  for (const w of D.w) {
+    ctx.beginPath();
+    for (const ring of w) trace(ctx, ring, true);
+    ctx.fill('evenodd');
+  }
+  for (const verge of [true, false])
+    for (let cls = 5; cls >= 0; cls--) {
+      if (verge && cls > 3) continue;
+      ctx.strokeStyle = verge ? '#b3a78c' : ROAD_FILL[cls];
+      ctx.lineWidth = ROAD_W[cls] + (verge ? 2.4 : 0);
+      ctx.beginPath();
+      for (const r of D.r) if (r.c === cls) trace(ctx, r.p, false);
+      ctx.stroke();
+    }
+  ctx.fillStyle = 'rgba(0,0,0,.22)';
+  ctx.translate(0.8, 0.8);
+  ctx.fill(buildings);
+  ctx.translate(-0.8, -0.8); // cheap drop shadow
+  ctx.fillStyle = '#8a8378';
+  ctx.fill(buildings);
 }
 const buildings = new Path2D();
-for (const b of D.b) { buildings.moveTo(b.p[0], b.p[1]); for (let i = 2; i < b.p.length; i += 2) buildings.lineTo(b.p[i], b.p[i + 1]); buildings.closePath(); }
+for (const b of D.b) {
+  buildings.moveTo(b.p[0], b.p[1]);
+  for (let i = 2; i < b.p.length; i += 2) buildings.lineTo(b.p[i], b.p[i + 1]);
+  buildings.closePath();
+}
 
 function paintMask() {
   const c = document.createElement('canvas');
   c.width = c.height = Math.round(D.size * MASK_PX_PER_M);
   const ctx = c.getContext('2d', { willReadFrequently: true })!;
   ctx.setTransform(MASK_PX_PER_M, 0, 0, MASK_PX_PER_M, HALF * MASK_PX_PER_M, HALF * MASK_PX_PER_M);
-  ctx.lineCap = 'round'; ctx.strokeStyle = '#f00';
-  for (const r of D.r) { ctx.lineWidth = ROAD_W[r.c] + 2; ctx.beginPath(); trace(ctx, r.p, false); ctx.stroke(); }
-  ctx.fillStyle = '#0f0'; ctx.beginPath(); for (const b of D.b) trace(ctx, b.p, true); ctx.fill();
+  ctx.lineCap = 'round';
+  ctx.strokeStyle = '#f00';
+  for (const r of D.r) {
+    ctx.lineWidth = ROAD_W[r.c] + 2;
+    ctx.beginPath();
+    trace(ctx, r.p, false);
+    ctx.stroke();
+  }
+  ctx.fillStyle = '#0f0';
+  ctx.beginPath();
+  for (const b of D.b) trace(ctx, b.p, true);
+  ctx.fill();
   return { size: c.width, data: ctx.getImageData(0, 0, c.width, c.width).data };
 }
 
@@ -98,37 +165,64 @@ const inBuilding = (x: number, z: number) => maskAt(x, z, 1);
 
 // Named road segments, for the street sign.
 const SEGMENTS: { ax: number; az: number; bx: number; bz: number; name: string }[] = [];
-for (const r of D.r) if (r.n) for (let i = 2; i < r.p.length; i += 2)
-  SEGMENTS.push({ ax: r.p[i - 2], az: r.p[i - 1], bx: r.p[i], bz: r.p[i + 1], name: r.n });
+for (const r of D.r)
+  if (r.n)
+    for (let i = 2; i < r.p.length; i += 2)
+      SEGMENTS.push({ ax: r.p[i - 2], az: r.p[i - 1], bx: r.p[i], bz: r.p[i + 1], name: r.n });
 
 function nearestStreet(x: number, z: number) {
-  let best = '', bestD = 25 * 25;
+  let best = '',
+    bestD = 25 * 25;
   for (const s of SEGMENTS) {
-    const dx = s.bx - s.ax, dz = s.bz - s.az, len2 = dx * dx + dz * dz || 1;
+    const dx = s.bx - s.ax,
+      dz = s.bz - s.az,
+      len2 = dx * dx + dz * dz || 1;
     const t = clamp(((x - s.ax) * dx + (z - s.az) * dz) / len2, 0, 1);
-    const ex = s.ax + dx * t - x, ez = s.az + dz * t - z, d = ex * ex + ez * ez;
-    if (d < bestD) { bestD = d; best = s.name; }
+    const ex = s.ax + dx * t - x,
+      ez = s.az + dz * t - z,
+      d = ex * ex + ez * ez;
+    if (d < bestD) {
+      bestD = d;
+      best = s.name;
+    }
   }
   return best;
 }
 
 // ---------- getaway state ----------
 
-interface Mover { x: number; z: number; heading: number; speed: number }  // heading: radians, 0 = east, z points south
+interface Mover {
+  x: number;
+  z: number;
+  heading: number;
+  speed: number;
+} // heading: radians, 0 = east, z points south
 const player: Mover = { x: TORGET.x, z: TORGET.z, heading: -0.6, speed: 0 };
 const police: Mover[] = [];
 const keys = new Set<string>();
-let pointer: { x: number; y: number } | null = null;  // CSS px inside the canvas while held
-let running = false, visible = true, stars = 0, starTimer = 0, evadeTimer = 0, elapsed = 0, streetTimer = 0, lastFrame = 0;
+let pointer: { x: number; y: number } | null = null; // CSS px inside the canvas while held
+let running = false,
+  visible = true,
+  stars = 0,
+  starTimer = 0,
+  evadeTimer = 0,
+  elapsed = 0,
+  streetTimer = 0,
+  lastFrame = 0;
 
 const canvas = $<HTMLCanvasElement>('cv');
 const ctx = canvas.getContext('2d')!;
-let viewW = 0, viewH = 0, zoom = ZOOM_PX_PER_M;
+let viewW = 0,
+  viewH = 0,
+  zoom = ZOOM_PX_PER_M;
 
 function resize() {
-  const dpr = Math.min(2, devicePixelRatio || 1), r = canvas.getBoundingClientRect();
-  viewW = r.width; viewH = r.height;
-  canvas.width = Math.round(viewW * dpr); canvas.height = Math.round(viewH * dpr);
+  const dpr = Math.min(2, devicePixelRatio || 1),
+    r = canvas.getBoundingClientRect();
+  viewW = r.width;
+  viewH = r.height;
+  canvas.width = Math.round(viewW * dpr);
+  canvas.height = Math.round(viewH * dpr);
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   zoom = viewW < 600 ? ZOOM_PX_PER_M * 0.75 : ZOOM_PX_PER_M;
   if (!running) draw();
@@ -136,9 +230,10 @@ function resize() {
 
 function spawnPolice() {
   for (let tries = 0; tries < 200; tries++) {
-    const a = Math.random() * Math.PI * 2;
-    const d = SPAWN_DIST_M[0] + Math.random() * (SPAWN_DIST_M[1] - SPAWN_DIST_M[0]);
-    const x = player.x + Math.cos(a) * d, z = player.z + Math.sin(a) * d;
+    const a = rnd() * Math.PI * 2;
+    const d = SPAWN_DIST_M[0] + rnd() * (SPAWN_DIST_M[1] - SPAWN_DIST_M[0]);
+    const x = player.x + Math.cos(a) * d,
+      z = player.z + Math.sin(a) * d;
     if (Math.abs(x) < HALF - 20 && Math.abs(z) < HALF - 20 && onRoad(x, z) && !inBuilding(x, z)) {
       police.push({ x, z, heading: Math.atan2(player.z - z, player.x - x), speed: 10 });
       return;
@@ -155,26 +250,37 @@ function setStars(n: number) {
 
 function reset() {
   Object.assign(player, { x: TORGET.x, z: TORGET.z, heading: -0.6, speed: 0 });
-  police.length = 0; starTimer = 0; evadeTimer = 0; elapsed = 0; streetTimer = 0;
+  police.length = 0;
+  starTimer = 0;
+  evadeTimer = 0;
+  elapsed = 0;
+  streetTimer = 0;
   setStars(1);
 }
 
 function start() {
   reset();
-  $('cStart').hidden = true; $('cEnd').hidden = true;
-  running = true; lastFrame = performance.now();
+  $('cStart').hidden = true;
+  $('cEnd').hidden = true;
+  running = true;
+  lastFrame = performance.now();
   canvas.focus({ preventScroll: true });
   requestAnimationFrame(frame);
 }
 
 function end(caught: boolean) {
-  running = false; pointer = null; keys.clear();
-  const t = formatTime(elapsed), car = CARS[carType].name;
+  running = false;
+  pointer = null;
+  keys.clear();
+  const t = formatTime(elapsed),
+    car = CARS[carType].name;
   const title = $('cEndTitle');
   title.textContent = caught ? 'Gripen!' : 'You lost them.';
   title.className = caught ? 'busted' : 'free';
   $('cEndText').textContent = caught
-    ? carType === 'epa' ? `Caught after ${t} in an EPA-traktor. To be fair, that's 30 km/h.` : `Caught after ${t} in a ${car}. They'll drive you back to Torget.`
+    ? carType === 'epa'
+      ? `Caught after ${t} in an EPA-traktor. To be fair, that's 30 km/h.`
+      : `Caught after ${t} in a ${car}. They'll drive you back to Torget.`
     : `${t} in a ${car}, and the police went back to their coffee. In the game, they'd still remember your face.`;
   $('cEnd').hidden = false;
   $('cAgain').focus({ preventScroll: true });
@@ -191,20 +297,26 @@ function turnToward(heading: number, target: number, maxStep: number) {
 
 // Moves a car, sliding along walls rather than driving through houses.
 function move(m: Mover, dt: number) {
-  const nx = m.x + Math.cos(m.heading) * m.speed * dt, nz = m.z + Math.sin(m.heading) * m.speed * dt;
-  if (!inBuilding(nx, nz)) { m.x = nx; m.z = nz; }
-  else if (!inBuilding(nx, m.z)) m.x = nx;
+  const nx = m.x + Math.cos(m.heading) * m.speed * dt,
+    nz = m.z + Math.sin(m.heading) * m.speed * dt;
+  if (!inBuilding(nx, nz)) {
+    m.x = nx;
+    m.z = nz;
+  } else if (!inBuilding(nx, m.z)) m.x = nx;
   else if (!inBuilding(m.x, nz)) m.z = nz;
   else m.speed *= -0.3;
-  m.x = clamp(m.x, -HALF + 3, HALF - 3); m.z = clamp(m.z, -HALF + 3, HALF - 3);
+  m.x = clamp(m.x, -HALF + 3, HALF - 3);
+  m.z = clamp(m.z, -HALF + 3, HALF - 3);
 }
 
 function updatePlayer(dt: number) {
   const spec = CARS[carType];
-  let throttle = 0, steer = 0;
+  let throttle = 0,
+    steer = 0;
   if (pointer) {
     // steer toward the held point on the map; ease off when nearly there
-    const tx = player.x + (pointer.x - viewW / 2) / zoom, tz = player.z + (pointer.y - viewH / 2) / zoom;
+    const tx = player.x + (pointer.x - viewW / 2) / zoom,
+      tz = player.z + (pointer.y - viewH / 2) / zoom;
     const dist = Math.hypot(tx - player.x, tz - player.z);
     let d = Math.atan2(tz - player.z, tx - player.x) - player.heading;
     d = Math.atan2(Math.sin(d), Math.cos(d));
@@ -220,7 +332,7 @@ function updatePlayer(dt: number) {
   if (throttle > 0) player.speed = Math.min(max, player.speed + spec.accelMs2 * dt);
   else if (throttle < 0) player.speed = Math.max(-max * 0.3, player.speed - spec.accelMs2 * 1.8 * dt);
   else player.speed *= Math.max(0, 1 - 1.2 * dt);
-  if (player.speed > max) player.speed = Math.max(max, player.speed - 20 * dt);  // left the road: bog down
+  if (player.speed > max) player.speed = Math.max(max, player.speed - 20 * dt); // left the road: bog down
   const grip = Math.min(1, Math.abs(player.speed) / 5) / (1 + Math.abs(player.speed) / 30);
   player.heading += steer * 2.6 * grip * dt * Math.sign(player.speed || 1);
   move(player, dt);
@@ -230,12 +342,16 @@ const PROBES = [0, 0.5, -0.5, 1.1, -1.1, 1.8, -1.8];
 function updatePolice(p: Mover, dt: number) {
   // aim a little ahead of the player, then take the first heading that isn't straight into a house
   const lead = Math.min(1.2, Math.hypot(player.x - p.x, player.z - p.z) / 40);
-  const tx = player.x + Math.cos(player.heading) * player.speed * lead, tz = player.z + Math.sin(player.heading) * player.speed * lead;
+  const tx = player.x + Math.cos(player.heading) * player.speed * lead,
+    tz = player.z + Math.sin(player.heading) * player.speed * lead;
   const want = Math.atan2(tz - p.z, tx - p.x);
   let aim = want;
   for (const off of PROBES) {
     const a = want + off;
-    if (!inBuilding(p.x + Math.cos(a) * 9, p.z + Math.sin(a) * 9)) { aim = a; break; }
+    if (!inBuilding(p.x + Math.cos(a) * 9, p.z + Math.sin(a) * 9)) {
+      aim = a;
+      break;
+    }
   }
   p.heading = turnToward(p.heading, aim, POLICE_TURN_RAD_S * dt);
   const max = POLICE_MAX_MS * (onRoad(p.x, p.z) ? 1 : POLICE_OFFROAD);
@@ -256,19 +372,35 @@ function frame(now: number) {
       updatePolice(p, dt);
       nearest = Math.min(nearest, Math.hypot(p.x - player.x, p.z - player.z));
     }
-    if (nearest < CATCH_DIST_M) { draw(); end(true); return; }
+    if (nearest < CATCH_DIST_M) {
+      draw();
+      end(true);
+      return;
+    }
     if (nearest > EVADE_DIST_M) {
       evadeTimer += dt;
-      if (evadeTimer > EVADE_TIME_S) { draw(); end(false); return; }
+      if (evadeTimer > EVADE_TIME_S) {
+        draw();
+        end(false);
+        return;
+      }
     } else {
       evadeTimer = 0;
       starTimer += dt;
-      if (starTimer > STAR_UP_S && stars < 3) { starTimer = 0; setStars(stars + 1); }
+      if (starTimer > STAR_UP_S && stars < 3) {
+        starTimer = 0;
+        setStars(stars + 1);
+      }
     }
     $('cStars').classList.toggle('evading', evadeTimer > 0);
     $('cKmh').textContent = String(Math.round(Math.abs(player.speed) * 3.6));
-    $('cTime').textContent = evadeTimer > 0 ? 'Out of sight ' + Math.ceil(EVADE_TIME_S - evadeTimer) + ' s' : formatTime(elapsed);
-    if ((streetTimer -= dt) < 0) { streetTimer = 0.3; setStreet(nearestStreet(player.x, player.z)); }
+    $('cTime').textContent =
+      evadeTimer > 0 ? 'Out of sight ' + Math.ceil(EVADE_TIME_S - evadeTimer) + ' s' : formatTime(elapsed);
+    streetTimer -= dt;
+    if (streetTimer < 0) {
+      streetTimer = 0.3;
+      setStreet(nearestStreet(player.x, player.z));
+    }
     draw();
   }
   requestAnimationFrame(frame);
@@ -284,34 +416,65 @@ function setStreet(name: string) {
 
 // ---------- getaway drawing ----------
 
-function drawCar(c: CanvasRenderingContext2D, x: number, y: number, heading: number, scale: number, color: string, isPolice: boolean, t: number) {
-  c.save(); c.translate(x, y); c.rotate(heading); c.scale(scale, scale);
-  const L = CAR_LEN_M, W = CAR_W_M;
-  c.fillStyle = 'rgba(0,0,0,.3)'; c.fillRect(-L / 2 + 0.3, -W / 2 + 0.3, L, W);
-  c.fillStyle = isPolice ? '#f2f2ee' : color; c.fillRect(-L / 2, -W / 2, L, W);
-  if (isPolice) { c.fillStyle = '#1f4fa3'; c.fillRect(-L / 2, -W / 2, L, 0.28); c.fillRect(-L / 2, W / 2 - 0.28, L, 0.28); }
-  c.fillStyle = '#1b2428'; c.fillRect(-0.9, -W / 2 + 0.2, 2.2, W - 0.4);  // glass
-  c.fillStyle = isPolice ? '#f2f2ee' : color; c.fillRect(-0.55, -W / 2 + 0.3, 1.5, W - 0.6);  // roof
+function drawCar(
+  c: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  heading: number,
+  scale: number,
+  color: string,
+  isPolice: boolean,
+  t: number,
+) {
+  c.save();
+  c.translate(x, y);
+  c.rotate(heading);
+  c.scale(scale, scale);
+  const L = CAR_LEN_M,
+    W = CAR_W_M;
+  c.fillStyle = 'rgba(0,0,0,.3)';
+  c.fillRect(-L / 2 + 0.3, -W / 2 + 0.3, L, W);
+  c.fillStyle = isPolice ? '#f2f2ee' : color;
+  c.fillRect(-L / 2, -W / 2, L, W);
+  if (isPolice) {
+    c.fillStyle = '#1f4fa3';
+    c.fillRect(-L / 2, -W / 2, L, 0.28);
+    c.fillRect(-L / 2, W / 2 - 0.28, L, 0.28);
+  }
+  c.fillStyle = '#1b2428';
+  c.fillRect(-0.9, -W / 2 + 0.2, 2.2, W - 0.4); // glass
+  c.fillStyle = isPolice ? '#f2f2ee' : color;
+  c.fillRect(-0.55, -W / 2 + 0.3, 1.5, W - 0.6); // roof
   if (isPolice) {
     const blink = Math.floor(t * 6) % 2;
-    c.fillStyle = blink ? '#3a7bff' : '#e5412d'; c.fillRect(0, -W / 2 + 0.35, 0.4, W / 2 - 0.35);
-    c.fillStyle = blink ? '#e5412d' : '#3a7bff'; c.fillRect(0, 0, 0.4, W / 2 - 0.35);
+    c.fillStyle = blink ? '#3a7bff' : '#e5412d';
+    c.fillRect(0, -W / 2 + 0.35, 0.4, W / 2 - 0.35);
+    c.fillStyle = blink ? '#e5412d' : '#3a7bff';
+    c.fillRect(0, 0, 0.4, W / 2 - 0.35);
   }
-  c.fillStyle = '#f6ecb0'; c.fillRect(L / 2 - 0.15, -W / 2 + 0.15, 0.15, 0.4); c.fillRect(L / 2 - 0.15, W / 2 - 0.55, 0.15, 0.4);
+  c.fillStyle = '#f6ecb0';
+  c.fillRect(L / 2 - 0.15, -W / 2 + 0.15, 0.15, 0.4);
+  c.fillRect(L / 2 - 0.15, W / 2 - 0.55, 0.15, 0.4);
   c.restore();
 }
 
 function draw() {
   const t = performance.now() / 1000;
-  ctx.fillStyle = '#9db87a'; ctx.fillRect(0, 0, viewW, viewH);
+  ctx.fillStyle = '#9db87a';
+  ctx.fillRect(0, 0, viewW, viewH);
   ctx.save();
-  ctx.translate(viewW / 2, viewH / 2); ctx.scale(zoom, zoom); ctx.translate(-player.x, -player.z);
+  ctx.translate(viewW / 2, viewH / 2);
+  ctx.scale(zoom, zoom);
+  ctx.translate(-player.x, -player.z);
   paintMap(ctx);
   ctx.restore();
   const toScreen = (m: Mover) => [viewW / 2 + (m.x - player.x) * zoom, viewH / 2 + (m.z - player.z) * zoom];
   if (pointer) {
-    ctx.strokeStyle = 'rgba(242,194,48,.9)'; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.arc(pointer.x, pointer.y, 12, 0, Math.PI * 2); ctx.stroke();
+    ctx.strokeStyle = 'rgba(242,194,48,.9)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(pointer.x, pointer.y, 12, 0, Math.PI * 2);
+    ctx.stroke();
   }
   for (const p of police) {
     const [x, y] = toScreen(p);
@@ -319,10 +482,18 @@ function draw() {
     else {
       // off-screen: an arrow on the edge pointing at it
       const a = Math.atan2(y - viewH / 2, x - viewW / 2);
-      const ex = clamp(x, 18, viewW - 18), ey = clamp(y, 18, viewH - 18);
-      ctx.save(); ctx.translate(ex, ey); ctx.rotate(a);
+      const ex = clamp(x, 18, viewW - 18),
+        ey = clamp(y, 18, viewH - 18);
+      ctx.save();
+      ctx.translate(ex, ey);
+      ctx.rotate(a);
       ctx.fillStyle = Math.floor(t * 6) % 2 ? '#3a7bff' : '#e5412d';
-      ctx.beginPath(); ctx.moveTo(10, 0); ctx.lineTo(-8, -8); ctx.lineTo(-8, 8); ctx.closePath(); ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(10, 0);
+      ctx.lineTo(-8, -8);
+      ctx.lineTo(-8, 8);
+      ctx.closePath();
+      ctx.fill();
       ctx.restore();
     }
   }
@@ -331,37 +502,68 @@ function draw() {
 
 // ---------- getaway input ----------
 
-const DRIVE_KEYS = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'KeyW', 'KeyA', 'KeyS', 'KeyD', 'Space']);
+const DRIVE_KEYS = new Set([
+  'ArrowUp',
+  'ArrowDown',
+  'ArrowLeft',
+  'ArrowRight',
+  'KeyW',
+  'KeyA',
+  'KeyS',
+  'KeyD',
+  'Space',
+]);
 canvas.addEventListener('keydown', e => {
   if (!running || !DRIVE_KEYS.has(e.code)) return;
-  e.preventDefault(); keys.add(e.code); pointer = null;
+  e.preventDefault();
+  keys.add(e.code);
+  pointer = null;
 });
 canvas.addEventListener('keyup', e => keys.delete(e.code));
 canvas.addEventListener('blur', () => keys.clear());
-const pointerAt = (e: PointerEvent) => { const r = canvas.getBoundingClientRect(); pointer = { x: e.clientX - r.left, y: e.clientY - r.top }; };
-canvas.addEventListener('pointerdown', e => { if (!running) return; canvas.setPointerCapture(e.pointerId); pointerAt(e); });
-canvas.addEventListener('pointermove', e => { if (pointer) pointerAt(e); });
-for (const ev of ['pointerup', 'pointercancel'] as const) canvas.addEventListener(ev, () => { pointer = null; });
+const pointerAt = (e: PointerEvent) => {
+  const r = canvas.getBoundingClientRect();
+  pointer = { x: e.clientX - r.left, y: e.clientY - r.top };
+};
+canvas.addEventListener('pointerdown', e => {
+  if (!running) return;
+  canvas.setPointerCapture(e.pointerId);
+  pointerAt(e);
+});
+canvas.addEventListener('pointermove', e => {
+  if (pointer) pointerAt(e);
+});
+for (const ev of ['pointerup', 'pointercancel'] as const)
+  canvas.addEventListener(ev, () => {
+    pointer = null;
+  });
 $('cGo').addEventListener('click', start);
 $('cAgain').addEventListener('click', start);
-new IntersectionObserver(([entry]) => { visible = entry.isIntersecting; if (visible) lastFrame = performance.now(); }).observe(canvas);
+new IntersectionObserver(([entry]) => {
+  visible = entry.isIntersecting;
+  if (visible) lastFrame = performance.now();
+}).observe(canvas);
 addEventListener('resize', resize);
 
 // ---------- garage ----------
 
 const garage = $('cars');
 for (const type of Object.keys(CARS) as CarType[]) {
-  const spec = CARS[type], kmh = Math.round(spec.maxSpeedMs * 3.6);
+  const spec = CARS[type],
+    kmh = Math.round(spec.maxSpeedMs * 3.6);
   const card = document.createElement('button');
-  card.type = 'button'; card.className = 'car'; card.dataset.type = type;
+  card.type = 'button';
+  card.className = 'car';
+  card.dataset.type = type;
   card.setAttribute('aria-pressed', String(type === carType));
   card.innerHTML = `<canvas width="460" height="184" aria-hidden="true"></canvas><h3></h3>
     <div class="spd">${kmh} <small>km/h top speed</small></div>
-    <div class="meter"><i style="width:${Math.round(spec.maxSpeedMs / FASTEST_MS * 100)}%"></i></div>
+    <div class="meter"><i style="width:${Math.round((spec.maxSpeedMs / FASTEST_MS) * 100)}%"></i></div>
     <p></p><span class="pick"></span>`;
   card.querySelector('h3')!.textContent = spec.name;
   card.querySelector('p')!.textContent = spec.blurb;
-  const preview = card.querySelector('canvas')!, pc = preview.getContext('2d')!;
+  const preview = card.querySelector('canvas')!,
+    pc = preview.getContext('2d')!;
   drawCar(pc, 230, 92, -0.25, 64, spec.color, false, 0);
   card.addEventListener('click', () => pickCar(type));
   garage.append(card);
@@ -375,44 +577,84 @@ function pickCar(type: CarType) {
     card.querySelector('.pick')!.textContent = on ? 'In the getaway ✓' : 'Take this one';
   }
   $('gName').textContent = (type === 'epa' ? 'an ' : 'a ') + CARS[type].name;
-  if (running) start(); else draw();
+  if (running) start();
+  else draw();
 }
 
 // ---------- trisslott (the game's kiosk lines; one in a thousand wins, the temper worsens with each loss in a row) ----------
 
 const TRISS_ODDS = 0.001;
 const TRISS = [
-  ['Järnspikar, ingen vinst denna gång heller.', 'Äsch, dä va la synd.', 'Nä, inget dänna gången heller.', 'Jaja, nästa lott så.'],
-  ['Men jösses, inte ett öre!', 'Tusan hakar, en nitlott te!', 'Dä här börjar likna lurendrejeri.', 'Sjutton gubbar, nu får dä la ändå vända!'],
-  ['Fy sjutton, dä ä ju rena fusket!', 'Jäklar anamma, inte en krona!', 'Va i hela fridens namn hôller di på mä?!', 'Nu blir ja förbannad på riktigt!'],
-  ['Fan i helvete, dä ä ju bedrägeri!', 'Satans jävla skitlotter!', 'Jävlar i min lilla låda, ge mej en te!', 'Helvetes förbannade skrapskit, ja ska anmäla hela Svenska Spel!'],
+  [
+    'Järnspikar, ingen vinst denna gång heller.',
+    'Äsch, dä va la synd.',
+    'Nä, inget dänna gången heller.',
+    'Jaja, nästa lott så.',
+  ],
+  [
+    'Men jösses, inte ett öre!',
+    'Tusan hakar, en nitlott te!',
+    'Dä här börjar likna lurendrejeri.',
+    'Sjutton gubbar, nu får dä la ändå vända!',
+  ],
+  [
+    'Fy sjutton, dä ä ju rena fusket!',
+    'Jäklar anamma, inte en krona!',
+    'Va i hela fridens namn hôller di på mä?!',
+    'Nu blir ja förbannad på riktigt!',
+  ],
+  [
+    'Fan i helvete, dä ä ju bedrägeri!',
+    'Satans jävla skitlotter!',
+    'Jävlar i min lilla låda, ge mej en te!',
+    'Helvetes förbannade skrapskit, ja ska anmäla hela Svenska Spel!',
+  ],
 ];
 const ticketCanvas = $<HTMLCanvasElement>('tCv');
 const tctx = ticketCanvas.getContext('2d', { willReadFrequently: true })!;
-let tickets = 0, wins = 0, lossStreak = 0, revealed = false, scratching = false, lastLine = '';
+let tickets = 0,
+  wins = 0,
+  lossStreak = 0,
+  revealed = false,
+  scratching = false,
+  lastLine = '';
 let lastScratch: { x: number; y: number } | null = null;
 
 function newTicket() {
   revealed = false;
-  const won = Math.random() < TRISS_ODDS;
-  const head = $('tHead'), line = $('tLine');
-  if (won) { head.textContent = 'Vinst!'; head.className = 'win'; line.textContent = 'Dä va som sjutton, ja visste väl dä!'; }
-  else {
-    const n = lossStreak, lines = TRISS[n < 3 ? 0 : n < 5 ? 1 : n < 8 ? 2 : 3];
-    let pick = lines[Math.floor(Math.random() * lines.length)];
-    while (pick === lastLine) pick = lines[Math.floor(Math.random() * lines.length)];
+  const won = rnd() < TRISS_ODDS;
+  const head = $('tHead'),
+    line = $('tLine');
+  if (won) {
+    head.textContent = 'Vinst!';
+    head.className = 'win';
+    line.textContent = 'Dä va som sjutton, ja visste väl dä!';
+  } else {
+    const n = lossStreak,
+      lines = TRISS[n < 3 ? 0 : n < 5 ? 1 : n < 8 ? 2 : 3];
+    let pick = lines[Math.floor(rnd() * lines.length)];
+    while (pick === lastLine) pick = lines[Math.floor(rnd() * lines.length)];
     lastLine = pick;
-    head.textContent = 'Ingen vinst'; head.className = ''; line.textContent = pick;
+    head.textContent = 'Ingen vinst';
+    head.className = '';
+    line.textContent = pick;
   }
   ticketCanvas.dataset.won = String(won);
-  const r = ticketCanvas.getBoundingClientRect(), dpr = Math.min(2, devicePixelRatio || 1);
-  ticketCanvas.width = Math.round(r.width * dpr); ticketCanvas.height = Math.round(r.height * dpr);
+  const r = ticketCanvas.getBoundingClientRect(),
+    dpr = Math.min(2, devicePixelRatio || 1);
+  ticketCanvas.width = Math.round(r.width * dpr);
+  ticketCanvas.height = Math.round(r.height * dpr);
   tctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   tctx.globalCompositeOperation = 'source-over';
   const g = tctx.createLinearGradient(0, 0, r.width, r.height);
-  g.addColorStop(0, '#b9bcbf'); g.addColorStop(0.5, '#e3e5e6'); g.addColorStop(1, '#9fa3a6');
-  tctx.fillStyle = g; tctx.fillRect(0, 0, r.width, r.height);
-  tctx.fillStyle = 'rgba(40,44,46,.55)'; tctx.textAlign = 'center'; tctx.textBaseline = 'middle';
+  g.addColorStop(0, '#b9bcbf');
+  g.addColorStop(0.5, '#e3e5e6');
+  g.addColorStop(1, '#9fa3a6');
+  tctx.fillStyle = g;
+  tctx.fillRect(0, 0, r.width, r.height);
+  tctx.fillStyle = 'rgba(40,44,46,.55)';
+  tctx.textAlign = 'center';
+  tctx.textBaseline = 'middle';
   tctx.font = `700 ${Math.round(r.width / 9)}px "Barlow Condensed", Arial Narrow, sans-serif`;
   tctx.fillText('SKRAPA HÄR', r.width / 2, r.height / 2 - r.width / 28);
   tctx.font = `500 ${Math.round(r.width / 28)}px Barlow, Arial, sans-serif`;
@@ -422,36 +664,60 @@ function newTicket() {
 
 // Scratches a line from the last point, so a fast swipe leaves no gaps between pointer events.
 function scratchAt(e: PointerEvent) {
-  const r = ticketCanvas.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
+  const r = ticketCanvas.getBoundingClientRect(),
+    x = e.clientX - r.left,
+    y = e.clientY - r.top;
   const from = lastScratch ?? { x, y };
   tctx.globalCompositeOperation = 'destination-out';
-  tctx.lineCap = 'round'; tctx.lineWidth = Math.max(36, r.width / 9);
-  tctx.beginPath(); tctx.moveTo(from.x, from.y); tctx.lineTo(x + 0.01, y); tctx.stroke();
+  tctx.lineCap = 'round';
+  tctx.lineWidth = Math.max(36, r.width / 9);
+  tctx.beginPath();
+  tctx.moveTo(from.x, from.y);
+  tctx.lineTo(x + 0.01, y);
+  tctx.stroke();
   lastScratch = { x, y };
 }
 
 function scratchedShare() {
   const { data } = tctx.getImageData(0, 0, ticketCanvas.width, ticketCanvas.height);
-  let clear = 0, n = 0;
-  for (let i = 3; i < data.length; i += 4 * 37) { n++; if (data[i] < 40) clear++; }
+  let clear = 0,
+    n = 0;
+  for (let i = 3; i < data.length; i += 4 * 37) {
+    n++;
+    if (data[i] < 40) clear++;
+  }
   return clear / n;
 }
 
 function reveal() {
-  revealed = true; tickets++;
-  if (ticketCanvas.dataset.won === 'true') { wins++; lossStreak = 0; } else lossStreak++;
+  revealed = true;
+  tickets++;
+  if (ticketCanvas.dataset.won === 'true') {
+    wins++;
+    lossStreak = 0;
+  } else lossStreak++;
   tctx.clearRect(0, 0, ticketCanvas.width, ticketCanvas.height);
-  $('tN').textContent = String(tickets); $('tW').textContent = String(wins);
+  $('tN').textContent = String(tickets);
+  $('tW').textContent = String(wins);
   $('tNew').hidden = false;
 }
 
-ticketCanvas.addEventListener('pointerdown', e => { if (revealed) return; scratching = true; ticketCanvas.setPointerCapture(e.pointerId); scratchAt(e); });
-ticketCanvas.addEventListener('pointermove', e => { if (scratching) scratchAt(e); });
-for (const ev of ['pointerup', 'pointercancel'] as const) ticketCanvas.addEventListener(ev, () => {
-  if (!scratching) return;
-  scratching = false; lastScratch = null;
-  if (scratchedShare() > 0.5) reveal();
+ticketCanvas.addEventListener('pointerdown', e => {
+  if (revealed) return;
+  scratching = true;
+  ticketCanvas.setPointerCapture(e.pointerId);
+  scratchAt(e);
 });
+ticketCanvas.addEventListener('pointermove', e => {
+  if (scratching) scratchAt(e);
+});
+for (const ev of ['pointerup', 'pointercancel'] as const)
+  ticketCanvas.addEventListener(ev, () => {
+    if (!scratching) return;
+    scratching = false;
+    lastScratch = null;
+    if (scratchedShare() > 0.5) reveal();
+  });
 $('tNew').addEventListener('click', newTicket);
 
 // ---------- hero ----------
@@ -460,10 +726,17 @@ let heroStars = 0;
 const wanted = $<HTMLButtonElement>('wanted');
 wanted.addEventListener('click', () => {
   heroStars = (heroStars + 1) % 4;
-  wanted.querySelectorAll('b').forEach((b, i) => b.classList.toggle('on', i < heroStars));
+  wanted.querySelectorAll('b').forEach((b, i) => {
+    b.classList.toggle('on', i < heroStars);
+  });
   wanted.setAttribute('aria-label', `Wanted level, ${heroStars} of 3 stars. Click to change it.`);
   document.body.classList.toggle('sirens', heroStars === 3);
-  wanted.nextElementSibling!.textContent = ['Go on. Raise your wanted level.', 'Somebody saw that.', 'They are calling it in.', 'Well, now you have done it. Click once more to calm down.'][heroStars];
+  wanted.nextElementSibling!.textContent = [
+    'Go on. Raise your wanted level.',
+    'Somebody saw that.',
+    'They are calling it in.',
+    'Well, now you have done it. Click once more to calm down.',
+  ][heroStars];
 });
 
 // ---------- live numbers from the map data ----------

@@ -6,8 +6,9 @@
 
 # Loaded in ways Fallow can't follow:
 # - src/map/main.ts is map.html's script, and tools/build.mjs builds map.html, but Fallow's Vite plugin finds only index.html.
+# - src/about/main.ts is about.html's script, built the same way.
 # - tools/trailer/rig.js reads inpage.js with fs.readFileSync and runs it in the page.
-entry = ["src/map/main.ts", "tools/trailer/inpage.js"]
+entry = ["src/map/main.ts", "src/about/main.ts", "tools/trailer/inpage.js"]
 
 # Exceptions: exported, but only used in their own file. Un-export them, or use them in a test, then drop the entry.
 # tools/streetscape-report.mjs loads these through Vite's runnerImport, which Fallow can't follow.
