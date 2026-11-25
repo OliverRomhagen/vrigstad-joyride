@@ -408,7 +408,8 @@ export class SkrotenMeshes {
 
 /** Plåt-Pelle: blue overalls, a red cap with a peak, and a grey beard. Standing at the origin, facing −z. */
 function platPelle(): Person {
-  const owner = personParts('#2f4f7f', '#2f4f7f', '#b8322a');
+  // a real shadow, unlike the pedestrians: he stands still, close up, among things that all cast one, and it's 3 draw calls
+  const owner = personParts('#2f4f7f', '#2f4f7f', '#b8322a', false, true);
   owner.add(
     new THREE.Mesh(
       boxGeo([

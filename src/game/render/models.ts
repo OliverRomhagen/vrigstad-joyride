@@ -271,7 +271,7 @@ export const BAR_BLUE = col(0x2f6bff),
   BAR_RED = col(0xff3b30);
 export const barMat = new THREE.MeshBasicMaterial({ color: BAR_BLUE.clone() }),
   barGeo = new THREE.BoxGeometry(1.1, 0.16, 0.3);
-export function personParts(shirt: string, pants: string, hair?: string | null, arms?: boolean) {
+export function personParts(shirt: string, pants: string, hair?: string | null, arms?: boolean, castsShadow = false) {
   // arms: separate meshes that swing from the shoulder (two more draw calls, so only the player has them)
   hair = hair || '#5a4632';
   const bk = shirt + hair + (arms ? '+arms' : ''),
@@ -300,8 +300,9 @@ export function personParts(shirt: string, pants: string, hair?: string | null, 
     r = new THREE.Mesh(leg, paintMat);
   l.position.set(-0.13, 0.8, 0);
   r.position.set(0.13, 0.8, 0);
-  // only the player (the one with arms) casts a real shadow; everyone has the blob, and NPC casters were a third of the shadow pass (#239)
-  b.castShadow = l.castShadow = r.castShadow = !!arms;
+  // everyone has the blob; a real shadow only where asked (the player, Plåt-Pelle): without the pedestrians' and cats', the
+  // shadow pass at Torget went from 278 draw calls to 163 (#425)
+  b.castShadow = l.castShadow = r.castShadow = castsShadow;
   g.add(b, l, r);
   g.legs = [l, r];
   g.blob = blob(g, 0.9, 0.9);
@@ -310,7 +311,7 @@ export function personParts(shirt: string, pants: string, hair?: string | null, 
     g.arms = [-0.33, 0.33].map(x => {
       const a = new THREE.Mesh(ag, paintMat);
       a.position.set(x, 1.42, 0);
-      a.castShadow = true;
+      a.castShadow = castsShadow;
       g.add(a);
       return a;
     });

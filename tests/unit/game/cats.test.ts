@@ -20,7 +20,7 @@ function colony(water: (x: number, z: number) => boolean = () => false) {
     geoCache: {},
     boxGeo: () => new THREE.BufferGeometry(),
     paintMat: new THREE.MeshBasicMaterial(),
-    blob: () => {},
+    blob: () => new THREE.Object3D(),
     cars: drive.cars,
     toast: msg => {
       toasts.push(msg);
@@ -376,6 +376,21 @@ describe('strays on the EPA flak', () => {
       off = !cat.ride && cat.state !== 'hop' && !car.cat;
     }
     expect(off).toBe(true);
+  });
+
+  it('keeps its blob on the ground under it while it hops up, and under it on the flak once it lands', () => {
+    const { c, cat, car, player } = epaScene();
+    const shadow = new THREE.Object3D(),
+      at = new THREE.Vector3();
+    cat.mesh.add(shadow);
+    cat.shadow = shadow;
+    for (let i = 0; i < 3000 && !(cat.hop?.onto === car && cat.hop.p >= 0.5); i++) c.update(player, 1 / 30);
+    expect(cat.hop?.onto).toBe(car);
+    expect(cat.mesh.position.y).toBeGreaterThan(0.5); // up in the air
+    expect(shadow.getWorldPosition(at).y).toBeCloseTo(0.06, 6); // on the ground (0 here)
+    for (let i = 0; i < 60 && cat.hop; i++) c.update(player, 1 / 30);
+    expect(cat.ride).toBe(car);
+    expect(shadow.position.y).toBe(0.06); // on the flak, just under the cat
   });
 
   it('adopted mid-hop onto the flak, it lands on the ground and leaves the EPA free', () => {

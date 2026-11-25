@@ -21,6 +21,7 @@ const CAT_EPA_M = 8,
 const CAT_TROT = 1.4,
   CAT_HOP_S = 0.5,
   FLAK_Y = 0.77; // m/s; seconds per hop; flak floor height in the car's frame (m), where +z points backwards: the Duett model's (#176); a far EPA's simpler fallback flak sits higher
+const BLOB_Y_M = 0.06; // a blob shadow's height above what it lies on (render/models.ts)
 const _cv = new THREE.Vector3();
 type Seat = { x: number; y: number; z: number; ry: number; rx: number; inside?: boolean; hi: string };
 // where a riding cat sits, in the car's frame (m; +z points backwards), how it is turned (rad; rx > 0 is sitting up), and what you say when
@@ -122,6 +123,7 @@ export interface Cat extends Point {
   nope: number;
   phase: number;
   mesh: THREE.Mesh;
+  shadow?: THREE.Object3D; // its blob, a child of the mesh, held on the ground while it hops
   epa: CatCar | null;
   hop: Hop | null;
   ride: CatCar | null; // the EPA it trots to / its hop / the EPA it rides on
@@ -145,7 +147,7 @@ export interface CatDeps {
   geoCache: Record<string, THREE.BufferGeometry>;
   boxGeo(parts: (number | string)[][]): THREE.BufferGeometry;
   paintMat: THREE.Material;
-  blob(parent: THREE.Object3D, w: number, l: number): void;
+  blob(parent: THREE.Object3D, w: number, l: number): THREE.Object3D;
   cars: readonly CatCar[];
   toast(msg: string, secs: number): void;
   scratched(): void; // the player loses a little health
@@ -474,7 +476,7 @@ export class CatColony {
     // no real shadow: the blob below grounds it, and a caster per cat costs a shadow draw call (#239)
     mesh.rotation.order = 'YXZ';
     mesh.scale.setScalar(1.1 + rnd() * 0.25);
-    blob(mesh, 0.32, 0.55);
+    const shadow = blob(mesh, 0.32, 0.55);
     const k: Cat = {
       name: CAT_NAME,
       x,
@@ -486,6 +488,7 @@ export class CatColony {
       nope: 0,
       phase: 0,
       mesh,
+      shadow,
       epa: null,
       hop: null,
       ride: null,
@@ -569,11 +572,16 @@ export class CatColony {
     const p = H.p,
       x = H.x0 + (_cv.x - H.x0) * p,
       z = H.z0 + (_cv.z - H.z0) * p;
-    k.mesh.position.set(x, H.y0 + (_cv.y - H.y0) * p + Math.sin(p * Math.PI) * 0.7, z);
+    const y = H.y0 + (_cv.y - H.y0) * p + Math.sin(p * Math.PI) * 0.7,
+      shadow = k.shadow;
+    k.mesh.position.set(x, y, z);
+    // the blob stays on the ground below, not under the cat's belly; in the cat's own scale, as it's a child of the mesh
+    if (shadow) shadow.position.y = (BLOB_Y_M + this.g.groundAt(x, z) - y) / k.mesh.scale.y;
     k.x = x;
     k.z = z;
     if (p < 1) return;
     k.hop = null;
+    if (shadow) shadow.position.y = BLOB_Y_M; // landed: on the ground, or on the EPA's flak
     if (c) {
       c.mesh.add(k.mesh);
       k.mesh.position.set(S.x, S.y, S.z);
