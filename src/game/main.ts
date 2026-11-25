@@ -76,6 +76,7 @@ import { newGameState, newViewState } from './state';
 import { Trisslott, trisslottSeed } from './trisslott';
 import { makeClock, skyAt, START_H, tickClock } from './day-cycle';
 import { Daylight, type DaylightTargets } from './render/daylight';
+import { SunStreaks } from './render/sun-streaks';
 
 (function () {
 'use strict';
@@ -230,7 +231,11 @@ const cameraRig = new CameraRig({ camera, sun, skyDome, game, view, get dragging
 const shake = cameraRig.shake;
 // the ISO 800 grain (src/game/presentation/) runs faster while the camera moves; it compares with the camera last frame
 const grainPos = new THREE.Vector3(), grainQuat = new THREE.Quaternion();
+// sunlight streaks and the sun disc (#212, src/game/render/sun-streaks.ts): the day cycle's direct light times the clouds' shade; ?sunrays=off leaves them out
+const sunStreaks = dayQs.get('sunrays') === 'off' ? null : new SunStreaks({ sunDir: SUN_DIR });
+if (sunStreaks) scene.add(sunStreaks.object);
 function placeCamera(T: { x: number; z: number }, now: number, dt: number) { cameraRig.update(T, now, dt); pickadoll?.aimCamera();   // the lab's over-the-shoulder aim (declared at the end)
+  sunStreaks?.update(camera, sky.sun * skyDome.sunFactor, skyDome.sunShade, sun.color);
   if (filmGrain.enabled) { filmGrain.setMoving(cameraMoved(grainPos, grainQuat, camera.position, camera.quaternion)); grainPos.copy(camera.position); grainQuat.copy(camera.quaternion); } }
 
 // ---------- drift effects: sparks at the rear wheels, a flame while boosting, skid marks (src/game/render/drift-fx.ts) ----------
@@ -349,7 +354,7 @@ debugOverlay?.registerCommands(commands);
 // ---------- input: keys, mouse look and the touch controls (src/game/input.ts) ----------
 // the dev console sees each key first, then the menus (src/game/menu.ts)
 const input = new Input({ win: window, doc: document, canvas, $, coarse, menuKey: e => devcon.takeKey(e) || menuKey(e),
-  get started() { return game.started; }, get menuOpen() { return !kmenu.hidden; },
+  get started() { return game.started; }, get menuOpen() { return !kmenu.hidden; }, get consoleOpen() { return devcon.isOpen; },
   action: () => action(), respawn: () => respawn(), rain: () => cashRain.makeItRain(),
   jump: () => { if (jumpOk()) game.jumpQ = true; },   // queue only where a jump can start (see jumpOk)
   look: (dx, dy) => { if (pickadoll?.aimLook(dx, dy)) return; if (game.inCar) { view.lookOff = wrap(view.lookOff + dx * 0.006); view.lookIdle = 0; } else view.camYaw = wrap(view.camYaw + dx * 0.006);
@@ -405,5 +410,5 @@ loop.start();
 // ---------- test hook: read-only state for the smoke tests (src/game/test-hook.ts) ----------
 installTestHook({ game, view, player, health, cars, labs: lab.list(), get styled() { return loop.styled; }, get ragdolls() { return ragdolls.count; }, get pickadoll() { return pickadoll?.state ?? null; }, get stars() { return wanted.stars; }, get cats() { return cats.length; }, get ownCat() { return !!colony.owned; }, get displayCar() { return displayCar; },
   vehicleVisuals: { state: c => vehicleVisuals.state(meshed(c)) }, bodyMotion: { state: c => bodyMotion.state(meshed(c)) }, skyDome, street, debugStreetscape: DEBUG_STREETSCAPE, bridges: { index: bridges, draw: bridgeMeshes, groundAt }, furniture, water: { bodies: waterBodies, surface: waterLook.surface, props: waterLook.props, shore, terrainTriangles: terrainMesh.triangles, refinedCells: heightfield.refinedCells, buildMs: waterCutMs + waterMeshMs, inWater, hAt }, debugFurniture: DEBUG_FURNITURE, nearestCar,
-  get kr() { return wallet.kr; }, get banknotes() { return banknotes.live; }, get confetti() { return confetti.live; }, get devcon() { return devcon.isOpen; }, build: __BUILD__, get fps() { return !!debugOverlay?.shown; }, day: { get hour() { return dayClock.hour; }, get night() { return dayClock.night; }, get sunLight() { return sky.sun; } } });
+  get kr() { return wallet.kr; }, get banknotes() { return banknotes.live; }, get confetti() { return confetti.live; }, get devcon() { return devcon.isOpen; }, build: __BUILD__, get fps() { return !!debugOverlay?.shown; }, day: { get hour() { return dayClock.hour; }, get night() { return dayClock.night; }, get sunLight() { return sky.sun; } }, sunStreaks });
 })();

@@ -392,9 +392,9 @@ export class Pickadoll {
     if (!ready || this.pulledS > PULL_KEEP_S + dt) this.pulledS = -1;
     // a throwable is held back while the trigger is down, with its arc showing, and thrown when you let go
     let thrown = false;
-    if (weapon.thrown && ready && this.trigger.down && this.coolS <= 0) this.isWindingUp = true;
+    if (weapon.thrown && ready && this.trigger.held && this.coolS <= 0) this.isWindingUp = true;
     else if (this.isWindingUp) {
-      thrown = weapon.thrown && ready && !this.trigger.down;
+      thrown = weapon.thrown && ready && !this.trigger.held;
       this.isWindingUp = false;
     }
     if (this.isWindingUp) {
@@ -410,7 +410,7 @@ export class Pickadoll {
         weapon.blastM || ARC_RING_M,
       );
     } else fx.drawArc(this.arc, 0, 0);
-    if (ready && this.coolS <= 0 && (weapon.thrown ? thrown : weapon.auto ? this.trigger.down : this.pulledS >= 0)) {
+    if (ready && this.coolS <= 0 && (weapon.thrown ? thrown : weapon.auto ? this.trigger.held : this.pulledS >= 0)) {
       this.pulledS = -1;
       this.coolS = Math.max(this.coolS, -dt) + weapon.coolS; // what this frame overshot comes off the next wait
       this.raisedS = RAISED_S;
@@ -421,7 +421,7 @@ export class Pickadoll {
     const arms = player.mesh.arms;
     if (arms && !car && ready) {
       if (this.isWindingUp) arms[1].rotation.x = WIND_UP_RAD;
-      else if (aiming || this.raisedS > 0 || (this.trigger.down && !weapon.thrown))
+      else if (aiming || this.raisedS > 0 || (this.trigger.held && !weapon.thrown))
         arms[1].rotation.x = Math.PI / 2 + pitch;
     }
 
@@ -445,7 +445,7 @@ export class Pickadoll {
 
   // on foot only: from a car you aim with the car's own camera
   private get aiming() {
-    return this.ready && !this.g.game.inCar && (this.aimHold.down || this.aimKept);
+    return this.ready && !this.g.game.inCar && (this.aimHold.held || this.aimKept);
   }
 
   /** The look while aiming: true when it took the mouse or the drag, so the game's camera doesn't. */
