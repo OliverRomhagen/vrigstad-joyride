@@ -187,6 +187,26 @@ describe('Actions.action', () => {
     expect(c.owned).toBe(false);
   });
 
+  it("gets you back into the car you got out of before a nearer car on Skroten's lot", () => {
+    const forSale = parked({ x: 0.9, saleKr: 2000 }),
+      yours = parked({ x: -2, mode: 'idle', owned: true }),
+      t = actions({ cars: [forSale, yours] });
+    t.a.action();
+    expect(t.calls).not.toContain('offer 2000');
+    expect(t.game.pcar).toBe(yours);
+  });
+
+  it("offers the nearer car on Skroten's lot over a wreck, or a car you bought and haven't driven", () => {
+    for (const other of [
+      parked({ x: -2, mode: 'idle', owned: true, dmg: 999 }),
+      parked({ x: -2, owned: true, bought: true }),
+    ]) {
+      const t = actions({ cars: [parked({ x: 0.9, saleKr: 2000 }), other] });
+      t.a.action();
+      expect(t.calls).toEqual(['offer 2000']);
+    }
+  });
+
   it('gets you out when Skroten makes no offer: off its ring, or refused', () => {
     const c = parked(),
       t = actions({ cars: [c], skroten: false });

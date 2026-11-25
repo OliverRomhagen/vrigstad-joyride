@@ -4,7 +4,7 @@ import { wrap } from '../world/math';
 import type { Car } from './cars';
 import type { Cat } from './cats';
 import { fine, fmtKr, pay, type Wallet } from './economy';
-import { type Health, HP_MAX, wakeSpot } from './health';
+import { type Health, HP_MAX, wakeSpot, wrecked } from './health';
 import type { Place, Places } from './places';
 import { carInReach, HOME, type PlayerState, standAt, stepOut, tooFastToGetOut } from './player';
 import type { Wanted } from './police';
@@ -61,8 +61,11 @@ export interface ActionsDeps {
   pickLine(lines: readonly string[]): string;
 }
 
+// the car you got out of, while it still drives, beats a nearer car on Skroten's lot, which E would only ask the price of; only
+// that one, or a wreck, a stranger's car or one you just bought beside the row would keep you from buying the car next to it
+const enterable = (c: Car) => c.mode === 'idle' && !wrecked(c);
+
 /** What E does, and putting you back on your feet. */
-const enterable = (c: Car) => !c.saleKr; // a car for sale only opens Plåt-Pelle's menu
 
 export class Actions {
   private readonly g: ActionsDeps;
