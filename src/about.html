@@ -8,7 +8,6 @@
 <meta property="og:title" content="Vrigstad Joyride: nothing ever happens here">
 <meta property="og:description" content="Every building and real street in Vrigstad, one borrowed Volvo 240. Free in your browser.">
 <meta property="og:image" content="https://oliverromhagen.github.io/vrigstad-joyride/media/poster.png">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@600;700&display=swap">
 <style>
 /* Same palette and type as the game HUD and the poster: Swedish street-sign blue, gold, cream ink on a dark road. */
 :root {
@@ -171,6 +170,7 @@ footer a { color: var(--ink); }
   nav .links .wide { display: none; }
   th:nth-child(3), td:nth-child(3) { display: none; }
 }
+.sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 </style>
 </head>
 <body>
@@ -258,13 +258,14 @@ footer a { color: var(--ink); }
   <div class="wrap kiosk">
     <div>
       <p class="kicker">The kiosk on Torget</p>
-      <h2>One in a <em>thousand</em></h2>
-      <p class="lede">The kiosk sells trisslotter. One in a thousand wins. The more losing tickets you scratch in a row, the worse the language gets. Just like in the game, and just like in real life.</p>
+      <h2>One in <em>ten</em></h2>
+      <p class="lede">The kiosk sells trisslotter. One in ten wins, mostly a ticket back; one in ten thousand wins 10 000 kr. The more losing tickets you scratch in a row, the worse the language gets. Just like in the game, and just like in real life.</p>
       <p class="tally">Lotter <b id="tN">0</b> · Vinster <b id="tW">0</b></p>
       <button class="btn small" id="tNew" type="button" hidden>Köp en till</button>
     </div>
     <div class="ticket" id="ticket">
-      <div class="under" aria-live="polite"><div><b id="tHead"></b><q id="tLine"></q></div></div>
+      <div class="under" id="tUnder" aria-hidden="true"><div><b id="tHead"></b><q id="tLine"></q></div></div>
+      <p class="sr-only" id="tSay" aria-live="polite"></p>
       <canvas id="tCv" tabindex="0" role="button" aria-label="Scratch card. Drag across it to scratch, or press Enter."></canvas>
     </div>
   </div>

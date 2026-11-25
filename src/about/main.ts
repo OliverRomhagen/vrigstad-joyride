@@ -1,17 +1,24 @@
 // The marketing page (about.html): a hero, a small top-down getaway on the real map, the garage and a trisslott.
 // It reads the same processed map data as the game, but none of the game code: this is a toy, not the simulation.
 import D from '../../data/vrigstad.json';
+import '../fonts/barlow';
+import { trissPrize } from '../game/economy';
+import { EVADE_DIST_M, EVADE_S as EVADE_TIME_S } from '../game/police';
+import { type CarType as GameCarType, VEHICLE_SPECS } from '../game/sim/vehicle-spec';
+import { TEMPER_LINES, temper } from '../game/trisslott';
+import { ROAD_WIDTH_M as ROAD_W, type WorldData } from '../world/data';
 import { clamp } from '../world/math';
 import { makeRnd } from '../world/random';
+import { RoadNetwork } from '../world/roads';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const HALF = D.size / 2;
 // its own stream, seeded fresh each visit, so the police spawn and the tickets come out differently every time
 const rnd = makeRnd(crypto.getRandomValues(new Uint32Array(1))[0]);
 
-// ---------- vehicles (top speeds and off-road factors copied from the game's car types) ----------
+// ---------- vehicles (name, top speed, acceleration and off-road factor are the game's own: VEHICLE_SPECS) ----------
 
-type CarType = 'volvo' | 'saab' | 'epa' | 'traktor';
+type CarType = Exclude<GameCarType, 'polis'>;
 interface CarSpec {
   name: string;
   maxSpeedMs: number;
@@ -20,41 +27,23 @@ interface CarSpec {
   color: string;
   blurb: string;
 }
-const CARS: Record<CarType, CarSpec> = {
-  volvo: {
-    name: 'Volvo 240',
-    maxSpeedMs: 38,
-    accelMs2: 7,
-    offRoad: 0.5,
-    color: '#a8232d',
-    blurb: 'Square, safe and parked on every other driveway. The keys are probably in it.',
-  },
-  saab: {
-    name: 'Saab 900',
-    maxSpeedMs: 42,
-    accelMs2: 8.5,
-    offRoad: 0.5,
-    color: '#e6e4dc',
-    blurb: 'The fastest thing in Vrigstad. Your best bet with three stars.',
-  },
-  epa: {
-    name: 'EPA-traktor',
-    maxSpeedMs: 8.33,
-    accelMs2: 4,
-    offRoad: 0.7,
-    color: '#e8a020',
-    blurb: 'Legally limited to 30 km/h. Good luck outrunning anyone.',
-  },
-  traktor: {
-    name: 'Traktor',
-    maxSpeedMs: 11,
-    accelMs2: 3.5,
-    offRoad: 1,
-    color: '#2f7a3a',
-    blurb: 'Slow on the road and exactly as slow across a field. Fields are shortcuts.',
-  },
+const LOOKS: Record<CarType, Pick<CarSpec, 'color' | 'blurb'>> = {
+  volvo: { color: '#a8232d', blurb: 'Square, safe and parked on every other driveway. The keys are probably in it.' },
+  saab: { color: '#e6e4dc', blurb: 'The fastest thing in Vrigstad. Your best bet with three stars.' },
+  epa: { color: '#e8a020', blurb: 'Legally limited to 30 km/h. Good luck outrunning anyone.' },
+  traktor: { color: '#2f7a3a', blurb: 'Slow on the road and exactly as slow across a field. Fields are shortcuts.' },
 };
-const FASTEST_MS = 42;
+const carSpec = (type: CarType): CarSpec => {
+  const { name, max, acc, off } = VEHICLE_SPECS[type];
+  return { name, maxSpeedMs: max, accelMs2: acc, offRoad: off, ...LOOKS[type] };
+};
+const CARS: Record<CarType, CarSpec> = {
+  volvo: carSpec('volvo'),
+  saab: carSpec('saab'),
+  epa: carSpec('epa'),
+  traktor: carSpec('traktor'),
+};
+const FASTEST_MS = Math.max(...Object.values(CARS).map(c => c.maxSpeedMs));
 let carType: CarType = 'volvo';
 
 // ---------- getaway tuning ----------
@@ -67,15 +56,12 @@ const POLICE_MAX_MS = 35; // a little slower than a Volvo flat out, so a clean l
 const POLICE_OFFROAD = 0.6;
 const POLICE_TURN_RAD_S = 1.6;
 const CATCH_DIST_M = 4.5;
-const EVADE_DIST_M = 170; // the game's rule: this far from every police car...
-const EVADE_TIME_S = 18; // ...for this long, and they give up
 const STAR_UP_S = 12; // a new star (and police car) every this many seconds while they can see you
 const SPAWN_DIST_M = [110, 160];
 const TORGET = { x: 0, z: 0 };
 
 // ---------- map: drawn as vectors every frame (crisp at any zoom), plus a lookup mask (red = road, green = building) ----------
 
-const ROAD_W = [9, 7.5, 5.5, 3.5, 2.6, 1.5];
 const ROAD_FILL = ['#55585a', '#5d6062', '#66696a', '#77776f', '#a08c6c', '#b8ab90'];
 const LAND = ['#a6c083', '#d9cf8b', '#b9b4a8', '#8fc072', '#93b77d', '#6f9a5e', '#7cc163'];
 
@@ -183,30 +169,11 @@ function maskAt(x: number, z: number, channel: 0 | 1) {
 const onRoad = (x: number, z: number) => maskAt(x, z, 0);
 const inBuilding = (x: number, z: number) => maskAt(x, z, 1);
 
-// Named road segments, for the street sign.
-const SEGMENTS: { ax: number; az: number; bx: number; bz: number; name: string }[] = [];
-for (const r of D.r)
-  if (r.n)
-    for (let i = 2; i < r.p.length; i += 2)
-      SEGMENTS.push({ ax: r.p[i - 2], az: r.p[i - 1], bx: r.p[i], bz: r.p[i + 1], name: r.n });
-
+// the street sign asks the game's road lookup, as the game's own sign does
+const roads = new RoadNetwork(D as unknown as WorldData, { heightAt: () => 0 }); // the page is flat: no heights needed
 function nearestStreet(x: number, z: number) {
-  let best = '',
-    bestD = 25 * 25;
-  for (const s of SEGMENTS) {
-    const dx = s.bx - s.ax,
-      dz = s.bz - s.az,
-      len2 = dx * dx + dz * dz || 1;
-    const t = clamp(((x - s.ax) * dx + (z - s.az) * dz) / len2, 0, 1);
-    const ex = s.ax + dx * t - x,
-      ez = s.az + dz * t - z,
-      d = ex * ex + ez * ez;
-    if (d < bestD) {
-      bestD = d;
-      best = s.name;
-    }
-  }
-  return best;
+  const near = roads.nearestRoad(x, z);
+  return near.ri >= 0 && near.d < 20 ? (roads.lines[near.ri].n ?? '') : '';
 }
 
 // ---------- getaway state ----------
@@ -248,22 +215,24 @@ function resize() {
   if (!running) draw();
 }
 
+// on a road at the spawn distance if one is there, else anywhere outside a house; false when not even that (then no car)
 function spawnPolice() {
-  for (let tries = 0; tries < 200; tries++) {
+  for (let tries = 0; tries < 400; tries++) {
     const a = rnd() * Math.PI * 2;
     const d = SPAWN_DIST_M[0] + rnd() * (SPAWN_DIST_M[1] - SPAWN_DIST_M[0]);
     const x = player.x + Math.cos(a) * d,
       z = player.z + Math.sin(a) * d;
-    if (Math.abs(x) < HALF - 20 && Math.abs(z) < HALF - 20 && onRoad(x, z) && !inBuilding(x, z)) {
+    if (Math.abs(x) < HALF - 20 && Math.abs(z) < HALF - 20 && (tries >= 200 || onRoad(x, z)) && !inBuilding(x, z)) {
       police.push({ x, z, heading: Math.atan2(player.z - z, player.x - x), speed: 10 });
-      return;
+      return true;
     }
   }
+  return false;
 }
 
 function setStars(n: number) {
   stars = n;
-  while (police.length < stars) spawnPolice();
+  while (police.length < stars && spawnPolice());
   const el = $('cStars');
   el.innerHTML = '<b>' + '★'.repeat(stars) + '</b>' + '☆'.repeat(3 - stars);
 }
@@ -602,35 +571,8 @@ function pickCar(type: CarType) {
   else draw();
 }
 
-// ---------- trisslott (the game's kiosk lines; one in a thousand wins, the temper worsens with each loss in a row) ----------
+// ---------- trisslott (the game's vinstplan and kiosk lines; the temper worsens with each loss in a row) ----------
 
-const TRISS_ODDS = 0.001;
-const TRISS = [
-  [
-    'Järnspikar, ingen vinst denna gång heller.',
-    'Äsch, dä va la synd.',
-    'Nä, inget dänna gången heller.',
-    'Jaja, nästa lott så.',
-  ],
-  [
-    'Men jösses, inte ett öre!',
-    'Tusan hakar, en nitlott te!',
-    'Dä här börjar likna lurendrejeri.',
-    'Sjutton gubbar, nu får dä la ändå vända!',
-  ],
-  [
-    'Fy sjutton, dä ä ju rena fusket!',
-    'Jäklar anamma, inte en krona!',
-    'Va i hela fridens namn hôller di på mä?!',
-    'Nu blir ja förbannad på riktigt!',
-  ],
-  [
-    'Fan i helvete, dä ä ju bedrägeri!',
-    'Satans jävla skitlotter!',
-    'Jävlar i min lilla låda, ge mej en te!',
-    'Helvetes förbannade skrapskit, ja ska anmäla hela Svenska Spel!',
-  ],
-];
 const ticketCanvas = $<HTMLCanvasElement>('tCv');
 const tctx = ticketCanvas.getContext('2d', { willReadFrequently: true })!;
 let tickets = 0,
@@ -638,21 +580,24 @@ let tickets = 0,
   lossStreak = 0,
   revealed = false,
   scratching = false,
+  ticketW = 1, // the ticket's width in CSS px when its cover was drawn: the scratch layer's own units
   lastLine = '';
 let lastScratch: { x: number; y: number } | null = null;
 
 function newTicket() {
   revealed = false;
-  const won = rnd() < TRISS_ODDS;
+  const prize = trissPrize(rnd()),
+    won = prize > 0;
   const head = $('tHead'),
     line = $('tLine');
+  $('tSay').textContent = '';
+  $('tUnder').setAttribute('aria-hidden', 'true'); // under the cover: not read out before it's scratched
   if (won) {
-    head.textContent = 'Vinst!';
+    head.textContent = 'Vinst! ' + prize + ' kr';
     head.className = 'win';
     line.textContent = 'Dä va som sjutton, ja visste väl dä!';
   } else {
-    const n = lossStreak,
-      lines = TRISS[n < 3 ? 0 : n < 5 ? 1 : n < 8 ? 2 : 3];
+    const lines = TEMPER_LINES[temper(lossStreak)];
     let pick = lines[Math.floor(rnd() * lines.length)];
     while (pick === lastLine) pick = lines[Math.floor(rnd() * lines.length)];
     lastLine = pick;
@@ -666,6 +611,7 @@ function newTicket() {
   ticketCanvas.width = Math.round(r.width * dpr);
   ticketCanvas.height = Math.round(r.height * dpr);
   tctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ticketW = r.width;
   tctx.globalCompositeOperation = 'source-over';
   const g = tctx.createLinearGradient(0, 0, r.width, r.height);
   g.addColorStop(0, '#b9bcbf');
@@ -685,13 +631,15 @@ function newTicket() {
 
 // Scratches a line from the last point, so a fast swipe leaves no gaps between pointer events.
 function scratchAt(e: PointerEvent) {
+  // in the cover's units: after a resize or a rotation the canvas is stretched by CSS, so scale the pointer to match
   const r = ticketCanvas.getBoundingClientRect(),
-    x = e.clientX - r.left,
-    y = e.clientY - r.top;
+    k = ticketW / (r.width || 1),
+    x = (e.clientX - r.left) * k,
+    y = (e.clientY - r.top) * k;
   const from = lastScratch ?? { x, y };
   tctx.globalCompositeOperation = 'destination-out';
   tctx.lineCap = 'round';
-  tctx.lineWidth = Math.max(36, r.width / 9);
+  tctx.lineWidth = Math.max(36, ticketW / 9);
   tctx.beginPath();
   tctx.moveTo(from.x, from.y);
   tctx.lineTo(x + 0.01, y);
@@ -718,6 +666,8 @@ function reveal() {
     lossStreak = 0;
   } else lossStreak++;
   tctx.clearRect(0, 0, ticketCanvas.width, ticketCanvas.height);
+  $('tUnder').removeAttribute('aria-hidden');
+  $('tSay').textContent = $('tHead').textContent + '. ' + $('tLine').textContent;
   $('tN').textContent = String(tickets);
   $('tW').textContent = String(wins);
   $('tNew').hidden = false;
