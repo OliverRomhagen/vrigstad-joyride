@@ -1,6 +1,7 @@
 // Input: keys, the mouse (pointer lock and drag to look), the touch joystick and buttons. DOM events in, key state and callbacks out.
 // Moved from src/game/main.ts (#177); main.ts passes in the menus' key handling and what each key or button does. Turning
-// this into one set of intents (throttle / steer / brake / action) for keyboard, touch and gamepad is #50.
+// this into one set of intents (throttle / steer / brake / action) for keyboard, touch and gamepad is #50. Until then a
+// module that needs a key or a button of its own adds a control (`control`, below) and never listens itself (rule 3).
 import { clamp } from '../world/math';
 
 const KEYMAP: Record<string, Key> = {
@@ -31,7 +32,27 @@ const WHEEL_LINE_PX = 16; // a wheel that reports lines instead of pixels (delta
 const PAGE_ZOOM_CHARS = /^[-+=]$/,
   PAGE_ZOOM_KEYS = /^(Equal|Minus|NumpadAdd|NumpadSubtract)$/;
 
+// what each of these keys does is passed in by main.ts (InputDeps); a module's control can't take them
+const GAME_CODES = ['KeyE', 'KeyF', 'Enter', 'KeyR', 'KeyL'];
+
 export type Key = 'up' | 'down' | 'left' | 'right' | 'brake' | 'run';
+/** The mouse buttons a control can take, as their bits in PointerEvent.buttons. */
+export const MouseButton = { LEFT: 1, RIGHT: 2 } as const;
+export type MouseButton = (typeof MouseButton)[keyof typeof MouseButton];
+/** What a module's control is held by, and what holding it does. */
+export interface ControlSpec {
+  codes?: readonly string[]; // keys, as KeyboardEvent.code. With ctrl, alt or ⌘ held they are the browser's
+  mouseButton?: MouseButton; // counts only while the mouse is locked on the game: the click that locks it never presses
+  press?(): void; // at each fresh press of a key or a button of it
+  release?(): void; // when the last of them is let go
+}
+/** A control a module added with `Input.control`. */
+export interface Control {
+  /** True while a key or a button of it is held. */
+  readonly down: boolean;
+  /** Makes a touch button of the module's own hold the control while a finger is on it. */
+  hold(el: Pick<InputElement, 'addEventListener'>): void;
+}
 /** The touch joystick: x right, y up, each -1..1; `on` while a finger holds it. */
 export interface Joy {
   x: number;
@@ -65,6 +86,46 @@ export interface InputDeps {
   lockLost(): void; // the pointer lock ended while playing with no menu open
 }
 
+// A module's control and what holds it right now: a key's code, 'mouse', or a touch button's own name.
+class Bound implements Control {
+  private readonly held = new Set<string>();
+
+  constructor(
+    readonly spec: ControlSpec,
+    private readonly touchName: () => string,
+  ) {}
+
+  get down() {
+    return this.held.size > 0;
+  }
+
+  take(by: string) {
+    if (this.held.has(by)) return;
+    this.held.add(by);
+    this.spec.press?.();
+  }
+
+  drop(by: string) {
+    if (this.held.delete(by) && !this.held.size) this.spec.release?.();
+  }
+
+  dropAll() {
+    if (!this.held.size) return;
+    this.held.clear();
+    this.spec.release?.();
+  }
+
+  // as the game's own touch buttons: down with the finger, up when it lifts or slides off
+  hold(el: Pick<InputElement, 'addEventListener'>) {
+    const name = this.touchName();
+    el.addEventListener('pointerdown', e => {
+      this.take(name);
+      e.preventDefault();
+    });
+    for (const t of ['pointerup', 'pointercancel', 'pointerleave']) el.addEventListener(t, () => this.drop(name));
+  }
+}
+
 /** Keyboard, mouse and touch input for the game page. Registers its listeners when built. */
 export class Input {
   readonly keys: Partial<Record<Key, boolean>> = {};
@@ -75,6 +136,10 @@ export class Input {
   private joyId: number | null = null;
   private readonly pinch = new Map<number, { x: number; y: number }>(); // touches on the game, by pointer id
   private pinchD = 0; // the two touches' last distance apart (px); 0 until two are down
+  private readonly controls: Bound[] = [];
+  private readonly byCode = new Map<string, Bound>();
+  private mouseButtons = 0; // the mouse buttons down, as PointerEvent.buttons
+  private touchButtons = 0; // touch buttons made with Control.hold so far: each holds under its own name
   private readonly g: InputDeps;
 
   constructor(g: InputDeps) {
@@ -93,10 +158,13 @@ export class Input {
       } else if ((e.code === 'KeyE' || e.code === 'KeyF' || e.code === 'Enter') && !e.repeat) this.g.action();
       else if (e.code === 'KeyR') this.g.respawn();
       else if (e.code === 'KeyL' && !e.repeat) this.g.rain();
+      else if (!e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey) this.byCode.get(e.code)?.take(e.code);
     });
     win.addEventListener('keyup', ev => {
-      const k = KEYMAP[(ev as KeyboardEvent).code];
+      const code = (ev as KeyboardEvent).code,
+        k = KEYMAP[code];
       if (k) keys[k] = false;
+      else this.byCode.get(code)?.drop(code);
     });
     win.addEventListener('blur', () => this.releaseKeys());
     doc.addEventListener('pointerlockchange', () => {
@@ -133,6 +201,27 @@ export class Input {
     };
     canvas.addEventListener('pointerup', endDrag);
     canvas.addEventListener('pointercancel', endDrag);
+    // The mouse buttons of the modules' controls. A button pressed while another is down comes as a pointermove, not a
+    // pointerdown, and only the last one let go as a pointerup, so each is read from the buttons held.
+    const readButtons = (e: PointerEvent) => {
+      if (e.pointerType !== 'mouse') return;
+      const pressed = e.buttons & ~this.mouseButtons,
+        letGo = this.mouseButtons & ~e.buttons;
+      this.mouseButtons = e.buttons;
+      if (!pressed && !letGo) return;
+      for (const c of this.controls) {
+        const button = c.spec.mouseButton;
+        if (!button) continue;
+        if (pressed & button && this.locked() && this.g.started && !this.g.menuOpen) c.take('mouse');
+        if (letGo & button) c.drop('mouse');
+      }
+    };
+    for (const t of ['pointerdown', 'pointermove', 'pointerup', 'pointercancel'])
+      canvas.addEventListener(t, e => readButtons(e as PointerEvent));
+    // the right button is a control's when one took it, not the browser's menu
+    canvas.addEventListener('contextmenu', e => {
+      if (this.controls.some(c => c.spec.mouseButton === MouseButton.RIGHT)) e.preventDefault();
+    });
     // The browser's own zoom scales and crops the whole page, so it is blocked: ctrl/⌘ + wheel, ctrl/⌘ + − = 0 and Safari's
     // gesture events. The viewport meta and touch-action in index.html stop pinch and double-tap on phones.
     win.addEventListener(
@@ -259,9 +348,27 @@ export class Input {
     return this.g.doc.pointerLockElement === this.g.canvas;
   }
 
-  /** Lets go of every held key, as when the window loses focus or the dev console takes the keys. */
+  /** Lets go of every held key and control, as when the window loses focus or the dev console takes the keys. */
   releaseKeys() {
     for (const k in this.keys) this.keys[k as Key] = false;
+    for (const c of this.controls) c.dropAll();
+  }
+
+  /**
+   * Adds a control for a module: held while one of its keys, its mouse button or a touch button of its own is down.
+   * The keys go the way the game's own do: none before Start, and the dev console and the menus see each first.
+   * Throws when a key or the mouse button is already taken, by the game or by another control.
+   */
+  control(spec: ControlSpec): Control {
+    for (const code of spec.codes ?? [])
+      if (KEYMAP[code] || GAME_CODES.includes(code) || this.byCode.has(code))
+        throw new Error(`Input: ${code} is already taken`);
+    if (spec.mouseButton && this.controls.some(c => c.spec.mouseButton === spec.mouseButton))
+      throw new Error(`Input: mouse button ${spec.mouseButton} is already taken`);
+    const bound = new Bound(spec, () => `touch-${this.touchButtons++}`);
+    this.controls.push(bound);
+    for (const code of spec.codes ?? []) this.byCode.set(code, bound);
+    return bound;
   }
 
   lockMouse() {

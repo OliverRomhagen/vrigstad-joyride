@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { Input, type InputDeps } from '../../../src/game/input';
+import { Input, type InputDeps, MouseButton } from '../../../src/game/input';
 
 // Node has EventTarget and Event, so the input gets real listeners on stub elements; each stub carries only what the input touches.
 type Stub = EventTarget & {
@@ -247,5 +247,106 @@ describe('Input', () => {
     const { win, els } = input();
     fire(win, 'touchstart');
     expect([els.joy.hidden, els.pad.hidden]).toEqual([false, false]);
+  });
+});
+
+describe('Input.control', () => {
+  // a control that writes down each press and release
+  function fireControl(over: Parameters<Input['control']>[0] = {}) {
+    const t = input(),
+      log: string[] = [];
+    const control = t.i.control({
+      codes: ['KeyX'],
+      mouseButton: MouseButton.LEFT,
+      press: () => log.push('press'),
+      release: () => log.push('release'),
+      ...over,
+    });
+    return { ...t, control, log };
+  }
+  const mouse = (canvas: EventTarget, type: string, buttons: number) =>
+    fire(canvas, type, { pointerId: 1, pointerType: 'mouse', buttons, movementX: 0, movementY: 0 });
+
+  it('is held while its key is down, and pressed once however long the key repeats', () => {
+    const { win, control, log } = fireControl();
+    fire(win, 'keydown', { code: 'KeyX' });
+    fire(win, 'keydown', { code: 'KeyX', repeat: true });
+    expect(control.down).toBe(true);
+    fire(win, 'keyup', { code: 'KeyX' });
+    expect(control.down).toBe(false);
+    expect(log).toEqual(['press', 'release']);
+  });
+
+  it('leaves its key alone before Start, when a menu takes it, and with ctrl, alt or ⌘ held', () => {
+    const before = input({ started: false }),
+      menu = input({ menuKey: () => true }),
+      plain = input();
+    for (const t of [before, menu, plain]) {
+      const control = t.i.control({ codes: ['KeyC'] });
+      fire(t.win, 'keydown', { code: 'KeyC', metaKey: t === plain }); // ⌘C copies
+      expect(control.down).toBe(false);
+    }
+  });
+
+  it('is pressed by its mouse button only while the mouse is locked, so the click that locks it never fires', () => {
+    const { canvas, doc, control, log } = fireControl();
+    mouse(canvas, 'pointerdown', 1);
+    doc.pointerLockElement = canvas; // the lock arrives while the button is still down
+    mouse(canvas, 'pointermove', 1);
+    mouse(canvas, 'pointerup', 0);
+    expect(log).toEqual([]);
+    mouse(canvas, 'pointerdown', 1);
+    expect(control.down).toBe(true);
+    mouse(canvas, 'pointerup', 0);
+    expect(log).toEqual(['press', 'release']);
+  });
+
+  it('reads a second mouse button pressed while the first is held, and either let go first', () => {
+    const { i, canvas, doc, control: fireHeld } = fireControl();
+    const aim = i.control({ mouseButton: MouseButton.RIGHT });
+    doc.pointerLockElement = canvas;
+    mouse(canvas, 'pointerdown', 2); // the right button
+    mouse(canvas, 'pointermove', 3); // the left one joins it: browsers send a move, not a pointerdown
+    expect([fireHeld.down, aim.down]).toEqual([true, true]);
+    mouse(canvas, 'pointermove', 1); // the right one is let go first: a move again
+    expect([fireHeld.down, aim.down]).toEqual([true, false]);
+    mouse(canvas, 'pointerup', 0);
+    expect(fireHeld.down).toBe(false);
+  });
+
+  it('keeps the right click from opening the browser menu only when a control took that button', () => {
+    const { i, canvas } = fireControl();
+    expect(fire(canvas, 'contextmenu').defaultPrevented).toBe(false);
+    i.control({ mouseButton: MouseButton.RIGHT });
+    expect(fire(canvas, 'contextmenu').defaultPrevented).toBe(true);
+  });
+
+  it('is held by a touch button of the module, and by a key and a button together until both are let go', () => {
+    const { win, control, log } = fireControl(),
+      button = stub();
+    control.hold(button);
+    fire(button, 'pointerdown');
+    fire(win, 'keydown', { code: 'KeyX' });
+    fire(button, 'pointerleave');
+    expect(control.down).toBe(true);
+    fire(win, 'keyup', { code: 'KeyX' });
+    expect(log).toEqual(['press', 'press', 'release']);
+  });
+
+  it('is let go with the keys when the window loses focus', () => {
+    const { i, win, control, log } = fireControl();
+    fire(win, 'keydown', { code: 'KeyX' });
+    fire(win, 'blur');
+    expect(control.down).toBe(false);
+    i.releaseKeys(); // nothing held: no second release
+    expect(log).toEqual(['press', 'release']);
+  });
+
+  it('refuses a key or a mouse button that the game or another control has', () => {
+    const { i } = fireControl();
+    expect(() => i.control({ codes: ['KeyE'] })).toThrow('KeyE');
+    expect(() => i.control({ codes: ['Space'] })).toThrow('Space');
+    expect(() => i.control({ codes: ['KeyX'] })).toThrow('KeyX');
+    expect(() => i.control({ mouseButton: MouseButton.LEFT })).toThrow('mouse button 1');
   });
 });
