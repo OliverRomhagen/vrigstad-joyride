@@ -197,7 +197,7 @@ export class SkrotenMeshes {
     let lowerTop = 0;
     for (const w of layout.yardCars) {
       const geo = carGeo(simpleType(w.model), w.colour),
-        y = standY(w.u, w.v) - (w.wrecked ? WRECK_SINK_M : 0),
+        y = standY(w.u, w.v) - WRECK_SINK_M, // all wrecks: the cars for sale are fleet cars
         squash = w.stack === 1 ? STACK_SQUASH : 1;
       if (w.stack === 1) {
         geo.computeBoundingBox();
@@ -365,23 +365,17 @@ export class SkrotenMeshes {
           const def = VEHICLES.find(v => v.id === id);
           if (!def) throw new Error('no model ' + id);
           const parts = flatten((await carModel(def)).clone(true)); // flatten updates its matrices: leave the shared one be
-          // the wrecks' paint is patched with rust and dirtier low down; the cars for sale keep theirs clean
-          for (const [cars, paintGeo] of [
-            [yardCars.filter(w => !w.wrecked), parts.paint],
-            [yardCars.filter(w => w.wrecked), rusted(parts.paint)],
-          ] as const) {
-            if (!cars.length) continue;
-            const body = new THREE.InstancedMesh(paintGeo, paint, cars.length),
-              trim = new THREE.InstancedMesh(parts.rest, paintMat, cars.length);
-            cars.forEach((w, i) => {
-              const m = placing(w.u, standY(w.u, w.v) - (w.wrecked ? WRECK_SINK_M : 0), w.v, w.turn, w.tilt, w.pitch);
-              body.setMatrixAt(i, m);
-              trim.setMatrixAt(i, m);
-              body.setColorAt(i, colour.set(w.colour).convertSRGBToLinear());
-            });
-            body.castShadow = trim.castShadow = body.receiveShadow = trim.receiveShadow = true;
-            group.add(body, trim);
-          }
+          // every one a wreck (the cars for sale are fleet cars): its paint patched with rust and dirtier low down
+          const body = new THREE.InstancedMesh(rusted(parts.paint), paint, yardCars.length),
+            trim = new THREE.InstancedMesh(parts.rest, paintMat, yardCars.length);
+          yardCars.forEach((w, i) => {
+            const m = placing(w.u, standY(w.u, w.v) - WRECK_SINK_M, w.v, w.turn, w.tilt, w.pitch);
+            body.setMatrixAt(i, m);
+            trim.setMatrixAt(i, m);
+            body.setColorAt(i, colour.set(w.colour).convertSRGBToLinear());
+          });
+          body.castShadow = trim.castShadow = body.receiveShadow = trim.receiveShadow = true;
+          group.add(body, trim);
         }),
       );
     } catch (e) {
