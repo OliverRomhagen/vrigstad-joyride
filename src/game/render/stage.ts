@@ -26,16 +26,20 @@ export function setUpRenderer(renderer: THREE.WebGLRenderer, coarse: boolean) {
 }
 
 /**
- * The game's lights: the sky's and the ground's, and the sun, casting the shadow. Where the sun stands and the box its shadow
- * covers are the caller's: the game's follows the player, the wiki's frames one scene.
+ * The game's lights: the sky's and the ground's, and the sun, casting a shadow over a box `shadowHalfM` metres either side of
+ * where the sun points. Where the sun stands, and the depth of its shadow (`sun.shadow.camera`'s near and far), are the
+ * caller's: the game's follows the player, the wiki's frames one scene. The caller adds `sun.target` to the scene with the
+ * sun, or the target's position is never applied and the shadow misses what it should cover.
  */
-function gameLights() {
+function gameLights(shadowHalfM: number) {
   const hemi = new THREE.HemisphereLight(0xffffff, col(0x9aa58a), 0.62 * LEGACY_LIGHT);
   const sun = new THREE.DirectionalLight(col(0xfff4dd), 0.95 * LEGACY_LIGHT); // intensity: the time of day's (Daylight.sunIntensity), times the clouds' sunFactor
   sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);
+  Object.assign(sun.shadow.camera, { left: -shadowHalfM, right: shadowHalfM, top: shadowHalfM, bottom: -shadowHalfM });
   sun.shadow.bias = -0.0006;
-  sun.shadow.normalBias = 0.05; // m, for the game's shadow box below: about half a texel of it
+  // m: about half a texel of the shadow box, so a smaller box gets a smaller bias and shadows stay on the feet; 0.05 in the game's
+  sun.shadow.normalBias = (0.05 * shadowHalfM) / GAME_SHADOW_M;
   return { hemi, sun };
 }
 
@@ -45,7 +49,7 @@ export function buildStage(coarse: boolean, search: string) {
   scene.background = new THREE.Color(HORIZON);
   scene.fog = new THREE.FogExp2(HORIZON, FOG_PER_M);
   const camera = new THREE.PerspectiveCamera(58, 1, 0.8, 4200);
-  const { hemi, sun } = gameLights();
+  const { hemi, sun } = gameLights(GAME_SHADOW_M);
   scene.add(hemi);
   const skyDome = new Sky({
     top: 0x5f97c9,
@@ -56,14 +60,7 @@ export function buildStage(coarse: boolean, search: string) {
   });
   const dome = skyDome.mesh;
   scene.add(dome);
-  Object.assign(sun.shadow.camera, {
-    left: -GAME_SHADOW_M,
-    right: GAME_SHADOW_M,
-    top: GAME_SHADOW_M,
-    bottom: -GAME_SHADOW_M,
-    near: 50,
-    far: 800,
-  });
+  Object.assign(sun.shadow.camera, { near: 50, far: 800 });
   scene.add(sun, sun.target);
   return { scene, camera, hemi, sun, skyDome };
 }

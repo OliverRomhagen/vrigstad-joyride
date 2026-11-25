@@ -135,9 +135,7 @@ export class SkrotenMeshes {
         put(
           boxGeo([
             [step + 0.02, h, 0.05, 0, h / 2, 0, FENCE_COLOURS[Math.floor(rnd() * FENCE_COLOURS.length)]],
-            ...WIRE_HEIGHTS_M.map(
-              wy => [step, 0.025, 0.025, 0, wy, 0, WIRE] as [number, number, number, number, number, number, string],
-            ),
+            ...WIRE_HEIGHTS_M.map(wy => [step, 0.025, 0.025, 0, wy, 0, WIRE] as BoxPart),
           ]),
           mu,
           my,
