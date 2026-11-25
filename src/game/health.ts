@@ -4,8 +4,10 @@ import { command, int, optional, toggle } from './command-args';
 import type { Commands } from './commands';
 
 export const HP_MAX = 100;
-export const KORV_HP = 10,
-  RULLE_HP = 20; // food from the kiosk: korv me brö, and a smålandsrulle
+/** The health a korv me brö from the kiosk gives back, in health points (of HP_MAX). */
+export const KORV_HP = 10;
+/** The health a smålandsrulle from the kiosk gives back, in health points (of HP_MAX). */
+export const RULLE_HP = 20;
 export const LOW_HP = 30; // below this the hearts pulse, and you say you're hungry
 export const CAT_SCRATCH_HP = 5; // a cat's scratch when petting goes wrong
 export const REGEN_DELAY_S = 10,

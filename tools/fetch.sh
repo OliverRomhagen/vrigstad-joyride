@@ -26,6 +26,7 @@ cat > query.txt <<'Q'
  nwr["amenity"="waste_basket"](57.3455,14.4556,57.3655,14.4956);
  node["highway"="bus_stop"](57.3455,14.4556,57.3655,14.4956);
  nwr["leisure"="picnic_table"](57.3455,14.4556,57.3655,14.4956);
+ node["man_made"="street_cabinet"](57.3455,14.4556,57.3655,14.4956);
 );
 out geom;
 Q
