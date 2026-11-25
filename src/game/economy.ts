@@ -6,8 +6,10 @@ import { DMG_MAX } from './health';
 export const START_KR = 200; // what you have in your pocket at the start
 /** A trisslott at the kiosk, in kr. */
 export const TRISS_KR = 30;
-/** A bag of cat treats at the kiosk (TREAT_BAG of them), in kr. */
+/** A bag of cat treats at the kiosk, in kr. */
 export const TREATS_KR = 5;
+/** How many cat treats a bag from the kiosk holds. */
+export const TREAT_BAG = 3;
 /** A korv me brö at the kiosk, in kr. */
 export const KORV_KR = 25;
 /** A smålandsrulle at the kiosk, in kr: dearer than the korv, and it heals twice as much. */

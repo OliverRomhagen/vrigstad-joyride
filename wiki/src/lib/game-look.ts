@@ -3,29 +3,21 @@
 // Browser only: import it on demand, from an attachment.
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { GAME_SHADOW_M, gameLights, SUN_DIR, setUpRenderer } from '#game/render/stage';
+import { gameLights, SUN_DIR, setUpRenderer } from '#game/render/stage';
 // importing three-legacy turns colour management off, as the game's colours expect
 import { col } from '#world/three-legacy';
 
 /** The game's daytime lights (render/stage.ts), the sun from the game's direction, its shadow covering `reach` m around `at`. */
 export function addGameLights(scene: THREE.Scene, at: THREE.Vector3Like, reach: number) {
-  const { hemi, sun } = gameLights();
+  const { hemi, sun } = gameLights(reach);
   scene.add(hemi);
   sun.target.position.set(at.x, at.y, at.z);
   sun.position
     .copy(SUN_DIR)
     .multiplyScalar(reach * 3)
     .add(sun.target.position);
-  Object.assign(sun.shadow.camera, {
-    left: -reach,
-    right: reach,
-    top: reach,
-    bottom: -reach,
-    near: 0.5,
-    far: reach * 6,
-  });
-  // the game's offset is about half a texel of its 220 m box; in a 6 m preview the same metres would lift a cat off its shadow
-  sun.shadow.normalBias *= reach / GAME_SHADOW_M;
+  // gameLights sizes the shadow's box and its offset to `reach`: the game's offset would lift a cat off its shadow here
+  Object.assign(sun.shadow.camera, { near: 0.5, far: reach * 6 });
   scene.add(sun, sun.target);
 }
 

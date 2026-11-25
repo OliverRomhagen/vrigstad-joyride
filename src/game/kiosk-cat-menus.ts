@@ -1,15 +1,13 @@
 // The kiosk's and the cats' menus, on the menu plate (src/game/menu.ts): what the kiosk sells, petting and adopting a stray, your own cat's menu.
 // Moved from src/game/main.ts (#177); main.ts passes in the plate, the cats, your health and what the HUD draws. No three.js or DOM here.
 import { type Cat, type CatColony, canTend } from './cats';
-import { brokeLine, fmtKr, KORV_KR, pay, RULLE_KR, TREATS_KR, TRISS_KR, type Wallet } from './economy';
+import { brokeLine, fmtKr, KORV_KR, pay, RULLE_KR, TREAT_BAG, TREATS_KR, TRISS_KR, type Wallet } from './economy';
 import { type Health, HP_MAX, heal, KORV_HP, RULLE_HP } from './health';
 import type { MenuItem } from './pets';
 import type { Place } from './places';
 import type { GameState } from './state';
 
 type Point = { x: number; z: number };
-/** How many cat treats a bag from the kiosk holds. */
-export const TREAT_BAG = 3;
 const TREAT_MAX = 9; // how many treats fit in your pockets
 
 /** What the menus read from the rest of the game. */

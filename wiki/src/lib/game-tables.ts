@@ -3,9 +3,8 @@
 // Every value imported by name from the game's #game/ alias needs a /** … */ doc comment right above its own declaration,
 // saying what it is and its unit (tests/unit/wiki/game-docs.test.ts). That comment is for developers; what players read is
 // written here.
-import { fmtKr, KORV_KR, RULLE_KR, TREATS_KR, TRISS_KR, TRISS_PLAN, TRISS_TICKETS } from '#game/economy';
+import { fmtKr, KORV_KR, RULLE_KR, TREAT_BAG, TREATS_KR, TRISS_KR, TRISS_PLAN, TRISS_TICKETS } from '#game/economy';
 import { KORV_HP, RULLE_HP } from '#game/health';
-import { TREAT_BAG } from '#game/kiosk-cat-menus';
 
 export type GameTable = {
   title: string;
