@@ -25,7 +25,8 @@ const _o = new THREE.Vector3(),
   _n = new THREE.Vector3(),
   _box = new THREE.Box3(),
   _inv = new THREE.Matrix4(),
-  _m = new THREE.Matrix4();
+  _m = new THREE.Matrix4(),
+  _q = new THREE.Quaternion();
 const ZERO = new THREE.Vector3(),
   UP = new THREE.Vector3(0, 1, 0);
 
@@ -38,8 +39,14 @@ export interface PriceTagsDeps {
 
 type End = keyof typeof GLASS_MIN_UP;
 const ENDS: readonly End[] = ['front', 'back'];
-// where a card sits on one shape, in the car's frame; null when no ray found the glass
-type Fit = { position: THREE.Vector3; quaternion: THREE.Quaternion } | null;
+// where a card sits on one shape: on the part of it the ray hit, in that part's frame, so the card heaves, pitches and rolls with the
+// body (body-motion moves the body inside c.mesh); `scale` undoes the part's own; null when no ray found the glass
+type Fit = {
+  parent: THREE.Object3D;
+  position: THREE.Vector3;
+  quaternion: THREE.Quaternion;
+  scale: THREE.Vector3;
+} | null;
 // a card per end; `on`: the shape they show on now; `fits`: each shape's fit, worked out once, as a car swaps its model in and out often
 type Tag = { cards: THREE.Mesh[]; on: THREE.Object3D; kr: number; fits: Map<THREE.Object3D, Fit[]> };
 
@@ -83,18 +90,21 @@ export class PriceTags {
         const card = cards[i]!,
           fit = shapeFits[i];
         card.visible = !!(fit && kr);
-        if (fit) {
-          card.position.copy(fit.position);
-          card.quaternion.copy(fit.quaternion);
-        }
         if (kr) card.material = this.material(kr);
-        c.mesh.add(card);
+        if (!fit) {
+          card.removeFromParent();
+          return;
+        }
+        card.position.copy(fit.position);
+        card.quaternion.copy(fit.quaternion);
+        card.scale.copy(fit.scale);
+        fit.parent.add(card);
       });
       this.tags.set(c, { cards, on: shape, kr, fits });
     }
   }
 
-  // where a card goes on the windscreen or the rear window of `shape`, in c.mesh's frame; null when no ray finds the glass
+  // where a card goes on the windscreen or the rear window of `shape`, in the frame of the part the ray hit; null when no ray finds the glass
   private fit(c: RenderedCar, shape: THREE.Object3D, end: End): Fit {
     c.mesh.updateMatrixWorld(true);
     _inv.copy(c.mesh.matrixWorld).invert();
@@ -111,10 +121,20 @@ export class PriceTags {
       _n.copy(hit.face.normal).transformDirection(hit.object.matrixWorld).transformDirection(_inv);
       if (_n.z * out < 0) _n.negate(); // a face wound the other way: the card faces out of its end
       if (_n.y < GLASS_MIN_UP[end]) continue;
-      return {
-        position: hit.point.clone().applyMatrix4(_inv).addScaledVector(_n, CARD_OFF_M),
-        quaternion: new THREE.Quaternion().setFromRotationMatrix(_m.lookAt(_n, ZERO, UP)),
+      // the card in c.mesh's frame, then carried into the hit part's frame: that part may be moved, turned or scaled inside c.mesh
+      _o.copy(hit.point).applyMatrix4(_inv).addScaledVector(_n, CARD_OFF_M);
+      _q.setFromRotationMatrix(_m.lookAt(_n, ZERO, UP));
+      _m.compose(_o, _q, _d.set(1, 1, 1))
+        .premultiply(c.mesh.matrixWorld)
+        .premultiply(_inv.copy(hit.object.matrixWorld).invert());
+      const fit = {
+        parent: hit.object,
+        position: new THREE.Vector3(),
+        quaternion: new THREE.Quaternion(),
+        scale: new THREE.Vector3(),
       };
+      _m.decompose(fit.position, fit.quaternion, fit.scale);
+      return fit;
     }
     return null;
   }
