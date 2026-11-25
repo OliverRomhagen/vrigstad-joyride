@@ -3,9 +3,9 @@ import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { BEACON_PARTS, BODY_NODE, type VehicleId, vehicleDefinition, WHEEL_NODES } from './vehicle-registry';
 
-type Car = { mesh: THREE.Object3D; x: number; z: number; h: number; saleKr?: number };
+type Car = { mesh: THREE.Object3D; x: number; z: number; h: number; saleKr?: number; flat?: number }; // flat: the burst tyre, as on the sim's Car
 type Definition = NonNullable<ReturnType<typeof vehicleDefinition>>;
-type Wheel = { pivot: THREE.Group; spin: THREE.Group; front: boolean };
+type Wheel = { pivot: THREE.Group; spin: THREE.Group; front: boolean; y: number }; // y: the pivot's height with the tyre whole
 type View = {
   car: Car;
   definition: Definition;
@@ -32,7 +32,8 @@ const DETAIL_RANGE_M = 120,
   // a part casts a shadow only if it has this much surface (m²): the body, the bumpers, the trim; not lamps, grilles,
   // rims or beacons, whose shadows are a texel or two at the game's shadow resolution (about 0.1 m) but cost a draw call
   // each. Area, not size: a part merged per material (tools/vehicle-parts.ts) spans the whole car however small it is.
-  SHADOW_MIN_AREA_M2 = 1;
+  SHADOW_MIN_AREA_M2 = 1,
+  FLAT_SQUASH = 0.7; // a flat tyre's height, as a share of a whole one; it sinks to keep touching the ground
 const areas = new WeakMap<THREE.BufferGeometry, number>(),
   _a = new THREE.Vector3(),
   _b = new THREE.Vector3(),
@@ -102,7 +103,7 @@ export class VehicleVisuals {
           spin.add(node);
           pivot.add(spin);
           root.add(pivot);
-          view.wheels.push({ pivot, spin, front: i < 2 });
+          view.wheels.push({ pivot, spin, front: i < 2, y: pivot.position.y });
         }
         const body = root.getObjectByName(BODY_NODE)!,
           sprung = new THREE.Group();
@@ -193,8 +194,12 @@ export class VehicleVisuals {
         ? -Math.max(-0.6, Math.min(0.6, Math.atan((view.definition.wheelbase * dh) / advance)))
         : 0;
     if (distance < 20) view.travel += advance;
-    for (const w of view.wheels) {
+    for (let i = 0; i < view.wheels.length; i++) {
+      const w = view.wheels[i]!,
+        squash = i === car.flat ? FLAT_SQUASH : 1; // wheels are in WHEEL_NODES' order, the same as Car.flat's
       w.pivot.rotation.y = w.front ? steering : 0;
+      w.pivot.scale.y = squash;
+      w.pivot.position.y = w.y - (1 - squash) * view.definition.radius;
       w.spin.rotation.x = -view.travel / view.definition.radius;
     }
     view.x = car.x;

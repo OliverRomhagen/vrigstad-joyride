@@ -40,9 +40,13 @@ export const DRIVING = {
   CATCH: 0.8,
   TURBO_ACC: 14,
   TURBO_TOP: 1.2,
+  FLAT_PULL: 0.15, // enough to feel and correct, not enough to put you in the ditch
+  FLAT_TOP: 0.6,
 };
 export const TURBO_AT = [1, 2.2] as const; // s of sliding for a blue / an orange spark
 const TURBO_S = [0.7, 1.3]; // s each of those boosts lasts
+// a flat tyre (c.flat) takes off top speed, for the player, the police and traffic alike
+const flatTop = (c: Car) => (c.flat < 0 ? 1 : DRIVING.FLAT_TOP);
 const _pivot = { dx: 0, dz: 0 }; // rearPivotShift writes here: no allocation per car per frame
 const _onC = { x: 0, z: 0 },
   _onO = { x: 0, z: 0 }; // nearestBetweenSpines writes the nearest points of two cars here
@@ -95,6 +99,7 @@ export interface Car extends Point {
   revSteer: number;
   dmg: number; // damage, and the clock (s) of the last hit (health.ts)
   hitAt: number;
+  flat: number; // the burst tyre: 0–3 front left, front right, rear left, rear right (fotanglar burst one, in the pickadoll lab); -1 for none
   color: string; // the paint (sRGB), one of T.cols
 }
 
@@ -139,6 +144,7 @@ export function newCar(
     revSteer: 1,
     dmg: 0,
     hitAt: -9,
+    flat: -1,
     color,
   };
 }
@@ -395,7 +401,9 @@ export class Fleet {
       c.blocked = 0;
     }
     const target =
-      blocked || wrecked(c) ? 0 : Math.min(c.T.max * topSpeedShare(c.dmg), TRAFFIC_LIMIT_MS[R[c.ri].c as 0 | 1 | 2]);
+      blocked || wrecked(c)
+        ? 0
+        : Math.min(c.T.max * topSpeedShare(c.dmg) * flatTop(c), TRAFFIC_LIMIT_MS[R[c.ri].c as 0 | 1 | 2]);
     c.v += clamp(target - c.v, -TRAFFIC_BRAKE_MS2 * dt, TRAFFIC_ACC_MS2 * dt);
     c.t += c.v * dt;
     for (let g = 0; c.t >= L && g < 8; g++) {
@@ -423,7 +431,8 @@ export class Fleet {
     const { roads, water, half: HALF, crash, rammed, placeCar } = this.g,
       cars = this.cars;
     c.thr = thr = Math.abs(thr - c.thr) < 0.02 ? thr : approach(c.thr, thr, c.T.handling.throttleResponseS, dt);
-    c.st = approach(c.st, steer, c.T.handling.steerResponseS, dt); // weight: speed and heading answer a little late
+    const pull = c.flat < 0 ? 0 : (c.flat % 2 ? 1 : -1) * DRIVING.FLAT_PULL; // a flat tyre drags the car towards its side
+    c.st = approach(c.st, clamp(steer + pull, -1, 1), c.T.handling.steerResponseS, dt); // weight: speed and heading answer a little late
     if (wrecked(c)) {
       thr = c.thr = 0;
       c.boost = 0;
@@ -477,7 +486,10 @@ export class Fleet {
       if (c.wet) c.boost = 0;
     } // water puts the turbo out
     const max =
-      (c.wet ? 2.5 : c.T.max * (road ? 1 : c.T.off)) * (c.boost > 0 ? DRIVING.TURBO_TOP : 1) * topSpeedShare(c.dmg);
+      (c.wet ? 2.5 : c.T.max * (road ? 1 : c.T.off)) *
+      (c.boost > 0 ? DRIVING.TURBO_TOP : 1) *
+      topSpeedShare(c.dmg) *
+      flatTop(c);
     if (c.boost > 0 && c.v < max) c.v = Math.min(max, c.v + DRIVING.TURBO_ACC * dt); // only up to the limit, so it never cancels the overspeed braking below
     if (c.v > max) c.v = Math.max(max, c.v - 14 * dt);
     if (c.v < -7) c.v = -7;

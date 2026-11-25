@@ -8,7 +8,7 @@ import { clamp, wrap } from '../world/math';
 import type { Rnd } from '../world/random';
 import { choice, command, optional, toggle } from './command-args';
 import type { Commands } from './commands';
-import { damageCar, LIMP_AT } from './health';
+import { damageCar } from './health';
 import { type Control, type Input, MouseButton } from './input';
 import type { Npc } from './pedestrians';
 import type { PlayerState } from './player';
@@ -98,8 +98,8 @@ const GUN_M: Record<(typeof WEAPONS)[number]['id'], readonly [number, number]> =
 const HIT_MARK_S = 0.1; // the crosshair's ticks stay this long after a hit on a person or a car, then fade (index.html)
 const BLAST_DROPS = 7; // a blast of gegga leaves this many more splats around the hit
 // fotanglar: they lie where they land for a while (./sim/spikes.ts). Someone who steps on one hops on and walks
-// slowly; a car that drives over one has a puncture and limps; you are hurt, unless you jump over
-const PUNCTURE_DMG = LIMP_AT + 30, // a puncture is this much damage at least: well past where a car starts to limp
+// slowly; a car that drives over one gets a flat tyre (Car.flat); you are hurt, unless you jump over
+const FLAT_LINES = ['”PANG! Dä va däcket, dä.”', '”Punka! Klart dä skulle hända nu.”', '”Nu small dä i ett däck.”'],
   LIMP_S = 6, // someone who stepped on one limps this long,
   LIMP_SPEED = 0.35, // at this share of their speed,
   LIMP_HOP_M = 0.14, // hopping this high,
@@ -713,14 +713,19 @@ export class Pickadoll {
 
   // what the fotanglar on the ground do to who comes by
   private stepSpikes(dt: number) {
-    const { game, player, crowd, fx, cars } = this.g,
+    const { game, player, crowd, fx, cars, rnd } = this.g,
       { spikes, limping, spikeWorld } = this;
     this.spikeHurtS -= dt;
     // you, on foot and on the ground: a jump clears them
     spikeWorld.walker = !game.inCar && player.y <= 0 ? player : null;
     const step = stepSpikes(spikes, dt, spikeWorld, this.spikeStep);
-    // a car that rolls over one has a puncture, the police's and your own too
-    for (const i of step.cars) if (!this.spared(cars[i])) damageCar(cars[i], PUNCTURE_DMG - cars[i].dmg);
+    // a car that rolls over one gets a flat tyre, the police's and your own too; one flat per car
+    for (let n = 0; n < step.cars.length; n++) {
+      const c = cars[step.cars[n]];
+      if (c.flat >= 0 || this.spared(c)) continue;
+      c.flat = step.wheels[n];
+      if (c === game.pcar) this.g.toast(FLAT_LINES[Math.floor(rnd() * FLAT_LINES.length)] + ' A tyre is flat.', 3);
+    }
     for (const i of step.people) {
       const n = crowd.npcs[i];
       if (limping.some(l => l.npc === n)) continue;

@@ -21,7 +21,7 @@ export interface Spike {
 
 /** Who can come by. */
 export interface SpikeWorld {
-  cars: readonly { x: number; z: number; v: number }[];
+  cars: readonly { x: number; z: number; v: number; h: number }[]; // h: where the nose points (rad, 0 is north)
   people: readonly { x: number; z: number; down?: boolean }[];
   /** you, on foot and on the ground; null in a car or in a jump, which clears them */
   walker: { x: number; z: number } | null;
@@ -30,12 +30,22 @@ export interface SpikeWorld {
 /** What a step found. The lists are indices in the world's, and one can be named twice, by two spikes. */
 export interface SpikeStep {
   cars: number[]; // drove over one: it is used up
+  wheels: number[]; // for each of those, the wheel that went over it: 0–3 front left, front right, rear left, rear right (Car.flat)
   people: number[]; // stand on one
   walker: boolean; // you stand on one
   changed: boolean; // spikes were used up or ran out of time: draw the list again
 }
 
-export const newSpikeStep = (): SpikeStep => ({ cars: [], people: [], walker: false, changed: false });
+export const newSpikeStep = (): SpikeStep => ({ cars: [], wheels: [], people: [], walker: false, changed: false });
+
+/** The wheel of a car nearest a point: front or rear by which side of the middle it is, left or right likewise. */
+export function wheelOver(c: { x: number; z: number; h: number }, p: { x: number; z: number }) {
+  const dx = p.x - c.x,
+    dz = p.z - c.z,
+    front = dx * Math.sin(c.h) - dz * Math.cos(c.h) >= 0,
+    right = dx * Math.cos(c.h) + dz * Math.sin(c.h) >= 0;
+  return (front ? 0 : 2) + (right ? 1 : 0);
+}
 
 /**
  * Lays a spike where a thrown one hit: on the ground where it fell, or just out from the wall or car it hit, on the
@@ -59,7 +69,7 @@ export function dropSpike(
  * so the next one to come by steps on it too. A spike a car used up this step catches nobody else.
  */
 export function stepSpikes(spikes: Spike[], dt: number, world: SpikeWorld, out: SpikeStep): SpikeStep {
-  out.cars.length = out.people.length = 0;
+  out.cars.length = out.wheels.length = out.people.length = 0;
   out.walker = out.changed = false;
   for (let i = spikes.length - 1; i >= 0; i--) {
     const s = spikes[i];
@@ -70,6 +80,7 @@ export function stepSpikes(spikes: Spike[], dt: number, world: SpikeWorld, out: 
         const c = world.cars[k];
         if (Math.abs(c.v) > SPIKE_CAR_MIN_MS && Math.hypot(c.x - s.x, c.z - s.z) < SPIKE_WHEEL_M) {
           out.cars.push(k);
+          out.wheels.push(wheelOver(c, s));
           used = true;
           break;
         }

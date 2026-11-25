@@ -3,6 +3,7 @@ import {
   type Car,
   type CarForSale,
   type CarMode,
+  DRIVING,
   Fleet,
   newCar,
   type TrafficCar,
@@ -181,6 +182,21 @@ describe('drive', () => {
     driveFor(cars, c, 1, 1, 0, false);
     expect(c.v).toBeLessThan(10);
     expect(c.thr).toBe(0);
+  });
+
+  it('with a flat tyre, pulls to its side and is slower', () => {
+    const { cars } = fleet();
+    const whole = car('volvo', 0, 800, 0, 'player'),
+      right = car('volvo', 0, 800, 0, 'player'),
+      left = car('volvo', 0, 800, 0, 'player');
+    right.flat = 1; // front right
+    left.flat = 2; // rear left
+    for (const c of [whole, right, left]) driveFor(cars, c, 10, 1, 0, false);
+    expect(whole.h).toBe(0);
+    expect(right.x).toBeGreaterThan(whole.x + 1); // drifted east, to the right of north
+    expect(left.x).toBeLessThan(whole.x - 1);
+    expect(Math.abs(right.v)).toBeLessThanOrEqual(whole.T.max * DRIVING.FLAT_TOP);
+    expect(whole.v).toBeGreaterThan(whole.T.max * DRIVING.FLAT_TOP);
   });
 
   it('crashes into a car it hits and pushes a parked one away', () => {
