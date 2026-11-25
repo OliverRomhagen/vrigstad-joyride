@@ -20,6 +20,11 @@ export const LAB_EXPERIMENTS = [
     name: "Driver's view",
     cost: "A small download; in the driver's seat (V in a car), a simple interior of a few dozen meshes",
   },
+  {
+    id: 'toon',
+    name: 'Cel-shaded style',
+    cost: 'Every lit material swapped each frame, and an extra line draw per inked mesh, the village shells included',
+  },
 ] as const satisfies readonly LabExperiment[];
 
 export type LabId = (typeof LAB_EXPERIMENTS)[number]['id'];

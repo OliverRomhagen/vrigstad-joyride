@@ -22,6 +22,7 @@ import type { StreetscapeLayout } from '../../world/streetscape';
 import { col } from '../../world/three-legacy';
 import { GAME_WATER } from '../../world/water-palette';
 import type { WaterBodies } from '../../world/water-shapes';
+import { INK_FLAG } from './ink-flag';
 import { mergeGeo } from './models';
 
 // ---------- terrain ----------
@@ -322,13 +323,13 @@ export function addBuildings(
           box(emit, cx, cz, ry - 0.6, ry + 0.9, 0.6, (hAt(cx, cz) * 7) % 1 < 0.5 ? col('#8a3b2d') : col('#d8d2c4'));
       }
     };
-    scene.add(
-      new PaintedBuildingShells(D, heightfield, {
-        material: new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }),
-        colours,
-        extra: details,
-      }).mesh,
-    );
+    const shells = new PaintedBuildingShells(D, heightfield, {
+      material: new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }),
+      colours,
+      extra: details,
+    }).mesh;
+    shells.userData[INK_FLAG] = true; // the toon style inks the houses' corners and roof edges too
+    scene.add(shells);
     // window skin first, trim after: one mesh, two materials
     const sg = new THREE.BufferGeometry(),
       nw = wp.length / 3,

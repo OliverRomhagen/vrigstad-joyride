@@ -139,9 +139,11 @@ test.describe('game (index.html)', () => {
     expect(f.byKind['street-lamp']).toBeGreaterThan(0);
     expect(f.byKind.bench).toBeGreaterThanOrEqual(4);
     expect(f.byKind['waste-bin']).toBeGreaterThanOrEqual(2);
+    // and the villa streets: a mailbox and wheelie bins at the houses, cabinets in the verges (#305)
+    for (const k of ['wheelie-bin', 'mailbox', 'street-cabinet']) expect(f.byKind[k]).toBeGreaterThan(0);
     expect(f.bySource.osm + f.bySource.override + f.bySource.procedural).toBe(f.total);
     expect(f.meshes).toBeGreaterThan(0);
-    expect(f.meshes).toBeLessThanOrEqual(6 * 36); // at most six per 400 m cell, and the 2200 m world spans 6 × 6 cells
+    expect(f.meshes).toBeLessThanOrEqual(16 * 36); // per 400 m cell at most one per model (14, FurnitureModelId; raise this with the next model) and per lamp glass (2), and the 2200 m world spans 6 × 6 cells
     expect(f.debug).toBe(true);
     await page.locator('#go').click();
     await frames(page, 5);
@@ -186,7 +188,10 @@ test.describe('game (index.html)', () => {
     await page.goto('/index.html?lab=cockpit');
     await expectWebGL(page);
     await page.locator('#go').click();
+    await expect(page.locator('#p-view')).toBeHidden();
+    await page.keyboard.press('KeyV'); // on foot must not arm the next car's view
     await getInParkedCar(page);
+    await expect(page.locator('#p-view')).toHaveJSProperty('hidden', false);
     expect(await state(page)).toMatchObject({ lab: ['cockpit'], cockpit: false }); // behind the car until you press V
     await page.keyboard.press('KeyV');
     await expect.poll(async () => (await state(page)).cockpit).toBe(true);
@@ -194,6 +199,9 @@ test.describe('game (index.html)', () => {
     await page.screenshot({ path: testInfo.outputPath('cockpit.png') });
     await page.keyboard.press('KeyV');
     await expect.poll(async () => (await state(page)).cockpit).toBe(false);
+    await page.keyboard.press('KeyE');
+    await expect.poll(async () => (await state(page)).inCar).toBe(false);
+    await expect(page.locator('#p-view')).toBeHidden();
     expect(errors).toEqual([]);
   });
 
@@ -242,6 +250,19 @@ test.describe('game (index.html)', () => {
     const notice = await page.request.get('/media/vehicles/NOTICE.txt');
     expect(notice.ok()).toBe(true);
     expect(await notice.text()).toContain('Vehicle models by Axel Tidehorn');
+    expect(errors).toEqual([]);
+  });
+
+  test('?lab=toon draws the cel-shaded style without errors', async ({ page }, testInfo) => {
+    const errors = watchErrors(page);
+    await page.goto('/index.html?lab=toon');
+    await page.locator('#go').click();
+    expect(await state(page)).toMatchObject({ started: true, lab: ['toon'] });
+    // the style loads behind its flag, and a failure to load only warns: without this, the default look would pass
+    await expect.poll(async () => (await state(page)).styled).toBe(true);
+    await frames(page, 10); // the toon shaders compile and the ink lines are built on its first frames; an error there is logged
+    expect(await page.evaluate(() => document.getElementById('gl').getContext('webgl2').getError())).toBe(0);
+    await page.screenshot({ path: testInfo.outputPath('game-toon.png') });
     expect(errors).toEqual([]);
   });
 
@@ -462,6 +483,7 @@ test.describe('game (index.html)', () => {
   });
 
   test('Space held from braking does not jump on getting out', async ({ page }) => {
+    await page.setViewportSize({ width: 640, height: 360 }); // keep software WebGL affordable while walking to the interaction
     const errors = watchErrors(page);
     await page.goto('/index.html');
     await page.locator('#go').click();
@@ -496,6 +518,7 @@ test.describe('game (index.html)', () => {
   test('cats are around, and the kiosk sells cat treats and food from its menu, for money', async ({
     page,
   }, testInfo) => {
+    await page.setViewportSize({ width: 640, height: 360 }); // keep software WebGL affordable while walking to the interaction
     const errors = watchErrors(page);
     await page.goto('/index.html');
     await page.locator('#go').click();
@@ -529,6 +552,22 @@ test.describe('game (index.html)', () => {
     await expect(page.locator('#kmenu')).toBeHidden();
     await expect(page.locator('#toast')).toContainText('mätt');
     expect(await state(page)).toMatchObject({ hp: 100, kr: 195 }); // and it costs nothing
+    expect(errors).toEqual([]);
+  });
+
+  test('draws the sunlight streaks and the sun disc facing a low evening sun (#212)', async ({ page }, testInfo) => {
+    const errors = watchErrors(page);
+    // Torget looking west at 18:30, the clock held and the sky clear, so nothing covers the sun
+    await page.goto('/index.html?time=18.5&cycle=off&clouds=clear&at=-60,-10,-1.45,0.06');
+    await page.setViewportSize({ width: 640, height: 360 });
+    await expectWebGL(page);
+    await page.locator('#go').click();
+    await frames(page, 5);
+    const { sunStreaks: s } = await state(page);
+    expect(s).toMatchObject({ streaks: true, disc: true });
+    expect(s.light).toBeGreaterThan(0.5);
+    expect(s.presence).toBeGreaterThan(0);
+    await page.screenshot({ path: testInfo.outputPath('game-sun-streaks.png') });
     expect(errors).toEqual([]);
   });
 

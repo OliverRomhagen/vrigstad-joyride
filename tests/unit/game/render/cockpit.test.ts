@@ -143,6 +143,9 @@ describe('Cockpit (the driver’s view, lab: cockpit)', () => {
     onFoot.k.toggle();
     onFoot.k.update();
     expect(onFoot.k.inside).toBe(false);
+    onFoot.game.inCar = true;
+    onFoot.k.update();
+    expect(onFoot.k.inside).toBe(false); // V on foot must not arm the next car's view
     const behind = cockpit(car);
     behind.camera.position.set(1, 2, 3);
     behind.k.update();

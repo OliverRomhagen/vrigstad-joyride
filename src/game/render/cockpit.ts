@@ -276,7 +276,7 @@ export class Cockpit {
   }
 
   toggle = () => {
-    this.on = !this.on;
+    if (this.g.game.inCar) this.on = !this.on;
   };
 
   /** After the camera rig: in the driver's seat, puts the camera there instead. */
