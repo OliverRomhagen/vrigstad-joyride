@@ -89,7 +89,7 @@ export interface KerbPoint {
   kb: Kerb;
 }
 
-/** a mapped street lamp, bench, waste basket or bus stop (#144); way-mapped ones are their middle */
+/** a mapped street lamp, bench, waste basket, bus stop (#144) or street cabinet (#305); way-mapped ones are their middle */
 export interface FurniturePoint {
   /** OSM id: nodes and ways number separately, so it is unique only with `e` */
   i: number;
@@ -216,5 +216,5 @@ export type CrossingKind = (typeof CrossingKind)[keyof typeof CrossingKind];
 export const Kerb = { UNKNOWN: 0, RAISED: 1, LOWERED: 2, FLUSH: 3, ROLLED: 4 } as const;
 export type Kerb = (typeof Kerb)[keyof typeof Kerb];
 /** street furniture codes (#144), as tools/process.py assigns them; bus stops are context for placement, never drawn */
-export const FurnitureCode = { STREET_LAMP: 0, BENCH: 1, WASTE_BASKET: 2, BUS_STOP: 3 } as const;
+export const FurnitureCode = { STREET_LAMP: 0, BENCH: 1, WASTE_BASKET: 2, BUS_STOP: 3, STREET_CABINET: 4 } as const;
 export type FurnitureCode = (typeof FurnitureCode)[keyof typeof FurnitureCode];

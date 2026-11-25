@@ -17,6 +17,7 @@ export interface HudDeps {
   ground: HTMLCanvasElement; // the painted ground texture the minimap is cut from
   P(v: number): number; // world x or z (m) to a pixel on `ground`
   K: number; // pixels of `ground` per metre
+  paintBridgeRoads(ctx: CanvasRenderingContext2D): void; // the roads `ground` leaves out under the bridges, in world metres
   roads: Pick<RoadNetwork, 'nearestRoad' | 'lines'>;
   labels: readonly Label[];
   cars: readonly (Point & { mode: string })[];
@@ -151,6 +152,11 @@ export class Hud {
     mctx.fillStyle = '#6f9a5e';
     mctx.fillRect(0, 0, MW, MW);
     mctx.drawImage(ground, P(T.x - MR), P(T.z - MR), MR * 2 * K, MR * 2 * K, 0, 0, MW, MW);
+    // the bridge roads over it, in world metres: the same square as the copy above, scaled to the minimap
+    const s = MW / (2 * MR);
+    mctx.setTransform(s, 0, 0, s, (MR - T.x) * s, (MR - T.z) * s);
+    this.g.paintBridgeRoads(mctx);
+    mctx.setTransform(1, 0, 0, 1, 0, 0);
     const q = (v: number) => ((v / MR) * 0.5 + 0.5) * MW;
     for (const c of cars) {
       const dx = c.x - T.x,

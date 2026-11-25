@@ -30,6 +30,12 @@ Live site: https://oliverromhagen.github.io/vrigstad-joyride/ (GitHub Pages, fro
 
 - Work on a branch and open a PR; don't push to `main`. For work on an issue, start the branch with `gh issue develop <n> --checkout`: GitHub then links the branch, and the PR made from it, to the issue. For work that only does part of an issue, make the branch yourself (see **Link** below).
 - A `feat` PR gets a playable preview link commented on it; add the `preview` label to get one for any other PR (see "Preview links" in the README).
+- A PR into `main` that changes code, a workflow or AGENTS.md gets a review by Claude once it's out of draft ([#469](https://github.com/OliverRomhagen/vrigstad-joyride/issues/469), an experiment), posted as inline comments with a summary comment that shows what it cost.
+  - PRs from forks aren't reviewed. Nor are the upper PRs of a stack until they're retargeted to `main`, when the one below them merges, and then pushed again: the push from `gh stack sync` gets the review, so the lower PR's merged code isn't reviewed again.
+  - What the review looks for is in `.github/claude-review.md`. Change it there.
+  - The workflow, `.github/workflows/claude-review.yml`, runs from `main`, and so does the instructions file. A change to either takes effect once it merges, not in its own PR.
+  - A PR by someone with no merged PR here yet waits until a maintainer approves its review, on the run's page (the `claude-review-approval` environment).
+  - Files that `.gitattributes` on `main` marks `linguist-generated` or `linguist-vendored` are left out of the review: mark a new generated file there. The summary folds those away. Binary files and very large patches are left out too, and very long lines are cut short; the summary lists these to read by hand.
 - Keep a PR to one concern. Don't mix a refactor with a feature, and don't reformat code you aren't otherwise changing.
 - Reference the issue in the PR (`Closes #12`, or `Part of #12` if it doesn't fully close it). Say in the PR what is *not* done. The PR template (`.github/pull_request_template.md`) asks for that. When a PR is opened, `.github/workflows/pr-triage.yml` assigns it to its author when they have write access, and comments while the description references no issue.
 - PRs that build on each other are a stack. Prefer `gh stack` (`gh extension install github/gh-stack`): `gh stack init` or `add` builds the stack, `gh stack submit` pushes it and opens the PRs, and `gh stack sync` rebases what's left after a lower PR merges or a lower branch is rebased: until then the PRs above it still hold its old commits, and their diffs repeat them. Merge from the bottom up. When a PR outside the stack targets one of its branches, merge one PR at a time, never the whole stack at once: merged together, the stack's branches are deleted together, and GitHub closes that PR instead of moving it to `main`. After a squash merge it still holds the stack's old commits, so its author rebases it onto `main` (`git rebase --onto origin/main <the old tip of the branch it targeted>`).
@@ -74,6 +80,7 @@ GitHub issues are the backlog: every bug, idea and piece of work is one issue.
 
 - One branch (and worktree) per agent and task. Bring your branch up to date with `main` before opening a PR and again before merging.
 - Most features still add a line or two to `src/game/main.ts`, where the modules are connected, so expect small conflicts there. Keep changes in their own section of the file where you can.
+- To see whether a branch conflicts with `main`, or with an open PR that may merge first, without touching the worktree or the index: after `git fetch origin`, `git merge-tree --write-tree --name-only --no-messages origin/main <branch>` merges the two. It prints a tree id, then the files that conflict, if any, and exits with 1 when there is a conflict. To compare with an open PR instead, fetch it (`git fetch origin pull/<n>/head`) and pass `FETCH_HEAD` in place of `origin/main`.
 - Say how you tested in the PR, and be honest about what wasn't tested ("not played by hand on a phone").
 
 ### Lab experiments
@@ -85,6 +92,42 @@ An experiment is work that ships switched off for everyone, until a player opts 
 - **Test it:** unit tests go where its code's tests will stay, mirroring `src/`. With the flag off, the game must run exactly as before, so the existing smoke tests need no change; a smoke step with `?lab=<id>` is optional. Try it locally and in the PR's preview with `?lab=<id>`: a `feat` PR gets a preview link by itself; any other PR needs the `preview` label.
 - **Its issue and PR:** label the issue `lab`. The PR gets the label too when it references the issue (`Closes #n` or `Part of #n`) or its branch name starts with the issue number. Put the preview link with `?lab=<id>` in the PR, and say in the issue what would decide the experiment.
 - **Leaving the lab:** an experiment that works graduates in its own PR: delete its `LAB_EXPERIMENTS` entry, and turn each gate into ordinary wiring (a static import or a direct call, without the check). If a smoke test used its flag, keep one step that checks the old flag is now ignored, as the ragdolls' does. One that doesn't work is dropped: delete its files, its tests, its gates and its entry.
+
+### Reviewing PRs
+
+Claude Code's built-in `/code-review` checks a change against this file, so these rules apply to it as much as to a review by hand:
+
+- Start with the problem the PR solves, in one line, and ask whether this is the best way to solve it. A better alternative is the first finding: what it is, why it's better, and the rough cost to switch. If the approach holds, say so in one line. An alternative that widens the issue's scope is a follow-up.
+- Read the earlier reviews first. A point stays open until the current head fixes it; credit the fix when it's there.
+- Every finding has its file:line and the code or input that triggers it. A claim you couldn't confirm is marked **unverified**, or dropped; a check you couldn't run (not playable headless, code not on the branch) is **not assessed**, never passed.
+- Split the findings into **before merging** and **follow-ups**. A one-line fix goes inline as a suggestion block.
+- An agent posts the review only when asked.
+
+The automated review on each PR (Workflow, above) follows `.github/claude-review.md` instead where the two differ: it posts by itself, reports only findings and a short summary, and labels each finding by its kind rather than splitting them.
+
+### Claude Code in this repo
+
+Shared agents (`.claude/agents/`) and skills (`.claude/skills/`) come with the repo, so every collaborator's Claude Code has them. Agents advise; none edits tracked files, and `performance-analyst` runs commands to build and measure, in a scratch worktree. Some are adapted from [Claude Code Game Studios](https://github.com/donchitos/claude-code-game-studios) (MIT, see `LICENSE`). Each holds only its own expertise and points here for the rules, so a refactor doesn't make it wrong. Try one on a real task before relying on it, and drop one nobody reaches for (#255 lists what was left out). Claude can start any of them on its own when a request matches its description.
+
+| Reach for | When |
+|---|---|
+| `threejs-specialist` | Rendering code; three.js changes after r176 are in [docs/threejs.md](docs/threejs.md) |
+| `performance-analyst`, `/perf-profile` | Low fps, stutter, a performance regression |
+| `/balance-check` | Whether the numbers are balanced, e.g. before merging a tuning change |
+| `writer` | What people in the game say, in local Swedish |
+| `game-designer`, `/quick-design` | Shaping a feature from the player's side; a short spec for a small change |
+| `systems-designer`, `economy-designer` | The maths behind a mechanic; money, prices and payouts |
+| `ai-programmer` | How police, traffic, pedestrians and animals decide and move |
+| `level-designer` | Choosing and laying out a real place for play |
+| `technical-artist` | Art styles, post-processing, effects, model and texture budgets |
+| `ux-designer`, `ui-programmer`, `accessibility-specialist` | Flows, controls and the HUD; reviewing UI code; barriers for disabled players |
+| `sound-designer` | Specifying sounds and the mix before they're made |
+| `network-programmer`, `security-engineer` | Multiplayer sync; strings into HTML, saved data, CI permissions, privacy |
+| `/playtest-report` | Turning playtest notes on a preview into one shape |
+| `/test-flakiness` | Flaky or slow smoke tests in CI |
+| `/asset-audit` | Every model, image, sound and font has a licence, is used and fits a budget |
+| `/onboard` | A guide for a new collaborator's area |
+| `ticket-triage`, `/new-ticket` | Checking and filing issues (Tickets, above) |
 
 ## Code style
 
