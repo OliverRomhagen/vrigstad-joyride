@@ -62,6 +62,8 @@ export interface ActionsDeps {
 }
 
 /** What E does, and putting you back on your feet. */
+const enterable = (c: Car) => !c.saleKr; // a car for sale only opens Plåt-Pelle's menu
+
 export class Actions {
   private readonly g: ActionsDeps;
 
@@ -71,7 +73,7 @@ export class Actions {
 
   nearestCar = () => {
     const { player, cars } = this.g;
-    return carInReach(player, cars);
+    return carInReach(player, cars, enterable);
   };
   // park the car where it stands and put you on foot; the caller places you
   leaveCar = () => {

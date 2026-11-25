@@ -17,6 +17,15 @@ describe('player', () => {
     expect(carInReach(you(), [car(4.4, 0), car(0, 1, 'police')])).toBeNull(); // just out of reach
   });
 
+  it('reaches a preferred car in reach before a closer one that is not, and the closest of the preferred', () => {
+    const forSale = car(0.9, 0),
+      yours = car(-2, 0),
+      enterable = (c: object) => c !== forSale;
+    expect(carInReach(you(), [forSale, car(0, -3), yours], enterable)).toBe(yours);
+    expect(carInReach(you(), [forSale], enterable)).toBe(forSale); // with none preferred in reach, the closest still counts
+    expect(carInReach(you(), [forSale, car(-4.5, 0)], enterable)).toBe(forSale); // a preferred car out of reach doesn't
+  });
+
   it('gets out at up to 3 m/s, either way', () => {
     expect(tooFastToGetOut({ v: 3 })).toBe(false);
     expect(tooFastToGetOut({ v: 3.1 })).toBe(true);
