@@ -16,6 +16,7 @@ import {
   aimAt,
   aimShot,
   assistTarget,
+  blastPush,
   flightPath,
   HIT_FLAVOURS,
   type HitFlavour,
@@ -28,6 +29,7 @@ import {
   stepShot,
   WEAPONS,
 } from './sim/shots';
+import { dropSpike, newSpikeStep, type Spike, type SpikeWorld, stepSpikes } from './sim/spikes';
 import type { GameState, ViewState } from './state';
 
 // aiming: a crosshair fixed on screen, a little above your head, and shots go to what is under it, as in any shooter.
@@ -88,21 +90,15 @@ const GUN_M: Record<string, readonly [number, number]> = {
 };
 const HIT_MARK_S = 0.1; // the crosshair's ticks stay this long after a hit on a person or a car, then fade (index.html)
 const BLAST_DROPS = 7; // a blast of gegga leaves this many more splats around the hit
-// fotanglar: they lie where they land for a while. Someone who steps on one hops on and walks slowly; a car that
-// drives over one has a puncture and limps; you are hurt, unless you jump over
-const SPIKES_MAX = 140, // on the ground at once; the oldest go first
-  SPIKE_S = 60, // one lies this long
-  SPIKE_STEP_M = 0.55, // a foot within this of one steps on it
-  SPIKE_WHEEL_M = 1.3, // a car's middle within this of one drives over it
-  SPIKE_CAR_MIN_MS = 1, // a car standing on one is fine until it rolls
-  PUNCTURE_DMG = LIMP_AT + 30, // a puncture is this much damage at least: well past where a car starts to limp
+// fotanglar: they lie where they land for a while (./sim/spikes.ts). Someone who steps on one hops on and walks
+// slowly; a car that drives over one has a puncture and limps; you are hurt, unless you jump over
+const PUNCTURE_DMG = LIMP_AT + 30, // a puncture is this much damage at least: well past where a car starts to limp
   LIMP_S = 6, // someone who stepped on one limps this long,
   LIMP_SPEED = 0.35, // at this share of their speed,
   LIMP_HOP_M = 0.14, // hopping this high,
   LIMP_HOP_HZ = 2.4,
   SPIKE_HURT_HP = 6, // what stepping on one costs you,
-  SPIKE_HURT_EVERY_S = 1, // at most this often
-  SPIKE_OFF_WALL_M = 0.3; // one that hits a wall or a car drops this far out from it
+  SPIKE_HURT_EVERY_S = 1; // at most this often
 
 type Point = { x: number; z: number };
 
@@ -133,7 +129,11 @@ export class Pickadoll {
   private readonly g: PickadollDeps;
   private readonly shots: (Shot & { seed: number; flavour: HitFlavour })[] = [];
   private readonly dancers: { npc: Npc; leftS: number }[] = [];
-  private readonly spikes: { x: number; y: number; z: number; turn: number; leftS: number }[] = [];
+  private readonly spikes: Spike[] = [];
+  private readonly spikeWorld: { -readonly [K in keyof SpikeWorld]: SpikeWorld[K] };
+  private readonly spikeStep = newSpikeStep();
+  private readonly push = { dx: 0, dz: -1 };
+  private startedFrames = 0; // frames since Start, up to 2
   private readonly limping: { npc: Npc; leftS: number; speed: number }[] = [];
   private spikeHurtS = 0; // s until a fotangel can hurt you again
   private readonly arc: number[] = [];
@@ -172,6 +172,7 @@ export class Pickadoll {
   constructor(g: PickadollDeps) {
     this.g = g;
     this.world = { groundAt: g.world.groundAt, collide: g.world.collide, people: g.crowd.npcs, cars: [] };
+    this.spikeWorld = { cars: g.cars, people: g.crowd.npcs, walker: null };
     // The controls, through the game's input: the left mouse button or X fires, the right one aims while held, C keeps
     // aiming on, Q changes the weapon and G the hit. A press of the trigger is kept a moment (pulledS)
     this.trigger = g.input.addControl({
@@ -292,7 +293,10 @@ export class Pickadoll {
     cars.length = 0;
     for (const c of this.g.cars) if (c !== car) cars.push(c);
 
-    const ready = game.started && !this.g.menuOpen && !this.g.inside && game.titleCardT <= 0;
+    // The line of sight is read from the camera as the last frame left it. On the first frame after Start that is
+    // still the intro's, circling far off, so the lab waits one frame
+    this.startedFrames = game.started ? Math.min(2, this.startedFrames + 1) : 0;
+    const ready = this.startedFrames > 1 && !this.g.menuOpen && !this.g.inside && game.titleCardT <= 0;
     this.ready = ready;
     const aiming = this.aiming;
     // going over to the shoulder: the crosshair moves to the middle of the screen with the camera
@@ -493,12 +497,7 @@ export class Pickadoll {
     if (hit.bounced && weapon.fuseS) return; // a grenade only bounces and lies until its fuse runs out
     this.hits++;
     if (weapon.zone === 'spikes') {
-      // on the ground where it fell; off a wall or a car, just out from it
-      const out = hit.kind === 'ground' ? 0 : SPIKE_OFF_WALL_M,
-        x = hit.x + hit.nx * out,
-        z = hit.z + hit.nz * out;
-      if (this.spikes.length >= SPIKES_MAX) this.spikes.shift();
-      this.spikes.push({ x, y: this.g.world.groundAt(x, z), z, turn: s.seed, leftS: SPIKE_S });
+      dropSpike(this.spikes, hit, this.g.world.groundAt, s.seed);
       fx.drawSpikes(this.spikes);
       return;
     }
@@ -509,21 +508,16 @@ export class Pickadoll {
     else fx.splat(hit, s.flavour === 'gegga' ? weapon.splatM : weapon.splatM * 0.45, colour, s.seed);
     if (person || car) this.mark();
     if (!weapon.blastM) return;
+    const { push } = this;
     for (const n of crowd.npcs) {
-      const ex = n.x - hit.x,
-        ez = n.z - hit.z,
-        d = Math.hypot(ex, ez);
-      if (n === person || n.down || d > weapon.blastM || d < 0.01) continue;
-      this.hitPerson(n, s.flavour, ex / d, ez / d, hit.y + 1, weapon.power * 0.6, weapon.splatM, colour, rnd());
+      if (n === person || n.down || !blastPush(hit.x, hit.z, weapon.blastM, n.x, n.z, push)) continue;
+      this.hitPerson(n, s.flavour, push.dx, push.dz, hit.y + 1, weapon.power * 0.6, weapon.splatM, colour, rnd());
       this.mark();
     }
     if (s.flavour === 'pang')
-      for (const c of this.world.cars) {
-        const ex = c.x - hit.x,
-          ez = c.z - hit.z,
-          d = Math.hypot(ex, ez);
-        if (c !== car && d < weapon.blastM && d > 0.01) this.shoveCar(c, ex / d, ez / d, weapon.power * 0.6);
-      }
+      for (const c of this.world.cars)
+        if (c !== car && blastPush(hit.x, hit.z, weapon.blastM, c.x, c.z, push))
+          this.shoveCar(c, push.dx, push.dz, weapon.power * 0.6);
     if (s.flavour === 'gegga')
       for (let i = 0; i < BLAST_DROPS; i++) {
         const a = rnd() * Math.PI * 2,
@@ -596,46 +590,26 @@ export class Pickadoll {
 
   // what the fotanglar on the ground do to who comes by
   private stepSpikes(dt: number) {
-    const { game, player, crowd, fx } = this.g,
-      { spikes, limping } = this;
-    let changed = false;
+    const { game, player, crowd, fx, cars } = this.g,
+      { spikes, limping, spikeWorld } = this;
     this.spikeHurtS -= dt;
-    for (let i = spikes.length - 1; i >= 0; i--) {
-      const s = spikes[i];
-      s.leftS -= dt;
-      let used = s.leftS <= 0;
-      // a car that rolls over it has a puncture, the police's and your own too
-      if (!used)
-        for (const c of this.g.cars)
-          if (Math.abs(c.v) > SPIKE_CAR_MIN_MS && Math.hypot(c.x - s.x, c.z - s.z) < SPIKE_WHEEL_M) {
-            damageCar(c, PUNCTURE_DMG - c.dmg);
-            used = true;
-            break;
-          }
-      if (!used)
-        for (const n of crowd.npcs)
-          if (!n.down && Math.hypot(n.x - s.x, n.z - s.z) < SPIKE_STEP_M && !limping.some(l => l.npc === n)) {
-            limping.push({ npc: n, leftS: LIMP_S, speed: n.speed });
-            n.speed *= LIMP_SPEED;
-          }
-      // you, on foot and on the ground: a jump clears them
-      if (
-        !used &&
-        !game.inCar &&
-        player.y <= 0 &&
-        this.spikeHurtS <= 0 &&
-        Math.hypot(player.x - s.x, player.z - s.z) < SPIKE_STEP_M
-      ) {
-        this.spikeHurtS = SPIKE_HURT_EVERY_S;
-        this.g.hurtPlayer(SPIKE_HURT_HP);
-        this.g.toast('”Aj! Fotanglar!”', 2);
-      }
-      if (used) {
-        spikes.splice(i, 1);
-        changed = true;
-      }
+    // you, on foot and on the ground: a jump clears them
+    spikeWorld.walker = !game.inCar && player.y <= 0 ? player : null;
+    const step = stepSpikes(spikes, dt, spikeWorld, this.spikeStep);
+    // a car that rolls over one has a puncture, the police's and your own too
+    for (const i of step.cars) damageCar(cars[i], PUNCTURE_DMG - cars[i].dmg);
+    for (const i of step.people) {
+      const n = crowd.npcs[i];
+      if (limping.some(l => l.npc === n)) continue;
+      limping.push({ npc: n, leftS: LIMP_S, speed: n.speed });
+      n.speed *= LIMP_SPEED;
     }
-    if (changed) fx.drawSpikes(spikes);
+    if (step.walker && this.spikeHurtS <= 0) {
+      this.spikeHurtS = SPIKE_HURT_EVERY_S;
+      this.g.hurtPlayer(SPIKE_HURT_HP);
+      this.g.toast('”Aj! Fotanglar!”', 2);
+    }
+    if (step.changed) fx.drawSpikes(spikes);
     // limping is drawn over the crowd's own pose: a hop on one foot, and their speed back when it wears off
     for (let i = limping.length - 1; i >= 0; i--) {
       const l = limping[i];

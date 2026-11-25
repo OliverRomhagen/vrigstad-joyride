@@ -3,6 +3,7 @@ import {
   aimAt,
   aimShot,
   assistTarget,
+  blastPush,
   flightPath,
   GRAVITY_MS2,
   MUZZLE_M,
@@ -212,6 +213,22 @@ describe('a thrown shot with a fuse', () => {
   it('goes off at once on a person', () => {
     const hit = fly(shot(GRANAT), world({ people: [{ x: 0, z: -3, scale: 1 }] }));
     expect(hit).toMatchObject({ kind: 'person', bounced: false });
+  });
+});
+
+describe('blastPush', () => {
+  it('reaches what stands within the blast, and pushes it away from the middle', () => {
+    const out = { dx: 0, dz: 0 };
+    expect(blastPush(10, 10, 5, 13, 14, out)).toBe(true); // 5 m off: just in reach
+    expect(out.dx).toBeCloseTo(0.6);
+    expect(out.dz).toBeCloseTo(0.8);
+    expect(blastPush(10, 10, 5, 13, 14.1, out)).toBe(false);
+  });
+
+  it('throws who stands at its very middle too', () => {
+    const out = { dx: 9, dz: 9 };
+    expect(blastPush(2, 3, 5, 2, 3, out)).toBe(true);
+    expect(Math.hypot(out.dx, out.dz)).toBe(1);
   });
 });
 

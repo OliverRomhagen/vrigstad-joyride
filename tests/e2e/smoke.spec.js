@@ -230,6 +230,34 @@ test.describe('game (index.html)', () => {
     expect(errors).toEqual([]);
   });
 
+  test('?lab=pickadoll fires a shot that lands, and switches weapon and hit', async ({ page }) => {
+    const errors = watchErrors(page);
+    await page.setViewportSize({ width: 640, height: 360 }); // checks only the hook; keep software WebGL affordable
+    await page.goto('/index.html?lab=pickadoll');
+    await page.locator('#go').click();
+    // the lab loads behind its flag, and a failure to load only warns: without this, the plain game would pass
+    await expect
+      .poll(async () => (await state(page)).pickadoll)
+      .toMatchObject({ weapon: 'pickadoll', flavour: 'gegga' });
+    await frames(page, 3); // the lab waits a frame after Start, and a pull before it is ready is dropped
+    await page.keyboard.down('KeyX');
+    await expect.poll(async () => (await state(page)).pickadoll.fired).toBeGreaterThan(0);
+    await page.keyboard.up('KeyX');
+    await expect.poll(async () => (await state(page)).pickadoll.splats).toBeGreaterThan(0); // it landed and left its gegga
+    await page.keyboard.press('KeyQ');
+    await page.keyboard.press('KeyG');
+    await page.keyboard.press('KeyC');
+    await expect
+      .poll(async () => (await state(page)).pickadoll)
+      .toMatchObject({
+        weapon: 'pepprapuffra',
+        flavour: 'pang',
+        aiming: true,
+      });
+    await expect(page.locator('#p-aim')).toHaveAttribute('aria-pressed', 'true');
+    expect(errors).toEqual([]);
+  });
+
   test('?lab=toon draws the cel-shaded style without errors', async ({ page }, testInfo) => {
     const errors = watchErrors(page);
     await page.goto('/index.html?lab=toon');

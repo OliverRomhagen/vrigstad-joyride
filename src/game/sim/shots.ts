@@ -454,6 +454,27 @@ export function flightPath(s: Shot, world: ShotWorld, stepS: number, max: number
   return n;
 }
 
+/**
+ * Whether a blast of `blastM` metres at (cx, cz) reaches (x, z), along the ground. Writes the way it pushes what stands
+ * there to `out`, a unit vector away from the middle; at the very middle that is north, so nobody is left standing.
+ */
+export function blastPush(
+  cx: number,
+  cz: number,
+  blastM: number,
+  x: number,
+  z: number,
+  out: { dx: number; dz: number },
+) {
+  const ex = x - cx,
+    ez = z - cz,
+    d = Math.hypot(ex, ez);
+  if (d > blastM) return false;
+  out.dx = d > 0.01 ? ex / d : 0;
+  out.dz = d > 0.01 ? ez / d : -1;
+  return true;
+}
+
 const _nearPeople: number[] = [],
   _nearCars: number[] = [];
 const SIGHT_CAR_REACH = 1.5; // a car can be met within this many of its lengths from its middle: hitAt's box, corner to corner
