@@ -2,7 +2,8 @@ import type { CarType } from '../sim/vehicle-spec';
 
 // Metres, +Y up, -Z forward; normalized exports share these node names. rearAxle is metres behind the model's centre.
 // length is the model's, measured along Z; width is the body's without mirrors, from the car's spec sheet: the hitbox (#201).
-// height is the roof's, from the spec sheet too: what you stand on up there (#451).
+// height is the roof's, from the spec sheet too: what you stand on up there (#451). roofRear and roofFront are where the roof
+// runs, in m ahead of the model's centre, measured on its mesh (the top of the body along the middle, to 0.1 m).
 export const BODY_NODE = 'body';
 export const WHEEL_NODES = ['wheel_fl', 'wheel_fr', 'wheel_rl', 'wheel_rr'] as const;
 export const VEHICLES = [
@@ -18,6 +19,8 @@ export const VEHICLES = [
     length: 4.82,
     width: 1.71,
     height: 1.46,
+    roofRear: -1.0,
+    roofFront: 0.45,
     police: false,
   },
   {
@@ -32,6 +35,8 @@ export const VEHICLES = [
     length: 4.68,
     width: 1.69,
     height: 1.42,
+    roofRear: -1.0,
+    roofFront: 0.5,
     police: false,
   },
   {
@@ -46,6 +51,8 @@ export const VEHICLES = [
     length: 4.74,
     width: 1.86,
     height: 1.56,
+    roofRear: -2.2,
+    roofFront: 0.2,
     // a tall, heavy estate on the Saab's type: slower to answer, softer and leaning more
     handling: { steerResponseS: 0.14, throttleResponseS: 0.25 },
     suspension: {
@@ -70,6 +77,8 @@ export const VEHICLES = [
     length: 4.74,
     width: 1.86,
     height: 1.56,
+    roofRear: -2.2,
+    roofFront: 0.2,
     police: true,
   },
   {
@@ -84,6 +93,8 @@ export const VEHICLES = [
     length: 5.49,
     width: 2.03,
     height: 1.39,
+    roofRear: -1.1,
+    roofFront: 0.75,
     suspension: { freqHz: 1.0, damping: 0.45, rollPerAcc: 0.006, maxRollRad: 0.09 }, // a soft American barge
     police: false,
   },
@@ -99,6 +110,8 @@ export const VEHICLES = [
     length: 3.7,
     width: 1.59,
     height: 1.42,
+    roofRear: -1.3,
+    roofFront: 0.05,
     suspension: { freqHz: 1.9, rollPerAcc: 0.004 }, // short, light and busy
     police: false,
   },
@@ -114,6 +127,8 @@ export const VEHICLES = [
     length: 4.1,
     width: 1.6,
     height: 1.55,
+    roofRear: -0.85,
+    roofFront: 0.2,
     police: false,
   },
 ] as const satisfies readonly (Record<string, unknown> & { archetype: CarType })[];

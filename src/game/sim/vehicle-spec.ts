@@ -181,6 +181,9 @@ export type ModelOverrides = {
   length?: number;
   width?: number;
   height?: number; // the roof's height (m), from the car's spec sheet: what you stand on up there (#451)
+  // where its roof runs, in m ahead of its middle (behind it is negative), measured on the model: a model needn't have its type's shape
+  roofRear?: number;
+  roofFront?: number;
   handling?: Partial<Pick<Handling, 'steerResponseS' | 'throttleResponseS'>>;
   suspension?: Partial<Suspension>;
 };
@@ -204,6 +207,8 @@ export function specFor(type: CarType, model?: ModelOverrides): VehicleSpec {
     !model?.length &&
     !model?.width &&
     !model?.height &&
+    model?.roofRear === undefined &&
+    model?.roofFront === undefined &&
     !model?.handling &&
     !model?.suspension
   )
@@ -242,9 +247,9 @@ function mergeModel(type: CarType, base: VehicleSpec, model: ModelOverrides): Ve
     lengthM: model.length ?? base.lengthM,
     widthM: model.width ?? base.widthM,
     roofM: model.height ?? base.roofM,
-    // the roof keeps its place on a model of another length
-    roofRearM: (base.roofRearM * (model.length ?? base.lengthM)) / base.lengthM,
-    roofFrontM: (base.roofFrontM * (model.length ?? base.lengthM)) / base.lengthM,
+    // the model's own roof, else the type's, kept in its place on a model of another length
+    roofRearM: model.roofRear ?? (base.roofRearM * (model.length ?? base.lengthM)) / base.lengthM,
+    roofFrontM: model.roofFront ?? (base.roofFrontM * (model.length ?? base.lengthM)) / base.lengthM,
     handling: {
       ...base.handling,
       ...model.handling,

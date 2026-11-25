@@ -7,7 +7,7 @@ import type { Car, Fleet, TrafficCar } from './cars';
 import { CRASH_COOL_S, type Health, impactSpeed, regen, runOverHurt } from './health';
 import type { Input } from './input';
 import type { Places } from './places';
-import { carTopAt, hop, type PlayerState, ride, standOn, walk } from './player';
+import { type CarHold, carry, carTopAt, holdCar, hop, type PlayerState, ride, standOn, walk } from './player';
 import type { Wanted } from './police';
 import type { CameraRig } from './render/camera-rig';
 import type { Person } from './render/models';
@@ -84,7 +84,8 @@ export class GameLoop {
   private readonly g: GameLoopDeps;
   private last = performance.now();
   private runOverAt = -9; // the player's own cooldown for being run over, apart from the cars' crash cooldowns
-  private stoodOn: { c: Car; x: number; z: number; h: number } | null = null; // the car you stood on last frame, and where it was
+  private stood: Car | null = null; // the car you stood on last frame
+  private readonly hold: CarHold<Car> = { car: null, x: 0, z: 0, h: 0 }; // the car you were on last frame, standing or not, and where it was
   private left: Car | null = null; // the car you last stepped off: you don't climb back onto it before you've landed
   private signT = 0;
   private blinkT = 0;
@@ -163,20 +164,9 @@ export class GameLoop {
     if (game.inCar && game.pcar) {
       g.drive(game.pcar, my, mx, !!keys.brake, dt, true);
       ride(player, game.pcar);
-      this.stoodOn = this.left = null;
+      this.hold.car = this.stood = this.left = null;
     } else {
-      const was = this.stoodOn;
-      if (was) {
-        // the car you stand on moved since last frame, and turned: it carries you along (#451)
-        const dh = was.c.h - was.h,
-          ox = player.x - was.x,
-          oz = player.z - was.z,
-          cs = Math.cos(dh),
-          sn = Math.sin(dh);
-        player.x = was.c.x + ox * cs - oz * sn;
-        player.z = was.c.z + ox * sn + oz * cs;
-        player.h += dh;
-      }
+      carry(player, this.hold); // the car you're on moved since last frame, and turned (#451)
       walk(
         player,
         dt,
@@ -221,9 +211,10 @@ export class GameLoop {
       const wetNow = g.inWater(player.x, player.z); // after this frame's move: take-off and wading depth follow where the player stands now
       hop(player, dt, jump && !wetNow && !places.inside && game.titleCardT <= 0); // on foot, Space and the touch Brake button jump
       const standing = player.y === player.floor;
-      if (this.stoodOn && on !== this.stoodOn.c) this.left = this.stoodOn.c; // stepped off it
+      if (this.stood && on !== this.stood) this.left = this.stood; // stepped off it
       if (standing && on !== this.left) this.left = null; // landed: on the ground, or on another car
-      this.stoodOn = on && standing ? { c: on, x: on.x, z: on.z, h: on.h } : null;
+      this.stood = on && standing ? on : null;
+      holdCar(this.hold, on); // in the air above it or climbing onto it too, so a moving car doesn't drive out from under you
       // walking: arms swing against the legs and the body bobs; in the air: legs apart and both arms up
       const air = player.y > player.floor,
         sw = air ? 0.5 : Math.sin(player.phase) * 0.75,

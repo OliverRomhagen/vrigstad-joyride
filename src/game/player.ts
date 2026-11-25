@@ -200,3 +200,38 @@ export function standOn<C extends CarToStandOn>(
   p.floor = floor;
   return on;
 }
+
+/** The car you're on and where it was last frame, so it can carry you as it drives and turns (#451). One object, rewritten each frame. */
+export interface CarHold<C extends CarBody> {
+  car: C | null;
+  x: number;
+  z: number;
+  h: number;
+}
+
+/** Remembers where `car` is now (null: on no car), for `carry` next frame. */
+export function holdCar<C extends CarBody>(hold: CarHold<C>, car: C | null) {
+  hold.car = car;
+  if (!car) return;
+  hold.x = car.x;
+  hold.z = car.z;
+  hold.h = car.h;
+}
+
+/**
+ * Moves you with the car you were on since `holdCar`: along with it, and round as it turned, whether you stand on it, hop
+ * on it or climb up onto it. Not when something else has put you far from it since (a respawn, Gripen!, the console).
+ */
+export function carry<C extends CarBody>(p: PlayerState, hold: CarHold<C>) {
+  const c = hold.car;
+  if (!c) return;
+  const ox = p.x - hold.x,
+    oz = p.z - hold.z;
+  if (Math.hypot(ox, oz) > c.T.lengthM) return;
+  const dh = c.h - hold.h,
+    cs = Math.cos(dh),
+    sn = Math.sin(dh);
+  p.x = c.x + ox * cs - oz * sn;
+  p.z = c.z + ox * sn + oz * cs;
+  p.h += dh;
+}

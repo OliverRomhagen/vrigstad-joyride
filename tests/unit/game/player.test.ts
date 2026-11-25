@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
+  type CarHold,
   type CarToStandOn,
   carInReach,
+  carry,
   carTopAt,
+  holdCar,
   hop,
   type PlayerState,
   standAt,
@@ -225,5 +228,44 @@ describe('standing on cars (#451)', () => {
     expect(impala.roofM).toBe(1.39);
     expect(impala.deckM).toBe(0.98);
     expect(impala.roofRearM).toBeCloseTo((-1.95 * 5.49) / 4.8, 6);
+  });
+
+  it("takes a model's own roof span over its type's, so an estate on a hatchback's type stands on its whole roof", () => {
+    const xc70 = specFor('saab', { length: 4.74, height: 1.56, roofRear: -2.2, roofFront: 0.2 });
+    expect([xc70.roofRearM, xc70.roofFrontM]).toEqual([-2.2, 0.2]);
+    expect(specFor('saab').roofRearM).toBe(-0.75); // the type keeps its own
+  });
+});
+
+describe('carry', () => {
+  const held = (c: CarToStandOn) => {
+    const hold: CarHold<CarToStandOn> = { car: null, x: 0, z: 0, h: 0 };
+    holdCar(hold, c);
+    return hold;
+  };
+
+  it('moves you with the car you were on, and round as it turned', () => {
+    const c = volvo(),
+      hold = held(c),
+      p = you(1, 0); // 1 m east of its middle
+    c.z = -1; // it drove 1 m north
+    c.h = Math.PI / 2; // and turned a quarter
+    carry(p, hold);
+    expect(p.x).toBeCloseTo(0, 6);
+    expect(p.z).toBeCloseTo(0, 6); // a quarter turn round its new middle puts you 1 m south of it
+    expect(p.h).toBeCloseTo(Math.PI / 2, 6);
+  });
+
+  it('leaves you be when you were on no car, or something put you far from it since (a respawn, the console)', () => {
+    const c = volvo(),
+      hold = held(c),
+      far = you(500, 0);
+    c.x = 3;
+    carry(far, hold);
+    expect([far.x, far.z]).toEqual([500, 0]);
+    holdCar(hold, null);
+    const p = you(1, 0);
+    carry(p, hold);
+    expect([p.x, p.z]).toEqual([1, 0]);
   });
 });
