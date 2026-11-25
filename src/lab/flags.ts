@@ -16,6 +16,11 @@ export interface LabExperiment {
 export const LAB_EXPERIMENTS = [
   { id: 'hello', name: 'Hello lab', cost: 'Nothing: logs one line, as the smallest example of a gate' },
   {
+    id: 'pickadoll',
+    name: 'Pickadoll: weapons and what a hit does',
+    cost: 'No download; a few hundred more quads to draw once you have painted a street',
+  },
+  {
     id: 'toon',
     name: 'Cel-shaded style',
     cost: 'Every lit material swapped each frame, and an extra line draw per inked mesh, the village shells included',

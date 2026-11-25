@@ -61,6 +61,7 @@ import { CAT_SCRATCH_HP, canHurt, LOW_HP, hurt, newHealth, registerHealthCommand
 import { HOME } from './player';
 import { Wanted } from './police';
 import { Ragdolls } from './ragdolls';
+import type { Pickadoll } from './pickadoll';
 import { RagdollMeshes } from './render/ragdoll-meshes';
 import { PlaceMeshes } from './render/places';
 import { GroundTexture } from './render/ground-texture';
@@ -386,17 +387,23 @@ const prompt = new ActionPrompt({ $, game, places, wanted, get menuOpen() { retu
 // ---------- main loop (src/game/loop.ts) ----------
 const loop = new GameLoop({ $, renderer, scene, camera, canvas, coarse, half: HALF, game, view, player, health, input, places, wanted, cars, startCam: START_CAM, barMat, barColours: [BAR_BLUE, BAR_RED], cameraRig: { update: placeCamera },
   get toasting() { return hud.toasting; }, inWater, collide, groundAt, drive, updateTraffic, knockedOut, hurtPlayer, shake, toast, hideTitleCard: () => hud.hideTitleCard(),
-  updateTrisslott: dt => trisslott.update(dt), updatePlaces: dt => { placeMeshes.update(dt); skrotenMeshes.update(dt, player); }, updateDriftFx, updateVehicles: (T, dt) => vehicleVisuals.update(T, dt), updateSmoke, updateBanknotes: dt => banknotes.update(dt), updateConfetti: dt => confetti.update(dt), updateNpcs: (T, dt) => { updateNpcs(T, dt); ragdolls.update(dt); ragdollMeshes.update(); }, updateCats,
+  updateTrisslott: dt => trisslott.update(dt), updatePlaces: dt => { placeMeshes.update(dt); skrotenMeshes.update(dt, player); }, updateDriftFx, updateVehicles: (T, dt) => vehicleVisuals.update(T, dt), updateSmoke, updateBanknotes: dt => banknotes.update(dt), updateConfetti: dt => confetti.update(dt), updateNpcs: (T, dt) => { updateNpcs(T, dt); ragdolls.update(dt); ragdollMeshes.update(); pickadoll?.update(dt); }, updateCats,
   updateDrivers: (T, dt) => drivers.update(T, dt), updateBodies: (T, dt) => bodyMotion.update(T, dt), updateDaylight, drawHearts, updateHud: dt => hud.update(dt), drawMini,
   updateSign, catRideLines: () => crashes.catRideLines(), closeMenuIfLeft: () => menuPlate.closeIfLeft(), updatePrompt: () => prompt.update(), drawHealth,
   timeFrame: workStart => { if (!debugOverlay) return; const t = performance.now(); debugOverlay.frame(t, t - workStart, renderer.info); } });
 $('go').addEventListener('click', loop.startGame);
 // ?lab=toon draws the world cel-shaded (#206). The frames before its code arrives draw the default look, behind the intro
 if (lab.on('toon')) import('./render/toon-style').then(m => loop.drawThrough(new m.ToonStyle(renderer))).catch(err => console.warn('Lab: toon failed', err));
+// ?lab=pickadoll: weapons to try, and three answers to what a hit does (#17: src/game/pickadoll.ts). Stepped after the crowd, above
+let pickadoll: Pickadoll | null = null;
+if (lab.on('pickadoll')) Promise.all([import('./pickadoll'), import('./render/shot-fx')]).then(([m, fx]) => {
+  pickadoll = new m.Pickadoll({ win: window, canvas, $, coarse, game, view, player, world: { groundAt, collide }, crowd, cars, ragdolls, placeCar, rnd: makeRnd(1717), toast,
+    fx: new fx.ShotFx({ scene, camera, coarse, groundAt, rnd: makeRnd(1718) }), mouseLocked: () => input.locked(), get menuOpen() { return !kmenu.hidden; }, get inside() { return !!places.inside; } });
+}).catch(err => console.warn('Lab: pickadoll failed', err));
 loop.start();
 
 // ---------- test hook: read-only state for the smoke tests (src/game/test-hook.ts) ----------
-installTestHook({ game, view, player, health, cars, labs: lab.list(), get styled() { return loop.styled; }, get ragdolls() { return ragdolls.count; }, get stars() { return wanted.stars; }, get cats() { return cats.length; }, get ownCat() { return !!colony.owned; }, get displayCar() { return displayCar; },
+installTestHook({ game, view, player, health, cars, labs: lab.list(), get styled() { return loop.styled; }, get ragdolls() { return ragdolls.count; }, get pickadoll() { return pickadoll?.state ?? null; }, get stars() { return wanted.stars; }, get cats() { return cats.length; }, get ownCat() { return !!colony.owned; }, get displayCar() { return displayCar; },
   vehicleVisuals: { state: c => vehicleVisuals.state(meshed(c)) }, bodyMotion: { state: c => bodyMotion.state(meshed(c)) }, skyDome, street, debugStreetscape: DEBUG_STREETSCAPE, bridges: { index: bridges, draw: bridgeMeshes, groundAt }, furniture, water: { bodies: waterBodies, surface: waterLook.surface, props: waterLook.props, shore, terrainTriangles: terrainMesh.triangles, refinedCells: heightfield.refinedCells, buildMs: waterCutMs + waterMeshMs, inWater, hAt }, debugFurniture: DEBUG_FURNITURE, nearestCar,
   get kr() { return wallet.kr; }, get banknotes() { return banknotes.live; }, get confetti() { return confetti.live; }, get devcon() { return devcon.isOpen; }, build: __BUILD__, get fps() { return !!debugOverlay?.shown; }, day: { get hour() { return dayClock.hour; }, get night() { return dayClock.night; }, get sunLight() { return sky.sun; } } });
 })();
