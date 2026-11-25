@@ -7,7 +7,7 @@ import { type BuildingShape, HOUSE_MAX_M2, HOUSE_MIN_M2 } from '../../world/buil
 import type { WorldData } from '../../world/data';
 import type { Heightfield } from '../../world/heightfield';
 import { BridgeMesh } from '../../world/mesh/bridge-mesh';
-import { PaintedBuildingShells } from '../../world/mesh/building-shells';
+import { type EmitVertex, PaintedBuildingShells } from '../../world/mesh/building-shells';
 import { ParkingMesh } from '../../world/mesh/parking-mesh';
 import { RoadRibbons } from '../../world/mesh/road-ribbons';
 import { ShoreProps } from '../../world/mesh/shore-props';
@@ -169,7 +169,7 @@ export interface BuildingMeshOptions {
   /** A point inside each building to leave out, because the game draws it itself: Skroten's workshop and carport (render/skroten.ts). */
   skip?: readonly { x: number; z: number }[];
 }
-/** The house shells in their colours, and one mesh of windows and trim. Rolls rnd() once or twice per house, in data order. */
+/** The house shells in their colours with their trim, and one mesh of windows. Rolls rnd() once or twice per house, in data order. */
 export function addBuildings(
   scene: THREE.Scene,
   D: WorldData,
@@ -214,21 +214,23 @@ export function addBuildings(
     // a vertical quad from (x1, z1) to (x2, z2), bottom and top heights at each end
     const quad = (out: number[], ...[x1, z1, x2, z2, b1, t1, b2, t2]: Quad) =>
       out.push(x1, b1, z1, x2, b2, z2, x2, t2, z2, x1, b1, z1, x2, t2, z2, x1, t1, z1);
-    type Emit = (x: number, y: number, z: number, k: THREE.Color) => void;
     type Corner = [x: number, y: number, z: number];
-    // a flat four-cornered face, in order round its edge, into the shell's mesh
-    const face = (emit: Emit, k: THREE.Color, ...q: [Corner, Corner, Corner, Corner]) => {
-      for (const i of [0, 1, 2, 0, 2, 3]) emit(q[i][0], q[i][1], q[i][2], k);
+    // a flat four-cornered face, in order round its edge, into the shell's mesh; wound to face `out`, whichever way the
+    // outline runs, so its normal points out of the trim (the sun's shadow normalBias goes along it)
+    const face = (emit: EmitVertex, k: THREE.Color, out: Corner, ...q: [Corner, Corner, Corner, Corner]) => {
+      const [p, r, t] = q,
+        ax = r[0] - p[0],
+        ay = r[1] - p[1],
+        az = r[2] - p[2],
+        bx = t[0] - p[0],
+        by = t[1] - p[1],
+        bz = t[2] - p[2],
+        facing = (ay * bz - az * by) * out[0] + (az * bx - ax * bz) * out[1] + (ax * by - ay * bx) * out[2];
+      for (const i of facing >= 0 ? [0, 1, 2, 0, 2, 3] : [0, 2, 1, 0, 3, 2]) emit(q[i][0], q[i][1], q[i][2], k);
     };
-    const box = (
-      emit: (x: number, y: number, z: number, k: THREE.Color) => void,
-      x: number,
-      z: number,
-      y0: number,
-      y1: number,
-      s: number,
-      k: THREE.Color,
-    ) => {
+    const UP: Corner = [0, 1, 0],
+      DOWN: Corner = [0, -1, 0];
+    const box = (emit: EmitVertex, x: number, z: number, y0: number, y1: number, s: number, k: THREE.Color) => {
       const h = s / 2,
         // counter-clockwise on the map, so the walls face out
         P = [
@@ -275,20 +277,26 @@ export function addBuildings(
     };
     const details = (
       { building: b, ring, yAt, base, top, hi, area, winding: wind }: BuildingShape,
-      emit: (x: number, y: number, z: number, k: THREE.Color) => void,
+      emit: EmitVertex,
     ) => {
       if (b.k === 1 || area < HOUSE_MIN_M2 || area > HOUSE_MAX_M2 || isSkipped(b.p)) return; // not the church and its tower, not sheds or barns, not one drawn elsewhere
       const m = ring.length,
         yb = hi + 0.2,
         yt = top - 0.25,
         rows = Math.max(1, Math.round((yt - yb) / STOREY));
+      // a wall's outward normal, from p to q
+      const normal = (p: { x: number; z: number }, q: { x: number; z: number }): [number, number] => {
+        const l = Math.hypot(q.x - p.x, q.z - p.z) || 1;
+        return [(wind * (q.z - p.z)) / l, (-wind * (q.x - p.x)) / l];
+      };
       for (let i = 0; i < m; i++) {
         const a = ring[i],
           d = ring[(i + 1) % m],
           ex = d.x - a.x,
           ez = d.z - a.z,
           len = Math.hypot(ex, ez);
-        if (len < 0.4) continue;
+        if (len < 1e-3) continue;
+        const short = len < 0.4; // no windows or corner boards, but the plinth and the eave still run on along it
         const ux = ex / len,
           uz = ez / len,
           ox = wind * uz,
@@ -308,26 +316,39 @@ export function addBuildings(
           yd = yAt(d),
           py = hi + 0.45,
           [w1x, w1z, w2x, w2z] = o(0, PLINTH_OUT_M),
-          [p1x, p1z, p2x, p2z] = o(PLINTH_OUT_M, PLINTH_OUT_M); // its ends run on, so the corners close
-        face(emit, PLINTH, [p1x, base, p1z], [p2x, base, p2z], [p2x, py, p2z], [p1x, py, p1z]);
-        face(emit, PLINTH, [w1x, py, w1z], [w2x, py, w2z], [p2x, py, p2z], [p1x, py, p1z]);
+          [p1x, p1z, p2x, p2z] = o(PLINTH_OUT_M, PLINTH_OUT_M), // its ends run on, so the corners close
+          OUT: Corner = [ox, 0, oz];
+        face(emit, PLINTH, OUT, [p1x, base, p1z], [p2x, base, p2z], [p2x, py, p2z], [p1x, py, p1z]);
+        face(emit, PLINTH, UP, [w1x, py, w1z], [w2x, py, w2z], [p2x, py, p2z], [p1x, py, p1z]);
         if (b.g) {
           // the roof runs on EAVE_M past the wall, falling as it rose over the last EAVE_M inside; at an eave corner it also runs
-          // on along the wall, to meet the next wall's eave, but not past the ridge
-          const runA = Math.abs(ya - top) < 0.01 ? EAVE_M : 0,
-            runD = Math.abs(yd - top) < 0.01 ? EAVE_M : 0,
+          // on along the wall to where the next wall's eave line crosses it (a mitre, so corners of any angle close), but its
+          // corners never rise above the wall's own top, which a gable askew to the ridge would otherwise do
+          const mitre = (n: [number, number], along: number) =>
+              (-EAVE_M / Math.max(0.3, 1 + ox * n[0] + oz * n[1])) * (n[0] * ux + n[1] * uz) * along,
+            runA = Math.abs(ya - top) < 0.01 ? mitre(normal(ring[(i + m - 1) % m], a), 1) : 0,
+            runD = Math.abs(yd - top) < 0.01 ? mitre(normal(d, ring[(i + 2) % m]), -1) : 0,
             slope = (yd - ya) / len,
             ax2 = a.x - ux * runA + ox * EAVE_M,
             az2 = a.z - uz * runA + oz * EAVE_M,
             dx2 = d.x + ux * runD + ox * EAVE_M,
             dz2 = d.z + uz * runD + oz * EAVE_M,
-            ya2 = 2 * ya - yAt({ x: a.x - ox * EAVE_M, z: a.z - oz * EAVE_M }) - slope * runA,
-            yd2 = 2 * yd - yAt({ x: d.x - ox * EAVE_M, z: d.z - oz * EAVE_M }) + slope * runD;
-          face(emit, c2, [a.x, ya, a.z], [d.x, yd, d.z], [dx2, yd2, dz2], [ax2, ya2, az2]);
-          face(emit, WHITE, [ax2, ya2, az2], [dx2, yd2, dz2], [dx2, yd2 - FASCIA_M, dz2], [ax2, ya2 - FASCIA_M, az2]);
+            ya2 = Math.min(ya, 2 * ya - yAt({ x: a.x - ox * EAVE_M, z: a.z - oz * EAVE_M }) - slope * runA),
+            yd2 = Math.min(yd, 2 * yd - yAt({ x: d.x - ox * EAVE_M, z: d.z - oz * EAVE_M }) + slope * runD);
+          face(emit, c2, UP, [a.x, ya, a.z], [d.x, yd, d.z], [dx2, yd2, dz2], [ax2, ya2, az2]);
           face(
             emit,
             WHITE,
+            OUT,
+            [ax2, ya2, az2],
+            [dx2, yd2, dz2],
+            [dx2, yd2 - FASCIA_M, dz2],
+            [ax2, ya2 - FASCIA_M, az2],
+          );
+          face(
+            emit,
+            WHITE,
+            DOWN,
             [a.x, ya - FASCIA_M, a.z],
             [d.x, yd - FASCIA_M, d.z],
             [dx2, yd2 - FASCIA_M, dz2],
@@ -337,9 +358,28 @@ export function addBuildings(
           const [f1x, f1z, f2x, f2z] = o(FLAT_BOARD_OUT_M, FLAT_BOARD_OUT_M),
             [g1x, g1z, g2x, g2z] = o(0, FLAT_BOARD_OUT_M),
             lo = -0.22;
-          face(emit, WHITE, [f1x, ya + lo, f1z], [f2x, yd + lo, f2z], [f2x, yd + 0.02, f2z], [f1x, ya + 0.02, f1z]);
-          face(emit, WHITE, [g1x, ya + lo, g1z], [g2x, yd + lo, g2z], [f2x, yd + lo, f2z], [f1x, ya + lo, f1z]);
+          face(
+            emit,
+            WHITE,
+            OUT,
+            [f1x, ya + lo, f1z],
+            [f2x, yd + lo, f2z],
+            [f2x, yd + 0.02, f2z],
+            [f1x, ya + 0.02, f1z],
+          );
+          face(emit, WHITE, DOWN, [g1x, ya + lo, g1z], [g2x, yd + lo, g2z], [f2x, yd + lo, f2z], [f1x, ya + lo, f1z]);
+          // and its top, back to the wall, so there's no slot to see into between it and the roof
+          face(
+            emit,
+            WHITE,
+            UP,
+            [g1x, ya + 0.02, g1z],
+            [g2x, yd + 0.02, g2z],
+            [f2x, yd + 0.02, f2z],
+            [f1x, ya + 0.02, f1z],
+          );
         }
+        if (short) continue;
         for (const [v, p, s] of [
           [a, ring[(i + m - 1) % m], 1],
           [d, ring[(i + 2) % m], -1],
@@ -349,15 +389,17 @@ export function addBuildings(
             fz = s > 0 ? v.z - p.z : p.z - v.z,
             fl = Math.hypot(fx, fz) || 1;
           if (Math.abs((fx * uz - fz * ux) / fl) < 0.3) continue;
+          // the front starts CORNER_OUT_M back past the corner, where the next wall's board stands, so the two close the corner
           const k = Math.min(0.18, len / 2),
-            cx = v.x + ox * CORNER_OUT_M,
-            cz = v.z + oz * CORNER_OUT_M,
+            cx = v.x + ox * CORNER_OUT_M - ux * s * CORNER_OUT_M,
+            cz = v.z + oz * CORNER_OUT_M - uz * s * CORNER_OUT_M,
             ex2 = v.x + ux * k * s,
             ez2 = v.z + uz * k * s,
             y1 = yAt(v) - (b.g ? FASCIA_M : 0.2);
           face(
             emit,
             WHITE,
+            OUT,
             [cx, py, cz],
             [ex2 + ox * CORNER_OUT_M, py, ez2 + oz * CORNER_OUT_M],
             [ex2 + ox * CORNER_OUT_M, y1, ez2 + oz * CORNER_OUT_M],
@@ -366,6 +408,7 @@ export function addBuildings(
           face(
             emit,
             WHITE,
+            [ux * s, 0, uz * s],
             [ex2, py, ez2],
             [ex2 + ox * CORNER_OUT_M, py, ez2 + oz * CORNER_OUT_M],
             [ex2 + ox * CORNER_OUT_M, y1, ez2 + oz * CORNER_OUT_M],
