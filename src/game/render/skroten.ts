@@ -3,6 +3,7 @@
 // The layout comes from skroten-yard.ts; the static parts are baked into one mesh, so the yard costs a handful of draw calls.
 import * as THREE from 'three';
 import { makeRnd } from '../../world/random';
+import type { BoxPart } from '../box-part';
 import {
   type Carport,
   CONTAINERS,
@@ -26,9 +27,6 @@ import {
 } from '../skroten-yard';
 import { boxGeo, carGeo, mergeGeo, type Person, paintMat, personParts } from './models';
 import { BODY_NODE, CIVILIAN_CAR_TYPES, VEHICLES } from './vehicle-registry';
-
-/** One box: size, position and colour, as boxGeo takes it. */
-type BoxPart = [sx: number, sy: number, sz: number, x: number, y: number, z: number, colour: string];
 
 const PANEL_M = 3; // a sheet of the fence, and the gap between its posts
 const SELLS_MIN_W_M = 1.5; // the SÄLJER BILAR board is left out where the fence leaves it less room than this
@@ -138,9 +136,7 @@ export class SkrotenMeshes {
         put(
           boxGeo([
             [step + 0.02, h, 0.05, 0, h / 2, 0, FENCE_COLOURS[Math.floor(rnd() * FENCE_COLOURS.length)]],
-            ...WIRE_HEIGHTS_M.map(
-              wy => [step, 0.025, 0.025, 0, wy, 0, WIRE] as [number, number, number, number, number, number, string],
-            ),
+            ...WIRE_HEIGHTS_M.map(wy => [step, 0.025, 0.025, 0, wy, 0, WIRE] as BoxPart),
           ]),
           mu,
           my,
@@ -422,7 +418,8 @@ export class SkrotenMeshes {
 
 /** Plåt-Pelle: blue overalls, a red cap with a peak, and a grey beard. Standing at the origin, facing −z. */
 function platPelle(): Person {
-  const owner = personParts('#2f4f7f', '#2f4f7f', '#b8322a');
+  // a real shadow, unlike the pedestrians: he stands still, close up, among things that all cast one, and it's 3 draw calls
+  const owner = personParts('#2f4f7f', '#2f4f7f', '#b8322a', false, true);
   owner.add(
     new THREE.Mesh(
       boxGeo([

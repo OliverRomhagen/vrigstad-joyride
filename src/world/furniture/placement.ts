@@ -1,11 +1,13 @@
 // Where street lamps, benches and waste bins stand (#144). Pure: no three.js, no DOM. OpenStreetMap objects stand where
 // they are mapped; overrides add local knowledge; documented rules fill in the rest, deterministically, and every
 // generated object is labelled `procedural`. Placement knows each kind's footprint, never how it is modelled.
-// The steps: mapped objects, override additions, lamps (lamps.ts), benches (seats.ts), bins (bins.ts), override edits.
+// The steps: mapped objects, override additions, lamps (lamps.ts), benches (seats.ts), bins (bins.ts), what the houses
+// have at their street (homes.ts, #305), override edits.
 import { FurnitureCode, RoadClass } from '../data';
 import { placeBins, TORGET_BINS } from './bins';
 import type { TorgetArea } from './context';
 import { FURNITURE, type FurnitureKind, SHORT_LAMP_EMITTER, SHORT_LAMP_MODEL } from './definitions';
+import { placeHomeItems } from './homes';
 import { lampCandidates } from './lamps';
 import type { FurnitureOverride } from './overrides';
 import {
@@ -35,6 +37,7 @@ const MAPPED_KIND: Partial<Record<FurnitureCode, FurnitureKind>> = {
   [FurnitureCode.STREET_LAMP]: 'street-lamp',
   [FurnitureCode.BENCH]: 'bench',
   [FurnitureCode.WASTE_BASKET]: 'waste-bin',
+  [FurnitureCode.STREET_CABINET]: 'street-cabinet',
 };
 /** a mapped object without a direction faces the nearest road (a lamp) or road or path (a bench or bin) within this (m) */
 const MAPPED_FACE_REACH_M = 30;
@@ -54,6 +57,7 @@ export function placeFurniture(input: FurnitureInput): FurnitureLayout {
   for (const c of lampCandidates(placer).sort(byOrder)) placer.tryPlace(c);
   const { torgetBenches, busBins } = placeBenches(placer);
   placeBins(placer, torgetBenches, busBins);
+  placeHomeItems(placer);
   return {
     placements: applyOverrideEdits(placer.placements, input.overrides ?? []),
     torget: placer.torget,
