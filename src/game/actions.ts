@@ -61,12 +61,10 @@ export interface ActionsDeps {
   pickLine(lines: readonly string[]): string;
 }
 
-// the car you got out of, while it still drives, beats a nearer car on Skroten's lot, which E would only ask the price of; only
-// that one, or a wreck, a stranger's car or one you just bought beside the row would keep you from buying the car next to it
+// a car you can get straight back into: one you got out of, while it still drives
 const enterable = (c: Car) => c.mode === 'idle' && !wrecked(c);
 
 /** What E does, and putting you back on your feet. */
-
 export class Actions {
   private readonly g: ActionsDeps;
 
@@ -75,8 +73,11 @@ export class Actions {
   }
 
   nearestCar = () => {
-    const { player, cars } = this.g;
-    return carInReach(player, cars, enterable);
+    const { player, cars } = this.g,
+      c = carInReach(player, cars);
+    // E only asks the price of a car on Skroten's lot, so the car you got out of beats a nearer one of those: you step out right
+    // beside them. Only then: anywhere else the nearest car wins, or you couldn't walk up to a car beside your own and take it
+    return c?.saleKr ? (carInReach(player, cars, enterable) ?? c) : c;
   };
   // park the car where it stands and put you on foot; the caller places you
   leaveCar = () => {

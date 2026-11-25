@@ -196,6 +196,15 @@ describe('Actions.action', () => {
     expect(t.game.pcar).toBe(yours);
   });
 
+  it('takes the nearer car over the one you got out of, away from the lot', () => {
+    const other = parked({ x: 0.9 }),
+      yours = parked({ x: -2, mode: 'idle', owned: true }),
+      t = actions({ cars: [other, yours] });
+    expect(t.a.nearestCar()).toBe(other);
+    t.a.action();
+    expect(t.game.pcar).toBe(other);
+  });
+
   it("offers the nearer car on Skroten's lot over a wreck, or a car you bought and haven't driven", () => {
     for (const other of [
       parked({ x: -2, mode: 'idle', owned: true, dmg: 999 }),

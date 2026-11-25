@@ -33,21 +33,16 @@ export interface CarNearby extends Point {
   mode: string;
 }
 
-/** The car you'd get into: the closest one within reach that isn't the police. A car that passes `preferred` beats every one
- * that doesn't, however close: you step out of your own car right beside one you can only buy. */
-export function carInReach<C extends CarNearby>(p: Point, cars: readonly C[], preferred?: (c: C) => boolean): C | null {
+/** The car you'd get into: the closest one within reach that isn't the police. With `only`, the closest of those that pass it. */
+export function carInReach<C extends CarNearby>(p: Point, cars: readonly C[], only?: (c: C) => boolean): C | null {
   let best: C | null = null,
-    bestPreferred = false,
     bd = REACH_M;
   for (const c of cars) {
-    if (c.mode === 'police') continue;
-    const d = Math.hypot(c.x - p.x, c.z - p.z),
-      isPreferred = !!preferred?.(c);
-    if (d >= REACH_M || (bestPreferred && !isPreferred)) continue;
-    if (d < bd || (isPreferred && !bestPreferred)) {
+    if (c.mode === 'police' || (only && !only(c))) continue;
+    const d = Math.hypot(c.x - p.x, c.z - p.z);
+    if (d < bd) {
       bd = d;
       best = c;
-      bestPreferred = isPreferred;
     }
   }
   return best;
