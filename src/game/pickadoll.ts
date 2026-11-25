@@ -107,7 +107,7 @@ const SPIKES_MAX = 140, // on the ground at once; the oldest go first
 type Point = { x: number; z: number };
 
 export interface PickadollDeps {
-  input: Pick<Input, 'control'>;
+  input: Pick<Input, 'addControl'>;
   canvas: Pick<HTMLCanvasElement, 'focus'>;
   $(id: string): HTMLElement;
   coarse: boolean;
@@ -174,17 +174,17 @@ export class Pickadoll {
     this.world = { groundAt: g.world.groundAt, collide: g.world.collide, people: g.crowd.npcs, cars: [] };
     // The controls, through the game's input: the left mouse button or X fires, the right one aims while held, C keeps
     // aiming on, Q changes the weapon and G the hit. A press of the trigger is kept a moment (pulledS)
-    this.trigger = g.input.control({
+    this.trigger = g.input.addControl({
       codes: ['KeyX'],
       mouseButton: MouseButton.LEFT,
       press: () => {
         this.pulledS = 0;
       },
     });
-    this.aimHold = g.input.control({ mouseButton: MouseButton.RIGHT });
-    g.input.control({ codes: ['KeyC'], press: () => this.keepAim(!this.aimKept) });
-    g.input.control({ codes: ['KeyQ'], press: () => this.nextWeapon() });
-    g.input.control({ codes: ['KeyG'], press: () => this.nextFlavour() });
+    this.aimHold = g.input.addControl({ mouseButton: MouseButton.RIGHT });
+    g.input.addControl({ codes: ['KeyC'], press: () => this.keepAim(!this.aimKept) });
+    g.input.addControl({ codes: ['KeyQ'], press: () => this.nextWeapon() });
+    g.input.addControl({ codes: ['KeyG'], press: () => this.nextFlavour() });
     const fire = document.createElement('button');
     fire.type = 'button';
     fire.id = 'p-fire';
