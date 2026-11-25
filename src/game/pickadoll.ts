@@ -1,10 +1,11 @@
 // The pickadoll lab (#17, ?lab=pickadoll): a proof of concept for trying weapons and hits side by side. You have every
 // weapon from the start; Q changes the weapon, G what a hit does, and the mouse button, X or the Fire button fires, on
-// foot and from a car. The rules are in ./sim/shots.ts and the drawing in ./render/shot-fx.ts; this file reads the
+// foot and from a car. The keys and buttons are controls it adds to the game's input (./input.ts). The rules are in ./sim/shots.ts and the drawing in ./render/shot-fx.ts; this file reads the
 // controls, shows the two HUD buttons and decides what each hit does to the world. A page module: it uses the DOM.
 import { clamp, wrap } from '../world/math';
 import type { Rnd } from '../world/random';
 import { damageCar, LIMP_AT } from './health';
+import { type Control, type Input, MouseButton } from './input';
 import type { Npc } from './pedestrians';
 import type { PlayerState } from './player';
 import type { Ragdolls } from './ragdolls';
@@ -106,8 +107,8 @@ const SPIKES_MAX = 140, // on the ground at once; the oldest go first
 type Point = { x: number; z: number };
 
 export interface PickadollDeps {
-  win: Pick<Window, 'addEventListener'>;
-  canvas: HTMLCanvasElement;
+  input: Pick<Input, 'control'>;
+  canvas: Pick<HTMLCanvasElement, 'focus'>;
   $(id: string): HTMLElement;
   coarse: boolean;
   game: Pick<GameState, 'started' | 'inCar' | 'pcar' | 'titleCardT'>;
@@ -123,7 +124,6 @@ export interface PickadollDeps {
   rnd: Rnd; // its own stream: the spread and the colours
   readonly menuOpen: boolean;
   readonly inside: boolean; // in a safehouse
-  mouseLocked(): boolean;
   toast(msg: string, secs?: number): void;
   hurtPlayer(n: number): void;
 }
@@ -155,14 +155,12 @@ export class Pickadoll {
   private readonly aimButton: HTMLButtonElement;
   private weapon = 1; // the pickadoll
   private flavour = 0;
-  private held = false; // the trigger is down
+  private readonly trigger: Control; // held while the trigger is down
+  private readonly aimHold: Control; // held while the right mouse button is
   private pulledS = -1; // s since a pull that hasn't fired yet, -1 for none: a weapon that isn't automatic fires once per pull
   private coolS = 0;
   private clockS = 0;
   private introS = INTRO_AFTER_S;
-  private mouseButtons = 0; // the mouse buttons down, as PointerEvent.buttons
-  private mouseFires = false; // the left one is down and pulled the trigger
-  private aimHeld = false; // the right mouse button is down
   private aimKept = false; // aiming was switched on with C or the Aim button
   private aimK = 0; // 0 the game's camera, 1 over the shoulder
   private aimPitch = 0; // rad above level, while aiming
@@ -174,58 +172,24 @@ export class Pickadoll {
   constructor(g: PickadollDeps) {
     this.g = g;
     this.world = { groundAt: g.world.groundAt, collide: g.world.collide, people: g.crowd.npcs, cars: [] };
-    const pull = () => {
-      this.held = true;
-      this.pulledS = 0;
-    };
-    const release = () => {
-      this.held = false;
-    };
-    // The mouse: the left button fires and the right one aims. A button pressed while another is down comes as a
-    // pointermove, not a pointerdown, and only the last one let go as a pointerup, so each is read from the buttons
-    // held (1 the left, 2 the right). The first click only takes the mouse; the ones after fire
-    const readMouse = (e: PointerEvent) => {
-      if (e.pointerType !== 'mouse') return;
-      const pressed = e.buttons & ~this.mouseButtons,
-        letGo = this.mouseButtons & ~e.buttons;
-      this.mouseButtons = e.buttons;
-      if (pressed & 1 && g.mouseLocked()) {
-        this.mouseFires = true;
-        pull();
-      }
-      if (letGo & 1 && this.mouseFires) {
-        this.mouseFires = false;
-        release();
-      }
-      if (pressed & 2 && g.mouseLocked()) this.aimHeld = true;
-      if (letGo & 2) this.aimHeld = false;
-    };
-    for (const type of ['pointerdown', 'pointermove', 'pointerup', 'pointercancel'] as const)
-      g.canvas.addEventListener(type, readMouse);
-    g.canvas.addEventListener('contextmenu', e => e.preventDefault()); // the right button aims
-    g.win.addEventListener('blur', () => {
-      release();
-      this.mouseButtons = 0;
-      this.mouseFires = this.aimHeld = false;
+    // The controls, through the game's input: the left mouse button or X fires, the right one aims while held, C keeps
+    // aiming on, Q changes the weapon and G the hit. A press of the trigger is kept a moment (pulledS)
+    this.trigger = g.input.control({
+      codes: ['KeyX'],
+      mouseButton: MouseButton.LEFT,
+      press: () => {
+        this.pulledS = 0;
+      },
     });
-    g.win.addEventListener('keydown', e => {
-      if (!g.game.started || g.menuOpen || e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
-      if ((e.target as Element | null)?.closest?.('input, textarea')) return; // the dev console, naming a pet
-      if (e.code === 'KeyX') pull();
-      else if (e.code === 'KeyQ') this.nextWeapon();
-      else if (e.code === 'KeyG') this.nextFlavour();
-      else if (e.code === 'KeyC') this.keepAim(!this.aimKept);
-    });
-    g.win.addEventListener('keyup', e => {
-      if (e.code === 'KeyX') release();
-    });
+    this.aimHold = g.input.control({ mouseButton: MouseButton.RIGHT });
+    g.input.control({ codes: ['KeyC'], press: () => this.keepAim(!this.aimKept) });
+    g.input.control({ codes: ['KeyQ'], press: () => this.nextWeapon() });
+    g.input.control({ codes: ['KeyG'], press: () => this.nextFlavour() });
     const fire = document.createElement('button');
     fire.type = 'button';
     fire.id = 'p-fire';
     fire.textContent = 'Fire';
-    fire.addEventListener('pointerdown', pull);
-    fire.addEventListener('pointerup', release);
-    fire.addEventListener('pointercancel', release);
+    this.trigger.hold(fire);
     const aim = document.createElement('button');
     aim.type = 'button';
     aim.id = 'p-aim';
@@ -385,9 +349,9 @@ export class Pickadoll {
     if (!ready || this.pulledS > PULL_KEEP_S + dt) this.pulledS = -1;
     // a throwable is held back while the trigger is down, with its arc showing, and thrown when you let go
     let thrown = false;
-    if (weapon.thrown && ready && this.held && this.coolS <= 0) this.isWindingUp = true;
+    if (weapon.thrown && ready && this.trigger.down && this.coolS <= 0) this.isWindingUp = true;
     else if (this.isWindingUp) {
-      thrown = weapon.thrown && ready && !this.held;
+      thrown = weapon.thrown && ready && !this.trigger.down;
       this.isWindingUp = false;
     }
     if (this.isWindingUp) {
@@ -406,7 +370,7 @@ export class Pickadoll {
         weapon.blastM || ARC_RING_M,
       );
     } else fx.drawArc(this.arc, 0, 0);
-    if (ready && this.coolS <= 0 && (weapon.thrown ? thrown : weapon.auto ? this.held : this.pulledS >= 0)) {
+    if (ready && this.coolS <= 0 && (weapon.thrown ? thrown : weapon.auto ? this.trigger.down : this.pulledS >= 0)) {
       this.pulledS = -1;
       this.coolS = weapon.coolS;
       this.raisedS = RAISED_S;
@@ -417,7 +381,8 @@ export class Pickadoll {
     const arms = player.mesh.arms;
     if (arms && !car && ready) {
       if (this.isWindingUp) arms[1].rotation.x = WIND_UP_RAD;
-      else if (aiming || this.raisedS > 0 || (this.held && !weapon.thrown)) arms[1].rotation.x = Math.PI / 2 + pitch;
+      else if (aiming || this.raisedS > 0 || (this.trigger.down && !weapon.thrown))
+        arms[1].rotation.x = Math.PI / 2 + pitch;
     }
 
     for (let i = this.shots.length - 1; i >= 0; i--) {
@@ -440,7 +405,7 @@ export class Pickadoll {
 
   // on foot only: from a car you aim with the car's own camera
   private get aiming() {
-    return this.ready && !this.g.game.inCar && (this.aimHeld || this.aimKept);
+    return this.ready && !this.g.game.inCar && (this.aimHold.down || this.aimKept);
   }
 
   /** The look while aiming: true when it took the mouse or the drag, so the game's camera doesn't. */
