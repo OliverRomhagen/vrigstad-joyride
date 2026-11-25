@@ -3,6 +3,7 @@
 // The layout comes from skroten-yard.ts; the static parts are baked into one mesh, so the yard costs a handful of draw calls.
 import * as THREE from 'three';
 import { makeRnd } from '../../world/random';
+import type { BoxPart } from '../box-part';
 import {
   type Carport,
   CONTAINERS,
@@ -28,9 +29,6 @@ import {
 import { boxGeo, carGeo, mergeGeo, type Person, paintMat, personParts } from './models';
 import { ringMaterial, SKROT_COLOUR } from './places';
 import { BODY_NODE, CIVILIAN_CAR_TYPES, VEHICLES } from './vehicle-registry';
-
-/** One box: size, position and colour, as boxGeo takes it. */
-type BoxPart = [sx: number, sy: number, sz: number, x: number, y: number, z: number, colour: string];
 
 const LIFT_RING_FLOAT_M = 0.02; // the lift's ring stands this far off the floor
 const PANEL_M = 3; // a sheet of the fence, and the gap between its posts
@@ -141,9 +139,7 @@ export class SkrotenMeshes {
         put(
           boxGeo([
             [step + 0.02, h, 0.05, 0, h / 2, 0, FENCE_COLOURS[Math.floor(rnd() * FENCE_COLOURS.length)]],
-            ...WIRE_HEIGHTS_M.map(
-              wy => [step, 0.025, 0.025, 0, wy, 0, WIRE] as [number, number, number, number, number, number, string],
-            ),
+            ...WIRE_HEIGHTS_M.map(wy => [step, 0.025, 0.025, 0, wy, 0, WIRE] as BoxPart),
           ]),
           mu,
           my,
@@ -204,7 +200,7 @@ export class SkrotenMeshes {
     let lowerTop = 0;
     for (const w of layout.yardCars) {
       const geo = carGeo(simpleType(w.model), w.colour),
-        y = standY(w.u, w.v) - (w.wrecked ? WRECK_SINK_M : 0),
+        y = standY(w.u, w.v) - WRECK_SINK_M, // all wrecks: the cars for sale are fleet cars
         squash = w.stack === 1 ? STACK_SQUASH : 1;
       if (w.stack === 1) {
         geo.computeBoundingBox();
@@ -372,23 +368,17 @@ export class SkrotenMeshes {
           const def = VEHICLES.find(v => v.id === id);
           if (!def) throw new Error('no model ' + id);
           const parts = flatten((await carModel(def)).clone(true)); // flatten updates its matrices: leave the shared one be
-          // the wrecks' paint is patched with rust and dirtier low down; the cars for sale keep theirs clean
-          for (const [cars, paintGeo] of [
-            [yardCars.filter(w => !w.wrecked), parts.paint],
-            [yardCars.filter(w => w.wrecked), rusted(parts.paint)],
-          ] as const) {
-            if (!cars.length) continue;
-            const body = new THREE.InstancedMesh(paintGeo, paint, cars.length),
-              trim = new THREE.InstancedMesh(parts.rest, paintMat, cars.length);
-            cars.forEach((w, i) => {
-              const m = placing(w.u, standY(w.u, w.v) - (w.wrecked ? WRECK_SINK_M : 0), w.v, w.turn, w.tilt, w.pitch);
-              body.setMatrixAt(i, m);
-              trim.setMatrixAt(i, m);
-              body.setColorAt(i, colour.set(w.colour).convertSRGBToLinear());
-            });
-            body.castShadow = trim.castShadow = body.receiveShadow = trim.receiveShadow = true;
-            group.add(body, trim);
-          }
+          // every one a wreck (the cars for sale are fleet cars): its paint patched with rust and dirtier low down
+          const body = new THREE.InstancedMesh(rusted(parts.paint), paint, yardCars.length),
+            trim = new THREE.InstancedMesh(parts.rest, paintMat, yardCars.length);
+          yardCars.forEach((w, i) => {
+            const m = placing(w.u, standY(w.u, w.v) - WRECK_SINK_M, w.v, w.turn, w.tilt, w.pitch);
+            body.setMatrixAt(i, m);
+            trim.setMatrixAt(i, m);
+            body.setColorAt(i, colour.set(w.colour).convertSRGBToLinear());
+          });
+          body.castShadow = trim.castShadow = body.receiveShadow = trim.receiveShadow = true;
+          group.add(body, trim);
         }),
       );
     } catch (e) {
@@ -449,7 +439,8 @@ function liftRing(ws: Workshop) {
 
 /** Plåt-Pelle: blue overalls, a red cap with a peak, and a grey beard. Standing at the origin, facing −z. */
 function platPelle(): Person {
-  const owner = personParts('#2f4f7f', '#2f4f7f', '#b8322a');
+  // a real shadow, unlike the pedestrians: he stands still, close up, among things that all cast one, and it's 3 draw calls
+  const owner = personParts('#2f4f7f', '#2f4f7f', '#b8322a', false, true);
   owner.add(
     new THREE.Mesh(
       boxGeo([

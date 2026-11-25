@@ -5,10 +5,16 @@ import { DMG_MAX } from './health';
 import type { Upgrade } from './sim/upgrades';
 
 export const START_KR = 200; // what you have in your pocket at the start
-export const TRISS_KR = 30,
-  TREATS_KR = 5; // a trisslott; a bag of three cat treats
-export const KORV_KR = 25,
-  RULLE_KR = 45; // korv me brö; a smålandsrulle
+/** A trisslott at the kiosk, in kr. */
+export const TRISS_KR = 30;
+/** A bag of cat treats at the kiosk, in kr. */
+export const TREATS_KR = 5;
+/** How many cat treats a bag from the kiosk holds. */
+export const TREAT_BAG = 3;
+/** A korv me brö at the kiosk, in kr. */
+export const KORV_KR = 25;
+/** A smålandsrulle at the kiosk, in kr: dearer than the korv, and it heals twice as much. */
+export const RULLE_KR = 45;
 export const RAIN_KR = 1000; // låt det regna: banknotes thrown in the air, for show
 const MYNT_KR = 1000; // what the mynt cheat adds
 const FINE_SHARE = 0.25; // Gripen! costs this share of your money, or FINE_PER_STAR_KR per star, whichever is more
@@ -33,9 +39,12 @@ export const REPAIR_MIN_KR = 50; // he picks up a spanner for no less
 export const UPGRADE_KR: Readonly<Record<Upgrade, number>> = { engine: 600, springs: 400, body: 500 };
 export const RESPRAY_KR = 150;
 
-// The trisslott vinstplan: of every TRISS_TICKETS tickets, how many win each prize, as [kr, tickets]; the rest lose.
-// One ticket in ten wins, most of them a ticket back, and about a fifth of the money comes back.
+/** How many tickets the trisslott vinstplan counts its wins in. */
 export const TRISS_TICKETS = 100_000;
+/**
+ * The trisslott vinstplan: of every TRISS_TICKETS tickets, how many win each prize, as [kr, tickets]; the rest lose.
+ * One ticket in ten wins, most of them a ticket back, and about a fifth of the money comes back.
+ */
 export const TRISS_PLAN: readonly (readonly [number, number])[] = [
   [30, 8_000],
   [60, 1_200],

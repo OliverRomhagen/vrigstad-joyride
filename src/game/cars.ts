@@ -58,7 +58,7 @@ const LOOK_PLAYER_M = 9,
   LOOK_PLAYER_SIDE_M = 1.8; // the same for you on foot
 const STUCK_S = 6,
   GHOST_S = 3; // blocked this long, a traffic car drives through what blocks it for GHOST_S
-const SPAWN_AWAY_M = 260; // new traffic and a car parked to replace a sold one appear at least this far from you
+const SPAWN_AWAY_M = 260; // new traffic, and a car parked to replace a sold one, appears at least this far from you
 const PARKED_CARS = 58; // parked when the village is built
 const SPAWN_CLEAR_M = 7; // a new car, parked or in traffic, appears at least this far from every other car (#409)
 const PARK_AWAY_TRIES = 300; // tries at a far kerbside spot before giving up
@@ -88,7 +88,6 @@ export interface Car extends Point {
   mode: CarMode;
   wet: boolean;
   owned: boolean; // you've taken it: stolen, bought or parked by the `car` command
-  bought: boolean; // you paid Plåt-Pelle for it, so a save (#77) can keep it and leave stolen cars out
   saleKr: number; // what Plåt-Pelle asks for it on Skroten's lot; 0 when it isn't for sale
   blocked: number; // traffic: s stuck behind something; then it drives through it as a ghost for `ghost` s
   ghost: number;
@@ -135,7 +134,6 @@ export function newCar(
     mode,
     wet: false,
     owned: false,
-    bought: false,
     saleKr: 0,
     blocked: 0,
     ghost: 0,
@@ -559,9 +557,11 @@ export class Fleet {
         c.x += nx * push;
         c.z += nz * push;
         if (Math.abs(c.v) > 6 && o.mode === 'police') rammed(c, o);
-        if (o.mode === 'parked' || o.mode === 'idle') {
+        // a parked car gives a little; one for sale on Skroten's lot stands like a wall, as nothing would stop it leaving the yard
+        if ((o.mode === 'parked' || o.mode === 'idle') && !o.saleKr) {
           o.x -= nx * push * 0.4;
           o.z -= nz * push * 0.4;
+          pushBodyOut(o, this.collideBuildings); // or shove by shove it would go through a wall or a fence
           placeCar(o);
         }
         c.v *= 0.05 ** dt;
