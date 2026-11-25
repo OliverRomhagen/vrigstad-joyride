@@ -233,7 +233,6 @@ describe('Skroten sells the cars on its lot', () => {
       pitch: 0,
       model,
       colour: '#1f3b6a',
-      wrecked: false,
       stack: 0,
     });
     const types: Record<string, 'volvo' | 'saab'> = { volvo240: 'volvo', saab900: 'saab', impala1970: 'volvo' },

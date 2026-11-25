@@ -60,7 +60,6 @@ export interface YardCar {
   pitch: number; // radians about its width: nose or tail down
   model: YardCarModel;
   colour: string; // sRGB: faded or rusting on a wreck, fresh on a car for sale
-  wrecked: boolean; // a wreck sags on flat tyres; a car for sale stands straight
   stack: 0 | 1 | 2; // 0 alone, 1 with another car on it (squashed a little), 2 lying on the car below
 }
 export interface Heap {
@@ -532,7 +531,6 @@ export function yardLayout(
             pitch: 0,
             model: pick(YARD_CAR_MODELS),
             colour: pick(FRESH_COLOURS),
-            wrecked: false,
             stack: 0,
           } // noses to the yard, in a straight line
         : {
@@ -543,7 +541,6 @@ export function yardLayout(
             pitch: (rnd() - 0.5) * 0.12,
             model: pick(YARD_CAR_MODELS),
             colour: pick(WRECK_COLOURS),
-            wrecked: true,
             stack: 0,
           };
       (row.fresh ? forSale : yardCars).push(below);
@@ -571,7 +568,6 @@ export function yardLayout(
       tilt: broken ? 0.16 : 0,
       pitch: broken ? -0.05 : 0,
       model: 'traktor',
-      wrecked: broken,
       stack: 0,
     });
     if (!broken) continue; // the one for sale is a car you can drive away, with no outline of its own, like the others on the lot
@@ -593,7 +589,6 @@ export function yardLayout(
         pitch: 0,
         model: pick(YARD_CAR_MODELS),
         colour: pick(FRESH_COLOURS),
-        wrecked: false,
         stack: 0,
       });
     }
