@@ -38,7 +38,7 @@ export default defineConfig({
       prerender: { handleHttpError: 'fail' },
     }),
   ],
-  // the pages are ../docs, and the infoboxes and tables read the game's own code and data from ../src
+  // the pages are ../docs, and the infoboxes and tables read the game's own code from ../src
   // 5174: the game's own dev server has 5173, and the wiki's map embed and links point at it
   server: { fs: { allow: ['..'] }, port: 5174, strictPort: true },
   resolve: {

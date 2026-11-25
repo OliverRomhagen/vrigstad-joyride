@@ -2,7 +2,7 @@ name: wiki
 
 on:
   pull_request:
-    # The wiki renders docs/ and its infoboxes and tables read the game's code and data, so a change to any of them can break
+    # The wiki renders docs/ and its infoboxes and tables read the game's code, so a change to any of them can break
     # its build: a broken link in docs/ fails the prerender. Catch it here: on main, pages.yml deploys the game without a
     # wiki that fails, and the live wiki stays behind. main runs it on every push.
     paths:
