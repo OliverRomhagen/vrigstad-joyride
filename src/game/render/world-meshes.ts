@@ -276,7 +276,7 @@ export function addBuildings(
       return paint;
     };
     const details = (
-      { building: b, ring, yAt, base, top, hi, area, winding: wind }: BuildingShape,
+      { building: b, ring, yAt, roofY, base, top, hi, area, winding: wind }: BuildingShape,
       emit: EmitVertex,
     ) => {
       if (b.k === 1 || area < HOUSE_MIN_M2 || area > HOUSE_MAX_M2 || isSkipped(b.p)) return; // not the church and its tower, not sheds or barns, not one drawn elsewhere
@@ -301,40 +301,37 @@ export function addBuildings(
           uz = ez / len,
           ox = wind * uz,
           oz = -wind * ux,
-          o = (k: number, s: number): [number, number, number, number] => [
-            a.x + ox * k - ux * s,
-            a.z + oz * k - uz * s,
-            d.x + ox * k + ux * s,
-            d.z + oz * k + uz * s,
-          ];
+          prev = normal(ring[(i + m - 1) % m], a),
+          next = normal(d, ring[(i + 2) % m]),
+          // how far a line `k` m out from this wall runs on past a corner, to where the neighbour's line `k` m out crosses
+          // it: a mitre, so corners of any angle close (none where the outline only splits at the ridge)
+          mitre = (n: [number, number], along: number, k: number) =>
+            (-k / Math.max(0.3, 1 + ox * n[0] + oz * n[1])) * (n[0] * ux + n[1] * uz) * along,
+          // the ends of that line, mitred at both corners unless `mitred` is false
+          o = (k: number, mitred = true): [number, number, number, number] => {
+            const sa = mitred ? mitre(prev, 1, k) : 0,
+              sd = mitred ? mitre(next, -1, k) : 0;
+            return [a.x + ox * k - ux * sa, a.z + oz * k - uz * sa, d.x + ox * k + ux * sd, d.z + oz * k + uz * sd];
+          };
         const nwin = Math.round(len / WIN_W); // whole windows only: the tile stretches a little to fit the wall
         if (len >= 1.6 && nwin > 0) {
-          quad(wp, ...o(0.04, 0), yb, yt, yb, yt);
+          quad(wp, ...o(0.04, false), yb, yt, yb, yt);
           wu.push(0, 0, nwin, 0, nwin, rows, 0, 0, nwin, rows, 0, rows);
         }
         const ya = yAt(a),
           yd = yAt(d),
           py = hi + 0.45,
-          [w1x, w1z, w2x, w2z] = o(0, PLINTH_OUT_M),
-          [p1x, p1z, p2x, p2z] = o(PLINTH_OUT_M, PLINTH_OUT_M), // its ends run on, so the corners close
+          [p1x, p1z, p2x, p2z] = o(PLINTH_OUT_M),
           OUT: Corner = [ox, 0, oz];
         face(emit, PLINTH, OUT, [p1x, base, p1z], [p2x, base, p2z], [p2x, py, p2z], [p1x, py, p1z]);
-        face(emit, PLINTH, UP, [w1x, py, w1z], [w2x, py, w2z], [p2x, py, p2z], [p1x, py, p1z]);
+        face(emit, PLINTH, UP, [a.x, py, a.z], [d.x, py, d.z], [p2x, py, p2z], [p1x, py, p1z]);
         if (b.g) {
-          // the roof runs on EAVE_M past the wall, falling as it rose over the last EAVE_M inside; at every corner it also runs
-          // on along the wall to where the next wall's eave line crosses it (none where the outline only splits at the ridge) (a mitre, so corners of any angle close), but its
-          // corners never rise above the wall's own top, which a gable askew to the ridge would otherwise do
-          const mitre = (n: [number, number], along: number) =>
-              (-EAVE_M / Math.max(0.3, 1 + ox * n[0] + oz * n[1])) * (n[0] * ux + n[1] * uz) * along,
-            runA = mitre(normal(ring[(i + m - 1) % m], a), 1),
-            runD = mitre(normal(d, ring[(i + 2) % m]), -1),
-            slope = (yd - ya) / len,
-            ax2 = a.x - ux * runA + ox * EAVE_M,
-            az2 = a.z - uz * runA + oz * EAVE_M,
-            dx2 = d.x + ux * runD + ox * EAVE_M,
-            dz2 = d.z + uz * runD + oz * EAVE_M,
-            ya2 = Math.min(ya, 2 * ya - yAt({ x: a.x - ox * EAVE_M, z: a.z - oz * EAVE_M }) - slope * runA),
-            yd2 = Math.min(yd, 2 * yd - yAt({ x: d.x - ox * EAVE_M, z: d.z - oz * EAVE_M }) + slope * runD);
+          // the roof runs on EAVE_M past the wall in its own plane, mitred at the corners; each corner's height comes from
+          // the corner point alone, so the two walls that meet there agree on it, and never rises above the wall's own top,
+          // which a gable askew to the ridge would otherwise do
+          const [ax2, az2, dx2, dz2] = o(EAVE_M),
+            ya2 = Math.min(ya, roofY({ x: ax2, z: az2 })),
+            yd2 = Math.min(yd, roofY({ x: dx2, z: dz2 }));
           face(emit, c2, UP, [a.x, ya, a.z], [d.x, yd, d.z], [dx2, yd2, dz2], [ax2, ya2, az2]);
           face(
             emit,
@@ -355,8 +352,7 @@ export function addBuildings(
             [ax2, ya2 - FASCIA_M, az2],
           );
         } else {
-          const [f1x, f1z, f2x, f2z] = o(FLAT_BOARD_OUT_M, FLAT_BOARD_OUT_M),
-            [g1x, g1z, g2x, g2z] = o(0, FLAT_BOARD_OUT_M),
+          const [f1x, f1z, f2x, f2z] = o(FLAT_BOARD_OUT_M),
             lo = -0.22;
           face(
             emit,
@@ -367,19 +363,20 @@ export function addBuildings(
             [f2x, yd + 0.02, f2z],
             [f1x, ya + 0.02, f1z],
           );
-          face(emit, WHITE, DOWN, [g1x, ya + lo, g1z], [g2x, yd + lo, g2z], [f2x, yd + lo, f2z], [f1x, ya + lo, f1z]);
+          face(emit, WHITE, DOWN, [a.x, ya + lo, a.z], [d.x, yd + lo, d.z], [f2x, yd + lo, f2z], [f1x, ya + lo, f1z]);
           // and its top, back to the wall, so there's no slot to see into between it and the roof
           face(
             emit,
             WHITE,
             UP,
-            [g1x, ya + 0.02, g1z],
-            [g2x, yd + 0.02, g2z],
+            [a.x, ya + 0.02, a.z],
+            [d.x, yd + 0.02, d.z],
             [f2x, yd + 0.02, f2z],
             [f1x, ya + 0.02, f1z],
           );
         }
         if (short) continue;
+        const board = o(CORNER_OUT_M);
         for (const [v, p, s] of [
           [a, ring[(i + m - 1) % m], 1],
           [d, ring[(i + 2) % m], -1],
@@ -389,10 +386,10 @@ export function addBuildings(
             fz = s > 0 ? v.z - p.z : p.z - v.z,
             fl = Math.hypot(fx, fz) || 1;
           if (Math.abs((fx * uz - fz * ux) / fl) < 0.3) continue;
-          // the front starts CORNER_OUT_M back past the corner, where the next wall's board stands, so the two close the corner
+          // the front starts at the mitre with the next wall's board, so the two close the corner
           const k = Math.min(0.18, len / 2),
-            cx = v.x + ox * CORNER_OUT_M - ux * s * CORNER_OUT_M,
-            cz = v.z + oz * CORNER_OUT_M - uz * s * CORNER_OUT_M,
+            cx = board[s > 0 ? 0 : 2],
+            cz = board[s > 0 ? 1 : 3],
             ex2 = v.x + ux * k * s,
             ez2 = v.z + uz * k * s,
             y1 = yAt(v) - (b.g ? FASCIA_M : 0.2);

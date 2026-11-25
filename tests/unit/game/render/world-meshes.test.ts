@@ -80,16 +80,19 @@ describe('house trim', () => {
       o => o instanceof THREE.Mesh && (o.material as THREE.Material & { vertexColors: boolean }).vertexColors,
     ) as THREE.Mesh;
     const pos = shells.geometry.getAttribute('position');
-    // the overhang's mitred corner, EAVE_M (0.35 m) out from both walls
-    const reaches = (x: number, z: number) => {
-      for (let i = 0; i < pos.count; i++) if (Math.hypot(pos.getX(i) - x, pos.getZ(i) - z) < 0.05) return true;
-      return false;
+    // the overhang's mitred corner, EAVE_M (0.35 m) out from both walls: what both walls' overhangs put there is the roof's
+    // edge and the fascia's foot FASCIA_M (0.15 m) under it, so the heights span exactly that when the two walls agree
+    const span = (x: number, z: number) => {
+      const ys: number[] = [];
+      for (let i = 0; i < pos.count; i++) if (Math.hypot(pos.getX(i) - x, pos.getZ(i) - z) < 0.05) ys.push(pos.getY(i));
+      return ys.length ? Math.max(...ys) - Math.min(...ys) : -1;
     };
-    expect([reaches(-0.35, -0.35), reaches(10.35, -0.35), reaches(10.35, 10.37), reaches(-0.35, 10.39)]).toEqual([
-      true,
-      true,
-      true,
-      true,
-    ]);
+    for (const [x, z] of [
+      [-0.35, -0.35],
+      [10.35, -0.35],
+      [10.35, 10.37],
+      [-0.35, 10.39],
+    ])
+      expect(span(x, z), `at (${x}, ${z})`).toBeCloseTo(0.15, 3);
   });
 });
