@@ -46,8 +46,9 @@ type Fit = {
   quaternion: THREE.Quaternion;
   scale: THREE.Vector3;
 } | null;
-// a card per end; `on`: the shape they show on now; `fits`: each shape's fit, worked out once, as a car swaps its model in and out often
-type Tag = { cards: THREE.Mesh[]; on: THREE.Object3D; kr: number; fits: Map<THREE.Object3D, Fit[]> };
+// a card per end; `on`: the shape they show on now; `fits`: each shape's fit, worked out once, as a car swaps its model in and out often.
+// A lot car's price never changes (crashes spare it), so only a new shape makes the cards stale.
+type Tag = { cards: THREE.Mesh[]; on: THREE.Object3D; fits: Map<THREE.Object3D, Fit[]> };
 
 /** The cards; `update` adds, fits and takes them away. */
 export class PriceTags {
@@ -69,13 +70,12 @@ export class PriceTags {
     for (const c of this.g.cars) {
       if (!c.saleKr) continue;
       const shape = this.g.visibleModel(c) ?? c.body,
-        kr = c.saleKr,
         tag = this.tags.get(c);
-      if (tag?.on === shape && tag.kr === kr) continue;
+      if (tag?.on === shape) continue;
       const cards =
           tag?.cards ??
           ENDS.map(() => {
-            const card = new THREE.Mesh(this.geo);
+            const card = new THREE.Mesh(this.geo, this.material(c.saleKr));
             card.receiveShadow = true; // under the carport roof, in the car's shade
             return card;
           }),
@@ -88,8 +88,6 @@ export class PriceTags {
       ENDS.forEach((_end, i) => {
         const card = cards[i]!,
           fit = shapeFits[i];
-        card.visible = !!(fit && kr);
-        if (kr) card.material = this.material(kr);
         if (!fit) {
           card.removeFromParent();
           return;
@@ -99,7 +97,7 @@ export class PriceTags {
         card.scale.copy(fit.scale);
         fit.parent.add(card);
       });
-      this.tags.set(c, { cards, on: shape, kr, fits });
+      this.tags.set(c, { cards, on: shape, fits });
     }
   }
 
