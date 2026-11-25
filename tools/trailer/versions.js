@@ -21,7 +21,9 @@ const HOOK = `window.__G = { ${NAMES.map(n => `get ${n}() { return ${has(n)} ? $
   wanted: ${has('wanted')} ? wanted : { get police() { return police; }, get stars() { return stars; }, addStar(msg) { return addStar(msg); } } };\n`;
 // After the split of main.ts (#177) and before capture-hook.ts, main.ts builds the modules and ends with `loop.start();`. Just before
 // it goes what capture-hook.ts does: the same names on window.__G, read the same way, and window.__cam called as each frame is drawn.
-// Each value is read in a try, so a name a release doesn't have reads as undefined; the rest come from the modules' own exports.
+// The names that moved into modules or changed in these releases are read in a try (v), so one a release doesn't have reads as
+// undefined; the bare ones (game, view, wanted, …) are in every release that ends with `loop.start();` (alpha.5 on, all with
+// src/game/state.ts), and the rest come from the modules' own exports.
 const LOOP = '\nloop.start();\n';
 const SPLIT_IMPORTS = "import * as __roads from '../world/roads'; import * as __stage from './render/stage'; import * as __economy from './economy';\n";
 const SPLIT_HOOK = `
