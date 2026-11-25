@@ -148,6 +148,8 @@ line.
 2. **E only picks.** `Actions.action` looks at where you stand: inside a house, at a cat, at the kiosk, in a car, beside
    one. For getting in or out it runs `commands.run('enter', 'input')` and does nothing else, so a key press, a typed
    `enter` and a test's `commands.run('enter', 'test')` reach the same rule through the same hooks.
+   E shows nothing of the line that comes back: what the player needs to see, the rule shows itself (a toast). So a
+   hook that refuses an `input` call has to say why itself, or the key press does nothing in silence.
 3. **The hooks see it** as `{ name: 'enter', args: [], source: 'input' }`. That call is all a replay or another player
    needs (#361, #1), and what a tutorial waits for.
 

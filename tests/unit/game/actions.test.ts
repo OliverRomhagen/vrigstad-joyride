@@ -322,20 +322,22 @@ describe('enter and exit as commands', () => {
     expect(t.ran).toEqual(['enter from test', 'enter from test']);
   });
 
-  it('enter says why not: no car, a car for sale, inside a house, or the game not running', () => {
+  it('enter says why not: no car, a car for sale, inside a house, a menu open, or the game not running', () => {
     expect(actions().commands.run('enter')).toBe('No car in reach.');
     const lot = actions({ cars: [parked({ saleKr: 2000 })] });
     expect(lot.commands.run('enter')).toBe('The Volvo is for sale at Skroten.');
     expect(lot.calls).toEqual([]); // the price is what E asks, not what enter does
     const home = actions({ cars: [parked()], inside: { kind: 'safe', name: 'Storgatan', x: 0, z: 0 } });
     expect(home.commands.run('enter')).toBe('You are inside a house.');
+    const shopping = actions({ cars: [parked()], menuOpen: true });
+    expect(shopping.commands.run('enter')).toBe('Close the menu first.');
     const waiting = actions({ cars: [parked()] });
     waiting.game.started = false;
     expect(waiting.commands.run('enter')).toBe('Not now: the game is not running.');
     waiting.game.started = true;
     waiting.game.titleCardT = 1;
     expect(waiting.commands.run('exit')).toBe('Not now: the game is not running.');
-    for (const t of [lot, home, waiting]) expect(t.game.inCar).toBe(false);
+    for (const t of [lot, home, shopping, waiting]) expect(t.game.inCar).toBe(false);
   });
 
   it('exit gets you out, and says so when you are on foot or too fast', () => {

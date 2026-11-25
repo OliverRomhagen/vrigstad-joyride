@@ -193,6 +193,7 @@ export class Actions {
       player,
       places,
       wanted,
+      menuOpen,
       showPlayer,
       rnd,
       pick,
@@ -204,8 +205,10 @@ export class Actions {
       drawStolen,
       pickLine,
     } = this.g;
+    // E checks these before it picks, but a typed line, a script or a test gets here without E
     if (!game.started || game.titleCardT > 0) return NOT_NOW;
     if (places.inside) return 'You are inside a house.';
+    if (menuOpen()) return 'Close the menu first.';
     if (game.inCar) return 'You are already in the ' + carName(game.pcar!) + '.';
     const c = this.nearestCar();
     if (!c) return 'No car in reach.';
