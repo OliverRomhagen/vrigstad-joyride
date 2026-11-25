@@ -42,6 +42,11 @@ let { data } = $props();
   <h2>From the game</h2>
   <ul class="cards">
     {@render card(resolve('/map'), 'The map', 'Vrigstad in 3D, built from the same data the game drives on.')}
+    {@render card(
+      resolve('/garage'),
+      'The garage',
+      "Every car in the game on Plåt-Pelle's ring, with the numbers it drives by.",
+    )}
   </ul>
 </section>
 

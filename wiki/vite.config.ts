@@ -15,8 +15,8 @@ export default defineConfig({
       templates: { default: '/src/lib/Page.svelte' },
       // docs/ links pages as files ([Torget](../places/torget.md)), so the links also work on GitHub; the wiki's route
       // for a page is its path without .md, so the same relative link works here once the extension goes. A page that
-      // isn't in docs/ (the map) is linked by its address on the live wiki, which GitHub can follow too; here it
-      // becomes a path under the wiki's own base path, so a preview links to its own map and the prerender checks it.
+      // isn't in docs/ (the garage, the map) is linked by its address on the live wiki, which GitHub can follow too; here it
+      // becomes a path under the wiki's own base path, so a preview links to its own garage and the prerender checks it.
       rewrite: (url, { type }) => {
         if (type !== 'link') return undefined;
         if (url.startsWith(LIVE_WIKI)) return `${process.env.BASE_PATH ?? ''}/${url.slice(LIVE_WIKI.length)}`;
@@ -38,11 +38,11 @@ export default defineConfig({
       prerender: { handleHttpError: 'fail' },
     }),
   ],
-  // the pages are ../docs, and the infoboxes and tables read the game's own code and data from ../src
+  // the pages are ../docs, and the garage reads the game's own data from ../src
   // 5174: the game's own dev server has 5173, and the wiki's map embed and links point at it
   server: { fs: { allow: ['..'] }, port: 5174, strictPort: true },
   resolve: {
-    // the game's own code, which the infoboxes and tables show, its world code, data and fonts: one path to each, so a move in src/ or
+    // the game's own code, which the garage shows, its world code, data and fonts: one path to each, so a move in src/ or
     // data/ is an edit here and in tsconfig.json (for tsc and Fallow), and for #game/ also in the root's vitest.config.ts
     // and tsconfig.tests.json. A Vite alias, as SvelteKit's `alias` is deprecated and a subpath import can't leave wiki/
     alias: [

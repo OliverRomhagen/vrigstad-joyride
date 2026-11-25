@@ -2,7 +2,7 @@ name: wiki
 
 on:
   pull_request:
-    # The wiki renders docs/ and its infoboxes and tables read the game's code and data, so a change to any of them can break
+    # The wiki renders docs/ and the garage reads the game's code, data and models, so a change to any of them can break
     # its build: a broken link in docs/ fails the prerender. Catch it here: on main, pages.yml deploys the game without a
     # wiki that fails, and the live wiki stays behind. main runs it on every push.
     paths:
@@ -33,7 +33,7 @@ jobs:
           cache-dependency-path: |
             package-lock.json
             wiki/package-lock.json
-      # the root's packages too: the infoboxes import the game's modules, which import three from there
+      # the root's packages too: the garage imports the game's modules, which import three from there
       - run: npm ci
       - run: npm ci --prefix wiki
       # types and Svelte's own checks, which the build doesn't do
