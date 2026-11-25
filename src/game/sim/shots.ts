@@ -287,8 +287,8 @@ export function stepShot(s: Shot, dt: number, world: ShotWorld, out: ShotHit): S
       // a shot with a fuse that is out of bounces or speed lies where it stopped until the fuse runs out
       if (!hit.bounced && fuseS && hit.kind !== 'person') {
         s.x = hit.x + hit.nx * BOUNCE_CLEAR_M;
-        s.y = world.groundAt(s.x, s.z);
         s.z = hit.z + hit.nz * BOUNCE_CLEAR_M;
+        s.y = world.groundAt(s.x, s.z);
         s.vx = s.vy = s.vz = 0;
         s.lying = true;
         hit.bounced = true;
@@ -332,8 +332,14 @@ function bounce(s: Shot, hit: ShotHit): boolean {
   return true;
 }
 
-// what the shot touches where it is now, if anything
-function hitAt(s: Shot, world: ShotWorld, out: ShotHit): ShotHit | null {
+// what the shot touches where it is now, if anything. `people` and `cars` narrow it to those indices in the world's lists
+function hitAt(
+  s: Shot,
+  world: ShotWorld,
+  out: ShotHit,
+  people?: readonly number[],
+  cars?: readonly number[],
+): ShotHit | null {
   const flat = Math.hypot(s.vx, s.vz) || 1;
   out.x = s.x;
   out.y = s.y;
@@ -343,15 +349,17 @@ function hitAt(s: Shot, world: ShotWorld, out: ShotHit): ShotHit | null {
   out.target = -1;
   const ground = world.groundAt(s.x, s.z),
     up = s.y - ground;
-  for (let i = 0; i < world.people.length; i++) {
-    const p = world.people[i];
+  for (let k = 0, n = people ? people.length : world.people.length; k < n; k++) {
+    const i = people ? people[k] : k,
+      p = world.people[i];
     if (p.down || up > PERSON_TALL_M * p.scale) continue;
     if (Math.hypot(p.x - s.x, p.z - s.z) > PERSON_RADIUS_M * p.scale) continue;
     return surface(out, 'person', i, -out.dx, 0, -out.dz);
   }
   if (up < CAR_TALL_M)
-    for (let i = 0; i < world.cars.length; i++) {
-      const c = world.cars[i];
+    for (let k = 0, n = cars ? cars.length : world.cars.length; k < n; k++) {
+      const i = cars ? cars[k] : k,
+        c = world.cars[i];
       if (Math.abs(c.x - s.x) > c.T.lengthM || Math.abs(c.z - s.z) > c.T.lengthM) continue;
       nearestOnSpine(c, s.x, s.z, _onCar);
       const ex = s.x - _onCar.x,
@@ -446,6 +454,19 @@ export function flightPath(s: Shot, world: ShotWorld, stepS: number, max: number
   return n;
 }
 
+const _nearPeople: number[] = [],
+  _nearCars: number[] = [];
+const SIGHT_CAR_REACH = 1.5; // a car can be met within this many of its lengths from its middle: hitAt's box, corner to corner
+
+// how far (x, z) is from the line from (ax, az) to (bx, bz), along the ground
+function offLine(x: number, z: number, ax: number, az: number, bx: number, bz: number) {
+  const ex = bx - ax,
+    ez = bz - az,
+    len2 = ex * ex + ez * ez,
+    t = len2 > 0 ? Math.min(1, Math.max(0, ((x - ax) * ex + (z - az) * ez) / len2)) : 0;
+  return Math.hypot(x - ax - ex * t, z - az - ez * t);
+}
+
 const _sight: Shot = { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, ageS: 0, weapon: 0, bounced: 0, lifeS: 0, lying: false };
 
 /**
@@ -469,11 +490,25 @@ export function sight(
   s.vx = dx;
   s.vy = dy;
   s.vz = dz;
+  // only who and what stands near the line can be met: found once, so each step along it tests a few, not everyone
+  const ax = x + dx * fromM,
+    az = z + dz * fromM,
+    bx = x + dx * toM,
+    bz = z + dz * toM;
+  _nearPeople.length = _nearCars.length = 0;
+  for (let i = 0; i < world.people.length; i++) {
+    const p = world.people[i];
+    if (!p.down && offLine(p.x, p.z, ax, az, bx, bz) <= PERSON_RADIUS_M * p.scale) _nearPeople.push(i);
+  }
+  for (let i = 0; i < world.cars.length; i++) {
+    const c = world.cars[i];
+    if (offLine(c.x, c.z, ax, az, bx, bz) <= c.T.lengthM * SIGHT_CAR_REACH) _nearCars.push(i);
+  }
   for (let d = fromM; d <= toM; d += STEP_M) {
     s.x = x + dx * d;
     s.y = y + dy * d;
     s.z = z + dz * d;
-    if (hitAt(s, world, out)) return true;
+    if (hitAt(s, world, out, _nearPeople, _nearCars)) return true;
   }
   surface(out, 'ground', -1, 0, 1, 0);
   out.x = x + dx * toM;

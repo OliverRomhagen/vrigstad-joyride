@@ -215,6 +215,19 @@ describe('a thrown shot with a fuse', () => {
   });
 });
 
+describe('a grenade at rest', () => {
+  it('lies on the ground where it stopped, on a slope too', () => {
+    const GRANAT = WEAPONS.findIndex(w => w.id === 'granat'),
+      // a hill that rises to the north and to the east
+      w = world({ collide: () => false, groundAt: (x, z) => -z * 0.3 + x * 0.2 }),
+      s = { ...shot(GRANAT), vx: 3 },
+      out = newHit();
+    for (let i = 0; i < 600 && !s.lying; i++) stepShot(s, 1 / 60, w, out);
+    expect(s.lying).toBe(true);
+    expect(s.y).toBeCloseTo(w.groundAt(s.x, s.z), 6);
+  });
+});
+
 describe('flightPath', () => {
   it('ends where the shot itself lands, with the points on its way there', () => {
     const w = world({ collide: () => false }),
@@ -258,6 +271,22 @@ describe('sight', () => {
     sight(0, 1.5, 0, 0, 0, -1, 0, 100, world({ people }), out);
     expect(out.kind).toBe('person');
     sight(0, 1.5, 0, 0, 0, -1, 5, 100, world({ people }), out);
+    expect(out.kind).toBe('wall');
+  });
+
+  it('names who it meets among many, and none of those beside the line', () => {
+    const people = [
+        { x: 3, z: -6, scale: 1 }, // beside the line
+        { x: 0, z: -40, scale: 1 }, // behind the wall
+        { x: 0.2, z: -9, scale: 1 }, // on it
+        { x: 0, z: -4, scale: 1, down: true }, // lying down: looked over
+      ],
+      cars = [{ x: 9, z: -8, h: 0, T }], // parked well to the side
+      out = newHit();
+    expect(sight(0, 1.5, 0, 0, 0, -1, 0, 100, world({ people, cars }), out)).toBe(true);
+    expect(out).toMatchObject({ kind: 'person', target: 2 });
+    people[2].x = 1; // step aside, and the line goes on to the wall
+    sight(0, 1.5, 0, 0, 0, -1, 0, 100, world({ people, cars }), out);
     expect(out.kind).toBe('wall');
   });
 

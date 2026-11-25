@@ -4,6 +4,7 @@
 // controls, shows the two HUD buttons and decides what each hit does to the world. A page module: it uses the DOM.
 import { clamp, wrap } from '../world/math';
 import type { Rnd } from '../world/random';
+import { damageCar, LIMP_AT } from './health';
 import type { Npc } from './pedestrians';
 import type { PlayerState } from './player';
 import type { Ragdolls } from './ragdolls';
@@ -57,8 +58,7 @@ const INTRO_AFTER_S = 5.5; // the lab's own line comes this long after Start, on
 const PANG_THROW_MS = 5, // a person leaves at this, plus PANG_THROW_PER_POWER_MS for each point of the weapon's power
   PANG_THROW_PER_POWER_MS = 2.5,
   PANG_CAR_SHOVE_M = 0.14, // a parked car slides this far per point of power
-  PANG_CAR_DMG = 2, // and takes this much damage per point of power
-  CAR_DMG_MAX = 100;
+  PANG_CAR_DMG = 2; // and takes this much damage per point of power
 const SCUFF = '#2b2b2b'; // the mark a pang hit leaves
 const STARE_S = 2.5; // someone hit by gegga stops and looks at you this long
 const DANCE_S = 6,
@@ -94,7 +94,7 @@ const SPIKES_MAX = 140, // on the ground at once; the oldest go first
   SPIKE_STEP_M = 0.55, // a foot within this of one steps on it
   SPIKE_WHEEL_M = 1.3, // a car's middle within this of one drives over it
   SPIKE_CAR_MIN_MS = 1, // a car standing on one is fine until it rolls
-  PUNCTURE_DMG = 80, // a puncture is this much damage at least: the car limps (health.ts, LIMP_AT)
+  PUNCTURE_DMG = LIMP_AT + 30, // a puncture is this much damage at least: well past where a car starts to limp
   LIMP_S = 6, // someone who stepped on one limps this long,
   LIMP_SPEED = 0.35, // at this share of their speed,
   LIMP_HOP_M = 0.14, // hopping this high,
@@ -138,19 +138,21 @@ export class Pickadoll {
   private spikeHurtS = 0; // s until a fotangel can hurt you again
   private readonly arc: number[] = [];
   private readonly arcEnd = newHit();
-  private wound = false; // a throw is held back, its arc showing
+  private isWindingUp = false; // a throw is held back, its arc showing
   private raisedS = 0; // s the arm stays up
   private markS = 0; // s the crosshair's hit ticks stay on
-  private marked = 0; // hits on a person or a car, for the test hook
+  private markedHits = 0; // hits on a person or a car, for the test hook
   private readonly hit = newHit();
   private readonly aimHit = newHit();
   private readonly line = { x: 0, y: 0, z: 0, dx: 0, dy: 0, dz: -1 };
   private readonly aim = { yaw: 0, pitch: 0 };
   private readonly probe = { x: 0, z: 0 };
+  private readonly muzzle = { x: 0, y: 0, z: 0 }; // where a shot leaves from this frame
   private readonly crosshair: HTMLElement;
   private readonly world: ShotWorld & { cars: RenderedCar[] };
   private readonly weaponButton: HTMLButtonElement;
   private readonly flavourButton: HTMLButtonElement;
+  private readonly aimButton: HTMLButtonElement;
   private weapon = 1; // the pickadoll
   private flavour = 0;
   private held = false; // the trigger is down
@@ -158,6 +160,8 @@ export class Pickadoll {
   private coolS = 0;
   private clockS = 0;
   private introS = INTRO_AFTER_S;
+  private mouseButtons = 0; // the mouse buttons down, as PointerEvent.buttons
+  private mouseFires = false; // the left one is down and pulled the trigger
   private aimHeld = false; // the right mouse button is down
   private aimKept = false; // aiming was switched on with C or the Aim button
   private aimK = 0; // 0 the game's camera, 1 over the shoulder
@@ -177,22 +181,32 @@ export class Pickadoll {
     const release = () => {
       this.held = false;
     };
-    // the first click only takes the mouse; the ones after fire
-    g.canvas.addEventListener('pointerdown', e => {
-      if (e.pointerType === 'mouse' && e.button === 0 && g.mouseLocked()) pull();
-    });
-    g.canvas.addEventListener('pointerup', e => {
+    // The mouse: the left button fires and the right one aims. A button pressed while another is down comes as a
+    // pointermove, not a pointerdown, and only the last one let go as a pointerup, so each is read from the buttons
+    // held (1 the left, 2 the right). The first click only takes the mouse; the ones after fire
+    const readMouse = (e: PointerEvent) => {
       if (e.pointerType !== 'mouse') return;
-      if (e.button === 2) this.aimHeld = false;
-      else release();
-    });
-    g.canvas.addEventListener('pointerdown', e => {
-      if (e.pointerType === 'mouse' && e.button === 2 && g.mouseLocked()) this.aimHeld = true;
-    });
+      const pressed = e.buttons & ~this.mouseButtons,
+        letGo = this.mouseButtons & ~e.buttons;
+      this.mouseButtons = e.buttons;
+      if (pressed & 1 && g.mouseLocked()) {
+        this.mouseFires = true;
+        pull();
+      }
+      if (letGo & 1 && this.mouseFires) {
+        this.mouseFires = false;
+        release();
+      }
+      if (pressed & 2 && g.mouseLocked()) this.aimHeld = true;
+      if (letGo & 2) this.aimHeld = false;
+    };
+    for (const type of ['pointerdown', 'pointermove', 'pointerup', 'pointercancel'] as const)
+      g.canvas.addEventListener(type, readMouse);
     g.canvas.addEventListener('contextmenu', e => e.preventDefault()); // the right button aims
     g.win.addEventListener('blur', () => {
       release();
-      this.aimHeld = false;
+      this.mouseButtons = 0;
+      this.mouseFires = this.aimHeld = false;
     });
     g.win.addEventListener('keydown', e => {
       if (!g.game.started || g.menuOpen || e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
@@ -200,7 +214,7 @@ export class Pickadoll {
       if (e.code === 'KeyX') pull();
       else if (e.code === 'KeyQ') this.nextWeapon();
       else if (e.code === 'KeyG') this.nextFlavour();
-      else if (e.code === 'KeyC') this.aimKept = !this.aimKept;
+      else if (e.code === 'KeyC') this.keepAim(!this.aimKept);
     });
     g.win.addEventListener('keyup', e => {
       if (e.code === 'KeyX') release();
@@ -216,10 +230,10 @@ export class Pickadoll {
     aim.type = 'button';
     aim.id = 'p-aim';
     aim.textContent = 'Aim';
-    aim.addEventListener('click', () => {
-      this.aimKept = !this.aimKept;
-      aim.setAttribute('aria-pressed', String(this.aimKept));
-    });
+    aim.setAttribute('aria-pressed', 'false');
+    aim.setAttribute('aria-keyshortcuts', 'C');
+    aim.addEventListener('click', () => this.keepAim(!this.aimKept));
+    this.aimButton = aim;
     g.$('pad').prepend(fire, aim);
     this.crosshair = document.createElement('div');
     this.crosshair.id = 'lab-crosshair';
@@ -258,6 +272,12 @@ export class Pickadoll {
     label(this.flavourButton, 'G', HIT_FLAVOURS[this.flavour].name);
   }
 
+  // C and the Aim button switch aiming on until they switch it off
+  private keepAim(on: boolean) {
+    this.aimKept = on;
+    this.aimButton.setAttribute('aria-pressed', String(on));
+  }
+
   private nextWeapon() {
     this.weapon = (this.weapon + 1) % WEAPONS.length;
     this.coolS = 0;
@@ -274,7 +294,7 @@ export class Pickadoll {
     return {
       fired: this.fired,
       hits: this.hits,
-      marked: this.marked,
+      markedHits: this.markedHits,
       splats: this.g.fx.splatted,
       weapon: WEAPONS[this.weapon].id,
       flavour: HIT_FLAVOURS[this.flavour].id,
@@ -325,9 +345,15 @@ export class Pickadoll {
       player.mesh.rotation.y = -player.h;
     }
     // what is under the crosshair: the line of sight from the camera, looked along from where it passes you
+    // The muzzle: at your right side while you aim (you face the way the camera looks then), and up with you in a
+    // jump. The aim is worked out from it, not from your middle, or a shot would pass beside what is under the crosshair
+    const side = this.aimK * AIM_MUZZLE_SIDE_M,
+      muzzle = this.muzzle;
+    muzzle.x = from.x + Math.cos(view.camYaw) * side;
+    muzzle.z = from.z + Math.sin(view.camYaw) * side;
+    muzzle.y = this.g.world.groundAt(from.x, from.z) + (car ? 0 : Math.max(0, player.y)) + MUZZLE_M;
     const line = fx.sightLine(crossY, this.line),
-      muzzleY = this.g.world.groundAt(from.x, from.z) + MUZZLE_M,
-      pastM = Math.hypot(from.x - line.x, muzzleY - line.y, from.z - line.z),
+      pastM = Math.hypot(muzzle.x - line.x, muzzle.y - line.y, muzzle.z - line.z),
       seen = sight(line.x, line.y, line.z, line.dx, line.dy, line.dz, pastM, pastM + SIGHT_M, this.world, this.aimHit);
     let tx = this.aimHit.x,
       ty = this.aimHit.y,
@@ -349,7 +375,7 @@ export class Pickadoll {
         onTarget = true;
       }
     }
-    const { yaw, pitch } = aimAt(weapon.speedMs, from.x, muzzleY, from.z, tx, ty, tz, this.aim);
+    const { yaw, pitch } = aimAt(weapon.speedMs, muzzle.x, muzzle.y, muzzle.z, tx, ty, tz, this.aim);
     this.crosshair.hidden = !ready;
     this.crosshair.classList.toggle('on', onTarget);
     this.markS -= dt;
@@ -359,24 +385,21 @@ export class Pickadoll {
     if (!ready || this.pulledS > PULL_KEEP_S + dt) this.pulledS = -1;
     // a throwable is held back while the trigger is down, with its arc showing, and thrown when you let go
     let thrown = false;
-    if (weapon.thrown && ready && this.held && this.coolS <= 0) this.wound = true;
-    else if (this.wound) {
+    if (weapon.thrown && ready && this.held && this.coolS <= 0) this.isWindingUp = true;
+    else if (this.isWindingUp) {
       thrown = weapon.thrown && ready && !this.held;
-      this.wound = false;
+      this.isWindingUp = false;
     }
-    if (this.wound) {
-      const side = this.aimK * AIM_MUZZLE_SIDE_M,
-        flown = {
-          x: from.x + Math.cos(yaw) * side,
-          y: muzzleY,
-          z: from.z + Math.sin(yaw) * side,
-          ...aimShot(weapon, yaw, pitch),
-          ageS: 0,
-          bounced: 0,
-          lifeS: 0,
-          lying: false,
-          weapon: this.weapon,
-        };
+    if (this.isWindingUp) {
+      const flown = {
+        ...muzzle,
+        ...aimShot(weapon, yaw, pitch),
+        ageS: 0,
+        bounced: 0,
+        lifeS: 0,
+        lying: false,
+        weapon: this.weapon,
+      };
       fx.drawArc(
         this.arc,
         flightPath(flown, this.world, ARC_STEP_S, ARC_POINTS, this.arc, this.arcEnd),
@@ -387,13 +410,13 @@ export class Pickadoll {
       this.pulledS = -1;
       this.coolS = weapon.coolS;
       this.raisedS = RAISED_S;
-      this.fire(from, car, yaw, pitch);
+      this.fire(car, yaw, pitch);
     }
     // the stance, drawn over the walk's arm swing: the right arm along the aim, or back for a throw
     this.raisedS -= dt;
     const arms = player.mesh.arms;
     if (arms && !car && ready) {
-      if (this.wound) arms[1].rotation.x = WIND_UP_RAD;
+      if (this.isWindingUp) arms[1].rotation.x = WIND_UP_RAD;
       else if (aiming || this.raisedS > 0 || (this.held && !weapon.thrown)) arms[1].rotation.x = Math.PI / 2 + pitch;
     }
 
@@ -470,21 +493,18 @@ export class Pickadoll {
   private readonly colourOf = (s: { seed: number; flavour: HitFlavour }) =>
     s.flavour === 'gegga' ? GEGGA[Math.floor(s.seed * GEGGA.length)] : s.flavour === 'dans' ? DANCE_COLOUR : SCUFF;
 
-  private fire(from: Point, car: RenderedCar | null, yaw: number, pitch: number) {
-    const { rnd, player, world } = this.g,
+  private fire(car: RenderedCar | null, yaw: number, pitch: number) {
+    const { rnd, player } = this.g,
       weapon = WEAPONS[this.weapon],
       flavour = HIT_FLAVOURS[this.flavour].id;
     if (!car) player.h = yaw; // you turn to face where you fire
-    const side = this.aimK * AIM_MUZZLE_SIDE_M;
     // a shot from a moving car keeps the car's speed
     const cvx = car ? Math.sin(car.vh) * car.v : 0,
       cvz = car ? -Math.cos(car.vh) * car.v : 0;
     for (let i = 0; i < weapon.pellets && this.shots.length < SHOTS_MAX; i++) {
       const v = aimShot(weapon, yaw, pitch, rnd() * 2 - 1, rnd() * 2 - 1);
       this.shots.push({
-        x: from.x + Math.cos(yaw) * side,
-        y: world.groundAt(from.x, from.z) + MUZZLE_M,
-        z: from.z + Math.sin(yaw) * side,
+        ...this.muzzle,
         vx: v.vx + cvx,
         vy: v.vy,
         vz: v.vz + cvz,
@@ -556,7 +576,7 @@ export class Pickadoll {
 
   // tells you a shot landed on someone or something that counts, however far off it was
   private mark() {
-    this.marked++;
+    this.markedHits++;
     this.markS = HIT_MARK_S;
   }
 
@@ -602,7 +622,7 @@ export class Pickadoll {
   }
 
   private shoveCar(c: RenderedCar, dx: number, dz: number, power: number) {
-    c.dmg = Math.min(CAR_DMG_MAX, c.dmg + power * PANG_CAR_DMG);
+    damageCar(c, power * PANG_CAR_DMG);
     if (c.mode !== 'parked') return; // a car that drives is where its driving puts it
     c.x += dx * power * PANG_CAR_SHOVE_M;
     c.z += dz * power * PANG_CAR_SHOVE_M;
@@ -623,7 +643,7 @@ export class Pickadoll {
       if (!used)
         for (const c of this.g.cars)
           if (Math.abs(c.v) > SPIKE_CAR_MIN_MS && Math.hypot(c.x - s.x, c.z - s.z) < SPIKE_WHEEL_M) {
-            c.dmg = Math.max(c.dmg, PUNCTURE_DMG);
+            damageCar(c, PUNCTURE_DMG - c.dmg);
             used = true;
             break;
           }

@@ -61,6 +61,7 @@ export class ShotFx {
   private readonly quad = new THREE.PlaneGeometry(1, 1);
   private readonly texture: THREE.CanvasTexture;
   private readonly stuckMats = new Map<string, THREE.Material>();
+  private readonly colours = new Map<string, THREE.Color>();
   private readonly stuck: THREE.Mesh[] = [];
   private readonly stuckMax: number;
   private readonly fov: number; // the camera's usual field of view
@@ -130,6 +131,16 @@ export class ShotFx {
     });
   }
 
+  // a colour as the renderer wants it, worked out once: the shots in the air ask every frame
+  private linear(colour: string) {
+    let c = this.colours.get(colour);
+    if (!c) {
+      c = new THREE.Color(colour).convertSRGBToLinear();
+      this.colours.set(colour, c);
+    }
+    return c;
+  }
+
   /** Draws the shots in the air; `colour` gives each its colour. */
   drawShots<S extends Shot>(shots: readonly S[], colour: (s: S) => string, radiusM: (s: S) => number) {
     const n = Math.min(shots.length, SHOTS_MAX);
@@ -137,7 +148,7 @@ export class ShotFx {
       const s = shots[i];
       const r = radiusM(s) / SHOT_R_M;
       this.shots.setMatrixAt(i, _m.makeScale(r, r, r).setPosition(s.x, s.y + (s.lying ? radiusM(s) : 0), s.z));
-      this.shots.setColorAt(i, _c.set(colour(s)).convertSRGBToLinear());
+      this.shots.setColorAt(i, this.linear(colour(s)));
     }
     this.shots.count = n;
     this.shots.instanceMatrix.needsUpdate = true;
@@ -201,7 +212,7 @@ export class ShotFx {
     const i = this.next;
     this.next = (this.next + 1) % this.splats.instanceMatrix.count;
     this.splats.setMatrixAt(i, _m);
-    this.splats.setColorAt(i, _c.set(colour).convertSRGBToLinear());
+    this.splats.setColorAt(i, this.linear(colour));
     this.splats.count = Math.min(this.splats.count + 1, this.splats.instanceMatrix.count);
     this.splats.instanceMatrix.needsUpdate = true;
     if (this.splats.instanceColor) this.splats.instanceColor.needsUpdate = true;
@@ -255,6 +266,11 @@ export class ShotFx {
     person.add(mesh);
   }
 
+  private shown(o: THREE.Object3D) {
+    for (let p = o.parent; p; p = p.parent) if (p === this.g.scene) return true;
+    return false;
+  }
+
   // a splat mesh of its own, taking the oldest one's place when there are too many
   private stick(colour: string) {
     let material = this.stuckMats.get(colour);
@@ -262,6 +278,13 @@ export class ShotFx {
       material = this.splatMaterial(colour);
       this.stuckMats.set(colour, material);
     }
+    // those on a person or a car that has left the scene go first, so they hold neither a slot nor the dead mesh
+    let kept = 0;
+    for (const old of this.stuck) {
+      if (this.shown(old)) this.stuck[kept++] = old;
+      else old.removeFromParent();
+    }
+    this.stuck.length = kept;
     if (this.stuck.length >= this.stuckMax) this.stuck.shift()!.removeFromParent();
     const mesh = new THREE.Mesh(this.quad, material);
     mesh.renderOrder = SPLAT_ORDER + (this.splatted % STUCK_ORDERS) / STUCK_ORDERS; // a later one over an earlier one
