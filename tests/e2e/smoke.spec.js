@@ -460,6 +460,7 @@ test.describe('game (index.html)', () => {
   });
 
   test('Space held from braking does not jump on getting out', async ({ page }) => {
+    await page.setViewportSize({ width: 640, height: 360 }); // keep software WebGL affordable while walking to the interaction
     const errors = watchErrors(page);
     await page.goto('/index.html');
     await page.locator('#go').click();
@@ -494,6 +495,7 @@ test.describe('game (index.html)', () => {
   test('cats are around, and the kiosk sells cat treats and food from its menu, for money', async ({
     page,
   }, testInfo) => {
+    await page.setViewportSize({ width: 640, height: 360 }); // keep software WebGL affordable while walking to the interaction
     const errors = watchErrors(page);
     await page.goto('/index.html');
     await page.locator('#go').click();
