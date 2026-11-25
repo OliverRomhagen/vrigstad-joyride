@@ -321,13 +321,13 @@ export function addBuildings(
         face(emit, PLINTH, OUT, [p1x, base, p1z], [p2x, base, p2z], [p2x, py, p2z], [p1x, py, p1z]);
         face(emit, PLINTH, UP, [w1x, py, w1z], [w2x, py, w2z], [p2x, py, p2z], [p1x, py, p1z]);
         if (b.g) {
-          // the roof runs on EAVE_M past the wall, falling as it rose over the last EAVE_M inside; at an eave corner it also runs
-          // on along the wall to where the next wall's eave line crosses it (a mitre, so corners of any angle close), but its
+          // the roof runs on EAVE_M past the wall, falling as it rose over the last EAVE_M inside; at every corner it also runs
+          // on along the wall to where the next wall's eave line crosses it (none where the outline only splits at the ridge) (a mitre, so corners of any angle close), but its
           // corners never rise above the wall's own top, which a gable askew to the ridge would otherwise do
           const mitre = (n: [number, number], along: number) =>
               (-EAVE_M / Math.max(0.3, 1 + ox * n[0] + oz * n[1])) * (n[0] * ux + n[1] * uz) * along,
-            runA = Math.abs(ya - top) < 0.01 ? mitre(normal(ring[(i + m - 1) % m], a), 1) : 0,
-            runD = Math.abs(yd - top) < 0.01 ? mitre(normal(d, ring[(i + 2) % m]), -1) : 0,
+            runA = mitre(normal(ring[(i + m - 1) % m], a), 1),
+            runD = mitre(normal(d, ring[(i + 2) % m]), -1),
             slope = (yd - ya) / len,
             ax2 = a.x - ux * runA + ox * EAVE_M,
             az2 = a.z - uz * runA + oz * EAVE_M,

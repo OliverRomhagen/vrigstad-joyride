@@ -69,4 +69,27 @@ describe('house trim', () => {
     };
     expect(facing(reversed(askew))).toEqual(facing(askew));
   });
+
+  it("meets at the eave corners of a house whose outline is a few cm off its roof's rectangle, as real outlines are", () => {
+    // the data rounds the outline and the ridge to 0.1 m apiece, so the eave walls seldom sit exactly at the eave height
+    const off = { ...pitched, p: [0, 0, 10, 0.03, 10, 10.02, 0, 10.04] },
+      world = makeWorld({ b: [off] }),
+      scene = new THREE.Scene();
+    addBuildings(scene, world, new Heightfield(world), { rnd: () => 0.5, pick: a => a[0], maxAnisotropy: 1 });
+    const shells = scene.children.find(
+      o => o instanceof THREE.Mesh && (o.material as THREE.Material & { vertexColors: boolean }).vertexColors,
+    ) as THREE.Mesh;
+    const pos = shells.geometry.getAttribute('position');
+    // the overhang's mitred corner, EAVE_M (0.35 m) out from both walls
+    const reaches = (x: number, z: number) => {
+      for (let i = 0; i < pos.count; i++) if (Math.hypot(pos.getX(i) - x, pos.getZ(i) - z) < 0.05) return true;
+      return false;
+    };
+    expect([reaches(-0.35, -0.35), reaches(10.35, -0.35), reaches(10.35, 10.37), reaches(-0.35, 10.39)]).toEqual([
+      true,
+      true,
+      true,
+      true,
+    ]);
+  });
 });
