@@ -1,1 +1,0 @@
-import{B as e,Ct as t,K as n,it as r,q as i}from"./DlB75Hc2.js";function a(a,o){var s=i(),c=r(s);e(c,()=>o.children??t),n(a,s)}export{a as t};
