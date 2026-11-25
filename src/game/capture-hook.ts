@@ -8,13 +8,36 @@ import type { GameState } from './state';
 type Point = { x: number; z: number };
 type CaptureWindow = { __G?: unknown; __cam?: ((camera: THREE.PerspectiveCamera, target: Point) => void) | null };
 
-/** What the rig reads and drives. tools/trailer/inpage.js and shots.js use these names. */
+/** What the rig reads and drives. tools/trailer/inpage.js and shots.js use these names. The rig is plain JS, so the ones only
+ * it reads are `unknown`: what the typecheck holds is that each name is here, and no other. */
 export interface CaptureHookDeps {
   renderer: THREE.WebGLRenderer;
   camera: THREE.PerspectiveCamera;
   game: GameState;
   player: Point;
-  [name: string]: unknown;
+  THREE: unknown;
+  view: unknown;
+  cars: unknown;
+  keys: unknown;
+  joy: unknown;
+  D: unknown;
+  R: unknown;
+  nodes: unknown;
+  nodeKey: unknown;
+  driveable: unknown;
+  hAt: unknown;
+  action: unknown;
+  addCar: unknown;
+  removeCar: unknown;
+  placeCar: unknown;
+  carGeo: unknown;
+  sun: unknown;
+  SUN_DIR: unknown;
+  wanted: unknown;
+  places: unknown;
+  wallet: unknown;
+  TRISS_KR: unknown;
+  vehicleVisuals: unknown;
 }
 
 /** Installs the hook when the page's query has `capture`; otherwise does nothing. */

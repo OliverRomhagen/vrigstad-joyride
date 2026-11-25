@@ -36,7 +36,7 @@ async function open({ width = 1280, height = 720, scale = 1.5, file = null } = {
   // an error while the game boots (a renamed internal, say) fails now instead of after the timeout;
   // listen before goto, since most boot errors are thrown while the page loads
   let onError;
-  const failed = new Promise((_, reject) => { onError = reject; page.once('pageerror', onError); });
+  const failed = new Promise((_, reject) => { onError = reject; page.on('pageerror', onError); });
   failed.catch(() => {});
   try { await page.goto('file://' + file + '?capture');
     await Promise.race([page.waitForFunction('window.__G && window.__G.player && document.fonts.status === "loaded"', { timeout: 60000 }), failed]); }
@@ -49,10 +49,13 @@ async function open({ width = 1280, height = 720, scale = 1.5, file = null } = {
 
 // Detailed car models load in the background (src/game/render/vehicle-visuals.ts) while the virtual clock stands still, so a shot
 // waits until no car is still loading one, then renders a frame to show them; otherwise it can catch the box cars they replace.
+// A car made in a shot's setup stays idle until VehicleVisuals' next refresh (every 0.35 s), so step past one first.
+const REFRESH_STEPS = 11;
 async function modelsReady(page, timeout = 30000) {
+  await page.evaluate(n => __step(n), REFRESH_STEPS);
   await page.waitForFunction(() => { const V = __G.vehicleVisuals; if (!V || !V.state) return true;
     return __G.cars.every(c => { const s = V.state(c); return !s || s.status !== 'loading'; }); }, { timeout, polling: 100 });
   await page.evaluate(() => __step(1));
 }
 
-module.exports = { open, modelsReady, WORK, ROOT };
+module.exports = { open, modelsReady, buildCaptureCopy, WORK, ROOT };

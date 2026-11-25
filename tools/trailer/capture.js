@@ -2,18 +2,19 @@
 // Usage: node capture.js [shot-name-prefix ...]   (no arguments renders every shot)
 const fs = require('fs');
 const path = require('path');
-const { open, modelsReady, WORK } = require('./rig');
+const { open, modelsReady, buildCaptureCopy, WORK } = require('./rig');
 const shots = require('./shots');
 
 (async () => {
   const want = process.argv.slice(2), metaFile = path.join(WORK, 'meta.json');
   fs.mkdirSync(WORK, { recursive: true });
+  const file = await buildCaptureCopy(); // once: every shot opens the same build
   const meta = fs.existsSync(metaFile) ? JSON.parse(fs.readFileSync(metaFile, 'utf8')) : {};
   for (const s of shots) {
     if (want.length && !want.some(w => s.name.startsWith(w))) continue;
     const dir = path.join(WORK, 'frames', s.name);
     fs.rmSync(dir, { recursive: true, force: true }); fs.mkdirSync(dir, { recursive: true });
-    const t0 = Date.now(), { browser, page } = await open(), ev = {};
+    const t0 = Date.now(), { browser, page } = await open({ file }), ev = {};
     await page.evaluate(s.setup);
     await modelsReady(page);
     for (let i = 0; i < s.n; i++) {
