@@ -33,12 +33,13 @@ async function open({ width = 1280, height = 720, scale = 1.5, file = null } = {
     window.__pre = null;
     window.__step = (n = 1) => { for (let i = 0; i < n; i++) { vt += 1000 / 30; if (window.__pre) window.__pre(1 / 30); const l = cbs; cbs = []; for (const c of l) c(vt); } };
   });
-  await page.goto('file://' + file + '?capture');
-  // an error while the game boots (a renamed internal, say) fails now instead of after the timeout
+  // an error while the game boots (a renamed internal, say) fails now instead of after the timeout;
+  // listen before goto, since most boot errors are thrown while the page loads
   let onError;
   const failed = new Promise((_, reject) => { onError = reject; page.once('pageerror', onError); });
   failed.catch(() => {});
-  try { await Promise.race([page.waitForFunction('window.__G && window.__G.player && document.fonts.status === "loaded"', { timeout: 60000 }), failed]); }
+  try { await page.goto('file://' + file + '?capture');
+    await Promise.race([page.waitForFunction('window.__G && window.__G.player && document.fonts.status === "loaded"', { timeout: 60000 }), failed]); }
   catch (e) { await browser.close(); throw e; }
   finally { page.off('pageerror', onError); }
   await page.evaluate(fs.readFileSync(path.join(__dirname, 'inpage.js'), 'utf8'));
