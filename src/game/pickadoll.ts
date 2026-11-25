@@ -37,6 +37,11 @@ import type { GameState, ViewState } from './state';
 // The shot still leaves from you, not from the camera, so something close beside you can be in its way
 const CROSSHAIR_NDC_Y = 0.3, // how far above the middle of the screen, as a share of half its height; #lab-crosshair's top is the same point
   SIGHT_M = 160; // the line of sight looks this far past you
+// a weapon with a scope: aiming looks through it, from your eye, and the line of sight reaches further
+const SCOPE_EYE_M = 1.6, // the eye, above your feet
+  SCOPE_FWD_M = 0.3, // the camera sits this far ahead of your middle, clear of your own head
+  SCOPE_SIGHT_M = 420,
+  SCOPE_ON_K = 0.6; // the scope's edge and cross show, and you are hidden, from this far into the aim
 const TARGET_UP_M = 1; // the soft lock aims this far above its target's feet
 // hold to aim (the right mouse button, C, or the Aim button): the camera tucks in over your right shoulder and turns
 // about it, so you can look nearly straight up and down, the crosshair sits in the middle, and you face where you aim
@@ -85,6 +90,9 @@ const GUN_M: Record<(typeof WEAPONS)[number]['id'], readonly [number, number]> =
   potatiskanon: [0.85, 0.2],
   minigun: [0.75, 0.17],
   guldartpuffra: [0.5, 0.05],
+  puffra: [0.28, 0.07],
+  luftgevar: [0.95, 0.05],
+  algstudsare: [1.1, 0.07],
   granat: [0.14, 0.14],
   fotanglar: [0.12, 0.16],
 };
@@ -104,7 +112,7 @@ type Point = { x: number; z: number };
 
 export interface PickadollDeps {
   input: Pick<Input, 'addControl'>;
-  canvas: Pick<HTMLCanvasElement, 'focus'>;
+  canvas: Pick<HTMLCanvasElement, 'focus' | 'after'>;
   $(id: string): HTMLElement;
   coarse: boolean;
   game: Pick<GameState, 'started' | 'inCar' | 'pcar' | 'titleCardT'>;
@@ -165,6 +173,8 @@ export class Pickadoll {
     lying: false,
   }; // the throw's arc is this one, flown ahead
   private readonly crosshair: HTMLElement;
+  private readonly scope: HTMLElement; // the scope's dark edge and cross, over the view
+  private isScoped = false; // looking through the scope: its edge shows and you are hidden
   private readonly world: ShotWorld & { cars: RenderedCar[] };
   private readonly weaponButton: HTMLButtonElement;
   private readonly flavourButton: HTMLButtonElement;
@@ -221,6 +231,9 @@ export class Pickadoll {
     this.crosshair = document.createElement('div');
     this.crosshair.id = 'lab-crosshair';
     this.crosshair.hidden = true;
+    this.scope = document.createElement('div');
+    this.scope.id = 'lab-scope';
+    g.canvas.after(this.scope); // over the view and under the HUD, which stays readable
     g.$('stage').append(this.crosshair);
     if (g.player.mesh.arms) g.fx.giveGun(g.player.mesh.arms[1]);
     this.weaponButton = this.hudButton('Q', () => this.nextWeapon());
@@ -284,6 +297,7 @@ export class Pickadoll {
       weapon: WEAPONS[this.weapon].id,
       flavour: HIT_FLAVOURS[this.flavour].id,
       aiming: this.aimK > 0.5,
+      scoped: this.isScoped,
       spikes: this.spikes.length,
       limping: this.limping.length,
     };
@@ -347,7 +361,18 @@ export class Pickadoll {
       pastM = Math.hypot(muzzle.x - line.x, muzzle.y - line.y, muzzle.z - line.z),
       seen =
         ready &&
-        sight(line.x, line.y, line.z, line.dx, line.dy, line.dz, pastM, pastM + SIGHT_M, this.world, this.aimHit);
+        sight(
+          line.x,
+          line.y,
+          line.z,
+          line.dx,
+          line.dy,
+          line.dz,
+          pastM,
+          pastM + (this.isScoped ? SCOPE_SIGHT_M : SIGHT_M),
+          this.world,
+          this.aimHit,
+        );
     let tx = this.aimHit.x,
       ty = this.aimHit.y,
       tz = this.aimHit.z,
@@ -427,21 +452,25 @@ export class Pickadoll {
 
     for (let i = this.shots.length - 1; i >= 0; i--) {
       const s = this.shots[i],
+        { x, y, z } = s, // where it was when the frame began
         hit = stepShot(s, dt, this.world, this.hit);
       if (!hit) continue;
       if (hit !== 'gone') {
         this.land(s, hit);
         if (hit.bounced) continue; // it flies on
+        const tracerM = WEAPONS[s.weapon].tracerM;
+        if (tracerM) fx.endStreak(x, y, z, hit.x, hit.y, hit.z, tracerM);
       }
       this.shots[i] = this.shots[this.shots.length - 1];
       this.shots.pop();
     }
-    fx.drawShots(this.shots, this.colourOf, this.radiusOf);
+    fx.drawShots(this.shots, this.colourOf, this.radiusOf, this.tracerOf, dt);
     this.dance(dt);
     this.stepSpikes(dt);
   }
 
   private readonly radiusOf = (s: Shot) => WEAPONS[s.weapon].shotM;
+  private readonly tracerOf = (s: Shot) => WEAPONS[s.weapon].tracerM;
 
   // on foot only: from a car you aim with the car's own camera
   private get aiming() {
@@ -451,25 +480,43 @@ export class Pickadoll {
   /** The look while aiming: true when it took the mouse or the drag, so the game's camera doesn't. */
   aimLook(dx: number, dy: number): boolean {
     if (!this.aiming) return false;
-    const { view } = this.g;
-    view.camYaw = wrap(view.camYaw + dx * LOOK_YAW_K * AIM_LOOK_K);
-    this.aimPitch = clamp(this.aimPitch - dy * LOOK_PITCH_K * AIM_LOOK_K, -AIM_PITCH_MAX, AIM_PITCH_MAX);
+    const { view, fx } = this.g,
+      scope = WEAPONS[this.weapon].scope,
+      // through a scope the look slows with the view, so the picture moves as far for the same move of the hand
+      k = AIM_LOOK_K * (scope ? fx.magnified(scope) : 1);
+    view.camYaw = wrap(view.camYaw + dx * LOOK_YAW_K * k);
+    this.aimPitch = clamp(this.aimPitch - dy * LOOK_PITCH_K * k, -AIM_PITCH_MAX, AIM_PITCH_MAX);
     return true;
   }
 
   /** After the game's camera is placed: moves it over your shoulder while you aim, and back when you stop. */
   aimCamera() {
+    const { player, view, world, fx, game } = this.g,
+      scope = WEAPONS[this.weapon].scope,
+      isScoped = scope > 0 && this.aimK > SCOPE_ON_K;
+    if (isScoped !== this.isScoped) {
+      this.isScoped = isScoped;
+      this.scope.classList.toggle('on', isScoped);
+      // through the scope you see from your own eye, so you are not in the picture
+      player.mesh.visible = !isScoped && !game.inCar && !this.g.inside;
+    }
     if (this.aimK <= 0) {
-      this.g.fx.aimCamera(0, 0, 0, 0, 0, 0, 0, 1);
+      fx.aimCamera(0, 0, 0, 0, 0, 0, 0, 1);
       return;
     }
-    const { player, view, world, fx } = this.g,
-      yaw = view.camYaw,
+    const yaw = view.camYaw,
       cp = Math.cos(this.aimPitch),
       fx_ = Math.sin(yaw) * cp,
       fy = Math.sin(this.aimPitch),
       fz = -Math.cos(yaw) * cp,
       ground = world.groundAt(player.x, player.z);
+    if (scope) {
+      const ex = player.x + Math.sin(yaw) * SCOPE_FWD_M,
+        ey = ground + player.y + SCOPE_EYE_M,
+        ez = player.z - Math.cos(yaw) * SCOPE_FWD_M;
+      fx.aimCamera(this.aimK, ex, ey, ez, ex + fx_, ey + fy, ez + fz, fx.magnified(scope));
+      return;
+    }
     // the shoulder, pulled in when a wall is beside you
     let side = AIM_SIDE_M;
     for (; side > 0; side -= 0.2)
