@@ -67,11 +67,13 @@ export class PlaceMeshes {
 }
 
 function door(d: Door, heightAt: PlaceMeshDeps['heightAt'], boxGeo: PlaceMeshDeps['boxGeo'], paintMat: THREE.Material) {
+  // centred on the wall line, so each box stands out half its depth: the frame 11 cm and the panel 14 cm, clear of the
+  // house's plinth (8 cm, PLINTH_OUT_M in world-meshes.ts), which they'd otherwise z-fight with
   const m = new THREE.Mesh(
     boxGeo([
-      [1.4, 2.35, 0.1, 0, 1.17, 0, YELLOW],
-      [1.05, 2.1, 0.16, 0, 1.05, 0, '#2f5a41'],
-      [0.1, 0.1, 0.24, 0.36, 1.05, 0, YELLOW],
+      [1.4, 2.35, 0.22, 0, 1.17, 0, YELLOW],
+      [1.05, 2.1, 0.28, 0, 1.05, 0, '#2f5a41'],
+      [0.1, 0.1, 0.36, 0.36, 1.05, 0, YELLOW],
     ]),
     paintMat,
   );

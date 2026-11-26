@@ -12,16 +12,19 @@ vi.hoisted(() => {
 });
 
 type Building = WorldData['b'][number];
-// each triangle of the house shells' mesh (walls, roof and trim) as the plane it lies in, facing the way it faces, to the cm:
-// the plane, not the corners, since a quad listed the other way round is split along its other diagonal
-function triangles(b: Building) {
+// the house shells' mesh (walls, roof and trim) of a world with this building alone
+function shellsOf(b: Building) {
   const world = makeWorld({ b: [b] }),
     scene = new THREE.Scene();
   addBuildings(scene, world, new Heightfield(world), { rnd: () => 0.5, pick: a => a[0], maxAnisotropy: 1 });
-  const shells = scene.children.find(
+  return scene.children.find(
     o => o instanceof THREE.Mesh && (o.material as THREE.Material & { vertexColors: boolean }).vertexColors,
   ) as THREE.Mesh;
-  const pos = shells.geometry.getAttribute('position'),
+}
+// each triangle of the house shells' mesh (walls, roof and trim) as the plane it lies in, facing the way it faces, to the cm:
+// the plane, not the corners, since a quad listed the other way round is split along its other diagonal
+function triangles(b: Building) {
+  const pos = shellsOf(b).geometry.getAttribute('position'),
     [p, q, r, n] = [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()],
     out: string[] = [];
   const cm = (v: number) => (Math.round(v * 100) / 100 || 0).toFixed(2);
@@ -73,13 +76,7 @@ describe('house trim', () => {
   it("meets at the eave corners of a house whose outline is a few cm off its roof's rectangle, as real outlines are", () => {
     // the data rounds the outline and the ridge to 0.1 m apiece, so the eave walls seldom sit exactly at the eave height
     const off = { ...pitched, p: [0, 0, 10, 0.03, 10, 10.02, 0, 10.04] },
-      world = makeWorld({ b: [off] }),
-      scene = new THREE.Scene();
-    addBuildings(scene, world, new Heightfield(world), { rnd: () => 0.5, pick: a => a[0], maxAnisotropy: 1 });
-    const shells = scene.children.find(
-      o => o instanceof THREE.Mesh && (o.material as THREE.Material & { vertexColors: boolean }).vertexColors,
-    ) as THREE.Mesh;
-    const pos = shells.geometry.getAttribute('position');
+      pos = shellsOf(off).geometry.getAttribute('position');
     // the overhang's mitred corner, EAVE_M (0.35 m) out from both walls: what both walls' overhangs put there is the roof's
     // edge and the fascia's foot FASCIA_M (0.15 m) under it, so the heights span exactly that when the two walls agree
     const span = (x: number, z: number) => {
@@ -94,5 +91,38 @@ describe('house trim', () => {
       [-0.35, 10.39],
     ])
       expect(span(x, z), `at (${x}, ${z})`).toBeCloseTo(0.15, 3);
+  });
+
+  it("leaves the toon style no line along the roof's edge at the walls, only at the fascia", () => {
+    // the toon style's lines, as it draws them (INK_CREASE_DEG): every crease, and every edge that only one face has
+    const lines = new THREE.EdgesGeometry(shellsOf(pitched).geometry, 34).getAttribute('position');
+    // the walls stand from x 0 to 10 and z 0 to 10, and the roof's edge runs along their tops, from 5 m up to 8.5 at the ridge
+    const onWallTop = (x: number, y: number, z: number) =>
+      Math.min(Math.abs(x), Math.abs(x - 10), Math.abs(z), Math.abs(z - 10)) < 0.01 &&
+      Math.abs(y - (5 + 0.7 * (5 - Math.abs(z - 5)))) < 0.01;
+    // a segment along a wall's top has its ends and its middle there; the ridge has only its ends, on the gables
+    const along: number[] = [];
+    for (let i = 0; i < lines.count; i += 2) {
+      const ends = [i, i + 1].map(j => [lines.getX(j), lines.getY(j), lines.getZ(j)] as const),
+        [mx, my, mz] = [0, 1, 2].map(c => (ends[0][c] + ends[1][c]) / 2);
+      if (ends.every(e => onWallTop(...e)) && onWallTop(mx, my, mz)) along.push(i);
+    }
+    expect(along).toEqual([]);
+  });
+
+  it('leaves out the eave of a wall shorter than its mitre, which would come out crossed', () => {
+    // an L whose inner wall the ridge crosses 0.18 m from the inside corner, at (5, 6): from there to the corner, the
+    // mitre shortens the eave line by 0.35 m, so it would run backwards, from (5, 6.35) to (5.17, 6.35)
+    const ell = { ...pitched, p: [0, 0, 10, 0, 10, 6, 4.82, 6, 4.82, 10, 0, 10], g: [5, 0, 5, 10, 5] as Building['g'] };
+    const pos = shellsOf(ell).geometry.getAttribute('position');
+    // the crossed overhang's diagonal, from the wall's end at the ridge to the corner that swapped places with it; the
+    // eaves either side have one of these corners each, never both
+    const at = (i: number, x: number, z: number) => Math.hypot(pos.getX(i) - x, pos.getZ(i) - z) < 0.01;
+    const crossed: number[] = [];
+    for (let i = 0; i < pos.count; i += 3) {
+      const corners = [i, i + 1, i + 2];
+      if (corners.some(j => at(j, 5, 6)) && corners.some(j => at(j, 5.17, 6.35))) crossed.push(i);
+    }
+    expect(crossed).toEqual([]);
   });
 });

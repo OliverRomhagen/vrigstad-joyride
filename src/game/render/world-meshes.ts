@@ -275,11 +275,15 @@ export function addBuildings(
       c3.copy(c).multiplyScalar(0.62); // walls darken towards the ground
       return paint;
     };
-    const details = (
-      { building: b, ring, yAt, roofY, base, top, hi, area, winding: wind }: BuildingShape,
-      emit: EmitVertex,
-    ) => {
-      if (b.k === 1 || area < HOUSE_MIN_M2 || area > HOUSE_MAX_M2 || isSkipped(b.p)) return; // not the church and its tower, not sheds or barns, not one drawn elsewhere
+    // not the church and its tower, not sheds or barns, not one drawn elsewhere
+    const trimmed = ({ building: b, area }: BuildingShape) =>
+      b.k !== 1 && area >= HOUSE_MIN_M2 && area <= HOUSE_MAX_M2 && !isSkipped(b.p);
+    // a trimmed gabled house's walls stop at its soffit, which closes them under the eave, so the roof's edge along the
+    // walls is shared only with the eave, in its own plane, and the toon style draws no line 0.35 m in from the fascia's
+    const wallDrop = (shape: BuildingShape) => (shape.building.g && trimmed(shape) ? FASCIA_M : 0);
+    const details = (shape: BuildingShape, emit: EmitVertex) => {
+      if (!trimmed(shape)) return;
+      const { building: b, ring, yAt, roofY, base, top, hi, winding: wind } = shape;
       const m = ring.length,
         yb = hi + 0.2,
         yt = top - 0.25,
@@ -312,7 +316,10 @@ export function addBuildings(
             const sa = mitred ? mitre(prev, 1, k) : 0,
               sd = mitred ? mitre(next, -1, k) : 0;
             return [a.x + ox * k - ux * sa, a.z + oz * k - uz * sa, d.x + ox * k + ux * sd, d.z + oz * k + uz * sd];
-          };
+          },
+          // whether that line still runs from a's end to d's: on a wall shorter than what its mitres at inside corners
+          // take off it, its ends swap places
+          forwards = (k: number) => len + mitre(prev, 1, k) + mitre(next, -1, k) > 0;
         const nwin = Math.round(len / WIN_W); // whole windows only: the tile stretches a little to fit the wall
         if (len >= 1.6 && nwin > 0) {
           quad(wp, ...o(0.04, false), yb, yt, yb, yt);
@@ -325,7 +332,8 @@ export function addBuildings(
           OUT: Corner = [ox, 0, oz];
         face(emit, PLINTH, OUT, [p1x, base, p1z], [p2x, base, p2z], [p2x, py, p2z], [p1x, py, p1z]);
         face(emit, PLINTH, UP, [a.x, py, a.z], [d.x, py, d.z], [p2x, py, p2z], [p1x, py, p1z]);
-        if (b.g) {
+        // no eave on a wall too short for its mitres, whose eave line would run backwards and come out crossed
+        if (b.g && forwards(EAVE_M)) {
           // the roof runs on EAVE_M past the wall in its own plane, mitred at the corners; each corner's height comes from
           // the corner point alone, so the two walls that meet there agree on it, and never rises above the wall's own top,
           // which a gable askew to the ridge would otherwise do
@@ -351,7 +359,7 @@ export function addBuildings(
             [dx2, yd2 - FASCIA_M, dz2],
             [ax2, ya2 - FASCIA_M, az2],
           );
-        } else {
+        } else if (!b.g) {
           const [f1x, f1z, f2x, f2z] = o(FLAT_BOARD_OUT_M),
             lo = -0.22;
           face(
@@ -426,6 +434,7 @@ export function addBuildings(
       material: new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }),
       colours,
       extra: details,
+      wallDrop,
     }).mesh;
     shells.userData[INK_FLAG] = true; // the toon style inks the houses' corners and roof edges too
     scene.add(shells);

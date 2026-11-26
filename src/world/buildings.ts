@@ -36,14 +36,19 @@ export function roofParts(outline: PointXZ[], ridge: Building['g'], top: number)
   const nz = (bx - ax) / length;
   const rise = Math.min(halfWidth * ROOF_PITCH, MAX_ROOF_RISE_M);
   const offset = (v: PointXZ) => (v.x - ax) * nx + (v.z - az) * nz;
+  // a corner on the ridge line comes out a rounding error off it, which would add a crossing point on top of the corner
+  const sideOf = (v: PointXZ) => {
+    const o = offset(v);
+    return Math.abs(o) < 1e-6 ? 0 : o;
+  };
   const roofY = (v: PointXZ) => top + rise * (1 - Math.abs(offset(v)) / halfWidth);
   const yAt = (v: PointXZ) => Math.max(top, roofY(v));
   const ring: PointXZ[] = [];
   const offsets: number[] = [];
   outline.forEach((a, i) => {
     const d = outline[(i + 1) % outline.length];
-    const oa = offset(a);
-    const od = offset(d);
+    const oa = sideOf(a);
+    const od = sideOf(d);
     ring.push(a);
     offsets.push(oa);
     if (oa * od < 0) {
