@@ -207,6 +207,9 @@ export class ToonStyle {
       polygonOffsetFactor: source.polygonOffsetFactor,
       polygonOffsetUnits: source.polygonOffsetUnits,
       fog: source.fog,
+      clippingPlanes: source.clippingPlanes,
+      clipIntersection: source.clipIntersection,
+      clipShadows: source.clipShadows,
     });
     // not a MeshToonMaterial property in three's types, but the renderer reads it off any material and the toon shader
     // has the define: faceted meshes (the shore stones) stay faceted
