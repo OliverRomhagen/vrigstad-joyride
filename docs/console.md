@@ -83,9 +83,9 @@ they change never touch the DOM, so every step below runs in a unit test.
 ### `tune set driving.grip 8`: a group over a registry
 
 1. **The box** (`src/game/devconsole.ts`) sends the line to `commands.run(line)`, with source `console`.
-2. **`Commands.run`** (`src/game/commands.ts`) splits it into words, finds `tune` (an alias would resolve to it
-   here), and checks its access. Then `descend` follows the words that name subcommands: `tune` is a `group()`, so
-   `set` picks its `set`, and `driving.grip 8` is left as the arguments.
+2. **`Commands.execute`** (`src/game/commands.ts`), which `run` calls for the line's text, splits it into words,
+   finds `tune` (an alias would resolve to it here), and checks its access. Then `descend` follows the words that
+   name subcommands: `tune` is a `group()`, so `set` picks its `set`, and `driving.grip 8` is left as the arguments.
 3. **The hooks** each get the call, `{ name: 'tune', args: ['set', 'driving.grip', '8'], source: 'console' }`, and
    call `next()` to go on.
 4. **`command()`** (`src/game/command-args.ts`) parses the arguments it was built with:
