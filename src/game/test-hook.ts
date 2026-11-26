@@ -10,6 +10,7 @@ import type { WaterBodies } from '../world/water-shapes';
 import type { Car } from './cars';
 import type { Health } from './health';
 import type { PlayerState } from './player';
+import type { RapierLabState } from './rapier-lab';
 import type { Sky } from './render/sky';
 import type { SunStreaks } from './render/sun-streaks';
 import type { GameState, ViewState } from './state';
@@ -24,15 +25,7 @@ export interface TestHookDeps {
   labs: readonly string[]; // the lab experiments switched on
   readonly styled: boolean; // frames are drawn through a style (?lab=toon), which loads after the page
   readonly ragdolls: number; // people knocked over right now
-  readonly rapier: {
-    loadMs: number;
-    buildMs: number;
-    props: number;
-    joined: number;
-    awake: number;
-    stepMs: number;
-    steps: number;
-  } | null; // ?lab=rapier's world, once it has loaded (#54)
+  readonly rapier: RapierLabState | null; // ?lab=rapier's world, once it has loaded (#54)
   readonly pickadoll: object | null; // ?lab=pickadoll once its code runs: shots fired, hits, hits that got a mark, splats, the weapon and the flavour
   readonly stars: number;
   readonly cats: number;
@@ -180,6 +173,7 @@ export function installTestHook(g: TestHookDeps) {
           buildMs: Math.round(g.rapier.buildMs),
           props: g.rapier.props,
           joined: g.rapier.joined,
+          loose: g.rapier.loose,
           awake: g.rapier.awake,
           stepMs: g.rapier.stepMs,
           steps: g.rapier.steps,

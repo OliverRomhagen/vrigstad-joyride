@@ -87,7 +87,7 @@ export class GameLoop {
   private blinkT = 0;
   private laterLine: string | null = null;
   private style: Pick<ToonStyle, 'render'> | null = null;
-  private readonly steps: ((dt: number) => void)[] = [];
+  private readonly frameUpdates: ((dt: number) => void)[] = [];
   /** the police lights' phase, so the minimap blinks with them */
   blink = false;
 
@@ -100,9 +100,12 @@ export class GameLoop {
     this.style = style;
   }
 
-  /** Runs `step` every frame, after the cars and the people have moved: ?lab=rapier's world (#54), once it has loaded. */
-  addStep(step: (dt: number) => void) {
-    this.steps.push(step);
+  /**
+   * Runs `update` once every frame, after the cars and the people have moved: ?lab=rapier's world (#54), once it has
+   * loaded. Once a frame, not once a fixed step: #49 gives the sim its own steps.
+   */
+  addFrameUpdate(update: (dt: number) => void) {
+    this.frameUpdates.push(update);
   }
 
   /** Whether frames are drawn through a style. */
@@ -248,7 +251,7 @@ export class GameLoop {
     }
     g.updateDrivers(T, dt);
     g.updateBodies(T, dt);
-    for (const step of this.steps) step(dt);
+    for (const update of this.frameUpdates) update(dt);
 
     g.updateDaylight(dt);
     g.cameraRig.update(T, now, dt);

@@ -50,23 +50,35 @@ And by eye: does a mailbox you drive into look and feel right? Screenshots or a 
 
 ## Found so far (steps 1 to 3)
 
-- **Loading:** Rapier is served as its own file, `vendor/rapier.mjs` (`vite.config.ts`), and imported by its address only with the flag on. The game's page grows by 2.5 KB compressed with the flag off: only the trial's own code, none of Rapier.
-- **Props join the world only near the action.** Rapier pairs every body with any shape whose bounds overlap its own, and on uneven ground the ground's bounds overlap everything, so 1,660 mailboxes and bins sleeping in the world all woke on the first step. Instead a prop joins when a car or the player comes within 12 m, and stays.
-- **A prop is anchored until touched.** A tall, narrow box on a slope tips over by itself once it can move. So a prop joins as a fixed body, exactly where it is drawn, as a mailbox on its post, and the first touch by a car or the player sets it loose. Untouched props never move and stay in their batch of street furniture, so they cost no extra draw calls.
+- **Loading:** Rapier is served as its own file, `vendor/rapier.mjs` (`vite.config.ts`), and imported by its address only with the flag on. The game's page grows by 2.5 KB compressed with the flag off: only the trial's own code, none of Rapier. The ready-made package carries its WebAssembly inside its JavaScript, 1.65 MB compressed; the plain package's `.wasm` is 1.2 MB and compiles while it downloads. So the download and load times measured here are higher than they need to be.
+- **Rapier's ground is the drawn terrain**, triangle for triangle (src/world/mesh/terrain.ts): about 15,000 triangles. A first version sampled the ground every 2 m, 1.2 million heights, which was most of the time to build the world.
+- **Props join the world only near a moving car.** Rapier pairs every body with any shape whose bounds overlap its own, and on uneven ground the ground's bounds overlap everything, so 1,660 mailboxes and bins sleeping in the world all woke on the first step. Instead a prop joins when a moving car comes within 12 m, and stays.
+- **A prop is anchored until a car reaches it.** A tall, narrow box on a slope tips over by itself once it can move. So a prop joins as a fixed body, exactly where it is drawn, as a mailbox on its post. It comes loose one physics step before a car's capsule reaches it, so the car pushes it. Loosened only once the car touched it, a fast or glancing hit found the car already inside the box, and Rapier pushed it out sideways: at 90 km/h, 0.6 m off the car's middle, the mailbox didn't move. Untouched props never move and stay in their batch of street furniture, so they cost no extra draw calls.
+- **The player knocks nothing loose.** A person is a kinematic body to Rapier, so it can't be pushed back: walking into a mailbox laid it flat and shoved it 3 m. Walking past one now leaves it standing; one already down still gets pushed.
+- **A frame's move is spread over its steps.** Below 60 fps the world runs two or three steps a frame (the loop caps a frame at 0.05 s), and Rapier gives a car the whole frame's move in the first of them. A car going 15 m/s at 15 fps threw a mailbox 50 m instead of 15 m. Each car and the player now cover their move evenly over the frame's steps, and one that is put far away (a respawn, *Gripen!*, getting out of a car) jumps there instead of sweeping across the village.
 - **First numbers,** from a local build in headless Chrome, which renders in software and is much slower than a real device:
   - the world (ground, walls and anchoring) is built in about 70 ms;
   - about 100 of 1,660 props had joined after a short drive round Torget;
-  - the physics took about 0.4 ms a frame;
+  - the physics took about 0.4 ms a frame; in Node, about 0.1 ms with the village's 80 cars, 58 of them parked;
   - loading and starting Rapier took 7 to 9 s here. A real device is needed to judge that one.
 - **By eye:** a Volvo at 60 km/h throws a mailbox several metres, turning over. Traffic knocks over the odd mailbox too.
-- **A frame's move is spread over its steps.** Below 60 fps the world runs two to four steps a frame, and Rapier gives a car the whole frame's move in the first of them. At 15 fps a car threw a mailbox 50 m instead of 15 m. Each car and the player now cover their move evenly over the frame's steps.
 
 ## Known limits of the trial
 
-- **Two grounds.** Rapier's ground is the terrain, sampled every 2 m. The furniture is drawn on the game's ground, which adds curbs, road lifts and floors. So a knocked prop drops up to a curb's height and can rest partly in a sidewalk. The car and player shapes don't follow bridge decks either.
+- **Two grounds.** Rapier's ground is the terrain. The furniture is drawn on the game's ground, which adds curbs, road lifts and floors. So a knocked prop drops up to a curb's height and can rest partly in a sidewalk. The car and player shapes don't follow bridge decks either.
 - **Missing shapes.** Only the buildings' walls are in Rapier's world, not the fences at Skroten or the kiosk.
-- **Knocked props add up.** Traffic knocks props over anywhere in the village. Each knocked prop is a draw call of its own from then on, and props never leave the world once they have joined. A long session would show it in the numbers.
+- **Knocked props add up.** Traffic knocks props over anywhere in the village. Each knocked prop is a draw call of its own from then on, two with its shadow, and props never leave the world once they have joined. A long session would show it in the numbers.
+- **A hit costs the car nothing.** A 40 kg mailbox stand at 90 km/h doesn't slow the car or damage it: Rapier's cars are moved by the game and can't be pushed back.
 - **The file has no version in its name.** `vendor/rapier.mjs` can be cached for a few minutes past an upgrade.
+- **The time step is a stand-in for #49.** The trial keeps its own clock and spreads each frame's move over its steps only because the game's cars don't move on a fixed step yet. Once #49 gives the sim its steps, Rapier steps inside them and both go.
+
+## Questions for the decision
+
+- **Should a hit come back to the game?** Crashes (#40), damage and a star for wrecking a neighbour's mailbox all need the physics world to say what it hit, as the `knocked-over` event ARCHITECTURE.md names for the event bus (#367). Is that part of "keep"?
+- **Step 4 needs people in the world.** #510 hits pedestrians, up to 42 of them, and none are in Rapier's world yet. 500 shots against a world without people would make the casts look cheaper than they are, and leave out moving 42 more capsules every frame.
+- **The same everywhere?** #510 asks that a hit never depend on the frame rate, and under multiplayer (#411) every browser runs its own world. Knocked props differ between players and with the frame rate today: fine while they are only for show, not if one can block a road or a shot.
+- **Is traffic knocking props everywhere wanted?** Measure how many props are joined and loose after ten minutes of play, not only after a short drive.
+- **Measure what the decision needs:** on a phone, the load with the plain `.wasm`, the memory Rapier holds, and the step with the village's 80 cars.
 
 ## How we decide
 

@@ -221,8 +221,10 @@ export class StreetFurniture {
   /** the lamp glass, shared by every lamp, for the night (#99) to light */
   readonly materials: { body: THREE.MeshLambertMaterial; luminaire: THREE.MeshLambertMaterial };
   readonly triangles: number;
-  /** where each placement is drawn: its slot in its cell's InstancedMesh, and in the glass's */
-  private readonly slots = new Map<FurniturePlacement, [mesh: THREE.InstancedMesh, index: number][]>();
+  /** each cell's placements and the InstancedMeshes that draw them, in the same order */
+  private readonly batches: { list: readonly FurniturePlacement[]; meshes: THREE.InstancedMesh[] }[] = [];
+  /** where each placement is drawn, built by the first `detach`: only ?lab=rapier asks, so the game doesn't hold it */
+  private slots: Map<FurniturePlacement, [mesh: THREE.InstancedMesh, index: number][]> | null = null;
 
   constructor(placements: readonly FurniturePlacement[], { groundAt, debugSources = false }: StreetFurnitureOptions) {
     this.materials = {
@@ -253,6 +255,8 @@ export class StreetFurniture {
         [model.body, this.materials.body, true],
       ];
       if (model.glass) parts.push([model.glass, this.materials.luminaire, false]);
+      const batch = { list, meshes: [] as THREE.InstancedMesh[] };
+      this.batches.push(batch);
       for (const [geometry, material, shadows] of parts) {
         const mesh = new THREE.InstancedMesh(geometry, material, list.length);
         mesh.name = `furniture:${id}${shadows ? '' : ':glass'}`;
@@ -260,9 +264,6 @@ export class StreetFurniture {
           q.setFromAxisAngle(up, p.rotationY);
           mesh.setMatrixAt(i, m.compose(v.set(p.x, groundAt(p.x, p.z), p.z), q, s.setScalar(p.scale)));
           if (debugSources) mesh.setColorAt(i, tint.set(SOURCE_TINTS[SOURCE_INDEX[p.source]]).convertSRGBToLinear());
-          const slots = this.slots.get(p);
-          if (slots) slots.push([mesh, i]);
-          else this.slots.set(p, [[mesh, i]]);
         });
         mesh.castShadow = shadows;
         mesh.receiveShadow = shadows;
@@ -270,6 +271,7 @@ export class StreetFurniture {
         mesh.computeBoundingSphere(); // over this cell's instances
         triangles += (geometry.getAttribute('position').count / 3) * list.length;
         this.meshes.push(mesh);
+        batch.meshes.push(mesh);
       }
     }
     this.triangles = triangles;
@@ -280,6 +282,18 @@ export class StreetFurniture {
    * something that moves it: a mailbox a car knocked over (#54). Adds nothing to a scene. Null if it isn't drawn here.
    */
   detach(p: FurniturePlacement): THREE.Object3D | null {
+    if (!this.slots) {
+      const map = new Map<FurniturePlacement, [mesh: THREE.InstancedMesh, index: number][]>();
+      for (const { list, meshes } of this.batches)
+        list.forEach((q, i) => {
+          for (const mesh of meshes) {
+            const slots = map.get(q);
+            if (slots) slots.push([mesh, i]);
+            else map.set(q, [[mesh, i]]);
+          }
+        });
+      this.slots = map;
+    }
     const slots = this.slots.get(p);
     if (!slots) return null;
     this.slots.delete(p);

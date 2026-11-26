@@ -164,6 +164,28 @@ describe('StreetFurniture', () => {
     expect(c.getHex()).toBe(new THREE.Color(0x3fae5a).convertSRGBToLinear().getHex()); // OSM green
   });
 
+  it('takes one placement out of its batch as an object of its own, in the same place, glass and all', () => {
+    const f = new StreetFurniture(placements, { groundAt: (x, z) => 0.01 * x + 0.02 * z });
+    const lamps = f.meshes.find(m => m.name === 'furniture:lamp-arm')!,
+      glass = f.meshes.find(m => m.name === 'furniture:lamp-arm:glass')!,
+      before = new THREE.Matrix4();
+    lamps.getMatrixAt(0, before);
+    const lamp = f.detach(placements[0])!;
+    expect(lamp.children.map(c => (c as THREE.Mesh).geometry)).toEqual([lamps.geometry, glass.geometry]);
+    expect(lamp.position.toArray()).toEqual(new THREE.Vector3().setFromMatrixPosition(before).toArray());
+    // gone from both batches: its slots draw nothing; the other lamp stays
+    const m = new THREE.Matrix4(),
+      scale = new THREE.Vector3();
+    for (const batch of [lamps, glass]) {
+      batch.getMatrixAt(0, m);
+      expect(scale.setFromMatrixScale(m).length(), batch.name).toBe(0);
+      batch.getMatrixAt(1, m);
+      expect(scale.setFromMatrixScale(m).length(), batch.name).toBeGreaterThan(0);
+    }
+    expect(f.detach(placements[0])).toBeNull(); // once only
+    f.dispose();
+  });
+
   it('frees every geometry and material it made', () => {
     const f = new StreetFurniture(placements, { groundAt: () => 0 });
     const disposed = new Set<object>();

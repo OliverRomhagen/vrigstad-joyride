@@ -5,11 +5,10 @@ import * as THREE from 'three';
 import type { WorldData } from '../world/data';
 import type { FurnitureKind, FurnitureModelId } from '../world/furniture/definitions';
 import type { FurniturePlacement } from '../world/furniture/placement';
-import type { Heightfield } from '../world/heightfield';
 import { FURNITURE_MODELS, type StreetFurniture } from '../world/mesh/street-furniture';
 import { PhysicsProps } from './render/physics-props';
 import type { CarBody } from './sim/car-body';
-import { PhysicsWorld, type PropSpec, type Rapier } from './sim/physics-world';
+import { PhysicsWorld, type PhysicsWorldOptions, type PropSpec, type Rapier } from './sim/physics-world';
 
 /** what a car can knock over, and what each weighs (kg) */
 const PROP_MASS_KG: Partial<Record<FurnitureKind, number>> = {
@@ -22,17 +21,16 @@ const PROP_MASS_KG: Partial<Record<FurnitureKind, number>> = {
 export interface RapierLabDeps {
   scene: THREE.Scene;
   data: WorldData;
-  heightfield: Pick<Heightfield, 'heightAt'>;
+  heightfield: PhysicsWorldOptions['heightfield'];
   /** the ground the furniture is drawn on: curbs, road lifts and floors included */
   groundAt(x: number, z: number): number;
-  half: number;
   placements: readonly FurniturePlacement[];
   furniture: Pick<StreetFurniture, 'detach'>;
   cars: readonly CarBody[];
   player: { x: number; z: number };
   inCar(): boolean;
-  /** runs a function every frame, after the cars and the player have moved */
-  addStep(step: (dt: number) => void): void;
+  /** runs a function once every frame, after the cars and the player have moved */
+  addFrameUpdate(update: (dt: number) => void): void;
 }
 
 /** What the trial measured, for the test hook and the PR's numbers. */
@@ -42,8 +40,10 @@ export interface RapierLabState {
   /** building the world: the ground, the walls and the props (ms) */
   buildMs: number;
   props: number;
-  /** the props a car or the player has come near, which Rapier simulates */
+  /** the props a car has come near, which Rapier holds */
   readonly joined: number;
+  /** the props knocked loose, each drawn on its own from then on */
+  readonly loose: number;
   readonly awake: number;
   /** the last frame's physics steps (ms) */
   readonly stepMs: number;
@@ -94,7 +94,7 @@ export async function startRapierLab(g: RapierLabDeps): Promise<RapierLabState> 
     });
   }
   const t1 = performance.now();
-  const world = new PhysicsWorld(R, { data: g.data, heightfield: g.heightfield, half: g.half, props: specs });
+  const world = new PhysicsWorld(R, { data: g.data, heightfield: g.heightfield, props: specs });
   const buildMs = performance.now() - t1;
   const draw = new PhysicsProps({
     scene: g.scene,
@@ -104,7 +104,7 @@ export async function startRapierLab(g: RapierLabDeps): Promise<RapierLabState> 
     heights: specs.map(s => s.heightM),
   });
   const now = () => performance.now();
-  g.addStep(dt => {
+  g.addFrameUpdate(dt => {
     world.follow(g.cars, g.inCar() ? null : g.player);
     world.step(dt, now);
     draw.update();
@@ -118,6 +118,9 @@ export async function startRapierLab(g: RapierLabDeps): Promise<RapierLabState> 
     props: specs.length,
     get joined() {
       return world.joined.length;
+    },
+    get loose() {
+      return world.loosened.length;
     },
     get awake() {
       return world.awakeProps;

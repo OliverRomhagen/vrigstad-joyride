@@ -11,7 +11,7 @@ const _pose: PropPose = { x: 0, y: 0, z: 0, qx: 0, qy: 0, qz: 0, qw: 1 };
 export interface PhysicsPropsDeps {
   scene: THREE.Scene;
   furniture: Pick<StreetFurniture, 'detach'>;
-  world: Pick<PhysicsWorld, 'joined' | 'isAwake' | 'isLoose' | 'propPose'>;
+  world: Pick<PhysicsWorld, 'loosened' | 'isAwake' | 'propPose'>;
   /** the placement behind each of the world's props, in the same order */
   placements: readonly FurniturePlacement[];
   /** each prop's height (m): the body's middle is this far above the model's foot */
@@ -30,10 +30,9 @@ export class PhysicsProps {
   /** Moves every knocked prop's model to its body, taking it out of its batch the first time it leaves its stand. */
   update() {
     const { scene, furniture, world, placements, heights } = this.g;
-    for (const i of world.joined) {
+    for (const i of world.loosened) {
       let model = this.drawn[i];
       if (!model) {
-        if (!world.isLoose(i)) continue; // anchored: it stays in its batch, where it is drawn already
         model = furniture.detach(placements[i]);
         if (!model) continue;
         scene.add(model);

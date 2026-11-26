@@ -1,18 +1,38 @@
 import RAPIER from '@dimforge/rapier3d-compat';
 import { beforeAll, describe, expect, it } from 'vitest';
 import type { CarBody } from '../../../../src/game/sim/car-body';
-import { PHYSICS_STEP_S, PhysicsWorld, type PropPose, type PropSpec } from '../../../../src/game/sim/physics-world';
+import {
+  PHYSICS_STEP_S,
+  PhysicsWorld,
+  type PhysicsWorldOptions,
+  type PropPose,
+  type PropSpec,
+} from '../../../../src/game/sim/physics-world';
 import { BuildingKind } from '../../../../src/world/data';
 import { makeWorld, square } from '../../world/fixture';
 
 beforeAll(() => RAPIER.init());
 
-// a small world: 200 m square, with ground that slopes both ways, so a grid listed the wrong way round shows
-const HALF = 100;
-const sloped = { heightAt: (x: number, z: number) => 0.1 * x + 0.02 * z };
-const flat = { heightAt: () => 0 };
+// A terrain as the heightfield hands it to its mesh: samples every 5 m over a 200 m square, no refined cells. Between
+// samples the mesh is flat triangles, so `heightAt` is exact only where the ground is a plane.
+function field(heightAt: (x: number, z: number) => number): PhysicsWorldOptions['heightfield'] {
+  const half = 100,
+    step = 5,
+    coord = (i: number) => -half + i * step;
+  return {
+    samples: (half * 2) / step + 1,
+    sampleCoord: coord,
+    sampleHeight: (i, j) => heightAt(coord(i), coord(j)),
+    cellDetail: () => 1,
+    fineHeight: () => 0,
+    heightAt,
+  };
+}
+// ground that slopes both ways, so a grid listed the wrong way round shows
+const sloped = field((x, z) => 0.1 * x + 0.02 * z);
+const flat = field(() => 0);
 // hills a few metres high and tens of metres apart, as in the village
-const bumpy = { heightAt: (x: number, z: number) => 3 * Math.sin(x / 13) + 2 * Math.cos(z / 7) };
+const bumpy = field((x, z) => 3 * Math.sin(x / 13) + 2 * Math.cos(z / 7));
 const mailbox = (x: number, z: number): PropSpec => ({
   x,
   z,
@@ -23,13 +43,28 @@ const mailbox = (x: number, z: number): PropSpec => ({
   heightM: 1.3,
   massKg: 12,
 });
-// a Volvo-sized car heading east: the game's heading h points a car at (sin h, -cos h)
-const car = (x: number): CarBody => ({ x, z: 0, h: Math.PI / 2, T: { lengthM: 4.8, widthM: 1.75 } });
+// a Volvo-sized car heading east along z = `z`: the game's heading h points a car at (sin h, -cos h)
+const car = (x: number, z = 0): CarBody => ({ x, z, h: Math.PI / 2, T: { lengthM: 4.8, widthM: 1.75 } });
 const pose = (): PropPose => ({ x: 0, y: 0, z: 0, qx: 0, qy: 0, qz: 0, qw: 1 });
+const world = (heightfield: PhysicsWorldOptions['heightfield'], props: PropSpec[] = []) =>
+  new PhysicsWorld(RAPIER, { data: makeWorld({}), heightfield, props });
+// drives a car east from x 0 at `speed` (m/s) for 1.5 s at `fps`, along z = `z`; returns how far the mailbox at (10, 0) went
+function drive(speed: number, z = 0, fps = 60) {
+  const w = world(flat, [mailbox(10, 0)]),
+    c = car(0, z);
+  for (let t = 0; t < 1.5; t += 1 / fps) {
+    c.x += speed / fps;
+    w.follow([c], null);
+    w.step(1 / fps);
+  }
+  const p = w.propPose(0, pose());
+  w.dispose();
+  return Math.hypot(p.x - 10, p.z);
+}
 
 describe('PhysicsWorld', () => {
-  it('lays the ground where the heightfield says, both ways round', () => {
-    const w = new PhysicsWorld(RAPIER, { data: makeWorld({}), heightfield: sloped, half: HALF, props: [] });
+  it('lays the ground where the terrain is, both ways round', () => {
+    const w = world(sloped);
     for (const [x, z] of [
       [60, -40],
       [-30, 70],
@@ -37,14 +72,14 @@ describe('PhysicsWorld', () => {
     ]) {
       const down = w.castRay(x, 100, z, 0, -1, 0, 500);
       expect(down, `at (${x}, ${z})`).not.toBeNull();
-      expect(100 - (down ?? 0), `at (${x}, ${z})`).toBeCloseTo(sloped.heightAt(x, z), 1);
+      expect(100 - (down ?? 0), `at (${x}, ${z})`).toBeCloseTo(sloped.heightAt(x, z), 2);
     }
     w.dispose();
   });
 
   it("stands a building's walls up from its outline", () => {
     const data = makeWorld({ b: [{ p: square(20, -5, 10), h: 5, k: BuildingKind.OTHER }] });
-    const w = new PhysicsWorld(RAPIER, { data, heightfield: flat, half: HALF, props: [] });
+    const w = new PhysicsWorld(RAPIER, { data, heightfield: flat, props: [] });
     // from the west, 2 m up, towards the wall at x 20
     expect(w.castRay(0, 2, 0, 1, 0, 0, 100)).toBeCloseTo(20, 2);
     // over the roof's edge, nothing
@@ -52,35 +87,42 @@ describe('PhysicsWorld', () => {
     w.dispose();
   });
 
-  it('leaves the props out of the world until a car or the player comes near', () => {
-    const props = [mailbox(10, 0), mailbox(60, 0)];
-    const w = new PhysicsWorld(RAPIER, { data: makeWorld({}), heightfield: bumpy, half: HALF, props });
+  it('leaves the props out of the world until a car drives near, not the player', () => {
+    const w = world(bumpy, [mailbox(10, 0), mailbox(60, 0)]);
     for (let i = 0; i < 30; i++) w.step(PHYSICS_STEP_S);
-    expect(w.joined).toEqual([]);
     w.follow([], { x: 0, z: 0 });
+    expect(w.joined).toEqual([]);
+    const c = car(-1);
+    w.follow([c], null); // a car that has just come into the world hasn't moved yet
+    c.x += 1;
+    w.follow([c], null);
     expect(w.joined).toEqual([0]); // 10 m away, not the one 60 m away
     w.dispose();
   });
 
-  it('anchors a prop that joins on uneven ground where it stands, until something touches it', () => {
-    // 25 mailboxes on a 3 m grid round the player, none where the player stands, turned every which way, all within
-    // PROP_JOIN_M (12 m)
-    const props = Array.from({ length: 25 }, (_, i) => ({
-      ...mailbox(-4.5 + (i % 5) * 3, -4.5 + Math.floor(i / 5) * 3),
-      baseY: bumpy.heightAt(-4.5 + (i % 5) * 3, -4.5 + Math.floor(i / 5) * 3),
-      rotationY: i,
-    }));
-    const w = new PhysicsWorld(RAPIER, { data: makeWorld({}), heightfield: bumpy, half: HALF, props });
-    w.follow([], { x: 0, z: 0 });
-    expect(w.joined).toHaveLength(25);
+  it('anchors a prop that joins on uneven ground where it stands, until something knocks it', () => {
+    // 25 mailboxes on a 3 m grid round a car that drives in and stops, none in its way, turned every which way
+    const props = Array.from({ length: 25 }, (_, i) => {
+      const x = 20 + (i % 5) * 3,
+        z = 4 + Math.floor(i / 5) * 3;
+      return { ...mailbox(x, z), baseY: bumpy.heightAt(x, z), rotationY: i };
+    });
+    const w = world(bumpy, props),
+      c = car(15);
+    for (let i = 0; i < 10; i++) {
+      c.x += 0.5;
+      w.follow([c], null);
+      w.step(PHYSICS_STEP_S);
+    }
     for (let i = 0; i < 180; i++) w.step(PHYSICS_STEP_S);
+    expect(w.joined.length).toBeGreaterThan(10);
+    expect(w.loosened).toEqual([]);
     expect(w.awakeProps).toBe(0);
-    for (let i = 0; i < 25; i++) expect(w.isLoose(i), `prop ${i}`).toBe(false);
     w.dispose();
   });
 
   it('sends a mailbox flying when a car drives through it', () => {
-    const w = new PhysicsWorld(RAPIER, { data: makeWorld({}), heightfield: flat, half: HALF, props: [mailbox(10, 0)] });
+    const w = world(flat, [mailbox(10, 0)]);
     const c = car(0);
     // 15 m/s, about 54 km/h, for a second
     for (let i = 0; i < 60; i++) {
@@ -91,39 +133,63 @@ describe('PhysicsWorld', () => {
     const p = w.propPose(0, pose());
     expect(Math.hypot(p.x - 10, p.z)).toBeGreaterThan(2); // knocked metres from where it stood
     expect(Math.abs(p.qw)).toBeLessThan(0.99); // and turned over
-    expect(w.isLoose(0)).toBe(true);
+    expect(w.loosened).toEqual([0]);
     w.dispose();
   });
 
-  it("knocks a mailbox about as far at 15 fps as at 60, a frame's move spread over its steps", () => {
-    const thrown = (fps: number) => {
-      const w = new PhysicsWorld(RAPIER, {
-        data: makeWorld({}),
-        heightfield: flat,
-        half: HALF,
-        props: [mailbox(10, 0)],
-      });
-      const c = car(0);
-      for (let t = 0; t < 1.5; t += 1 / fps) {
-        c.x += 15 / fps;
-        w.follow([c], null);
-        w.step(1 / fps);
-      }
-      const p = w.propPose(0, pose());
-      w.dispose();
-      return Math.hypot(p.x - 10, p.z);
-    };
-    const at60 = thrown(60),
-      at15 = thrown(15);
-    expect(at15).toBeGreaterThan(at60 * 0.6);
-    expect(at15).toBeLessThan(at60 * 1.6);
+  it.each([
+    [8, 0],
+    [25, 0],
+    [45, 0],
+    [8, 0.6],
+    [25, 0.6],
+    [45, 0.6],
+  ])(
+    "knocks a mailbox away at %d m/s, %d m off the car's middle, rather than letting the car pass through it",
+    (speed, off) => {
+      expect(drive(speed, off)).toBeGreaterThan(1);
+    },
+  );
+
+  it("knocks a mailbox about as far at 20 fps as at 60, a frame's move spread over its steps", () => {
+    // 20 fps: the loop caps a frame at 0.05 s (src/game/loop.ts), three steps
+    const at60 = drive(15),
+      at20 = drive(15, 0, 20);
+    expect(at20).toBeGreaterThan(at60 * 0.6);
+    expect(at20).toBeLessThan(at60 * 1.6);
+  });
+
+  it('lets the player walk past a mailbox, and push one that is already down', () => {
+    const w = world(flat, [mailbox(10, 0)]),
+      c = car(0);
+    for (let i = 0; i < 6; i++) {
+      c.x += 0.5;
+      w.follow([c], { x: 9.3, z: 0 }); // the car brings it into the world; the player stands touching it
+      w.step(PHYSICS_STEP_S);
+    }
+    expect(w.joined).toEqual([0]);
+    expect(w.loosened).toEqual([]);
+    w.dispose();
+  });
+
+  it("jumps a car that is put somewhere far, so it doesn't sweep across the village and launch what it touches", () => {
+    const w = world(flat, [mailbox(10, 0)]),
+      c = car(-60);
+    w.follow([c], null);
+    w.step(PHYSICS_STEP_S);
+    c.x = 50; // a respawn: past the mailbox, in one frame
+    w.follow([c], null);
+    w.step(PHYSICS_STEP_S);
+    expect(w.loosened).toEqual([]);
+    w.dispose();
   });
 
   it('runs fixed steps, catching up a long frame but no more than four steps at once', () => {
-    const w = new PhysicsWorld(RAPIER, { data: makeWorld({}), heightfield: flat, half: HALF, props: [] });
+    const w = world(flat);
     expect(w.step(PHYSICS_STEP_S / 2)).toBe(0);
     expect(w.step(PHYSICS_STEP_S / 2)).toBe(1);
     expect(w.step(1)).toBe(4);
+    expect(w.steps).toBe(5);
     w.dispose();
   });
 });
