@@ -48,12 +48,14 @@ test('wiki: the menu leads to a place with its map and to a character in 3D, wit
   };
   await openPage('places/torget');
 
-  // a place: a link that starts the game there, and the game's map in a frame, over the same spot
-  const driveHere = await page.getByRole('link', { name: 'Drive here' }).getAttribute('href');
-  expect(driveHere).toMatch(/^\/\?at=-?[\d.]+,-?[\d.]+$/);
+  // a place: a link that starts the game there, and the game's map in a frame, over the place (not always the spot the
+  // game starts at: a page can give a `start` of its own), as its "Open full screen" link opens it
+  await expect(page.getByRole('link', { name: 'Drive here' })).toHaveAttribute('href', /^\/\?at=-?[\d.]+,-?[\d.]+$/);
+  const fullMap = await page.getByRole('link', { name: 'Open full screen' }).getAttribute('href');
+  expect(fullMap).toMatch(/^\/map\.html\?focus=-?[\d.]+,-?[\d.]+$/);
   await expect(page.locator('.map-embed [role=status]')).toHaveCount(0); // the map's page has loaded in the frame
   expect(page.frames().map(frame => new URL(frame.url()).pathname + new URL(frame.url()).search)).toContain(
-    `/map.html?focus=${driveHere.slice('/?at='.length)}&embed`,
+    `${fullMap}&embed`,
   );
   await page.screenshot({ path: info.outputPath('wiki-place.png') });
 
