@@ -22,6 +22,7 @@ import {
   type HitFlavour,
   MUZZLE_M,
   newHit,
+  pangCar,
   SHOTS_MAX,
   type Shot,
   type ShotHit,
@@ -65,9 +66,7 @@ const PULL_KEEP_S = 0.12; // a click this long before the weapon is ready still 
 const INTRO_AFTER_S = 5.5; // the lab's own line comes this long after Start, once the start line is gone
 // pang: a hit throws people and shoves cars
 const PANG_THROW_MS = 5, // a person leaves at this, plus PANG_THROW_PER_POWER_MS for each point of the weapon's power
-  PANG_THROW_PER_POWER_MS = 2.5,
-  PANG_CAR_SHOVE_M = 0.14, // a parked car slides this far per point of power
-  PANG_CAR_DMG = 2; // and takes this much damage per point of power
+  PANG_THROW_PER_POWER_MS = 2.5;
 const SCUFF = '#2b2b2b'; // the mark a pang hit leaves
 const STARE_S = 2.5; // someone hit by gegga stops and looks at you this long
 const DANCE_S = 6,
@@ -588,7 +587,8 @@ export class Pickadoll {
   private land(s: Shot & { seed: number; flavour: HitFlavour }, hit: ShotHit) {
     const { fx, crowd, rnd } = this.g,
       weapon = WEAPONS[s.weapon],
-      colour = this.colourOf(s);
+      colour = this.colourOf(s),
+      splatM = s.flavour === 'gegga' ? weapon.splatM : weapon.splatM * 0.45;
     if (hit.bounced && weapon.fuseS) return; // a grenade only bounces and lies until its fuse runs out
     this.hits++;
     if (weapon.zone === 'spikes') {
@@ -599,8 +599,10 @@ export class Pickadoll {
     const person = hit.kind === 'person' ? crowd.npcs[hit.target] : null,
       car = hit.kind === 'car' ? this.world.cars[hit.target] : null;
     if (person) this.hitPerson(person, s.flavour, hit.dx, hit.dz, hit.y, weapon.power, weapon.splatM, colour, s.seed);
-    else if (car) this.hitCar(car, s.flavour, hit, weapon.power, weapon.splatM, colour, s.seed);
-    else fx.splat(hit, s.flavour === 'gegga' ? weapon.splatM : weapon.splatM * 0.45, colour, s.seed);
+    else if (car) {
+      if (s.flavour === 'pang') this.shoveCar(car, hit.dx, hit.dz, weapon.power);
+      fx.splatOn(car.mesh, hit, splatM, colour, s.seed);
+    } else fx.splat(hit, splatM, colour, s.seed);
     if (person || car) this.mark();
     if (!weapon.blastM) return;
     const { push } = this;
@@ -662,31 +664,13 @@ export class Pickadoll {
     }
   }
 
-  private hitCar(
-    c: RenderedCar,
-    flavour: HitFlavour,
-    hit: ShotHit,
-    power: number,
-    splatM: number,
-    colour: string,
-    turn: number,
-  ) {
-    if (flavour === 'pang') this.shoveCar(c, hit.dx, hit.dz, power);
-    this.g.fx.splatOn(c.mesh, hit, flavour === 'gegga' ? splatM : splatM * 0.45, colour, turn);
-  }
-
   // the cars a crash spares (crashes.ts): Plåt-Pelle's for sale, which also stand still, and the one you drive in god mode
   private spared(c: RenderedCar) {
     return c.saleKr > 0 || (this.g.god && c === this.g.game.pcar);
   }
 
   private shoveCar(c: RenderedCar, dx: number, dz: number, power: number) {
-    if (this.spared(c)) return;
-    damageCar(c, power * PANG_CAR_DMG);
-    if (c.mode !== 'parked') return; // a car that drives is where its driving puts it
-    c.x += dx * power * PANG_CAR_SHOVE_M;
-    c.z += dz * power * PANG_CAR_SHOVE_M;
-    this.g.placeCar(c);
+    if (!this.spared(c) && pangCar(c, dx, dz, power)) this.g.placeCar(c);
   }
 
   // what the fotanglar on the ground do to who comes by

@@ -9,6 +9,7 @@ import {
   GRAVITY_MS2,
   MUZZLE_M,
   newHit,
+  pangCar,
   type Shot,
   type ShotWorld,
   sight,
@@ -440,5 +441,21 @@ describe('assistTarget', () => {
   it('is nobody when nobody is inside the cone or the range', () => {
     expect(assistTarget(0, 0, Math.PI, { people, cars: [] }, 0.3, 45)).toBeNull();
     expect(assistTarget(0, 0, 0, { people, cars: [] }, 0.3, 10)).toBeNull();
+  });
+});
+
+describe('pangCar', () => {
+  it('damages a parked car by the power and slides it along the push', () => {
+    const c = { x: 10, z: 5, dmg: 0, mode: 'parked' };
+    expect(pangCar(c, 0, -1, 3)).toBe(true);
+    expect(c.dmg).toBe(6); // 2 a point of power
+    expect(c.x).toBe(10);
+    expect(c.z).toBeCloseTo(5 - 3 * 0.14); // 0.14 m a point of power
+  });
+
+  it('damages a car that drives, and leaves it where its driving puts it', () => {
+    const c = { x: 10, z: 5, dmg: 20, mode: 'ai' };
+    expect(pangCar(c, 1, 0, 2)).toBe(false);
+    expect(c).toMatchObject({ x: 10, z: 5, dmg: 24 });
   });
 });

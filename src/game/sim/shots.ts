@@ -1,6 +1,7 @@
 // Shots (#17, lab: pickadoll): what the weapons fire, how a shot flies and what it hits. A proof of concept for trying
 // weapons and hits side by side: the weapon decides how a shot is delivered, the hit flavour what it does on landing.
 // Plain data and functions: no three.js, no DOM.
+import { damageCar } from '../health';
 import { bodyRadius, type CarBody, nearestOnSpine, PERSON_RADIUS_M } from './car-body';
 
 /** How a weapon delivers its shots. */
@@ -346,6 +347,26 @@ export function aimShot(weapon: Weapon, yaw: number, pitch: number, spreadYaw = 
 
 const _probe = { x: 0, z: 0 },
   _onCar = { x: 0, z: 0 };
+
+const PANG_CAR_SHOVE_M = 0.14, // a parked car slides this far per point of power
+  PANG_CAR_DMG = 2; // and takes this much damage per point of power
+
+/**
+ * What a pang hit does to a car, pushed along (dx, dz): it takes damage by the hit's power, and a parked one slides.
+ * A car that drives stays where its driving puts it. True when the car moved, so whoever draws it places it again.
+ */
+export function pangCar(
+  c: { x: number; z: number; dmg: number; mode: string },
+  dx: number,
+  dz: number,
+  power: number,
+): boolean {
+  damageCar(c, power * PANG_CAR_DMG);
+  if (c.mode !== 'parked') return false;
+  c.x += dx * power * PANG_CAR_SHOVE_M;
+  c.z += dz * power * PANG_CAR_SHOVE_M;
+  return true;
+}
 
 /** What a step did to a shot (stepShot). */
 export type ShotStep = 'flying' | 'hit' | 'gone';
