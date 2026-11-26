@@ -16,6 +16,7 @@ const bumpy = { heightAt: (x: number, z: number) => 3 * Math.sin(x / 13) + 2 * M
 const mailbox = (x: number, z: number): PropSpec => ({
   x,
   z,
+  baseY: 0,
   rotationY: 0,
   widthM: 0.34,
   depthM: 0.2,
@@ -66,6 +67,7 @@ describe('PhysicsWorld', () => {
     // PROP_JOIN_M (12 m)
     const props = Array.from({ length: 25 }, (_, i) => ({
       ...mailbox(-4.5 + (i % 5) * 3, -4.5 + Math.floor(i / 5) * 3),
+      baseY: bumpy.heightAt(-4.5 + (i % 5) * 3, -4.5 + Math.floor(i / 5) * 3),
       rotationY: i,
     }));
     const w = new PhysicsWorld(RAPIER, { data: makeWorld({}), heightfield: bumpy, half: HALF, props });
@@ -91,6 +93,30 @@ describe('PhysicsWorld', () => {
     expect(Math.abs(p.qw)).toBeLessThan(0.99); // and turned over
     expect(w.isLoose(0)).toBe(true);
     w.dispose();
+  });
+
+  it("knocks a mailbox about as far at 15 fps as at 60, a frame's move spread over its steps", () => {
+    const thrown = (fps: number) => {
+      const w = new PhysicsWorld(RAPIER, {
+        data: makeWorld({}),
+        heightfield: flat,
+        half: HALF,
+        props: [mailbox(10, 0)],
+      });
+      const c = car(0);
+      for (let t = 0; t < 1.5; t += 1 / fps) {
+        c.x += 15 / fps;
+        w.follow([c], null);
+        w.step(1 / fps);
+      }
+      const p = w.propPose(0, pose());
+      w.dispose();
+      return Math.hypot(p.x - 10, p.z);
+    };
+    const at60 = thrown(60),
+      at15 = thrown(15);
+    expect(at15).toBeGreaterThan(at60 * 0.6);
+    expect(at15).toBeLessThan(at60 * 1.6);
   });
 
   it('runs fixed steps, catching up a long frame but no more than four steps at once', () => {

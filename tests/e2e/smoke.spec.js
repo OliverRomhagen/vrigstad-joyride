@@ -240,8 +240,9 @@ test.describe('game (index.html)', () => {
     // a failed load only warns, so wait for the world itself: without this, the default game would pass
     await expect.poll(async () => (await state(page)).rapier?.props ?? 0, { timeout: 60_000 }).toBeGreaterThan(0);
     expect(fetched).toContain('/vendor/rapier.mjs');
+    const before = (await state(page)).rapier.steps;
     await frames(page, 10);
-    expect((await state(page)).rapier.stepMs).toBeGreaterThanOrEqual(0);
+    expect((await state(page)).rapier.steps).toBeGreaterThan(before); // the world is stepped every frame
     expect(errors).toEqual([]);
   });
 

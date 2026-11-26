@@ -33,6 +33,8 @@ const PROP_CELL_M = 16;
 export interface PropSpec {
   x: number;
   z: number;
+  /** the height of the ground it stands on, as it is drawn: curbs and road lifts included (m) */
+  baseY: number;
   rotationY: number;
   widthM: number;
   depthM: number;
@@ -82,7 +84,11 @@ export class PhysicsWorld {
   private readonly carBodies = new Map<CarBody, Body>();
   private readonly playerBody: Body;
   private readonly seen = new Set<CarBody>();
+  /** where each car's and the player's body is to be at the end of this frame's steps */
+  private readonly targets = new Map<Body, Target>();
   private carry = 0;
+  /** how many steps have run since the world was built */
+  steps = 0;
 
   constructor(R: Rapier, { data, heightfield, half, props }: PhysicsWorldOptions) {
     this.R = R;
@@ -134,34 +140,61 @@ export class PhysicsWorld {
         );
         this.carBodies.set(car, body);
       }
-      body.setNextKinematicTranslation({ x: car.x, y: this.heightAt(car.x, car.z) + r, z: car.z });
       // the game's heading h points the car at (sin h, -cos h); a turn of π - h about y takes z there
-      body.setNextKinematicRotation(yaw(Math.PI - car.h));
+      this.aim(body, car.x, this.heightAt(car.x, car.z) + r, car.z, Math.PI - car.h);
       this.joinNear(car.x, car.z);
     }
     for (const [car, body] of this.carBodies)
       if (!seen.has(car)) {
         this.world.removeRigidBody(body);
         this.carBodies.delete(car);
+        this.targets.delete(body);
       }
     if (player) {
       const y = this.heightAt(player.x, player.z) + PLAYER_RADIUS_M + PLAYER_HALF_HEIGHT_M;
-      this.playerBody.setNextKinematicTranslation({ x: player.x, y, z: player.z });
+      this.aim(this.playerBody, player.x, y, player.z, Number.NaN);
       this.joinNear(player.x, player.z);
-    } else this.playerBody.setNextKinematicTranslation({ x: 0, y: -1000, z: 0 }); // in a car: out of the way
+    } else this.aim(this.playerBody, 0, -1000, 0, Number.NaN); // in a car: out of the way
   }
 
   /** Runs the steps this frame's time asks for; returns how many ran. */
   step(dt: number, now: () => number = () => 0) {
     const t0 = now();
     this.carry = Math.min(this.carry + dt, PHYSICS_STEP_S * MAX_STEPS_PER_FRAME);
-    let steps = 0;
-    while (this.carry >= PHYSICS_STEP_S) {
+    const steps = Math.floor(this.carry / PHYSICS_STEP_S + 1e-9);
+    this.carry -= steps * PHYSICS_STEP_S;
+    if (steps === 0) {
+      this.stepMs = now() - t0;
+      return 0;
+    }
+    // Each car and the player cover this frame's move evenly over its steps: Rapier gives a kinematic body the whole
+    // move in the first step it's told of, so at 30 fps a car would hit a mailbox at twice its speed, then stand still.
+    for (const [body, t] of this.targets) {
+      const p = body.translation(),
+        q = body.rotation();
+      t.fromX = p.x;
+      t.fromY = p.y;
+      t.fromZ = p.z;
+      t.fromAngle = 2 * Math.atan2(q.y, q.w);
+    }
+    for (let k = 1; k <= steps; k++) {
+      const f = k / steps;
+      for (const [body, t] of this.targets) {
+        body.setNextKinematicTranslation({
+          x: t.fromX + (t.x - t.fromX) * f,
+          y: t.fromY + (t.y - t.fromY) * f,
+          z: t.fromZ + (t.z - t.fromZ) * f,
+        });
+        if (!Number.isNaN(t.angle)) {
+          const turn = Math.atan2(Math.sin(t.angle - t.fromAngle), Math.cos(t.angle - t.fromAngle)); // the short way round
+          body.setNextKinematicRotation(yaw(t.fromAngle + turn * f));
+        }
+      }
       this.world.step(this.events);
       this.events.drainCollisionEvents(this.loosen);
-      this.carry -= PHYSICS_STEP_S;
-      steps++;
     }
+    this.targets.clear();
+    this.steps += steps;
     this.stepMs = now() - t0;
     return steps;
   }
@@ -191,7 +224,7 @@ export class PhysicsWorld {
       const p = this.props[i],
         q = yaw(p.rotationY);
       out.x = p.x;
-      out.y = this.heightAt(p.x, p.z) + p.heightM / 2;
+      out.y = p.baseY + p.heightM / 2;
       out.z = p.z;
       out.qx = q.x;
       out.qy = q.y;
@@ -221,6 +254,17 @@ export class PhysicsWorld {
     this.world.free();
   }
 
+  /** Where `body` is to be at the end of this frame's steps; `angle` about the vertical, NaN to leave it unturned. */
+  private aim(body: Body, x: number, y: number, z: number, angle: number) {
+    const t = this.targets.get(body);
+    if (t) {
+      t.x = x;
+      t.y = y;
+      t.z = z;
+      t.angle = angle;
+    } else this.targets.set(body, { x, y, z, angle, fromX: x, fromY: y, fromZ: z, fromAngle: 0 });
+  }
+
   /** Brings every prop within PROP_JOIN_M of (x, z) into the world. */
   private joinNear(x: number, z: number) {
     const c0 = Math.floor((x - PROP_JOIN_M) / PROP_CELL_M),
@@ -239,7 +283,7 @@ export class PhysicsWorld {
   }
 
   /**
-   * Puts prop i in the world, anchored where it stands on the game's ground, as a mailbox on its post: fixed, so it
+   * Puts prop i in the world, anchored exactly where it is drawn, as a mailbox on its post: fixed, so it
    * neither settles nor tips on a slope, until a car or the player touches it (`loosen`).
    */
   private join(i: number) {
@@ -247,7 +291,7 @@ export class PhysicsWorld {
       p = this.props[i];
     const body = this.world.createRigidBody(
       R.RigidBodyDesc.fixed()
-        .setTranslation(p.x, this.heightAt(p.x, p.z) + p.heightM / 2, p.z)
+        .setTranslation(p.x, p.baseY + p.heightM / 2, p.z)
         .setRotation(yaw(p.rotationY)),
     );
     const collider = this.world.createCollider(
@@ -273,6 +317,17 @@ export class PhysicsWorld {
       this.propBodies[i]?.setBodyType(this.R.RigidBodyType.Dynamic, true);
     }
   };
+}
+
+interface Target {
+  x: number;
+  y: number;
+  z: number;
+  angle: number;
+  fromX: number;
+  fromY: number;
+  fromZ: number;
+  fromAngle: number;
 }
 
 const cellKey = (c: number, r: number) => `${c},${r}`;

@@ -31,6 +31,7 @@ export interface TestHookDeps {
     joined: number;
     awake: number;
     stepMs: number;
+    steps: number;
   } | null; // ?lab=rapier's world, once it has loaded (#54)
   readonly pickadoll: object | null; // ?lab=pickadoll once its code runs: shots fired, hits, hits that got a mark, splats, the weapon and the flavour
   readonly stars: number;
@@ -181,6 +182,7 @@ export function installTestHook(g: TestHookDeps) {
           joined: g.rapier.joined,
           awake: g.rapier.awake,
           stepMs: g.rapier.stepMs,
+          steps: g.rapier.steps,
         },
         pickadoll: g.pickadoll,
         x: player.x,

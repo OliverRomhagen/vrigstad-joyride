@@ -24,7 +24,7 @@ Bullets are not physics bodies either way: a shot is too fast to simulate, so it
 One lab experiment, `?lab=rapier`. With the flag off, the game runs exactly as today. Four steps:
 
 1. **Load it only for those who ask.** The ready-to-use package (`rapier3d-compat`) has the engine baked into its JavaScript: 4.3 MB, 1.65 MB compressed. Our pages are built as single files, so an ordinary import would put all of that inside every player's page, even with the flag off (AGENTS.md, Lab experiments). The trial therefore fetches the engine as a separate file (the `.wasm` alone is 1.2 MB compressed), only when the flag is on. That's the first thing to get working. Then we measure the download and the start-up time.
-2. **The village as shapes.** The building footprints, walls and fences (`BuildingIndex`'s footprints and solids) become fixed shapes in a Rapier world. The cars and the player become shapes that Rapier moves where our own code says, so driving and walking feel exactly as they do now. Today's hand-written collisions stay in charge. Rapier only watches, for now.
+2. **The village as shapes.** The ground and the buildings' walls become fixed shapes in a Rapier world. The cars and the player become shapes that Rapier moves where our own code says, so driving and walking feel exactly as they do now. Today's hand-written collisions stay in charge. Rapier only watches, for now.
 3. **Something falls over.** The mailboxes and wheelie bins (from `src/world/furniture/`) become real bodies. A car that drives into one sends it flying, and it lands and rolls. Their meshes follow the bodies.
 4. **Shots through it.** On top of the weapons branch ([#514](https://github.com/OliverRomhagen/vrigstad-joyride/pull/514)), the pickadoll finds its hits with Rapier's ray cast instead of stepping, and a hit knocks a mailbox too. We fire about 500 shots at once (a minigun's worth for eight players) and time it.
 
@@ -59,6 +59,14 @@ And by eye: does a mailbox you drive into look and feel right? Screenshots or a 
   - the physics took about 0.4 ms a frame;
   - loading and starting Rapier took 7 to 9 s here. A real device is needed to judge that one.
 - **By eye:** a Volvo at 60 km/h throws a mailbox several metres, turning over. Traffic knocks over the odd mailbox too.
+- **A frame's move is spread over its steps.** Below 60 fps the world runs two to four steps a frame, and Rapier gives a car the whole frame's move in the first of them. At 15 fps a car threw a mailbox 50 m instead of 15 m. Each car and the player now cover their move evenly over the frame's steps.
+
+## Known limits of the trial
+
+- **Two grounds.** Rapier's ground is the terrain, sampled every 2 m. The furniture is drawn on the game's ground, which adds curbs, road lifts and floors. So a knocked prop drops up to a curb's height and can rest partly in a sidewalk. The car and player shapes don't follow bridge decks either.
+- **Missing shapes.** Only the buildings' walls are in Rapier's world, not the fences at Skroten or the kiosk.
+- **Knocked props add up.** Traffic knocks props over anywhere in the village. Each knocked prop is a draw call of its own from then on, and props never leave the world once they have joined. A long session would show it in the numbers.
+- **The file has no version in its name.** `vendor/rapier.mjs` can be cached for a few minutes past an upgrade.
 
 ## How we decide
 

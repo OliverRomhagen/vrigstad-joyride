@@ -1,13 +1,12 @@
 // ?lab=rapier (#54, docs/rapier-trial.md): loads Rapier and runs its world beside the game's own collisions. Rapier
 // comes as a file of its own, vendor/rapier.mjs beside the page (vite.config.ts), fetched only when the flag is on: an
 // ordinary import would put its 1.65 MB inside every player's page, flag or no flag.
-import type * as THREE from 'three';
+import * as THREE from 'three';
 import type { WorldData } from '../world/data';
-import type { FurnitureKind } from '../world/furniture/definitions';
-import { FURNITURE } from '../world/furniture/definitions';
+import type { FurnitureKind, FurnitureModelId } from '../world/furniture/definitions';
 import type { FurniturePlacement } from '../world/furniture/placement';
 import type { Heightfield } from '../world/heightfield';
-import type { StreetFurniture } from '../world/mesh/street-furniture';
+import { FURNITURE_MODELS, type StreetFurniture } from '../world/mesh/street-furniture';
 import { PhysicsProps } from './render/physics-props';
 import type { CarBody } from './sim/car-body';
 import { PhysicsWorld, type PropSpec, type Rapier } from './sim/physics-world';
@@ -24,6 +23,8 @@ export interface RapierLabDeps {
   scene: THREE.Scene;
   data: WorldData;
   heightfield: Pick<Heightfield, 'heightAt'>;
+  /** the ground the furniture is drawn on: curbs, road lifts and floors included */
+  groundAt(x: number, z: number): number;
   half: number;
   placements: readonly FurniturePlacement[];
   furniture: Pick<StreetFurniture, 'detach'>;
@@ -46,7 +47,26 @@ export interface RapierLabState {
   readonly awake: number;
   /** the last frame's physics steps (ms) */
   readonly stepMs: number;
+  /** the steps run since the world was built */
+  readonly steps: number;
 }
+
+/** A model's size: across, front to back and up from its foot (m), from its own geometry, as a stand's width depends on its boxes. */
+const modelSize = (() => {
+  const sizes = new Map<FurnitureModelId, { widthM: number; depthM: number; heightM: number }>();
+  return (id: FurnitureModelId) => {
+    let size = sizes.get(id);
+    if (!size) {
+      const model = FURNITURE_MODELS[id](),
+        box = new THREE.Box3().setFromBufferAttribute(model.body.getAttribute('position') as THREE.BufferAttribute);
+      size = { widthM: box.max.x - box.min.x, depthM: box.max.z - box.min.z, heightM: box.max.y };
+      model.body.dispose();
+      model.glass?.dispose();
+      sizes.set(id, size);
+    }
+    return size;
+  };
+})();
 
 export async function startRapierLab(g: RapierLabDeps): Promise<RapierLabState> {
   const t0 = performance.now();
@@ -60,15 +80,16 @@ export async function startRapierLab(g: RapierLabDeps): Promise<RapierLabState> 
   for (const p of g.placements) {
     const massKg = PROP_MASS_KG[p.kind];
     if (massKg === undefined) continue;
-    const def = FURNITURE[p.kind];
+    const size = modelSize(p.modelId);
     placements.push(p);
     specs.push({
       x: p.x,
       z: p.z,
       rotationY: p.rotationY,
-      widthM: def.widthM * p.scale,
-      depthM: def.depthM * p.scale,
-      heightM: def.heightM * p.scale,
+      baseY: g.groundAt(p.x, p.z),
+      widthM: size.widthM * p.scale,
+      depthM: size.depthM * p.scale,
+      heightM: size.heightM * p.scale,
       massKg,
     });
   }
@@ -103,6 +124,9 @@ export async function startRapierLab(g: RapierLabDeps): Promise<RapierLabState> 
     },
     get stepMs() {
       return world.stepMs;
+    },
+    get steps() {
+      return world.steps;
     },
   };
 }
