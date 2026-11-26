@@ -86,19 +86,33 @@ describe('PhysicsWorld', () => {
   });
 
   it('takes a prop out of the world again once no car is near it, and keeps one that was knocked', () => {
-    const w = world(flat, [mailbox(10, 0), mailbox(10, 1.5)]),
-      c = car(-1, 4);
+    const w = world(flat, [mailbox(10, 0), mailbox(10, 15)]),
+      c = car(8, 7.5);
     w.follow([c], null, c);
-    c.x += 1; // a car passes near: both join, anchored
+    c.x += 1; // a car passes between them: both join, anchored
     w.follow([c], null, c);
     expect([...w.joined].sort()).toEqual([0, 1]);
-    // the second is knocked; the car drives away, out of the join distance and its margin
-    w.knockProp(1, 10, 0.6, 1.5, 0, 0, 30);
+    // the second is knocked, away from the first; the car drives off, out of the join distance and its margin
+    w.knockProp(1, 10, 0.6, 15, 0, 0, 30);
     c.x = -90;
     w.follow([c], null, c);
     for (let i = 0; i < 60; i++) w.step(PHYSICS_STEP_S);
     expect(w.joined).toEqual([1]); // the anchored one has left; the knocked one stays until it's back on its stand
     expect(w.propPose(0, pose()).x).toBe(10); // back to data, standing where it's drawn
+    w.dispose();
+  });
+
+  it('keeps an anchored prop in the world while a knocked one lies beside it', () => {
+    const w = world(flat, [mailbox(10, 0), mailbox(10, 1.5)]),
+      c = car(-1, 4);
+    w.follow([c], null, c);
+    c.x += 1;
+    w.follow([c], null, c);
+    w.knockProp(1, 10, 0.6, 1.5, 0, 0, 5); // tipped over beside the first
+    c.x = -90;
+    w.follow([c], null, c);
+    for (let i = 0; i < 60; i++) w.step(PHYSICS_STEP_S);
+    expect([...w.joined].sort()).toEqual([0, 1]); // else the knocked one could slide through where the first stood
     w.dispose();
   });
 

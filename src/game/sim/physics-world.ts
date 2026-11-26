@@ -741,6 +741,10 @@ export class PhysicsWorld {
   private keepPrev(i: number) {
     const body = this.propBodies[i];
     if (!body) return;
+    if (body.isSleeping()) {
+      this.hasPrev[i] = 0; // at rest: drawn where it lies, and nothing read from Rapier for it
+      return;
+    }
     const t = body.translation(),
       q = body.rotation(),
       k = i * 7,
@@ -769,6 +773,7 @@ export class PhysicsWorld {
         p = props[i],
         body = this.propBodies[i];
       if (!body || p.isTarget || this.loose[i]) continue;
+      if (this.looseNear(p.x, p.z)) continue; // a knocked prop beside it would slide through where it stood
       if (forShots && Math.hypot(p.x - this.viewerX, p.z - this.viewerZ) < shotKeepM) continue;
       let near = false;
       for (const [b, t] of this.targets)
@@ -784,6 +789,17 @@ export class PhysicsWorld {
       joined[k] = joined[joined.length - 1];
       joined.pop();
     }
+  }
+
+  /** Whether a knocked prop lies within PHYSICS.PROP_JOIN_M of (x, z). */
+  private looseNear(x: number, z: number) {
+    for (const j of this.loosened) {
+      const body = this.propBodies[j];
+      if (!body) continue;
+      const at = body.translation();
+      if (Math.hypot(at.x - x, at.z - z) < PHYSICS.PROP_JOIN_M) return true;
+    }
+    return false;
   }
 
   private setLoose(i: number) {

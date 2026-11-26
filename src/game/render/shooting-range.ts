@@ -33,6 +33,7 @@ export class ShootingRangeMeshes {
   private readonly targetMeshes: THREE.Mesh[] = [];
   /** whether each target was loose when it was last drawn, null before the first time */
   private readonly drawnLoose: (boolean | null)[] = [];
+  private readonly wasAwake: boolean[] = [];
 
   constructor(g: ShootingRangeMeshDeps) {
     this.g = g;
@@ -62,6 +63,7 @@ export class ShootingRangeMeshes {
       scene.add(m);
       this.targetMeshes.push(m);
       this.drawnLoose.push(null);
+      this.wasAwake.push(false);
     }
   }
 
@@ -73,8 +75,12 @@ export class ShootingRangeMeshes {
     const { world, targets } = this.g;
     for (let k = 0; k < targets.length; k++) {
       const loose = world.isLoose(targets[k]);
-      if (loose === this.drawnLoose[k] && !world.isAwake(targets[k])) continue;
+      const awake = world.isAwake(targets[k]);
+      // drawn while it moves, once when it's knocked or back on its stand, and once more as it falls asleep: the last
+      // frame drew it blended, a little short of where it rests
+      if (loose === this.drawnLoose[k] && !awake && !this.wasAwake[k]) continue;
       this.drawnLoose[k] = loose;
+      this.wasAwake[k] = awake;
       const p = world.drawnPose(targets[k], _pose),
         m = this.targetMeshes[k];
       m.position.set(p.x, p.y, p.z);
