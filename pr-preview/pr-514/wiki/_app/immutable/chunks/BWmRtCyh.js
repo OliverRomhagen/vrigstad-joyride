@@ -1,0 +1,1 @@
+import{gt as e}from"./C_k-aveg.js";e();
