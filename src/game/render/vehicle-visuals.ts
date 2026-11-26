@@ -152,9 +152,12 @@ export class VehicleVisuals {
     if (!view.root) return;
     const body = view.root.getObjectByName(BODY_NODE);
     const recolor = (material: THREE.MeshStandardMaterial) => {
-      const m = view.materials.has(material) ? material : material.clone();
+      // the driver's view's clipped clone is the cockpit's own (cockpit.ts): recoloured where it is, as a clone would keep a
+      // copy of its clip planes, frozen where the cut was, and the cockpit disposes it and repaints these when you leave
+      const clipped = !!material.clippingPlanes?.length,
+        m = clipped || view.materials.has(material) ? material : material.clone();
       m.color.set(color).convertSRGBToLinear();
-      view.materials.add(m);
+      if (!clipped) view.materials.add(m);
       return m;
     };
     body?.traverse(node => {
