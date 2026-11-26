@@ -8,7 +8,7 @@ import { gameLights, SUN_DIR, setUpRenderer } from '#game/render/stage';
 import { col } from '#world/three-legacy';
 
 /** The game's daytime lights (render/stage.ts), the sun from the game's direction, its shadow covering `reach` m around `at`. */
-function addGameLights(scene: THREE.Scene, at: THREE.Vector3Like, reach: number) {
+export function addGameLights(scene: THREE.Scene, at: THREE.Vector3Like, reach: number) {
   const { hemi, sun } = gameLights(reach);
   scene.add(hemi);
   sun.target.position.set(at.x, at.y, at.z);
@@ -22,14 +22,14 @@ function addGameLights(scene: THREE.Scene, at: THREE.Vector3Like, reach: number)
 }
 
 /** The grass the wiki's scenes stand on: sRGB, as the game's colours. */
-const GRASS = 0x6b7a48;
+export const GRASS = 0x6b7a48;
 
 /**
  * What every 3D scene of the wiki's shares: a renderer set up as the game's, drawing into `host`, a camera you turn by
  * dragging, the size following `host`, and one loop that stops when the scene is disposed. A scene adds its meshes and lights
  * to `scene` and sets `frame` and `resized` for what is its own.
  */
-class Stage {
+export class Stage {
   /** a touch screen: no antialiasing, and the scenes cast fewer shadows, as in the game */
   readonly coarse = matchMedia('(pointer: coarse)').matches;
   /** the visitor asked for less motion: nothing turns or drives by itself */
