@@ -175,7 +175,7 @@ export class Skroten {
     const { openMenu, toast, carName } = this.g,
       no = this.refusesLift(c);
     if (no) {
-      toast(no, 3.5);
+      if (c.dmg > 0) toast(no, 3.5); // a whole car: E gets you out, as the prompt says, without a word every time
       return false;
     }
     const fix = this.repairKr(c),
@@ -426,8 +426,8 @@ function upgradeHelp(u: Upgrade, c: Car) {
   return pct(1 - UPGRADES.BODY_DAMAGE) + ' less crash damage';
 }
 
-// the colours a respray can give c: its type's other paints; none for a police car
-const otherPaints = (c: Car) => (c.type === 'polis' ? [] : c.T.cols.filter(p => p !== c.color));
+// the colours a respray can give c: its type's other paints (he turns police cars away before this: refusesLift)
+const otherPaints = (c: Car) => c.T.cols.filter(p => p !== c.color);
 
 /** A paint's name in Swedish, as Plåt-Pelle would say it: from its hue and how light it is. `paint` is #rrggbb. */
 export function paintName(paint: string): string {

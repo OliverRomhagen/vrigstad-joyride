@@ -69,9 +69,21 @@ controls.target.set(0, centerY, 0);
 controls.maxPolarAngle = Math.PI * 0.47;
 controls.minDistance = 120; controls.maxDistance = 5200;
 controls.screenSpacePanning = false;
-function setView(top) {
-  controls.target.set(0, centerY, 0);
-  if (top) camera.position.set(0, 3400, 0.5); else camera.position.set(-1300, 1550, 2650);
+const query = new URLSearchParams(location.search);
+// ?focus=x,z (metres from Torget) starts the view close in over that spot, with a pin: the wiki's place pages embed it.
+// Each part must be a plain decimal (Number also takes '', '0x1F' and '1e9') on the map's square: a spot off it is
+// a bad link, and gets the plain overview rather than a pin at the edge.
+const focus = (query.get('focus') || '').split(',')
+  .map(part => (/^\s*-?\d+(\.\d+)?\s*$/.test(part) && Math.abs(Number(part)) <= HALF ? Number(part) : NaN));
+const hasFocus = focus.length === 2 && focus.every(Number.isFinite);
+let focusY = 0;   // what the spot stands on, set once the bridges are built (the ?focus pin, below)
+const FOCUS_ZOOM = 0.3;   // share of the overview's camera distance for the focused first view
+// the camera's offset from the village centre
+const VIEW_OFFSET = new THREE.Vector3(-1300, 1550 - centerY, 2650), TOP_OFFSET = new THREE.Vector3(0, 3400 - centerY, 0.5);
+// Reset and Top look at the whole village; ?focus's first view takes the overview's angle, FOCUS_ZOOM as far from the spot
+function setView(top, focused = false) {
+  if (focused) controls.target.set(focus[0], focusY, focus[1]); else controls.target.set(0, centerY, 0);
+  camera.position.copy(top ? TOP_OFFSET : VIEW_OFFSET).multiplyScalar(focused ? FOCUS_ZOOM : 1).add(controls.target);
   controls.update(); requestRender();
 }
 
@@ -246,6 +258,18 @@ const TREE_M2_PER_TRY = 95;   // one try at a tree per this much of a wood's bou
   mesh.castShadow = true; scene.add(mesh);
 })();
 
+// ---- the ?focus pin ----
+const PIN_POST_M = 60, PIN_BALL_R_M = 9;   // tall enough to show from the focused view
+if (hasFocus) {   // a gold post with a ball on top, sunk a little into it
+  // over a lake or a river the heightfield is the cut bed, and a bridge's deck stands above both: the highest wins
+  const [x, z] = focus, ground = hAt(x, z), level = waterBodies.levelAt(x, z);
+  focusY = Math.max(ground, Number.isNaN(level) ? ground : level * EX, bridgeIndex.deckAt(x, z) ?? ground);
+  const pin = new THREE.Group(), gold = new THREE.MeshLambertMaterial({ color: 0xe8b44a, emissive: 0x4a3000 });
+  const post = new THREE.Mesh(new THREE.CylinderGeometry(2, 2, PIN_POST_M, 8), gold); post.position.y = PIN_POST_M / 2;
+  const ball = new THREE.Mesh(new THREE.SphereGeometry(PIN_BALL_R_M, 16, 12), gold); ball.position.y = PIN_POST_M + PIN_BALL_R_M * 0.45;
+  pin.add(post, ball); pin.position.set(focus[0], focusY, focus[1]); scene.add(pin);
+}
+
 // ---- place-name labels ----
 const labelBox = document.getElementById('labels');
 const labels = D.labels.map(l => { const el = document.createElement('div');
@@ -316,8 +340,22 @@ function zoom(f) { const d = camera.position.clone().sub(controls.target);
 document.getElementById('b-in').onclick = () => zoom(0.7);
 document.getElementById('b-out').onclick = () => zoom(1 / 0.7);
 document.getElementById('c-labels').onchange = e => { labelBox.hidden = !e.target.checked; requestRender(); };
+// ?embed (the wiki's infoboxes): a small frame, so only the map, the north arrow and the credit stay; the wiki's
+// "Open full screen" opens it without. Inside a page that scrolls, the frame leaves the page its gestures: the wheel
+// scrolls the page rather than zooming, and on touch one finger scrolls the page while two turn the map. Tilting stays
+// with full screen: pan-y gives every vertical drag to the page, two fingers too. Panning is off as well, since Reset is
+// hidden: turning only orbits the spot, so it can't leave the frame. ?embed=0 or ?embed=false is the full map.
+if (query.has('embed') && !/^(0|false)$/i.test(query.get('embed'))) {
+  for (const el of [document.getElementById('title'), document.getElementById('legend'), document.querySelector('#tools .btns')]) el.hidden = true;
+  canvas.setAttribute('aria-label', '3D terrain model of Vrigstad. Drag or turn two fingers to rotate; open it full screen to zoom.');
+  controls.enableZoom = false; controls.enablePan = false;
+  // with zoom off, OrbitControls leaves the wheel alone, ctrl+wheel and a trackpad pinch too: they zoom the page, as over
+  // any picture on it, since ctrl+wheel is also how people enlarge a page's text. On a touch screen two fingers turn the map
+  controls.touches = { ONE: null, TWO: THREE.TOUCH.DOLLY_ROTATE };
+  canvas.style.touchAction = 'pan-y';
+}
 if (innerWidth < 700) document.getElementById('legend').open = false;
 
-resize(); applyTheme(); setView(false);
+resize(); applyTheme(); setView(false, hasFocus);
 renderer.shadowMap.needsUpdate = true;
 })();

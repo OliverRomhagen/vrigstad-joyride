@@ -31,7 +31,7 @@ export function setUpRenderer(renderer: THREE.WebGLRenderer, coarse: boolean) {
  * caller's: the game's follows the player, the wiki's frames one scene. The caller adds `sun.target` to the scene with the
  * sun, or the target's position is never applied and the shadow misses what it should cover.
  */
-function gameLights(shadowHalfM: number) {
+export function gameLights(shadowHalfM: number) {
   const hemi = new THREE.HemisphereLight(0xffffff, col(0x9aa58a), 0.62 * LEGACY_LIGHT);
   const sun = new THREE.DirectionalLight(col(0xfff4dd), 0.95 * LEGACY_LIGHT); // intensity: the time of day's (Daylight.sunIntensity), times the clouds' sunFactor
   sun.castShadow = true;

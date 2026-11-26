@@ -13,6 +13,7 @@ import { BodyMotion } from './render/body-motion';
 import { CarDamageFx } from './render/car-damage';
 import { CarMeshes, type RenderedCar } from './render/car-meshes';
 import { CameraRig } from './render/camera-rig';
+import type { Cockpit } from './render/cockpit';
 import { ShoutingDrivers } from './render/shouting-drivers';
 import data from '../../data/vrigstad.json';
 import '../fonts/barlow';
@@ -45,13 +46,13 @@ import { Crashes } from './crashes';
 import { GameLoop } from './loop';
 import { installCaptureHook } from './capture-hook';
 import { installTestHook } from './test-hook';
-import { esc, MenuPlate } from './menu';
+import { esc, MenuPlate, menuOwnsKey } from './menu';
 import { KioskCatMenus } from './kiosk-cat-menus';
 import { Pets } from './pets';
 import { Commands } from './commands';
 import { CashRain } from './cash-rain';
 import { Confetti } from './confetti';
-import { DevConsole } from './devconsole';
+import { consoleOwnsKey, DevConsole } from './devconsole';
 import { newWallet, registerWalletCommands, TRISS_KR } from './economy';
 import { carsForSale, Skroten } from './skroten';
 import { SKROT_CARPORT, SKROT_HALL, yardFloorAt, yardLayout } from './skroten-yard';
@@ -235,10 +236,13 @@ const cameraRig = new CameraRig({ camera, sun, skyDome, game, view, get dragging
 const shake = cameraRig.shake;
 // the ISO 800 grain (src/game/presentation/) runs faster while the camera moves; it compares with the camera last frame
 const grainPos = new THREE.Vector3(), grainQuat = new THREE.Quaternion();
+// the driver's view (#473), with ?lab=cockpit: V in a car puts the camera in the driver's seat, after the rig has placed it
+let cockpit: Cockpit | null = null;   // a type-only import: the module itself loads below, only with the flag
+if (lab.on('cockpit')) import('./render/cockpit').then(m => { cockpit = new m.Cockpit({ camera, game, view, profiles: { ...PROFILES, traktor: TRACTOR_CAB }, renderer, doc: document, get hour() { return dayClock.hour; }, repaint: c => vehicleVisuals.paint(c, c.color) }); }).catch(err => console.warn('Lab: cockpit failed', err));
 // sunlight streaks and the sun disc (#212, src/game/render/sun-streaks.ts): the day cycle's direct light times the clouds' shade; ?sunrays=off leaves them out
 const sunStreaks = dayQs.get('sunrays') === 'off' ? null : new SunStreaks({ sunDir: SUN_DIR });
 if (sunStreaks) scene.add(sunStreaks.object);
-function placeCamera(T: { x: number; z: number }, now: number, dt: number) { cameraRig.update(T, now, dt);
+function placeCamera(T: { x: number; z: number }, now: number, dt: number) { cameraRig.update(T, now, dt); cockpit?.update();
   sunStreaks?.update(camera, sky.sun * skyDome.sunFactor, skyDome.sunShade, sun.color);
   if (filmGrain.enabled) { filmGrain.setMoving(cameraMoved(grainPos, grainQuat, camera.position, camera.quaternion)); grainPos.copy(camera.position); grainQuat.copy(camera.quaternion); } }
 
@@ -360,9 +364,9 @@ debugOverlay?.registerCommands(commands);
 
 // ---------- input: keys, mouse look and the touch controls (src/game/input.ts) ----------
 // the dev console sees each key first, then the menus (src/game/menu.ts)
-const input = new Input({ win: window, doc: document, canvas, $, coarse, menuKey: e => devcon.takeKey(e) || menuKey(e),
-  get started() { return game.started; }, get menuOpen() { return !kmenu.hidden; },
-  action: () => action(), respawn: () => respawn(), rain: () => cashRain.makeItRain(), flipLimiter: flipLimiterSwitch,
+const input = new Input({ win: window, doc: document, canvas, $, coarse, menuKey: e => devcon.takeKey(e) || menuKey(e), keyTaken: code => consoleOwnsKey(code) || menuOwnsKey(code),
+  get started() { return game.started; }, get menuOpen() { return !kmenu.hidden; }, get consoleOpen() { return devcon.isOpen; },
+  action: () => action(), respawn: () => respawn(), rain: () => cashRain.makeItRain(), toggleView: () => cockpit?.toggle(), flipLimiter: flipLimiterSwitch,
   jump: () => { if (jumpOk()) game.jumpQ = true; },   // queue only where a jump can start (see jumpOk)
   look: (dx, dy) => { if (game.inCar) { view.lookOff = wrap(view.lookOff + dx * 0.006); view.lookIdle = 0; } else view.camYaw = wrap(view.camYaw + dx * 0.006);
     view.camPitch = clamp(view.camPitch + dy * 0.004, 0.06, 1.25); },
@@ -372,7 +376,7 @@ const { keys, joy } = input;
 
 // ---------- HUD (src/game/hud.ts) ----------
 // the getters are read when the HUD uses them, so they can name things that change during play
-const hud = new Hud({ $, ground: tex2d, P, K, paintBridgeRoads: ctx => ground.paintBridgeRoads(ctx), roads, labels: D.labels, cars, places: places.list,
+const hud = new Hud({ get canChangeView() { return !!cockpit && game.inCar; }, $, ground: tex2d, P, K, paintBridgeRoads: ctx => ground.paintBridgeRoads(ctx), roads, labels: D.labels, cars, places: places.list,
   get stars() { return wanted.stars; }, get pcar() { return game.pcar; }, get blink() { return loop.blink; }, get kr() { return wallet.kr; } });
 // a declaration, not a bound const, so the sections above can pass toast on before the HUD exists
 function toast(msg: string, secs?: number, cls?: string) { hud.toast(msg, secs, cls); }
@@ -415,7 +419,7 @@ if (lab.on('toon')) import('./render/toon-style').then(m => loop.drawThrough(new
 loop.start();
 
 // ---------- test hook: read-only state for the smoke tests (src/game/test-hook.ts) ----------
-installTestHook({ game, view, player, health, cars, labs: lab.list(), get styled() { return loop.styled; }, get ragdolls() { return ragdolls.count; }, get stars() { return wanted.stars; }, get cats() { return cats.length; }, get ownCat() { return !!colony.owned; }, get displayCar() { return displayCar; }, lift: yard.workshop?.bay ?? null,
+installTestHook({ game, view, player, health, cars, labs: lab.list(), get styled() { return loop.styled; }, get cockpit() { return !!cockpit?.inside; }, get ragdolls() { return ragdolls.count; }, get stars() { return wanted.stars; }, get cats() { return cats.length; }, get ownCat() { return !!colony.owned; }, get displayCar() { return displayCar; }, lift: yard.workshop?.bay ?? null,
   vehicleVisuals: { state: c => vehicleVisuals.state(meshed(c)) }, crackShown: c => carDamage.crackShown(meshed(c)), bodyMotion: { state: c => bodyMotion.state(meshed(c)) }, skyDome, street, debugStreetscape: DEBUG_STREETSCAPE, bridges: { index: bridges, draw: bridgeMeshes, groundAt }, furniture, water: { bodies: waterBodies, surface: waterLook.surface, props: waterLook.props, shore, terrainTriangles: terrainMesh.triangles, refinedCells: heightfield.refinedCells, buildMs: waterCutMs + waterMeshMs, inWater, hAt }, debugFurniture: DEBUG_FURNITURE, nearestCar,
   get kr() { return wallet.kr; }, get banknotes() { return banknotes.live; }, get confetti() { return confetti.live; }, get devcon() { return devcon.isOpen; }, build: __BUILD__, get fps() { return !!debugOverlay?.shown; }, day: { get hour() { return dayClock.hour; }, get night() { return dayClock.night; }, get sunLight() { return sky.sun; } }, sunStreaks });
 })();

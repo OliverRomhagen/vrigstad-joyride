@@ -274,6 +274,17 @@ describe('Plåt-Pelle upgrades the car on the lift', () => {
     expect(keys(t)).toEqual(['engine', 'springs', 'body', 'paint', 'special', 'decal', 'out', 'no']);
   });
 
+  it('opens nothing and says nothing for a whole police car or with the police after you, so E gets you out', () => {
+    for (const o of [{ car: { type: 'polis' } }, { stars: 1 }] as const) {
+      const t = skroten({ ...o, car: { dmg: 0, ...('car' in o ? o.car : {}) }, kr: 1000 });
+      t.driveOntoLift();
+      expect(t.s.liftRepairKr()).toBeNull();
+      expect(t.s.open()).toBe(false);
+      expect(t.menu()).toBeNull();
+      expect(t.calls).toEqual([]);
+    }
+  });
+
   it('gets you out from the menu, since E on the lift opens it instead', () => {
     const t = skroten({ kr: 0 });
     t.driveOntoLift();
