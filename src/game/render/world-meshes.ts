@@ -22,6 +22,7 @@ import type { StreetscapeLayout } from '../../world/streetscape';
 import { col } from '../../world/three-legacy';
 import { GAME_WATER } from '../../world/water-palette';
 import type { WaterBodies } from '../../world/water-shapes';
+import { HOUSE_SHELLS_MATERIAL } from './house-materials';
 import { INK_FLAG } from './ink-flag';
 import { mergeGeo } from './models';
 
@@ -442,7 +443,11 @@ export function addBuildings(
       }
     };
     const shells = new PaintedBuildingShells(D, heightfield, {
-      material: new THREE.MeshLambertMaterial({ name: 'house shells', vertexColors: true, side: THREE.DoubleSide }), // the name gives it the toon style's house ramp
+      material: new THREE.MeshLambertMaterial({
+        name: HOUSE_SHELLS_MATERIAL, // gives it the toon style's house ramp
+        vertexColors: true,
+        side: THREE.DoubleSide,
+      }),
       colours,
       extra: details,
       wallDrop,
