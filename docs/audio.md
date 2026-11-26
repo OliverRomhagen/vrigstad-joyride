@@ -1,14 +1,18 @@
 # Audio: sounds as data, and a studio to build them
 
-A proposal, not yet decided. It says how the game could get its sounds without audio files, and how a dev tool in the
-console could let anyone build and tune them. The tickets it would become are drafted at the end.
+A proposal: two points are decided (see "Decided so far"), the rest is open. It says how the game could make most of
+its sounds without audio files, and how a dev tool in the console could let anyone build and tune them. The tickets it
+would become are drafted at the end.
 
 ## The idea in short
 
 - **A sound is a small piece of plain data**, a _patch_: which waveforms and noise it is made of, how its loudness and
   pitch move over time, how it is filtered, and which values from the game drive it while it plays.
-- **One player** turns a patch into Web Audio nodes when the sound starts. No audio files, so nothing to license or
-  download, and a sound can follow the game live: the engine's pitch follows the car's speed.
+- **One player** turns a patch into Web Audio nodes when the sound starts. A synthesized sound has no audio file, so
+  nothing to license or download, and it can follow the game live: the engine's pitch follows the car's speed.
+- **Recordings stay possible.** Swedish voice lines (#132) can't be synthesized. A recording would be one more kind of
+  module, one that plays a file, so it goes through the same mix; it brings a loader and a `LICENSE` entry per file,
+  and isn't part of the first ticket.
 - **A studio in the console** edits the same patches the game plays. You build a board from modules and wires, a
   change is heard at once, in the game, and Copy gives the patch as code to paste into the repo.
 
@@ -63,31 +67,66 @@ A sketch, to show the size of it, not to fix the names:
 export const BUS = { ENGINE: 'engine', EFFECTS: 'effects', VOICE: 'voice', AMBIENCE: 'ambience', UI: 'ui' } as const;
 
 interface Patch {
+  /** another patch's id: this one starts as a copy of it, and its `modules` and `mix` override knob by knob */
+  base?: string;
   /** id → module; `kind` is a key in the registry of module kinds, the rest are its knobs */
   modules: Record<string, { kind: ModuleKind; [knob: string]: number | string }>;
-  /** from a module's output to a module's input (`'filter'`) or to one of its knobs (`'filter.cutoff-hz'`) */
+  /** from a module's output to another module's signal input (`'band'`) or to one of its knobs (`'band.cutoff-hz'`);
+   *  `'out'` is always there and isn't listed in `modules` */
   wires: [from: string, to: string][];
+  /** a loop holds its envelopes open until it is stopped, then lets them release; a one-shot runs them once */
   loops: boolean;
   /** share of a knob's value that is rolled per play: { 'thump.frequency-hz': 0.15 } */
   variation?: Record<string, number>;
-  mix: { bus: Bus; gainDb: number; positional: boolean; referenceM?: number; maxM?: number; maxVoices: number; priority: number };
+  mix: {
+    bus: Bus;
+    gainDb: number;
+    positional: boolean;
+    referenceM?: number;
+    maxM?: number;
+    maxVoices: number;
+    cooldownS?: number;
+    /** higher is kept longer when the voices run out */
+    priority: number;
+  };
 }
 
 // a siren: an LFO switches a square oscillator between two tones
 const siren: Patch = {
   modules: {
     tone: { kind: 'oscillator', wave: 'square', 'frequency-hz': 760 },
+    // an LFO's depth is in the unit of the knob it is wired to: here Hz, so 650 to 870 Hz
     swing: { kind: 'lfo', wave: 'square', 'rate-hz': 1.1, depth: 110 },
     band: { kind: 'filter', type: 'bandpass', 'cutoff-hz': 1200 },
   },
   wires: [['swing', 'tone.frequency-hz'], ['tone', 'band'], ['band', 'out']],
   loops: true,
-  mix: { bus: BUS.EFFECTS, gainDb: -6, positional: true, referenceM: 15, maxM: 400, maxVoices: 3, priority: 1 },
+  mix: { bus: BUS.EFFECTS, gainDb: -6, positional: true, referenceM: 15, maxM: 400, maxVoices: 3, priority: 9 },
+};
+
+// the part of an engine that opens up with throttle: a game input is a module too, with the range it maps to
+const engineLoad = {
+  throttle: { kind: 'input', name: 'throttle', 'to-min': 300, 'to-max': 2500, curve: 'linear', 'smooth-s': 0.05 },
+  load: { kind: 'filter', type: 'lowpass', 'cutoff-hz': 300 },
+  // wires: ['throttle', 'load.cutoff-hz']
 };
 ```
 
-Knob paths (`tone.frequency-hz`) are the same dotted kebab-case as tunable keys, so they can be typed in the console.
-The wave and filter names would be `as const` maps in the real code, not bare strings.
+What the sketch settles and what it leaves:
+
+- **A value from the game is an `input` module.** It names the input (`revs`, `throttle`, `damage`), the range it maps
+  to, a curve and a smoothing time. The wiring writes the inputs each frame; a patch can't read anything it isn't
+  given.
+- **Timing lives in the envelope kind:** attack, sustain, release and a start delay, so glass can come 300 ms after
+  the crash.
+- **An octave down** is an oscillator's `ratio` knob (0.5) on the frequency it is wired to. More arithmetic than
+  that would be a kind of its own.
+- **A module has one signal input** in the first version, so a wire's target is either a module or one of its knobs.
+  A kind with several named inputs (a mixer, a ring modulator) would need a third form, left open.
+- **Names:** a module's knobs are keyed by the name people type, as a tunable's key is, so `tone.frequency-hz` is the
+  same in the patch, the console and the studio. `mix` is ordinary code, in camelCase, and its typed path is the
+  kebab form (`mix.gain-db`), as `topSpeed` is `top-speed`. The kind, wave, filter and curve names would be
+  `as const` maps in the real code, not the bare strings shown here.
 
 ## How the engine would work
 
@@ -95,7 +134,8 @@ The sim has speed and throttle but no engine revs, so the patch's inputs are der
 
 - **Pretend revs.** Revs climb with speed inside a gear and drop at each "gear change" (three steps over the car's
   top speed). That rise and drop is most of what makes it read as a car.
-- **Tone.** Two detuned sawtooths and a square an octave down, about 45 Hz at idle to 180 Hz, following the revs.
+- **Tone.** Two detuned sawtooths and a square an octave down, about 45 Hz at idle to 180 Hz, following the revs
+  (one `input` module mapped to that range, wired to all three; the square has a `ratio` of 0.5).
 - **Load.** A low-pass filter that opens with throttle (300 to 2500 Hz): foot down is bright, coasting is muffled.
 - **Air.** Filtered noise whose gain follows speed, for wind and tyres.
 - **Damage.** A 25 Hz wobble in loudness whose depth grows with damage.
@@ -114,8 +154,8 @@ of the first ticket, and three recorded loops are the fallback.
 |---|---|---|
 | Patches and their types | `src/game/sim/sounds/` | Plain data: unit-tested in Node, copied over a network, edited by commands |
 | The player (Web Audio) | `src/game/audio/`, a **new zone** | ARCHITECTURE.md already plans the folder, but under today's rules a new folder in `src/game/` is sim code, where `AudioContext` is banned. It needs its own zone: may import sim and world, not page code, like render |
-| What triggers a one-shot | a listener on a sim event | "The sim says a star was added; audio plays a siren" (ARCHITECTURE.md). No call from gameplay code |
-| What drives a loop | a read of sim state each frame | As render reads it: the engine loop reads the car's speed and throttle |
+| What triggers a one-shot | a listener on a sim event | ARCHITECTURE.md's example: the sim says a star was added, and audio plays a siren. No call from gameplay code |
+| What drives a loop | a read of sim state each frame | As render reads it: the engine loop reads the car's speed and throttle. ARCHITECTURE.md only says audio "reacts to sim events", so this adds to it, and that line would be updated |
 | The studio panel | a page module, loaded with `import()` behind a lab flag | The panel contract in `docs/console.md` |
 
 Rules the player follows from the first sound:
@@ -123,11 +163,13 @@ Rules the player follows from the first sound:
 - The audio context is made on the Start button (browsers need a gesture), suspended when the tab is hidden, and
   resumed on iOS's `interrupted` state.
 - Buses (engine, effects, voice, ambience, UI) into a master with a limiter.
-- A voice budget (a first guess: 16 on desktop, 8 on phones). When full, the lowest-priority, most distant voice stops.
-- A loop past its maximum distance is stopped, not muted.
+- A voice budget (a first guess: 16 on desktop, 8 on phones). When full, the voice with the lowest priority stops,
+  the most distant one first among equals. The siren has the highest priority of the world's sounds, so it is the last
+  to go.
+- A loop past its maximum distance is stopped, not muted. The siren's is 400 m, well past the 170 m it takes to evade.
 - Variation uses its own `makeRnd` stream: it is cosmetic and must not shift gameplay rolls.
-- Positional sound uses a plain `PannerNode` with equal-power panning; three.js's `PositionalAudio` forces the costly
-  HRTF model.
+- Positional sound uses a `PannerNode` with equal-power panning, not the costlier HRTF model that three.js's
+  `PositionalAudio` picks by default (not checked against the three.js version in use).
 
 ## The studio
 
@@ -136,9 +178,10 @@ game. Because a patch already is a board, each step below is a new way to see an
 them changes the format.
 
 1. **Commands.** `sound list`, `sound play <id>`, `sound set <id> <knob> <value>`, `sound add <id> <kind>`,
-   `sound wire <id> <from> <to>`, `sound copy <id>`, `sound reset`. The tunables registry holds numbers only, and a
-   patch has wave types and wires, so patches get their own commands rather than `tune set`, as the weapon lab plans
-   `weapon set`. This works in today's console.
+   `sound wire <id> <from> <to>`, `sound copy <id>`, `sound reset`. The split is the one the weapon lab (#511)
+   plans: a patch's numeric knobs also go in the tunables registry (`tune set sound.siren.tone.frequency-hz 800`), so
+   `?tune=` and a tunables panel reach them for free, and the `sound` commands add what the registry can't hold, which
+   is building: modules, wires, wave types. This works in today's console.
 2. **The rack.** A panel that lists a patch's modules as boxes, each drawn from its kind's declaration: its knobs as
    sliders, and beside each knob and input a "from" picker that makes a wire. Add a module from the list of kinds,
    remove one, reorder. Play repeats the sound; for a loop, sliders stand in for the game inputs (speed, throttle), or
@@ -178,20 +221,28 @@ All would be sub-issues of #12 "Audio events".
 
 Type Task, `scope:audio`, `prio:mid`. Blocks #130, #131 and #512.
 
-- **Problem:** the game is silent, and three tickets each need loading, a mix and a way to describe a sound.
+- **Problem:** the game is silent, and the tickets under #12 each need a mix and a way to describe a sound.
 - **Proposal:** the patch format (modules and wires), the registry of module kinds with the first handful
-  (oscillator, noise, gain, filter, envelope, LFO, game input), the player, the `audio` zone, buses, limiter, voice
-  budget, the unlock on Start, a mute and volume setting, and the `sound` commands. Two sounds prove it: a menu click (one-shot, flat) and the
-  player's engine (a loop driven by speed and throttle).
-- **Done when:** both sounds play on desktop and a phone; the patch types have unit tests; the engine's cost on a
-  mid-range phone is measured and written in the PR, with the decision to keep it or fall back to loops; muting works;
-  with sound off, nothing is created.
-- **Not in it:** crash and siren (they wait for #367), the panel, music.
+  (oscillator, noise, gain, filter, envelope, LFO, game input), the player, where it sits in the architecture checks
+  (open question 1), buses, limiter, voice budget, the unlock on Start, a mute and volume setting, and the `sound`
+  commands. Two sounds prove it: a menu click (one-shot, flat) and the player's engine (a loop driven by speed and
+  throttle). The engine is the first "done when" line of #130, which keeps the horn, the doors, the crash and the
+  siren.
+- **Done when:**
+  - both sounds play on desktop and a phone, and stop when the tab is hidden;
+  - a patch can be changed with `sound set`, heard at once, and `sound copy` gives it as code;
+  - the patch types, the voice budget and the priority order have unit tests (the budget with a stub player, since
+    two sounds can't fill it);
+  - the engine's cost on a mid-range phone is measured and written in the PR, with the decision to keep it or fall
+    back to recorded loops (which would bring the recording kind into this ticket);
+  - muting works, and with sound off nothing is created;
+  - `npm run check` passes with the player where the open question puts it.
+- **Not in it:** crash and siren (they wait for #367), recordings, the panel, music.
 
 ### 2. Crashes and sirens are heard, as listeners on game events
 
-Part of #130, blocked by ticket 1 and #367. The crash (layers, variation, scaled by impact) and the siren (positional,
-moving, never dropped when voices run out). Could stay inside #130 rather than be its own ticket.
+Not a new ticket: this is the rest of #130, which would be marked blocked by ticket 1 and #367. The crash (several
+sources, variation, scaled by impact) and the siren (positional, moving, the last to be dropped when voices run out).
 
 ### 3. A studio in the console builds and tunes sounds live
 
