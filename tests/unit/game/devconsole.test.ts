@@ -21,8 +21,17 @@ describe('url command', () => {
     const commands = new Commands();
     const loc = { search: '?lab=toon%2Ccockpit' };
     registerUrlCommand(commands, loc);
-    expect(commands.run('url')).toBe('?lab=toon,cockpit');
+    const list = commands.run('url').split('\n');
+    expect(list[0]).toBe('Now: ?lab=toon,cockpit');
+    expect(list).toContain('grain=on|off  ISO 800 film grain');
     expect(commands.run('url grain=on')).toBe('Reloading with ?lab=toon,cockpit&grain=on …');
     expect(loc.search).toBe('?lab=toon,cockpit&grain=on');
+  });
+
+  it('completes parameters with their values, and free ones up to the =', () => {
+    const commands = new Commands();
+    registerUrlCommand(commands, { search: '' });
+    expect(commands.complete('url gr')).toEqual(['grain=off', 'grain=on']);
+    expect(commands.complete('url grain=on cloudSo')).toEqual(['cloudSoft=']);
   });
 });
