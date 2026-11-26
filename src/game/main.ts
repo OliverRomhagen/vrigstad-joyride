@@ -61,6 +61,8 @@ import { PriceTags } from './render/price-tags';
 import { KIOSK, type Place, Places } from './places';
 import { CAT_SCRATCH_HP, canHurt, LOW_HP, hurt, newHealth, registerCarDamageCommand, registerHealthCommands } from './health';
 import { HOME } from './player';
+import { type Emoting, registerEmoteCommands } from './emotes';
+import { PlayerPose } from './render/player-pose';
 import { Wanted } from './police';
 import { Ragdolls } from './ragdolls';
 import { RagdollMeshes } from './render/ragdoll-meshes';
@@ -287,8 +289,11 @@ $('pets').addEventListener('click', () => { if (menuPlate.menuKind === 'pets') c
 function drawTreats() { const el = $('treats'); el.hidden = false; el.textContent = 'Cat treats: ' + game.treats; }
 
 // ---------- player (walking, jumping, getting out: src/game/player.ts) ----------
-const player = { x: HOME.x, z: HOME.z, y: 0, vy: 0, h: 0, speed: 0, phase: 0, mesh: personParts('#f2c230', '#2b3a55', null, true, true) };   // y: metres above the ground
+const player = { x: HOME.x, z: HOME.z, y: 0, vy: 0, h: 0, speed: 0, phase: 0, emote: null as Emoting['emote'], mesh: personParts('#f2c230', '#2b3a55', null, true, true) };   // y: metres above the ground
 collide(player, 0.6); scene.add(player.mesh);
+const playerPose = new PlayerPose(player.mesh);   // walking, jumping and emotes (src/game/render/player-pose.ts)
+// why you can't start an emote now (src/game/emotes.ts), or null; moving, a jump or Gripen! stop one in the loop
+function cantEmote() { return game.inCar ? 'Get out of the car first.' : places.inside ? 'Come out of the house first.' : null; }
 const jumpOk = () => !game.inCar && !places.inside && game.titleCardT <= 0;   // queue only where a jump can start, so a press inside a safehouse or under Gripen! can't fire as it ends
 const health = newHealth();
 const wallet = newWallet();
@@ -354,6 +359,7 @@ wanted.registerCommands(commands);
 registerHealthCommands(commands, health, drawHealth);
 registerCarDamageCommand(commands, () => (game.inCar ? game.pcar : null));
 registerTunableCommands(commands, tunables);
+registerEmoteCommands(commands, player, cantEmote);   // dance, kiss, finger, …
 // go <place>: you, or the car you drive, straight there, out of any safehouse first
 places.registerCommands(commands, (x, z, name, h) => { leaveHouse(); const c = game.inCar ? game.pcar : null;
   if (c) { c.x = x; c.z = z; if (h !== undefined) c.h = h; c.v = c.slip = c.drift = c.boost = 0; c.vh = c.h; placeCar(meshed(c)); } else { player.x = x; player.z = z; player.speed = 0; } return 'You are at ' + name + '.'; },
@@ -400,7 +406,7 @@ function hurtPlayer(n: number) { if (!canHurt(health, n)) return; const was = he
 const prompt = new ActionPrompt({ $, game, places, wanted, get menuOpen() { return !kmenu.hidden; }, coarse, nearPlace, skrotenBuys: () => skroten.buys(), skrotenRepairKr: () => skroten.repairKr(), nearOwner: () => skroten.nearOwner(nearestCar()), nearCat, nearestCar, catFirst, carName, esc });
 
 // ---------- main loop (src/game/loop.ts) ----------
-const loop = new GameLoop({ $, renderer, scene, camera, canvas, coarse, half: HALF, game, view, player, health, input, places, wanted, cars, startCam: START_CAM, barMat, barColours: [BAR_BLUE, BAR_RED], cameraRig: { update: placeCamera },
+const loop = new GameLoop({ $, renderer, scene, camera, canvas, coarse, half: HALF, game, view, player, pose: playerPose, health, input, places, wanted, cars, startCam: START_CAM, barMat, barColours: [BAR_BLUE, BAR_RED], cameraRig: { update: placeCamera },
   get toasting() { return hud.toasting; }, inWater, collide, groundAt, drive, updateTraffic, knockedOut, hurtPlayer, shake, toast, hideTitleCard: () => hud.hideTitleCard(),
   updateTrisslott: dt => trisslott.update(dt), updatePlaces: dt => { placeMeshes.update(dt); skrotenMeshes.update(dt, player); }, updateDriftFx, updateVehicles: (T, dt) => { vehicleVisuals.update(T, dt); priceTags.update(); }, updateSmoke, updateBanknotes: dt => banknotes.update(dt), updateConfetti: dt => confetti.update(dt), updateNpcs: (T, dt) => { updateNpcs(T, dt); ragdolls.update(dt); ragdollMeshes.update(); }, updateCats,
   updateDrivers: (T, dt) => drivers.update(T, dt), updateBodies: (T, dt) => bodyMotion.update(T, dt), updateDaylight, drawHearts, updateHud: dt => hud.update(dt), drawMini,

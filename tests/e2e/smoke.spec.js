@@ -698,6 +698,24 @@ test.describe('game (index.html)', () => {
     expect(await state(page)).toMatchObject({ kr: 700 });
   });
 
+  test('with ?dev, the console plays an emote by its name, and walking stops it (#296)', async ({ page }) => {
+    await page.setViewportSize({ width: 640, height: 360 });
+    const errors = watchErrors(page);
+    await page.goto('/index.html?dev');
+    await page.locator('#go').click();
+    await page.keyboard.press('Backquote');
+    await page.keyboard.type('dance');
+    await page.keyboard.press('Enter');
+    await expect(page.locator('#devcon li').last()).toHaveText('Dance.');
+    await page.keyboard.press('Escape');
+    await frames(page, 30); // a loop: still dancing half a second on
+    expect(await state(page)).toMatchObject({ devcon: false, emote: 'dance' });
+    await page.keyboard.down('KeyW');
+    await expect.poll(async () => (await state(page)).emote).toBeNull();
+    await page.keyboard.up('KeyW');
+    expect(errors).toEqual([]);
+  });
+
   test('Skroten buys the car you drive onto its ring', async ({ page }, testInfo) => {
     const errors = watchErrors(page);
     await page.goto('/index.html?dev');

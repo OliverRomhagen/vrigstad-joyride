@@ -8,6 +8,7 @@ import type { ShoreLayout } from '../world/shore';
 import type { StreetscapeLayout } from '../world/streetscape';
 import type { WaterBodies } from '../world/water-shapes';
 import type { Car } from './cars';
+import type { Emoting } from './emotes';
 import type { Health } from './health';
 import type { PlayerState } from './player';
 import type { Sky } from './render/sky';
@@ -18,7 +19,7 @@ import type { GameState, ViewState } from './state';
 export interface TestHookDeps {
   game: GameState;
   view: ViewState;
-  player: PlayerState;
+  player: PlayerState & Emoting;
   health: Health;
   cars: readonly Car[];
   labs: readonly string[]; // the lab experiments switched on
@@ -170,6 +171,7 @@ export function installTestHook(g: TestHookDeps) {
         x: player.x,
         z: player.z,
         y: player.y,
+        emote: player.emote ? player.emote.id : null,
         yaw: view.camYaw,
         zoom: view.zoom,
         inCar: game.inCar,
