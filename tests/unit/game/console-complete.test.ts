@@ -8,6 +8,10 @@ describe('tabComplete', () => {
     expect(tabComplete('go sk', ['skroten'])).toEqual({ line: 'go skroten ', choices: [] });
   });
 
+  it('adds no space after a key=, so its value can follow', () => {
+    expect(tabComplete('url cloudSe', ['cloudSeed='])).toEqual({ line: 'url cloudSeed=', choices: [] });
+  });
+
   it('fills in what several options share, and lists them', () => {
     expect(tabComplete('go s', ['skroten', 'Slättsjön', 'skolan'])).toEqual({
       line: 'go s',

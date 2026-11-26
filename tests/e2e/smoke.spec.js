@@ -588,7 +588,7 @@ test.describe('game (index.html)', () => {
     expect(errors).toEqual([]);
   });
 
-  test('with ?dev, the console opens with §, its keys never move the player, Tab completes, kr and mynt add money, tune set changes a tunable, stars and god work, adopt cat gives you a cat, fps shows frame times and errors, errors clear empties them (and L makes it rain)', async ({
+  test('with ?dev, the console opens with §, its keys never move the player, Tab completes, kr and mynt add money, tune set changes a tunable, stars and god work, adopt cat gives you a cat, fps shows frame times and errors, errors clear empties them, lab grain reloads with the grain (and L makes it rain)', async ({
     page,
   }) => {
     await page.goto('/index.html');
@@ -696,6 +696,11 @@ test.describe('game (index.html)', () => {
     expect((await state(page)).banknotes).toBeGreaterThan(0);
     await page.keyboard.press('KeyL'); // not enough left: nothing is taken
     expect(await state(page)).toMatchObject({ kr: 700 });
+    await page.keyboard.press('Backquote');
+    await expect(page.locator('#iso800-grain')).toHaveCount(0);
+    await run('lab grain'); // switches the experiment and reloads, dev kept
+    await page.waitForURL(/\?dev&lab=grain$/);
+    await expect(page.locator('#iso800-grain')).toHaveCount(1);
   });
 
   test('Skroten buys the car you drive onto its ring', async ({ page }, testInfo) => {

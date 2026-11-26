@@ -9,13 +9,13 @@ export interface TabResult {
 
 /**
  * Completes the last word of `line` from `options` (the words that could finish it): one option fills it in and adds a
- * space, several fill in what they share. `choices` lists them when there is more than one.
+ * space (none after a `key=`, whose value follows), several fill in what they share. `choices` lists them when there is more than one.
  */
 export function tabComplete(line: string, options: readonly string[]): TabResult {
   if (options.length === 0) return { line, choices: [] };
   const start = line.search(/\S*$/); // where the last word starts; a line ending in a space starts an empty one
   const head = line.slice(0, start);
-  if (options.length === 1) return { line: `${head}${options[0]} `, choices: [] };
+  if (options.length === 1) return { line: head + options[0] + (options[0].endsWith('=') ? '' : ' '), choices: [] }; // key= waits for its value
   const shared = sharedStart(options);
   const typed = line.slice(start);
   // fill in only a start every option spells the same way, so the result doesn't depend on their order

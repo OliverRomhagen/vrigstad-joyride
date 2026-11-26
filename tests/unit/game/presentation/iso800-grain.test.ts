@@ -27,7 +27,7 @@ describe('ISO 800 presentation texture', () => {
         throw new Error('allocation');
       }),
     });
-    const grain = new FilmGrain({} as HTMLElement, '');
+    const grain = new FilmGrain({} as HTMLElement, false);
     expect(grain.enabled).toBe(false);
     expect(() => grain.dispose()).not.toThrow();
   });
@@ -64,7 +64,7 @@ describe('ISO 800 presentation texture', () => {
             }
           : layer,
     });
-    const grain = new FilmGrain({ append: vi.fn() } as unknown as HTMLElement, '?grain=on');
+    const grain = new FilmGrain({ append: vi.fn() } as unknown as HTMLElement, true);
     expect(grain.enabled).toBe(true);
     expect(animate).toHaveBeenCalledOnce();
     expect(animation.playbackRate).toBeCloseTo(still);

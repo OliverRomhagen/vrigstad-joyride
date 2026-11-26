@@ -1,10 +1,13 @@
 // The dev console (#218): a line to type commands into, over the canvas. DOM only; the commands live in commands.ts, and
 // each module registers its own. Keys typed into it stop here, so they never reach the game's keydown handler and never
 // drive the player.
+import { CLOUD_COVERS } from '../world/clouds';
 import { clamp } from '../world/math';
-import type { Commands } from './commands';
+import { type Commands, UsageError } from './commands';
 import { tabComplete } from './console-complete';
+import { DAWN_H, DUSK_H } from './day-cycle';
 import type { Input } from './input';
+import { VEHICLES } from './render/vehicle-registry';
 
 const MAX_LINES = 60; // older output lines are dropped
 const MAX_HISTORY = 30; // typed lines that ArrowUp brings back
@@ -203,4 +206,81 @@ export class DevConsole {
       this.showUsage();
     }
   }
+}
+
+/**
+ * The query string with `key=value` words applied: a value replaces that parameter, an empty one (`clouds=`) removes it,
+ * and the rest stay. Commas stay commas and flags stay bare, so the URL reads as typed in the address bar.
+ */
+export function withParams(search: string, words: readonly string[]): string {
+  const params = new URLSearchParams(search);
+  for (const word of words) {
+    const eq = word.indexOf('=');
+    if (eq < 1) throw new UsageError('not key=value: ' + word);
+    const key = word.slice(0, eq),
+      value = word.slice(eq + 1);
+    if (value) params.set(key, value);
+    else params.delete(key);
+  }
+  const query = params
+    .toString()
+    .replace(/%2C/gi, ',')
+    .replace(/=(?=&|$)/g, ''); // ?dev stays ?dev, not ?dev=
+  return query ? '?' + query : '';
+}
+
+/** A URL parameter the game reads, for `url`'s list and Tab: the values it takes (left out when free) and what it does. */
+interface UrlParam {
+  key: string;
+  values?: readonly string[];
+  help: string;
+}
+
+/** What `?` can switch, read at page load in main.ts and the modules it names. Add one here when you add a parameter. */
+const URL_PARAMS: readonly UrlParam[] = [
+  { key: 'dev', values: ['1'], help: 'dev mode: this console, fps, tune' },
+  { key: 'lab', help: 'lab experiments, comma-separated: the lab command lists them' },
+  { key: 'clouds', values: [...CLOUD_COVERS, 'off'], help: 'cloud cover' },
+  { key: 'cloudQuality', values: ['low', 'high'], help: 'cloud detail' },
+  { key: 'cloudSeed', help: 'which clouds: a whole number' },
+  { key: 'cloudSoft', help: 'cloud softness, 0.3 to 3' },
+  { key: 'wind', help: 'wind from degrees, in m/s: 250,7' },
+  { key: 'time', help: `the hour the day starts at, ${DAWN_H} to ${DUSK_H}` },
+  { key: 'cycle', values: ['off'], help: 'stop the clock' },
+  { key: 'sunrays', values: ['off'], help: 'no sun streaks' },
+  {
+    key: 'debug',
+    values: ['streetscape', 'furniture'],
+    help: 'tint the streetscape by evidence, or furniture by source',
+  },
+  { key: 'vehicle', values: VEHICLES.map(v => v.id), help: 'the car parked at Torget' },
+  { key: 'tune', help: 'tunables, key:value,…: tune list has the keys' },
+  { key: 'at', help: 'start at x,z[,yaw[,pitch]]' },
+  { key: 'seed', help: 'the trisslott seed: a whole number' },
+];
+
+/**
+ * `url clouds=clear time=18`: sets URL parameters and reloads, since the game reads them once, at page load. So the
+ * console can switch what `?clouds=`, `?time=` and the rest switch, without editing the address bar.
+ */
+export function registerUrlCommand(commands: Pick<Commands, 'register'>, loc: Pick<Location, 'search'>) {
+  commands.register('url', {
+    usage: '[key=value …]',
+    help: 'set URL parameters and reload (key= removes one); alone, list what they can be',
+    details:
+      'Parameters not named stay, dev included. A value replaces the old one: lab=toon,cockpit sets the whole list.',
+    examples: ['url', 'url clouds=clear time=18', 'url clouds= time=6'],
+    // key=value for a parameter with set values, key= for a free one: Tab leaves no space after the =
+    complete: () => URL_PARAMS.flatMap(p => (p.values ? p.values.map(v => `${p.key}=${v}`) : [`${p.key}=`])),
+    run: args => {
+      if (!args.length)
+        return [
+          loc.search ? 'Now: ' + decodeURIComponent(loc.search) : 'No URL parameters now.',
+          ...URL_PARAMS.map(p => `${p.key}=${p.values?.join('|') ?? '…'}  ${p.help}`),
+        ].join('\n');
+      const next = withParams(loc.search, args);
+      loc.search = next; // navigates: the page reloads with the new parameters
+      return 'Reloading with ' + (next || 'no parameters') + ' …';
+    },
+  });
 }
