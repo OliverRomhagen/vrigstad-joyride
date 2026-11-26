@@ -192,9 +192,9 @@ export class Pickadoll {
   private aimK = 0; // 0 the game's camera, 1 over the shoulder
   private aimPitch = 0; // rad above level, while aiming
   private ready = false;
-  /** shots fired and hits landed so far, for the test hook */
-  fired = 0;
-  hits = 0;
+  // shots fired and hits landed so far, for the test hook (state)
+  private fired = 0;
+  private hits = 0;
 
   constructor(g: PickadollDeps) {
     this.g = g;
@@ -509,9 +509,9 @@ export class Pickadoll {
     }
     const yaw = view.camYaw,
       cp = Math.cos(this.aimPitch),
-      fx_ = Math.sin(yaw) * cp,
-      fy = Math.sin(this.aimPitch),
-      fz = -Math.cos(yaw) * cp,
+      lookX = Math.sin(yaw) * cp,
+      lookY = Math.sin(this.aimPitch),
+      lookZ = -Math.cos(yaw) * cp,
       ground = world.groundAt(player.x, player.z);
     if (scope) {
       // forward of your middle, but back from a wall you stand against: nearer than the camera draws, the wall would
@@ -525,7 +525,7 @@ export class Pickadoll {
       const ex = player.x + Math.sin(yaw) * fwd,
         ey = ground + player.y + SCOPE_EYE_M,
         ez = player.z - Math.cos(yaw) * fwd;
-      fx.aimCamera(this.aimK, ex, ey, ez, ex + fx_, ey + fy, ez + fz, fx.magnified(scope));
+      fx.aimCamera(this.aimK, ex, ey, ez, ex + lookX, ey + lookY, ez + lookZ, fx.magnified(scope));
       return;
     }
     // the shoulder, pulled in when a wall is beside you
@@ -539,11 +539,20 @@ export class Pickadoll {
     // back from the shoulder as far as there is room: not into a wall, not under the ground
     let back = AIM_BACK_M;
     for (; back > 0.3; back -= 0.25) {
-      const x = sx - fx_ * back,
-        z = sz - fz * back;
-      if (this.clear(x, z) && sy - fy * back > world.groundAt(x, z) + AIM_ROOM_M) break;
+      const x = sx - lookX * back,
+        z = sz - lookZ * back;
+      if (this.clear(x, z) && sy - lookY * back > world.groundAt(x, z) + AIM_ROOM_M) break;
     }
-    fx.aimCamera(this.aimK, sx - fx_ * back, sy - fy * back, sz - fz * back, sx + fx_, sy + fy, sz + fz, AIM_ZOOM);
+    fx.aimCamera(
+      this.aimK,
+      sx - lookX * back,
+      sy - lookY * back,
+      sz - lookZ * back,
+      sx + lookX,
+      sy + lookY,
+      sz + lookZ,
+      AIM_ZOOM,
+    );
   }
 
   // no wall within AIM_ROOM_M of (x, z)
