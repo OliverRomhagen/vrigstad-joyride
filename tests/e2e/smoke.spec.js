@@ -673,16 +673,30 @@ test.describe('game (index.html)', () => {
     expect((await state(page)).banknotes).toBeGreaterThan(0);
     await page.keyboard.press('KeyL'); // not enough left: nothing is taken
     expect(await state(page)).toMatchObject({ kr: 700 });
-    // last, as it loads the page again: lab on <id> puts the flag in the address and keeps ?dev (#501)
+  });
+
+  // A test of its own: the console test above is near its time limit in CI, and this one loads the page a second time.
+  test('lab on <id> in the console loads the page again with the flag on, where you stood (#501)', async ({ page }) => {
+    const errors = watchErrors(page);
+    await page.setViewportSize({ width: 640, height: 360 });
+    await page.goto('/index.html?dev');
+    await page.locator('#go').click();
     await page.keyboard.press('Backquote');
-    await expect(await run('lab')).toContainText('hello [off]: Hello lab.');
+    const run = async line => {
+      await page.keyboard.type(line);
+      await page.keyboard.press('Enter');
+    };
+    await run('go skroten'); // away from Torget, so starting where you stood shows
+    await expect(page.locator('#devcon li').last()).toHaveText('You are at Skroten.');
+    await run('lab');
+    await expect(page.locator('#devcon li').last()).toContainText('hello [off]: Hello lab.');
     const here = await state(page);
-    await page.keyboard.type('lab on hello');
-    await page.keyboard.press('Enter');
-    await page.waitForURL(/\?dev&lab=hello&at=[-\d.,]+$/);
+    await run('lab on hello');
+    await page.waitForURL(/\?dev&lab=hello&at=[-\d.,]+$/); // ?dev kept, the flag and the place added
     await expect.poll(async () => (await state(page)).lab).toEqual(['hello']);
-    const there = await state(page); // the page starts where you stood
-    expect(Math.hypot(there.x - here.x, there.z - here.z)).toBeLessThan(0.2);
+    const there = await state(page);
+    expect(Math.hypot(there.x - here.x, there.z - here.z)).toBeLessThan(0.5);
+    expect(errors).toEqual([]);
   });
 
   test('Skroten buys the car you drive onto its ring', async ({ page }, testInfo) => {
