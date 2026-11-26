@@ -4,10 +4,16 @@ import { type Commands, parseKr } from './commands';
 import { DMG_MAX } from './health';
 
 export const START_KR = 200; // what you have in your pocket at the start
-export const TRISS_KR = 30,
-  TREATS_KR = 5; // a trisslott; a bag of three cat treats
-export const KORV_KR = 25,
-  RULLE_KR = 45; // korv me brö; a smålandsrulle
+/** A trisslott at the kiosk, in kr. */
+export const TRISS_KR = 30;
+/** A bag of cat treats at the kiosk, in kr. */
+export const TREATS_KR = 5;
+/** How many cat treats a bag from the kiosk holds. */
+export const TREAT_BAG = 3;
+/** A korv me brö at the kiosk, in kr. */
+export const KORV_KR = 25;
+/** A smålandsrulle at the kiosk, in kr: dearer than the korv, and it heals twice as much. */
+export const RULLE_KR = 45;
 export const RAIN_KR = 1000; // låt det regna: banknotes thrown in the air, for show
 const MYNT_KR = 1000; // what the mynt cheat adds
 const FINE_SHARE = 0.25; // Gripen! costs this share of your money, or FINE_PER_STAR_KR per star, whichever is more
@@ -24,10 +30,17 @@ const CAR_KR_BY_MODEL: Readonly<Record<string, number>> = {
   'micra-k11': 400,
   'duett-epa': 600,
 };
+const SALE_MARKUP = 2.5; // Plåt-Pelle sells a car on his lot for this many times what he pays for one whole
+// Plåt-Pelle mends a car on the workshop's lift for a share of what he pays for one whole, by how damaged it is
+const REPAIR_SHARE = 0.5; // what mending a wreck costs, as a share of the car's whole price
+export const REPAIR_MIN_KR = 50; // he picks up a spanner for no less
 
-// The trisslott vinstplan: of every TRISS_TICKETS tickets, how many win each prize, as [kr, tickets]; the rest lose.
-// One ticket in ten wins, most of them a ticket back, and about a fifth of the money comes back.
+/** How many tickets the trisslott vinstplan counts its wins in. */
 export const TRISS_TICKETS = 100_000;
+/**
+ * The trisslott vinstplan: of every TRISS_TICKETS tickets, how many win each prize, as [kr, tickets]; the rest lose.
+ * One ticket in ten wins, most of them a ticket back, and about a fifth of the money comes back.
+ */
 export const TRISS_PLAN: readonly (readonly [number, number])[] = [
   [30, 8_000],
   [60, 1_200],
@@ -73,11 +86,30 @@ export function trissPrize(r: number): number {
 
 /** What Skroten pays for a car of this type and model at this much damage, in round tens; null when it won't buy it. */
 export function carPrice(type: string, model: string | undefined, dmg: number): number | null {
-  const base = (model && CAR_KR_BY_MODEL[model]) || CAR_KR_BY_TYPE[type];
+  const base = wholeKr(type, model);
   if (!base) return null;
   const whole = 1 - Math.min(Math.max(dmg, 0), DMG_MAX) / DMG_MAX;
   return Math.round((SCRAP_KR + (base - SCRAP_KR) * whole) / 10) * 10;
 }
+
+/** What Plåt-Pelle asks for a car of this type and model on Skroten's lot, in round hundreds; null for one he would never buy. */
+export function salePrice(type: string, model: string | undefined): number | null {
+  const base = wholeKr(type, model);
+  return base ? Math.round((base * SALE_MARKUP) / 100) * 100 : null;
+}
+
+/** What Plåt-Pelle asks to mend a car of this type and model with this much damage, in round tens: 0 for a car with none, null for a police car. */
+export function repairPrice(type: string, model: string | undefined, dmg: number): number | null {
+  const base = wholeKr(type, model);
+  if (!base) return null;
+  const share = Math.min(Math.max(dmg, 0), DMG_MAX) / DMG_MAX;
+  if (!share) return 0;
+  return Math.max(REPAIR_MIN_KR, Math.round((base * REPAIR_SHARE * share) / 10) * 10);
+}
+
+// what Skroten pays for an undamaged car: by its model, else by its type; undefined for a police car
+const wholeKr = (type: string, model: string | undefined): number | undefined =>
+  (model && CAR_KR_BY_MODEL[model]) || CAR_KR_BY_TYPE[type];
 
 /** The fine for Gripen! with this many stars; never more than the wallet holds. */
 export function fine(kr: number, stars: number): number {

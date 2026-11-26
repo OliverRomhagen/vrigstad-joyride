@@ -1,11 +1,13 @@
 // Health and damage (#80): the player's health and each car's damage, as plain data and pure rules (no three.js, no DOM).
 // Crashes (#40), knocking down pedestrians (#35), food (#30), drink (#16) and cat scratches build on hurt / heal / damageCar.
-import { command, optional, toggle } from './command-args';
+import { command, int, optional, toggle } from './command-args';
 import type { Commands } from './commands';
 
 export const HP_MAX = 100;
-export const KORV_HP = 10,
-  RULLE_HP = 20; // food from the kiosk: korv me brö, and a smålandsrulle
+/** The health a korv me brö from the kiosk gives back, in health points (of HP_MAX). */
+export const KORV_HP = 10;
+/** The health a smålandsrulle from the kiosk gives back, in health points (of HP_MAX). */
+export const RULLE_HP = 20;
 export const LOW_HP = 30; // below this the hearts pulse, and you say you're hungry
 export const CAT_SCRATCH_HP = 5; // a cat's scratch when petting goes wrong
 export const REGEN_DELAY_S = 10,
@@ -100,17 +102,18 @@ export interface CrashHit<C extends Crashable> {
   smokeUp: boolean; // this hit made it smoke more, short of wrecking it
 }
 
+const noneSpared = () => false;
 const NO_HITS: never[] = []; // shared: a slow scrape along a wall calls crashCars every frame of contact
 
 /** A crash at this impact speed (m/s) of car a into car b, or into a wall when b is null, at clock nowS (s).
- * Damages each car not hit in the last CRASH_COOL_S (each keeps its own, so ramming a car that was just hit still damages yours)
- * and says what changed for it; empty when nothing took damage. */
+ * Damages each car not hit in the last CRASH_COOL_S (each keeps its own, so ramming a car that was just hit still damages yours),
+ * except those `spared` says take none, and says what changed for it; empty when nothing took damage. */
 export function crashCars<C extends Crashable>(
   nowS: number,
   impact: number,
   a: C,
   b: C | null,
-  spared: C | null = null, // takes the hit but no damage: the car you drive in god mode
+  spared: (car: C) => boolean = noneSpared, // takes the hit but no damage: the car you drive in god mode, a car for sale
 ): CrashHit<C>[] {
   const d = crashDamage(impact);
   if (d <= 0) return NO_HITS;
@@ -119,7 +122,7 @@ export function crashCars<C extends Crashable>(
     if (nowS - car.hitAt < CRASH_COOL_S) continue;
     car.hitAt = nowS;
     const smoke = smokeLevel(car.dmg),
-      w = car !== spared && damageCar(car, d);
+      w = !spared(car) && damageCar(car, d);
     hits.push({ car, wrecked: w, smokeUp: !w && smokeLevel(car.dmg) > smoke });
   }
   return hits;
@@ -163,6 +166,24 @@ export function registerHealthCommands(commands: Pick<Commands, 'register'>, h: 
         if (h.god) heal(h, HP_MAX);
         drawHealth();
         return h.god ? 'God mode on.' : 'God mode off.';
+      },
+    }),
+  );
+}
+
+/** The dev console's `damage <0-100>`: sets the damage of the car you drive, to try Skroten's repairs and the smoke and cracks. */
+export function registerCarDamageCommand(commands: Pick<Commands, 'register'>, car: () => Damageable | null): void {
+  commands.register(
+    'damage',
+    command({
+      help: `set the damage of the car you drive; ${DMG_MAX} wrecks it`,
+      examples: ['damage 60', 'damage 0'],
+      args: [int('damage', { min: 0, max: DMG_MAX })],
+      run: ({ damage }) => {
+        const c = car();
+        if (!c) return 'Get in a car first.';
+        c.dmg = damage;
+        return `Car damage: ${damage}.`;
       },
     }),
   );

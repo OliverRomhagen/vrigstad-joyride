@@ -490,6 +490,7 @@ test.describe('game (index.html)', () => {
   });
 
   test('Space held from braking does not jump on getting out', async ({ page }) => {
+    await page.setViewportSize({ width: 640, height: 360 }); // keep software WebGL affordable while walking to the interaction
     const errors = watchErrors(page);
     await page.goto('/index.html');
     await page.locator('#go').click();
@@ -524,6 +525,7 @@ test.describe('game (index.html)', () => {
   test('cats are around, and the kiosk sells cat treats and food from its menu, for money', async ({
     page,
   }, testInfo) => {
+    await page.setViewportSize({ width: 640, height: 360 }); // keep software WebGL affordable while walking to the interaction
     const errors = watchErrors(page);
     await page.goto('/index.html');
     await page.locator('#go').click();
@@ -557,6 +559,22 @@ test.describe('game (index.html)', () => {
     await expect(page.locator('#kmenu')).toBeHidden();
     await expect(page.locator('#toast')).toContainText('mätt');
     expect(await state(page)).toMatchObject({ hp: 100, kr: 195 }); // and it costs nothing
+    expect(errors).toEqual([]);
+  });
+
+  test('draws the sunlight streaks and the sun disc facing a low evening sun (#212)', async ({ page }, testInfo) => {
+    const errors = watchErrors(page);
+    // Torget looking west at 18:30, the clock held and the sky clear, so nothing covers the sun
+    await page.goto('/index.html?time=18.5&cycle=off&clouds=clear&at=-60,-10,-1.45,0.06');
+    await page.setViewportSize({ width: 640, height: 360 });
+    await expectWebGL(page);
+    await page.locator('#go').click();
+    await frames(page, 5);
+    const { sunStreaks: s } = await state(page);
+    expect(s).toMatchObject({ streaks: true, disc: true });
+    expect(s.light).toBeGreaterThan(0.5);
+    expect(s.presence).toBeGreaterThan(0);
+    await page.screenshot({ path: testInfo.outputPath('game-sun-streaks.png') });
     expect(errors).toEqual([]);
   });
 
@@ -708,6 +726,69 @@ test.describe('game (index.html)', () => {
     await page.keyboard.press('Digit1');
     await expect(page.locator('#kr')).toHaveText('1 000 riksdaler');
     expect(await state(page)).toMatchObject({ inCar: false, car: null });
+    expect(errors).toEqual([]);
+  });
+
+  test('Plåt-Pelle mends a damaged car on the lift in his workshop', async ({ page }, testInfo) => {
+    const errors = watchErrors(page);
+    await page.setViewportSize({ width: 640, height: 360 });
+    await page.goto('/index.html?dev');
+    await page.locator('#go').click();
+    await page.keyboard.press('Backquote');
+    for (const line of ['kr 500', 'car volvo240']) {
+      await page.keyboard.type(line);
+      await page.keyboard.press('Enter');
+    }
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('KeyE');
+    expect(await state(page)).toMatchObject({ inCar: true, kr: 700 });
+    await page.keyboard.press('Backquote');
+    for (const line of ['go verkstan', 'damage 60']) {
+      await page.keyboard.type(line); // in the car, onto the lift, then damaged there
+      await page.keyboard.press('Enter');
+    }
+    await expect(page.locator('#devcon li').last()).toHaveText('Car damage: 60.');
+    await page.keyboard.press('Escape');
+    const { lift, carAt } = await state(page);
+    expect(Math.hypot(carAt.x - lift.x, carAt.z - lift.z)).toBeLessThan(1.85); // on the ring (LIFT_RING_M)
+    expect(Math.sin(carAt.h) * lift.inX - Math.cos(carAt.h) * lift.inZ).toBeCloseTo(1); // nose in from the door: the body fits between the posts
+    await expect.poll(async () => (await state(page)).carCrack).toBe(2);
+    await expect(page.locator('#prompt')).toHaveText('ERepair the Volvo 240 · 240 riksdaler');
+    await page.keyboard.press('KeyE');
+    await expect(page.locator('#kmenu')).toContainText('som ny');
+    await page.screenshot({ path: testInfo.outputPath('game-skroten-repair.png') });
+    await page.keyboard.press('Digit1');
+    await expect(page.locator('#kr')).toHaveText('460 riksdaler');
+    expect(await state(page)).toMatchObject({ inCar: true, carDmg: 0 });
+    await expect.poll(async () => (await state(page)).carCrack).toBe(0); // whole glass again
+    await page.screenshot({ path: testInfo.outputPath('game-skroten-repaired.png') });
+    expect(errors).toEqual([]);
+  });
+
+  test('Plåt-Pelle sells you a car from his lot, and it is yours to drive', async ({ page }, testInfo) => {
+    const errors = watchErrors(page);
+    await page.setViewportSize({ width: 640, height: 360 });
+    // one load: start 3.5 m behind the first car of the fresh row (906.6, 93.2), worked out from the yard's layout (src/game/skroten-yard.ts)
+    await page.goto('/index.html?dev&at=907,89.75,0');
+    const { forSale: lot, x, z } = await state(page);
+    expect(lot.length).toBeGreaterThanOrEqual(8);
+    const c = lot.reduce((a, b) => (Math.hypot(b.x - x, b.z - z) < Math.hypot(a.x - x, a.z - z) ? b : a));
+    expect(Math.hypot(c.x - x, c.z - z)).toBeLessThan(4.4); // in reach: if the yard moved, start next to its new lot
+    await page.locator('#go').click();
+    await page.keyboard.press('Backquote');
+    await page.keyboard.type('kr 5000');
+    await page.keyboard.press('Enter');
+    await page.keyboard.press('Escape');
+    const { kr } = await state(page);
+    await expect(page.locator('#prompt')).toContainText('Buy the ');
+    await page.keyboard.press('KeyE');
+    await expect(page.locator('#kmenu')).toContainText('å den ä din');
+    await page.screenshot({ path: testInfo.outputPath('game-skroten-buy.png') });
+    await page.keyboard.press('Digit1');
+    expect(await state(page)).toMatchObject({ kr: kr - c.kr, inCar: false, stars: 0 });
+    await expect(page.locator('#prompt')).toContainText('Get in the ');
+    await page.keyboard.press('KeyE');
+    expect(await state(page)).toMatchObject({ inCar: true, stars: 0 });
     expect(errors).toEqual([]);
   });
 });

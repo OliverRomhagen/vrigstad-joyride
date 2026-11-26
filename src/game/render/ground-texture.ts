@@ -3,7 +3,7 @@
 // Moved from src/game/main.ts (#177).
 import * as THREE from 'three';
 import { HOUSE_MAX_M2, HOUSE_MIN_M2 } from '../../world/buildings';
-import { ROAD_WIDTH_M as ROAD_W, type WorldData } from '../../world/data';
+import { ROAD_WIDTH_M as ROAD_W, type Road, type WorldData } from '../../world/data';
 import { polygonArea as polyArea } from '../../world/polygon';
 import { type ShoreLayout, STRETCH_M } from '../../world/shore';
 import { RIVER_HALF_WIDTH_M, STREAM_HALF_WIDTH_M } from '../../world/water-shapes';
@@ -20,6 +20,8 @@ const WATER_PAINT = '#4d7774',
   BANK_EARTH_M = 1.6, // bare earth up a river's banks, past its water (m)
   LAKE_BANK_PAINT_M = 8, // earth inside a lake's mapped shore (m)
   SHORE_BAND_M = 2.6; // the sand or gravel band along a shore stretch (m)
+// each road class's asphalt or gravel, from primary to path
+const ROAD_PAINT = ['#55585a', '#5d6062', '#66696a', '#77776f', '#a08c6c', '#b8ab90'];
 
 /** The painted ground; `P` turns a world coordinate into canvas pixels, `K` is pixels per metre. */
 export class GroundTexture {
@@ -28,6 +30,7 @@ export class GroundTexture {
   readonly K: number;
   private readonly ctx: CanvasRenderingContext2D;
   private readonly half: number;
+  private readonly bridgeRoads: readonly Road[];
 
   constructor(D: WorldData, { coarse, maxTextureSize, maxAnisotropy, shore }: GroundTextureOptions) {
     const S = D.size,
@@ -35,6 +38,7 @@ export class GroundTexture {
       K = CW / S;
     this.half = S / 2;
     this.K = K;
+    this.bridgeRoads = D.r.filter(r => r.br);
     const tex2d = document.createElement('canvas');
     tex2d.width = tex2d.height = CW;
     const ctx = tex2d.getContext('2d')!;
@@ -153,12 +157,11 @@ export class GroundTexture {
       ctx.lineWidth = 2 * LAKE_BANK_PAINT_M * K;
       shoreLines();
       ctx.restore();
-      const fill = ['#55585a', '#5d6062', '#66696a', '#77776f', '#a08c6c', '#b8ab90'];
       for (const pass of [2, 1, 0])
         for (const c of [5, 4, 3, 2, 1, 0]) {
           // 2: soft outer edge of the verge, 1: gravel verge, 0: the road
           if (pass && c > 3) continue;
-          ctx.strokeStyle = pass === 2 ? 'rgba(179,167,140,.35)' : pass ? '#b3a78c' : fill[c];
+          ctx.strokeStyle = pass === 2 ? 'rgba(179,167,140,.35)' : pass ? '#b3a78c' : ROAD_PAINT[c];
           ctx.lineWidth = (ROAD_W[c] + (pass === 2 ? 4.4 : pass ? 2.4 : 0)) * K;
           ctx.beginPath();
           for (const r of D.r) if (r.c === c && !r.br) trace(r.p); // not under a bridge: the channel bed shows there
@@ -186,6 +189,25 @@ export class GroundTexture {
     for (let i = 2; i < p.length; i += 2) ctx.lineTo(P(p[i]), P(p[i + 1]));
     if (close) ctx.closePath();
   };
+
+  /**
+   * Strokes the bridge roads onto `ctx` in world metres, under whatever transform the caller has set. The texture leaves
+   * them out so the channel bed shows under the decks; the minimap draws them over its copy so its roads don't break (#398).
+   */
+  paintBridgeRoads(ctx: CanvasRenderingContext2D) {
+    ctx.save();
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    for (const r of this.bridgeRoads) {
+      ctx.strokeStyle = ROAD_PAINT[r.c];
+      ctx.lineWidth = ROAD_W[r.c];
+      ctx.beginPath();
+      ctx.moveTo(r.p[0], r.p[1]);
+      for (let i = 2; i < r.p.length; i += 2) ctx.lineTo(r.p[i], r.p[i + 1]);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
 
   /** Bakes a soft shadow under every tree into the texture (the minimap shows them too); `spots` is x, z, scale per tree. */
   bakeTreeShadows(spots: readonly number[], blobTex: CanvasImageSource) {
