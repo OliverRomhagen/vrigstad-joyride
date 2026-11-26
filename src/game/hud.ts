@@ -88,7 +88,8 @@ export class Hud {
   update(dt: number) {
     const { $ } = this.g;
     this.drawKr();
-    $('p-view').hidden = !this.g.canChangeView;
+    const viewHidden = !this.g.canChangeView;
+    if ($('p-view').hidden !== viewHidden) $('p-view').hidden = viewHidden;
     if (this.toastT > 0) {
       this.toastT -= dt;
       if (this.toastT <= 0.3) $('toast').style.opacity = '0';
