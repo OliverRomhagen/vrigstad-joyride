@@ -42,9 +42,10 @@ export default defineConfig({
   // 5174: the game's own dev server has 5173, and the wiki's map embed and links point at it
   server: { fs: { allow: ['..'] }, port: 5174, strictPort: true },
   resolve: {
-    // the game's own code, which the infoboxes, tables and garage show, its world code, data and fonts: one path to each, so a move in src/ or
-    // data/ is an edit here and in tsconfig.json (for tsc and Fallow), and for #game/ also in the root's vitest.config.ts
-    // and tsconfig.tests.json. A Vite alias, as SvelteKit's `alias` is deprecated and a subpath import can't leave wiki/
+    // the game's own code, which the infoboxes, tables and garage show, its world code, data and fonts: one path to each,
+    // so a move in src/ or data/ is an edit here and in tsconfig.json (for tsc and Fallow), and for #game/ also in the
+    // root's vitest.config.ts and tsconfig.tests.json. A Vite alias, as SvelteKit's `alias` is deprecated and a subpath
+    // import can't leave wiki/
     alias: [
       { find: /^#game\//, replacement: fileURLToPath(new URL('../src/game/', import.meta.url)) },
       { find: /^#world\//, replacement: fileURLToPath(new URL('../src/world/', import.meta.url)) },

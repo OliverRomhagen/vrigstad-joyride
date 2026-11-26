@@ -5,7 +5,7 @@ import type { Clock } from './clock';
 
 /** What he says to someone who has come to look: the greeting first, then the rest, one now and then. */
 export const GARAGE_LINES = [
-  'Jasså, inget å sälja idag? Dä gör inget. Kliv fram å titta, dä ä gratis. Än så länge.',
+  'Jaså, inget å sälja idag? Dä gör inget. Kliv fram å titta, dä ä gratis. Än så länge.',
   'Titta du. Dä ä dä enda här som inte kostar nåt.',
   'Varenda bil här har haft en försiktig ägare. Nån gång. Tror ja.',
   'Siffrorna stämmer. I medvind å nerförsbacke, i alla fall.',
