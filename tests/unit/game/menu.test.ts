@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { esc, MenuPlate, type MenuPlateDeps } from '../../../src/game/menu';
+import { esc, MenuPlate, type MenuPlateDeps, menuOwnsKey } from '../../../src/game/menu';
 import type { MenuItem, Pet } from '../../../src/game/pets';
 
 // Node has no DOM, so the plate gets a stub that carries only what the plate touches: the buttons it writes into its HTML,
@@ -236,6 +236,15 @@ describe('MenuPlate', () => {
     menu.openMenu('pets', 'Dina djur', YES_NO, () => {});
     menu.menuKey(key('KeyP'));
     expect(menu.menuKind).toBe(null);
+  });
+});
+
+describe('menuOwnsKey', () => {
+  it('names every key the plate uses, so a control can’t take one', () => {
+    // a number key closes the menu it picks in, and its next repeat would press a control on it
+    for (const code of ['Digit1', 'Digit9', 'Numpad1', 'Numpad9', 'Enter', 'NumpadEnter', 'Escape', 'KeyP'])
+      expect(menuOwnsKey(code), code).toBe(true);
+    for (const code of ['Digit0', 'Numpad0', 'KeyX', 'F1']) expect(menuOwnsKey(code), code).toBe(false); // no option 0
   });
 });
 
