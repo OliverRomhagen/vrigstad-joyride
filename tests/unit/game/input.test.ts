@@ -26,7 +26,14 @@ function fire(target: EventTarget, type: string, props: Record<string, unknown> 
   return e;
 }
 
-function input(opts: { coarse?: boolean; started?: boolean; menuKey?: (e: KeyboardEvent) => boolean } = {}) {
+function input(
+  opts: {
+    coarse?: boolean;
+    started?: boolean;
+    menuKey?: (e: KeyboardEvent) => boolean;
+    keyTaken?: (code: string) => boolean;
+  } = {},
+) {
   const win = new EventTarget(),
     els: Record<string, Stub> = {};
   const doc = Object.assign(new EventTarget(), { pointerLockElement: null as object | null });
@@ -57,6 +64,7 @@ function input(opts: { coarse?: boolean; started?: boolean; menuKey?: (e: Keyboa
       return game.consoleOpen;
     },
     menuKey: opts.menuKey ?? (() => false),
+    keyTaken: opts.keyTaken ?? (() => false),
     action: () => {
       calls.push('action');
     },
@@ -481,14 +489,16 @@ describe('Input.addControl', () => {
     expect(() => i.addControl({ codes: ['Space'] })).toThrow('Space');
     expect(() => i.addControl({ codes: ['KeyX'] })).toThrow('KeyX');
     expect(() => i.addControl({ mouseButton: MouseButton.LEFT })).toThrow('mouse button 1');
-    expect(() => i.addControl({ codes: ['KeyP'] })).toThrow('KeyP'); // the pets menu's
-    // a menu's number key closes the menu, and its next repeat would press the control
-    expect(() => i.addControl({ codes: ['Digit1'] })).toThrow('Digit1');
-    expect(() => i.addControl({ codes: ['Numpad9'] })).toThrow('Numpad9');
-    expect(() => i.addControl({ codes: ['Digit0'] })).not.toThrow(); // no menu has an option 0
     // a refused control adds nothing: its other key is still free
     expect(() => i.addControl({ codes: ['KeyZ', 'KeyE'] })).toThrow('KeyE');
     expect(() => i.addControl({ codes: ['KeyZ'] })).not.toThrow();
+  });
+
+  it('refuses a key that the menus or the console say is theirs', () => {
+    const { i } = input({ keyTaken: code => code === 'Digit1' || code === 'KeyP' });
+    expect(() => i.addControl({ codes: ['Digit1'] })).toThrow('Digit1 is already taken');
+    expect(() => i.addControl({ codes: ['KeyZ', 'KeyP'] })).toThrow('KeyP');
+    expect(() => i.addControl({ codes: ['KeyZ', 'Digit2'] })).not.toThrow();
   });
 
   it('keeps the touch from the browser before the press runs, so a press that throws leaves it kept', () => {
