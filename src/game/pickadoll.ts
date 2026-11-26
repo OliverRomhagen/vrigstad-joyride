@@ -75,6 +75,9 @@ const LAB_KEYS = {
   WEAPON: { code: 'KeyQ', label: 'Q' },
   FLAVOUR: { code: 'KeyG', label: 'G' },
 } as const;
+// the lab's commands, by the name typed in the console: what its keys and buttons run
+const LAB_COMMANDS = { AIM: 'aim', WEAPON: 'weapon', FLAVOUR: 'hit' } as const;
+type LabCommand = (typeof LAB_COMMANDS)[keyof typeof LAB_COMMANDS];
 // the soft lock on a touch screen, where there is no fine aim: the shot goes to the nearest person or car near where you look
 const ASSIST_CONE_RAD = 0.3,
   ASSIST_CONE_CAR_RAD = 0.6, // wider from a car: both thumbs are busy driving
@@ -236,9 +239,9 @@ export class Pickadoll {
       },
     });
     this.aimHold = g.input.addControl({ mouseButton: MouseButton.RIGHT });
-    g.input.addControl({ codes: [LAB_KEYS.AIM.code], press: () => this.runFromInput('aim') });
-    g.input.addControl({ codes: [LAB_KEYS.WEAPON.code], press: () => this.runFromInput('weapon') });
-    g.input.addControl({ codes: [LAB_KEYS.FLAVOUR.code], press: () => this.runFromInput('hit') });
+    g.input.addControl({ codes: [LAB_KEYS.AIM.code], press: () => this.runFromInput(LAB_COMMANDS.AIM) });
+    g.input.addControl({ codes: [LAB_KEYS.WEAPON.code], press: () => this.runFromInput(LAB_COMMANDS.WEAPON) });
+    g.input.addControl({ codes: [LAB_KEYS.FLAVOUR.code], press: () => this.runFromInput(LAB_COMMANDS.FLAVOUR) });
     const fire = document.createElement('button');
     fire.type = 'button';
     fire.id = 'p-fire';
@@ -251,7 +254,7 @@ export class Pickadoll {
     aim.textContent = 'Aim';
     aim.setAttribute('aria-pressed', 'false');
     aim.setAttribute('aria-keyshortcuts', LAB_KEYS.AIM.label);
-    aim.addEventListener('click', () => this.runFromInput('aim'));
+    aim.addEventListener('click', () => this.runFromInput(LAB_COMMANDS.AIM));
     this.aimButton = aim;
     g.$('pad').prepend(fire, aim);
     g.$('pad').classList.add('lab'); // four buttons: index.html stacks them on a narrow phone
@@ -263,20 +266,20 @@ export class Pickadoll {
     g.canvas.after(this.scope); // over the view and under the HUD, which stays readable
     g.$('stage').append(this.crosshair);
     if (g.player.mesh.arms) g.fx.giveGun(g.player.mesh.arms[1]);
-    this.weaponButton = this.hudButton(LAB_KEYS.WEAPON.label, 'weapon');
-    this.flavourButton = this.hudButton(LAB_KEYS.FLAVOUR.label, 'hit');
+    this.weaponButton = this.hudButton(LAB_KEYS.WEAPON.label, LAB_COMMANDS.WEAPON);
+    this.flavourButton = this.hudButton(LAB_KEYS.FLAVOUR.label, LAB_COMMANDS.FLAVOUR);
     this.drawHud();
     this.registerCommands(); // last: a command never reaches a lab that failed half-built
   }
 
-  private hudButton(key: string, line: string) {
+  private hudButton(key: string, command: LabCommand) {
     const { $, canvas } = this.g,
       button = document.createElement('button');
     button.type = 'button';
     button.className = 'plate lab-weapon';
     button.setAttribute('aria-keyshortcuts', key);
     button.addEventListener('click', () => {
-      this.runFromInput(line);
+      this.runFromInput(command);
       canvas.focus();
     });
     $('tr').append(button);
@@ -320,7 +323,7 @@ export class Pickadoll {
   private registerCommands() {
     const { commands } = this.g;
     commands.register(
-      'weapon',
+      LAB_COMMANDS.WEAPON,
       command({
         help: 'change to the next weapon, or to the one you name',
         examples: ['weapon', 'weapon minigun'],
@@ -342,7 +345,7 @@ export class Pickadoll {
       }),
     );
     commands.register(
-      'hit',
+      LAB_COMMANDS.FLAVOUR,
       command({
         help: 'change what a hit does to the next kind, or to the one you name',
         examples: ['hit', 'hit dans'],
@@ -364,7 +367,7 @@ export class Pickadoll {
       }),
     );
     commands.register(
-      'aim',
+      LAB_COMMANDS.AIM,
       command({
         help: 'keep aiming over the shoulder, or stop: switches when you say neither',
         examples: ['aim', 'aim off'],
@@ -380,8 +383,8 @@ export class Pickadoll {
 
   // a key or a button runs its command through the registry, as a typed line does, so the hooks see it too. The line
   // that comes back is for the console: here the HUD shows what changed
-  private runFromInput(line: string) {
-    this.g.commands.run(line, 'input');
+  private runFromInput(command: LabCommand) {
+    this.g.commands.run(command, 'input');
   }
 
   /** What the test hook shows. */
