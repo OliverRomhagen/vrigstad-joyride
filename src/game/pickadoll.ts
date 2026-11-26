@@ -61,6 +61,13 @@ const AIM_BACK_M = 3, // the camera sits this far behind your shoulder
   AIM_MUZZLE_SIDE_M = 0.3, // while aiming, shots leave from your right side, nearer the camera's line
   LOOK_YAW_K = 0.006, // rad per pixel of look, as the game's own camera
   LOOK_PITCH_K = 0.004;
+// the lab's keys: the code Input listens for, and the letter its button shows and announces
+const LAB_KEYS = {
+  FIRE: { code: 'KeyX', label: 'X' },
+  AIM: { code: 'KeyC', label: 'C' },
+  WEAPON: { code: 'KeyQ', label: 'Q' },
+  FLAVOUR: { code: 'KeyG', label: 'G' },
+} as const;
 // the soft lock on a touch screen, where there is no fine aim: the shot goes to the nearest person or car near where you look
 const ASSIST_CONE_RAD = 0.3,
   ASSIST_CONE_CAR_RAD = 0.6, // wider from a car: both thumbs are busy driving
@@ -206,28 +213,28 @@ export class Pickadoll {
     // The controls, through the game's input: the left mouse button or X fires, the right one aims while held, C keeps
     // aiming on, Q changes the weapon and G the hit. A press of the trigger is kept a moment (pulledS)
     this.trigger = g.input.addControl({
-      codes: ['KeyX'],
+      codes: [LAB_KEYS.FIRE.code],
       mouseButton: MouseButton.LEFT,
       press: () => {
         this.pulledS = 0;
       },
     });
     this.aimHold = g.input.addControl({ mouseButton: MouseButton.RIGHT });
-    g.input.addControl({ codes: ['KeyC'], press: () => this.keepAim(!this.aimKept) });
-    g.input.addControl({ codes: ['KeyQ'], press: () => this.nextWeapon() });
-    g.input.addControl({ codes: ['KeyG'], press: () => this.nextFlavour() });
+    g.input.addControl({ codes: [LAB_KEYS.AIM.code], press: () => this.keepAim(!this.aimKept) });
+    g.input.addControl({ codes: [LAB_KEYS.WEAPON.code], press: () => this.nextWeapon() });
+    g.input.addControl({ codes: [LAB_KEYS.FLAVOUR.code], press: () => this.nextFlavour() });
     const fire = document.createElement('button');
     fire.type = 'button';
     fire.id = 'p-fire';
     fire.textContent = 'Fire';
-    fire.setAttribute('aria-keyshortcuts', 'X');
+    fire.setAttribute('aria-keyshortcuts', LAB_KEYS.FIRE.label);
     this.trigger.hold(fire);
     const aim = document.createElement('button');
     aim.type = 'button';
     aim.id = 'p-aim';
     aim.textContent = 'Aim';
     aim.setAttribute('aria-pressed', 'false');
-    aim.setAttribute('aria-keyshortcuts', 'C');
+    aim.setAttribute('aria-keyshortcuts', LAB_KEYS.AIM.label);
     aim.addEventListener('click', () => this.keepAim(!this.aimKept));
     this.aimButton = aim;
     g.$('pad').prepend(fire, aim);
@@ -240,8 +247,8 @@ export class Pickadoll {
     g.canvas.after(this.scope); // over the view and under the HUD, which stays readable
     g.$('stage').append(this.crosshair);
     if (g.player.mesh.arms) g.fx.giveGun(g.player.mesh.arms[1]);
-    this.weaponButton = this.hudButton('Q', () => this.nextWeapon());
-    this.flavourButton = this.hudButton('G', () => this.nextFlavour());
+    this.weaponButton = this.hudButton(LAB_KEYS.WEAPON.label, () => this.nextWeapon());
+    this.flavourButton = this.hudButton(LAB_KEYS.FLAVOUR.label, () => this.nextFlavour());
     this.drawHud();
   }
 
@@ -266,12 +273,12 @@ export class Pickadoll {
       kbd.textContent = key;
       button.replaceChildren(kbd, name);
     };
-    label(this.weaponButton, 'Q', WEAPONS[this.weapon].name);
+    label(this.weaponButton, LAB_KEYS.WEAPON.label, WEAPONS[this.weapon].name);
     this.weaponButton.setAttribute('aria-label', 'Weapon: ' + WEAPONS[this.weapon].name);
     this.flavourButton.setAttribute('aria-label', 'Hit: ' + HIT_FLAVOURS[this.flavour].name);
     const [lengthM, thickM] = GUN_M[WEAPONS[this.weapon].id];
     this.g.fx.sizeGun(lengthM, thickM);
-    label(this.flavourButton, 'G', HIT_FLAVOURS[this.flavour].name);
+    label(this.flavourButton, LAB_KEYS.FLAVOUR.label, HIT_FLAVOURS[this.flavour].name);
   }
 
   // C and the Aim button switch aiming on until they switch it off
