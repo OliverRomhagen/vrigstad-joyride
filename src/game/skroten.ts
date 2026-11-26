@@ -43,7 +43,7 @@ const UPGRADE_DONE: Readonly<Record<Upgrade, string>> = {
 const DECAL_DONE: Readonly<Record<Decal, string>> = {
   flames: '”Flammor! Nu ser den snabb ut, i alla fall.”',
   stripes: '”Rallyränder. Nu ä dä bara å hitta en grusväg.”',
-  'rally-number': '”Sextinie. Dä va mitt nummer när ja körde folkrace. Fniss.”',
+  'rally-number': '”Sextinie. Dä va mitt nummer när ja körde folkrace. Hehe.”',
 };
 const EPA_TUNED =
   '”En trimmad EPA? Dä har ja aldrig gjort förut. Aldrig nånsin. Å knappen under ratten har du inte fått av mej.”'; // the key for the switch is on the speed plate (prompt.ts)
@@ -231,7 +231,9 @@ export class Skroten {
     this.openChoices(
       c,
       'skrot-special',
-      '”Dom här har ingen annan. ' + fmtKr(SPECIAL_PAINT_KR) + ', å du blir ensam i stan om färgen.”',
+      '”Specialfäääj! De kan du inte hitta nån annanstans. ' +
+        fmtKr(SPECIAL_PAINT_KR) +
+        ', å du får det fräsigaste åket i stan.”',
       WORKSHOP_PAINTS.filter(p => p.paint !== c.color).map(({ paint, name }, i) => ({
         key: 'p' + i,
         label: swatch(paint) + name,
