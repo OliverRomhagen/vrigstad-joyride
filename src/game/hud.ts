@@ -24,6 +24,7 @@ export interface HudDeps {
   places: readonly (Point & { kind: string })[];
   readonly stars: number;
   readonly pcar: unknown; // the player's car, which the minimap leaves out
+  readonly canChangeView: boolean; // the driver’s view is loaded and the player is in a car
   readonly blink: boolean; // the police lights' phase, so the minimap blinks with them
   readonly kr: number; // in your wallet: the plate follows it, so nothing that spends has to redraw it
 }
@@ -87,6 +88,8 @@ export class Hud {
   update(dt: number) {
     const { $ } = this.g;
     this.drawKr();
+    const viewHidden = !this.g.canChangeView;
+    if ($('p-view').hidden !== viewHidden) $('p-view').hidden = viewHidden;
     if (this.toastT > 0) {
       this.toastT -= dt;
       if (this.toastT <= 0.3) $('toast').style.opacity = '0';

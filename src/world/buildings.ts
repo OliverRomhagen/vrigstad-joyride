@@ -18,6 +18,8 @@ export interface RoofParts {
   ring: PointXZ[];
   /** height of the wall top, which is the roof's edge, at a point on the ring (m) */
   yAt: (v: PointXZ) => number;
+  /** height of the roof's plane at any point, also past the walls, where `yAt` stops at the wall top (m) */
+  roofY: (v: PointXZ) => number;
   /** the roof's faces: the flat roof, or the two halves either side of the ridge */
   sides: PointXZ[][];
 }
@@ -27,20 +29,26 @@ export interface RoofParts {
  * which gets a corner wherever it crosses the ridge.
  */
 export function roofParts(outline: PointXZ[], ridge: Building['g'], top: number): RoofParts {
-  if (!ridge) return { ring: outline, yAt: () => top, sides: [outline] };
+  if (!ridge) return { ring: outline, yAt: () => top, roofY: () => top, sides: [outline] };
   const [ax, az, bx, bz, halfWidth] = ridge;
   const length = Math.hypot(bx - ax, bz - az);
   const nx = (az - bz) / length;
   const nz = (bx - ax) / length;
   const rise = Math.min(halfWidth * ROOF_PITCH, MAX_ROOF_RISE_M);
   const offset = (v: PointXZ) => (v.x - ax) * nx + (v.z - az) * nz;
-  const yAt = (v: PointXZ) => top + rise * Math.max(0, 1 - Math.abs(offset(v)) / halfWidth);
+  // a corner on the ridge line comes out a rounding error off it, which would add a crossing point on top of the corner
+  const sideOf = (v: PointXZ) => {
+    const o = offset(v);
+    return Math.abs(o) < 1e-6 ? 0 : o;
+  };
+  const roofY = (v: PointXZ) => top + rise * (1 - Math.abs(offset(v)) / halfWidth);
+  const yAt = (v: PointXZ) => Math.max(top, roofY(v));
   const ring: PointXZ[] = [];
   const offsets: number[] = [];
   outline.forEach((a, i) => {
     const d = outline[(i + 1) % outline.length];
-    const oa = offset(a);
-    const od = offset(d);
+    const oa = sideOf(a);
+    const od = sideOf(d);
     ring.push(a);
     offsets.push(oa);
     if (oa * od < 0) {
@@ -50,7 +58,7 @@ export function roofParts(outline: PointXZ[], ridge: Building['g'], top: number)
     }
   });
   const sides = [1, -1].map(s => ring.filter((_, i) => s * offsets[i] >= 0)).filter(side => side.length > 2);
-  return { ring, yAt, sides };
+  return { ring, yAt, roofY, sides };
 }
 
 /** One building as the meshes need it: its outline on the terrain, wall heights and roof. */

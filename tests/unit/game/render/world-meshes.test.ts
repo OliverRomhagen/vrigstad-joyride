@@ -1,0 +1,177 @@
+import * as THREE from 'three';
+import { describe, expect, it, vi } from 'vitest';
+import { addBuildings } from '../../../../src/game/render/world-meshes';
+import { BuildingKind, type WorldData } from '../../../../src/world/data';
+import { Heightfield } from '../../../../src/world/heightfield';
+import { makeWorld, square } from '../../world/fixture';
+
+// Node has no canvas: the textures get one that ignores what's drawn on it. Hoisted, since modules draw some as they load.
+vi.hoisted(() => {
+  const ctx = new Proxy({}, { get: () => () => ({ addColorStop() {} }) });
+  vi.stubGlobal('document', { createElement: () => ({ width: 0, height: 0, getContext: () => ctx }) });
+});
+
+type Building = WorldData['b'][number];
+// the house shells' mesh (walls, roof and trim) of a world with this building alone
+function shellsOf(b: Building) {
+  const world = makeWorld({ b: [b] }),
+    scene = new THREE.Scene();
+  addBuildings(scene, world, new Heightfield(world), { rnd: () => 0.5, pick: a => a[0], maxAnisotropy: 1 });
+  return scene.children.find(
+    o => o instanceof THREE.Mesh && (o.material as THREE.Material & { vertexColors: boolean }).vertexColors,
+  ) as THREE.Mesh;
+}
+// each triangle of the house shells' mesh (walls, roof and trim) as the plane it lies in, facing the way it faces, to the cm:
+// the plane, not the corners, since a quad listed the other way round is split along its other diagonal
+function triangles(b: Building) {
+  const pos = shellsOf(b).geometry.getAttribute('position'),
+    [p, q, r, n] = [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()],
+    out: string[] = [];
+  const cm = (v: number) => (Math.round(v * 100) / 100 || 0).toFixed(2);
+  for (let i = 0; i < pos.count; i += 3) {
+    p.fromBufferAttribute(pos, i);
+    q.fromBufferAttribute(pos, i + 1);
+    r.fromBufferAttribute(pos, i + 2);
+    THREE.Triangle.getNormal(p, q, r, n);
+    out.push([n.x, n.y, n.z, n.dot(p)].map(cm).join(' '));
+  }
+  return out.sort();
+}
+// the same outline listed the other way round
+const reversed = (b: Building): Building => {
+  const p: number[] = [];
+  for (let i = b.p.length - 2; i >= 0; i -= 2) p.push(b.p[i], b.p[i + 1]);
+  return { ...b, p };
+};
+
+describe('house trim', () => {
+  const flat = { p: square(0, 0, 10), h: 5, k: BuildingKind.OTHER };
+  const pitched = { ...flat, g: [0, 5, 10, 5, 5] as [number, number, number, number, number] };
+  // a parallelogram: its gables stand askew to the ridge, and its eave corners aren't right angles
+  const askew = { ...pitched, p: [0, 0, 10, 0, 13, 9, 3, 9], g: [1.5, 4.5, 11.5, 4.5, 5] as Building['g'] };
+
+  it.each([
+    ['a flat roof', flat],
+    ['a pitched roof', pitched],
+  ])('comes out the same, facing the same way, whichever way the outline runs, with %s', (_, b) => {
+    const forwards = triangles(b);
+    expect(forwards.length).toBeGreaterThan(0);
+    expect(triangles(reversed(b))).toEqual(forwards);
+  });
+
+  it('faces the same way whichever way the outline runs, with gables askew to the ridge', () => {
+    // its mitred eave corners make the overhangs' quads a little warped, so the two diagonals give planes a few cm apart:
+    // count how many triangles face up, down and sideways instead, which a face wound the wrong way would change
+    const facing = (b: Building) => {
+      const n = { up: 0, down: 0, side: 0 };
+      for (const t of triangles(b)) {
+        const y = Number(t.split(' ')[1]);
+        n[y > 0.5 ? 'up' : y < -0.5 ? 'down' : 'side']++;
+      }
+      return n;
+    };
+    expect(facing(reversed(askew))).toEqual(facing(askew));
+  });
+
+  it("meets at the eave corners of a house whose outline is a few cm off its roof's rectangle, as real outlines are", () => {
+    // the data rounds the outline and the ridge to 0.1 m apiece, so the eave walls seldom sit exactly at the eave height
+    const off = { ...pitched, p: [0, 0, 10, 0.03, 10, 10.02, 0, 10.04] },
+      pos = shellsOf(off).geometry.getAttribute('position');
+    // the overhang's mitred corner, EAVE_M (0.35 m) out from both walls: what both walls' overhangs put there is the roof's
+    // edge and the fascia's foot FASCIA_M (0.15 m) under it, so the heights span exactly that when the two walls agree
+    const span = (x: number, z: number) => {
+      const ys: number[] = [];
+      for (let i = 0; i < pos.count; i++) if (Math.hypot(pos.getX(i) - x, pos.getZ(i) - z) < 0.05) ys.push(pos.getY(i));
+      return ys.length ? Math.max(...ys) - Math.min(...ys) : -1;
+    };
+    for (const [x, z] of [
+      [-0.35, -0.35],
+      [10.35, -0.35],
+      [10.35, 10.37],
+      [-0.35, 10.39],
+    ])
+      expect(span(x, z), `at (${x}, ${z})`).toBeCloseTo(0.15, 3);
+  });
+
+  it("leaves the toon style no line along the roof's edge at the walls, only at the fascia", () => {
+    // the toon style's lines, as it draws them (INK_CREASE_DEG): every crease, and every edge that only one face has
+    const lines = new THREE.EdgesGeometry(shellsOf(pitched).geometry, 34).getAttribute('position');
+    // the walls stand from x 0 to 10 and z 0 to 10, and the roof's edge runs along their tops, from 5 m up to 8.5 at the ridge
+    const onWallTop = (x: number, y: number, z: number) =>
+      Math.min(Math.abs(x), Math.abs(x - 10), Math.abs(z), Math.abs(z - 10)) < 0.01 &&
+      Math.abs(y - (5 + 0.7 * (5 - Math.abs(z - 5)))) < 0.01;
+    // a segment along a wall's top has its ends and its middle there; the ridge has only its ends, on the gables
+    const along: number[] = [];
+    for (let i = 0; i < lines.count; i += 2) {
+      const ends = [i, i + 1].map(j => [lines.getX(j), lines.getY(j), lines.getZ(j)] as const),
+        [mx, my, mz] = [0, 1, 2].map(c => (ends[0][c] + ends[1][c]) / 2);
+      if (ends.every(e => onWallTop(...e)) && onWallTop(mx, my, mz)) along.push(i);
+    }
+    expect(along).toEqual([]);
+  });
+
+  it('leaves out the eave of a wall shorter than its mitre, which would come out crossed, and closes the wall instead', () => {
+    // an L whose inner wall the ridge crosses 0.18 m from the inside corner, at (5, 6): from there to the corner, the
+    // mitre shortens the eave line by 0.35 m, so it would run backwards, from (5, 6.35) to (5.17, 6.35)
+    const ell = { ...pitched, p: [0, 0, 10, 0, 10, 6, 4.82, 6, 4.82, 10, 0, 10], g: [5, 0, 5, 10, 5] as Building['g'] };
+    for (const b of [ell, reversed(ell)]) {
+      const pos = shellsOf(b).geometry.getAttribute('position');
+      // the crossed overhang's diagonal, from the wall's end at the ridge to the corner that swapped places with it; the
+      // eaves either side have one of these corners each, never both
+      const at = (i: number, x: number, z: number) => Math.hypot(pos.getX(i) - x, pos.getZ(i) - z) < 0.01;
+      const crossed: number[] = [];
+      for (let i = 0; i < pos.count; i += 3) {
+        const corners = [i, i + 1, i + 2];
+        if (corners.some(j => at(j, 5, 6)) && corners.some(j => at(j, 5.17, 6.35))) crossed.push(i);
+      }
+      expect(crossed).toEqual([]);
+      // and the wall, which stops FASCIA_M short of the roof for a soffit to close, is closed up to the roof without one:
+      // faces in its plane (z 6, x 4.82 to 5) between the wall's top, 8.35 to 8.224 m, and the roof's edge, 8.5 to 8.374,
+      // covering the 0.18 m by 0.15 m strip, however it's split into triangles
+      const [p, q, r] = [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()];
+      let area = 0;
+      for (let i = 0; i < pos.count; i += 3) {
+        const corners = [i, i + 1, i + 2];
+        const inStrip = (j: number) =>
+          Math.abs(pos.getZ(j) - 6) < 0.001 &&
+          pos.getX(j) > 4.819 &&
+          pos.getX(j) < 5.001 &&
+          pos.getY(j) > 8.2 &&
+          pos.getY(j) < 8.51;
+        if (corners.every(inStrip))
+          area += new THREE.Triangle(
+            p.fromBufferAttribute(pos, i),
+            q.fromBufferAttribute(pos, i + 1),
+            r.fromBufferAttribute(pos, i + 2),
+          ).getArea();
+      }
+      expect(area).toBeCloseTo(0.18 * 0.15, 4);
+    }
+  });
+
+  it('faces the windows out of the house, whichever way the outline runs', () => {
+    // the window skin: the mesh with a texture, 4 cm out from the walls of a 10 m square around (5, 5)
+    for (const b of [pitched, reversed(pitched)]) {
+      const world = makeWorld({ b: [b] }),
+        scene = new THREE.Scene();
+      addBuildings(scene, world, new Heightfield(world), { rnd: () => 0.5, pick: a => a[0], maxAnisotropy: 1 });
+      const skin = scene.children.find(
+          o => o instanceof THREE.Mesh && (o.material as THREE.MeshLambertMaterial).map,
+        ) as THREE.Mesh,
+        pos = skin.geometry.getAttribute('position'),
+        [p, q, r, n] = [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()];
+      expect(pos.count).toBeGreaterThan(0);
+      for (let i = 0; i < pos.count; i += 3) {
+        THREE.Triangle.getNormal(
+          p.fromBufferAttribute(pos, i),
+          q.fromBufferAttribute(pos, i + 1),
+          r.fromBufferAttribute(pos, i + 2),
+          n,
+        );
+        const cx = (p.x + q.x + r.x) / 3 - 5,
+          cz = (p.z + q.z + r.z) / 3 - 5;
+        expect(n.x * cx + n.z * cz, `triangle ${i / 3}`).toBeGreaterThan(0);
+      }
+    }
+  });
+});
