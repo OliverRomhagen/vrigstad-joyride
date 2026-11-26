@@ -42,12 +42,8 @@ const GAME_KEYS: Record<string, 'action' | 'respawn' | 'rain' | 'toggleView'> = 
   KeyL: 'rain',
   KeyV: 'toggleView',
 };
-// Other keys a module's control can't take: the menus' (menu.ts) and the dev console's (devconsole.ts), which opens on
-// the character § or `, so on another layout it can be another key too. The menus' number keys count as well: the
-// key that picks an option closes the menu, and its next repeat would press a control on it.
-const RESERVED_CODES = ['NumpadEnter', 'Escape', 'KeyP', 'Backquote', 'IntlBackslash'],
-  MENU_NUMBER_KEYS = /^(?:Digit|Numpad)[1-9]$/;
-// Ctrl, Alt and ⌘ themselves (OS is ⌘ in older browsers): a key pressed with one of them held is the browser's, and
+// A module's control can't take the menus' and the dev console's keys either: they name their own (InputDeps.keyTaken).
+// Nor Ctrl, Alt and ⌘ themselves (OS is ⌘ in older browsers): a key pressed with one of them held is the browser's, and
 // the modifier's own keydown already says it is held, so a control on one is never pressed in most browsers; where
 // it is (AltGr on Linux), it would work for some players only.
 const MODIFIER_KEYS = /^(?:Control|Alt|Meta|OS)(?:Left|Right)$/;
@@ -101,6 +97,9 @@ export interface InputDeps {
   readonly menuOpen: boolean; // the kiosk / pet menu needs the cursor
   readonly consoleOpen: boolean; // the dev console: a module's control can't be pressed under it
   menuKey(e: KeyboardEvent): boolean; // the menus see each key first; true when they used it
+  // Whether the menus or the dev console use this key, open or not: a control can't take it. A menu's key closes the
+  // menu, and its next repeat would press a control on it
+  keyTaken(code: string): boolean;
   action(): void; // E, F, Enter or the touch action button
   respawn(): void; // R
   rain(): void; // L: låt det regna
@@ -424,13 +423,7 @@ export class Input {
     const bound = new HeldControl(spec, () => this.g.started && !this.g.menuOpen && !this.g.consoleOpen);
     for (const code of bound.codes) {
       if (MODIFIER_KEYS.test(code)) throw new Error(`Input: ${code} is a modifier, which can't hold a control`);
-      if (
-        KEYMAP[code] ||
-        GAME_KEYS[code] ||
-        RESERVED_CODES.includes(code) ||
-        MENU_NUMBER_KEYS.test(code) ||
-        this.byCode.has(code)
-      )
+      if (KEYMAP[code] || GAME_KEYS[code] || this.g.keyTaken(code) || this.byCode.has(code))
         throw new Error(`Input: ${code} is already taken`);
     }
     if (this.mouseMask & bound.mouseButton)

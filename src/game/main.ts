@@ -46,13 +46,13 @@ import { Crashes } from './crashes';
 import { GameLoop } from './loop';
 import { installCaptureHook } from './capture-hook';
 import { installTestHook } from './test-hook';
-import { esc, MenuPlate } from './menu';
+import { esc, MenuPlate, menuOwnsKey } from './menu';
 import { KioskCatMenus } from './kiosk-cat-menus';
 import { Pets } from './pets';
 import { Commands } from './commands';
 import { CashRain } from './cash-rain';
 import { Confetti } from './confetti';
-import { DevConsole } from './devconsole';
+import { consoleOwnsKey, DevConsole } from './devconsole';
 import { newWallet, registerWalletCommands, TRISS_KR } from './economy';
 import { carsForSale, Skroten } from './skroten';
 import { SKROT_CARPORT, SKROT_HALL, yardFloorAt, yardLayout } from './skroten-yard';
@@ -363,7 +363,7 @@ debugOverlay?.registerCommands(commands);
 
 // ---------- input: keys, mouse look and the touch controls (src/game/input.ts) ----------
 // the dev console sees each key first, then the menus (src/game/menu.ts)
-const input = new Input({ win: window, doc: document, canvas, $, coarse, menuKey: e => devcon.takeKey(e) || menuKey(e),
+const input = new Input({ win: window, doc: document, canvas, $, coarse, menuKey: e => devcon.takeKey(e) || menuKey(e), keyTaken: code => consoleOwnsKey(code) || menuOwnsKey(code),
   get started() { return game.started; }, get menuOpen() { return !kmenu.hidden; }, get consoleOpen() { return devcon.isOpen; },
   action: () => action(), respawn: () => respawn(), rain: () => cashRain.makeItRain(), toggleView: () => cockpit?.toggle(),
   jump: () => { if (jumpOk()) game.jumpQ = true; },   // queue only where a jump can start (see jumpOk)

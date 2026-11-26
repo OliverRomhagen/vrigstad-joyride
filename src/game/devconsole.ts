@@ -12,6 +12,13 @@ const MAX_HISTORY = 30; // typed lines that ArrowUp brings back
 /** Whether a keydown is the console's key: § (top left on a Swedish keyboard) or ` (the same key on US layouts). */
 const isConsoleKey = (e: KeyboardEvent) => (e.key === '§' || e.key === '`') && !e.ctrlKey && !e.metaKey && !e.altKey; // Cmd+` cycles windows on macOS
 
+// The console opens on a character, so which key that is depends on the layout: these are the keys that type § or `
+// on the common ones. Esc closes it.
+const OPEN_KEYS = ['Backquote', 'IntlBackslash'],
+  CLOSE_KEY = 'Escape';
+/** Whether the console opens or closes on this key: Input then refuses it to a module's control. */
+export const consoleOwnsKey = (code: string) => OPEN_KEYS.includes(code) || code === CLOSE_KEY;
+
 export interface DevConsoleDeps {
   root: HTMLElement; // #devcon: holds an output list, an input and a .hint under it
   commands: Commands;
@@ -78,7 +85,7 @@ export class DevConsole {
   takeKey(e: KeyboardEvent): boolean {
     if (this.isOpen) {
       e.preventDefault();
-      if ((isConsoleKey(e) || e.code === 'Escape') && !e.repeat) this.close();
+      if ((isConsoleKey(e) || e.code === CLOSE_KEY) && !e.repeat) this.close();
       else this.focus(); // the key that takes focus back isn't typed
       return true;
     }
@@ -174,7 +181,7 @@ export class DevConsole {
   private key(e: KeyboardEvent) {
     e.stopPropagation();
     if (e.isComposing) return;
-    if (e.code === 'Escape' || isConsoleKey(e)) {
+    if (e.code === CLOSE_KEY || isConsoleKey(e)) {
       e.preventDefault();
       if (!e.repeat) this.close();
       return;
