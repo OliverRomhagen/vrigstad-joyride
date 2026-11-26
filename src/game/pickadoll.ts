@@ -456,9 +456,10 @@ export class Pickadoll {
     for (let i = this.shots.length - 1; i >= 0; i--) {
       const s = this.shots[i],
         { x, y, z } = s, // where it was when the frame began
-        hit = stepShot(s, dt, this.world, this.hit);
-      if (!hit) continue;
-      if (hit !== 'gone') {
+        step = stepShot(s, dt, this.world, this.hit);
+      if (step === 'flying') continue;
+      if (step === 'hit') {
+        const hit = this.hit;
         this.land(s, hit);
         if (hit.bounced) continue; // it flies on
         const tracerM = WEAPONS[s.weapon].tracerM;

@@ -347,20 +347,31 @@ export function aimShot(weapon: Weapon, yaw: number, pitch: number, spreadYaw = 
 const _probe = { x: 0, z: 0 },
   _onCar = { x: 0, z: 0 };
 
-/** Moves a shot on by dt seconds. Returns what it hit, 'gone' when it ran out of range, or null while it still flies. */
-export function stepShot(s: Shot, dt: number, world: ShotWorld, out: ShotHit): ShotHit | 'gone' | null {
+/** What a step did to a shot (stepShot). */
+export type ShotStep = 'flying' | 'hit' | 'gone';
+
+/**
+ * Moves a shot on by dt seconds: 'hit' when it hit something or went off, which `out` then describes, 'gone' when it
+ * ran out of range, and 'flying' while it still flies, or lies until its fuse runs out.
+ */
+export function stepShot(s: Shot, dt: number, world: ShotWorld, out: ShotHit): ShotStep {
   const fuseS = WEAPONS[s.weapon].fuseS;
   out.burst = false;
   if (s.lying) {
     s.lifeS += dt;
-    return s.lifeS >= fuseS ? burst(s, world, out) : null;
+    if (s.lifeS < fuseS) return 'flying';
+    burst(s, world, out);
+    return 'hit';
   }
   const speed = Math.hypot(s.vx, s.vy, s.vz),
     steps = Math.max(1, Math.ceil((speed * dt) / STEP_M)),
     h = dt / steps;
   for (let i = 0; i < steps; i++) {
     s.lifeS += h;
-    if (fuseS && s.lifeS >= fuseS) return burst(s, world, out);
+    if (fuseS && s.lifeS >= fuseS) {
+      burst(s, world, out);
+      return 'hit';
+    }
     s.vy -= GRAVITY_MS2 * h;
     s.x += s.vx * h;
     s.y += s.vy * h;
@@ -378,15 +389,15 @@ export function stepShot(s: Shot, dt: number, world: ShotWorld, out: ShotHit): S
         s.lying = true;
         hit.bounced = true;
       }
-      return hit;
+      return 'hit';
     }
     if (s.ageS > RANGE_S) return 'gone';
   }
-  return null;
+  return 'flying';
 }
 
 // the fuse ran out: it goes off where it is, and what it leaves lands on the ground below
-function burst(s: Shot, world: ShotWorld, out: ShotHit): ShotHit {
+function burst(s: Shot, world: ShotWorld, out: ShotHit) {
   surface(out, 'ground', -1, 0, 1, 0);
   out.x = s.x;
   out.y = world.groundAt(s.x, s.z);
@@ -395,7 +406,6 @@ function burst(s: Shot, world: ShotWorld, out: ShotHit): ShotHit {
   out.dz = -1;
   out.bounced = false;
   out.burst = true;
-  return out;
 }
 
 // off the ground, a wall or a car, if its weapon's shots bounce and it has bounces and speed left: the shot is turned
@@ -529,8 +539,8 @@ export function flightPath(s: Shot, world: ShotWorld, stepS: number, max: number
   };
   while (n < max - 1) {
     put(s.x, s.y, s.z);
-    const hit = stepShot(s, stepS, world, end);
-    if (hit === 'gone') return n;
+    const step = stepShot(s, stepS, world, end);
+    if (step === 'gone') return n;
     if (s.lying) {
       // where a shot with a fuse comes to rest is where it will go off
       end.x = s.x;
@@ -538,7 +548,7 @@ export function flightPath(s: Shot, world: ShotWorld, stepS: number, max: number
       end.z = s.z;
       break;
     }
-    if (hit && !hit.bounced) break;
+    if (step === 'hit' && !end.bounced) break;
   }
   put(end.x, end.y, end.z);
   return n;

@@ -52,8 +52,8 @@ function shot(weapon = PICKADOLL): Shot {
 function fly(s: Shot, w: ShotWorld, dt = 1 / 60) {
   const out = newHit();
   for (let i = 0; i < 600; i++) {
-    const hit = stepShot(s, dt, w, out);
-    if (hit) return hit;
+    const step = stepShot(s, dt, w, out);
+    if (step !== 'flying') return step === 'hit' ? out : step;
   }
   throw new Error('still flying after 10 s');
 }
@@ -133,7 +133,8 @@ describe('stepShot', () => {
 
   it('does not skip through a person on a slow frame', () => {
     const s = shot(),
-      hit = stepShot(s, 0.25, world({ people: [{ x: 0, z: -9, scale: 1 }] }), newHit());
+      hit = newHit();
+    expect(stepShot(s, 0.25, world({ people: [{ x: 0, z: -9, scale: 1 }] }), hit)).toBe('hit');
     expect(hit).toMatchObject({ kind: 'person' });
   });
 });
@@ -184,13 +185,12 @@ describe('a thrown shot with a fuse', () => {
     const out = newHit();
     let touches = 0;
     for (let i = 0; i < 600; i++) {
-      const hit = stepShot(s, 1 / 60, w, out);
-      if (hit === 'gone') throw new Error('gone before its fuse');
-      if (hit?.burst) return { touches, hit };
-      if (hit) {
-        expect(hit.bounced).toBe(true); // it never stops on what it touches
-        touches++;
-      }
+      const step = stepShot(s, 1 / 60, w, out);
+      if (step === 'gone') throw new Error('gone before its fuse');
+      if (step === 'flying') continue;
+      if (out.burst) return { touches, hit: out };
+      expect(out.bounced).toBe(true); // it never stops on what it touches
+      touches++;
     }
     throw new Error('never went off');
   }
@@ -225,7 +225,7 @@ describe('a bounce on a slope', () => {
       s = { ...shot(GULD), ...aimShot(WEAPONS[GULD], 0, 0.5) },
       out = newHit();
     let first: number | null = null;
-    for (let i = 0; i < 600 && first === null; i++) if (stepShot(s, 1 / 60, w, out)) first = s.bounced;
+    for (let i = 0; i < 600 && first === null; i++) if (stepShot(s, 1 / 60, w, out) !== 'flying') first = s.bounced;
     expect(first).toBe(1); // it met the slope still rising, and bounced off it
     expect(out.ny).toBeCloseTo(2 / Math.hypot(1, 2)); // the slope's own normal, leaning back south
     expect(out.nz).toBeCloseTo(1 / Math.hypot(1, 2));
