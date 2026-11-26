@@ -275,7 +275,7 @@ export function addBuildings(
       c.set(b.k === 2 ? '#9c3a2c' : b.k ? '#efece3' : area > 450 ? pick(big) : pick(house)).convertSRGBToLinear();
       c2.set(b.k === 2 ? '#a8573f' : b.k ? '#3f4447' : rnd() < 0.35 ? '#4d4a48' : '#a8573f').convertSRGBToLinear();
       if (isSkipped(b.p)) return null; // after the rolls above, so the houses after it keep their colours
-      c3.copy(c).multiplyScalar(flatWalls ? 1 : 0.62); // walls darken towards the ground
+      c3.copy(c).multiplyScalar(flatWalls ? 1 : 0.62); // walls darken towards the ground, unless flat for the toon style's bands
       return paint;
     };
     // not the church and its tower, not sheds or barns, not one drawn elsewhere
