@@ -1,9 +1,13 @@
 // The pickadoll lab (#17, ?lab=pickadoll): a proof of concept for trying weapons and hits side by side. You have every
 // weapon from the start; Q changes the weapon, G what a hit does, and the mouse button, X or the Fire button fires, on
-// foot and from a car. The keys and buttons are controls it adds to the game's input (./input.ts). The rules are in ./sim/shots.ts and the drawing in ./render/shot-fx.ts; this file reads the
+// foot and from a car. The keys and buttons are controls it adds to the game's input (./input.ts). Changing the weapon,
+// the hit and keeping the aim are commands (`weapon`, `hit`, `aim`: docs/console.md), which Q, G, C and the buttons run;
+// firing and holding the aim are held input. The rules are in ./sim/shots.ts and the drawing in ./render/shot-fx.ts; this file reads the
 // controls, shows the two HUD buttons and decides what each hit does to the world. A page module: it uses the DOM.
 import { clamp, wrap } from '../world/math';
 import type { Rnd } from '../world/random';
+import { choice, command, optional, toggle } from './command-args';
+import type { Commands } from './commands';
 import { damageCar, LIMP_AT } from './health';
 import { type Control, type Input, MouseButton } from './input';
 import type { Npc } from './pedestrians';
@@ -12,6 +16,7 @@ import type { Ragdolls } from './ragdolls';
 import type { RenderedCar } from './render/car-meshes';
 import type { Person } from './render/models';
 import { GEGGA, type ShotFx } from './render/shot-fx';
+import { pushBodyOut } from './sim/car-body';
 import {
   aimAtMoving,
   aimShot,
@@ -104,6 +109,7 @@ type Point = { x: number; z: number };
 
 export interface PickadollDeps {
   input: Pick<Input, 'addControl'>;
+  commands: Pick<Commands, 'register' | 'run'>; // the lab adds weapon, hit and aim, and its keys and buttons run them
   canvas: Pick<HTMLCanvasElement, 'focus'>;
   $(id: string): HTMLElement;
   coarse: boolean;
@@ -200,9 +206,9 @@ export class Pickadoll {
       },
     });
     this.aimHold = g.input.addControl({ mouseButton: MouseButton.RIGHT });
-    g.input.addControl({ codes: ['KeyC'], press: () => this.keepAim(!this.aimKept) });
-    g.input.addControl({ codes: ['KeyQ'], press: () => this.nextWeapon() });
-    g.input.addControl({ codes: ['KeyG'], press: () => this.nextFlavour() });
+    g.input.addControl({ codes: ['KeyC'], press: () => this.runFromInput('aim') });
+    g.input.addControl({ codes: ['KeyQ'], press: () => this.runFromInput('weapon') });
+    g.input.addControl({ codes: ['KeyG'], press: () => this.runFromInput('hit') });
     const fire = document.createElement('button');
     fire.type = 'button';
     fire.id = 'p-fire';
@@ -215,7 +221,7 @@ export class Pickadoll {
     aim.textContent = 'Aim';
     aim.setAttribute('aria-pressed', 'false');
     aim.setAttribute('aria-keyshortcuts', 'C');
-    aim.addEventListener('click', () => this.keepAim(!this.aimKept));
+    aim.addEventListener('click', () => this.runFromInput('aim'));
     this.aimButton = aim;
     g.$('pad').prepend(fire, aim);
     g.$('pad').classList.add('lab'); // four buttons: index.html stacks them on a narrow phone
@@ -224,19 +230,20 @@ export class Pickadoll {
     this.crosshair.hidden = true;
     g.$('stage').append(this.crosshair);
     if (g.player.mesh.arms) g.fx.giveGun(g.player.mesh.arms[1]);
-    this.weaponButton = this.hudButton('Q', () => this.nextWeapon());
-    this.flavourButton = this.hudButton('G', () => this.nextFlavour());
+    this.weaponButton = this.hudButton('Q', 'weapon');
+    this.flavourButton = this.hudButton('G', 'hit');
     this.drawHud();
+    this.registerCommands(); // last: a command never reaches a lab that failed half-built
   }
 
-  private hudButton(key: string, press: () => void) {
+  private hudButton(key: string, line: string) {
     const { $, canvas } = this.g,
       button = document.createElement('button');
     button.type = 'button';
     button.className = 'plate lab-weapon';
     button.setAttribute('aria-keyshortcuts', key);
     button.addEventListener('click', () => {
-      press();
+      this.runFromInput(line);
       canvas.focus();
     });
     $('tr').append(button);
@@ -264,15 +271,84 @@ export class Pickadoll {
     this.aimButton.setAttribute('aria-pressed', String(on));
   }
 
-  private nextWeapon() {
-    this.weapon = (this.weapon + 1) % WEAPONS.length;
+  private pickWeapon(index: number) {
+    this.weapon = index;
     this.coolS = Math.min(this.coolS, WEAPONS[this.weapon].coolS); // the wait left, at most the new weapon's own
     this.drawHud();
   }
 
-  private nextFlavour() {
-    this.flavour = (this.flavour + 1) % HIT_FLAVOURS.length;
+  private pickFlavour(index: number) {
+    this.flavour = index;
     this.drawHud();
+  }
+
+  // weapon, hit and aim: with no word each goes on to the next, which is what Q, G, C and the buttons run. Firing and
+  // holding the aim are not commands: they are held, as throttle and steer are
+  private registerCommands() {
+    const { commands } = this.g;
+    commands.register(
+      'weapon',
+      command({
+        help: 'change to the next weapon, or to the one you name',
+        examples: ['weapon', 'weapon minigun'],
+        access: 'player',
+        args: [
+          optional(
+            choice(
+              'weapon',
+              WEAPONS.map(w => w.id),
+            ),
+          ),
+        ],
+        run: ({ weapon }) => {
+          this.pickWeapon(
+            weapon === undefined ? (this.weapon + 1) % WEAPONS.length : WEAPONS.findIndex(w => w.id === weapon),
+          );
+          return 'Weapon: ' + WEAPONS[this.weapon].name + '.';
+        },
+      }),
+    );
+    commands.register(
+      'hit',
+      command({
+        help: 'change what a hit does to the next kind, or to the one you name',
+        examples: ['hit', 'hit dans'],
+        access: 'player',
+        args: [
+          optional(
+            choice(
+              'hit',
+              HIT_FLAVOURS.map(f => f.id),
+            ),
+          ),
+        ],
+        run: ({ hit }) => {
+          this.pickFlavour(
+            hit === undefined ? (this.flavour + 1) % HIT_FLAVOURS.length : HIT_FLAVOURS.findIndex(f => f.id === hit),
+          );
+          return 'Hit: ' + HIT_FLAVOURS[this.flavour].name + '.';
+        },
+      }),
+    );
+    commands.register(
+      'aim',
+      command({
+        help: 'keep aiming over the shoulder, or stop: switches when you say neither',
+        examples: ['aim', 'aim off'],
+        access: 'player',
+        args: [optional(toggle('kept'))],
+        run: ({ kept }) => {
+          this.keepAim(kept ?? !this.aimKept);
+          return this.aimKept ? 'Aiming.' : 'Not aiming.';
+        },
+      }),
+    );
+  }
+
+  // a key or a button runs its command through the registry, as a typed line does, so the hooks see it too. The line
+  // that comes back is for the console: here the HUD shows what changed
+  private runFromInput(line: string) {
+    this.g.commands.run(line, 'input');
   }
 
   /** What the test hook shows. */
@@ -399,7 +475,8 @@ export class Pickadoll {
       this.isWindingUp = false;
     }
     if (this.isWindingUp) {
-      const flown = Object.assign(this.flown, muzzle, aimShot(weapon, yaw, pitch));
+      const flown = Object.assign(this.flown, muzzle);
+      aimShot(weapon, yaw, pitch, 0, 0, flown);
       flown.vx += this.carVx;
       flown.vz += this.carVz;
       flown.ageS = flown.lifeS = flown.bounced = 0;
@@ -628,6 +705,7 @@ export class Pickadoll {
     if (c.mode !== 'parked') return; // a car that drives is where its driving puts it
     c.x += dx * power * PANG_CAR_SHOVE_M;
     c.z += dz * power * PANG_CAR_SHOVE_M;
+    pushBodyOut(c, this.world.collide); // or shot by shot it would go through a wall, as a car shoved by a crash (cars.ts)
     this.g.placeCar(c);
   }
 
