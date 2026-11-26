@@ -28,6 +28,14 @@ const TELEPORT_M = 8;
  * holds the props near the cars, not every one in the village.
  */
 const PROP_JOIN_M = 12;
+/**
+ * A knocked prop goes back to its stand this long after it was knocked (s), once no one is within PROP_RESPAWN_M of it:
+ * traffic knocks props over all round the village, and each one down is a draw call of its own.
+ */
+const PROP_RESPAWN_S = 90,
+  PROP_RESPAWN_M = 60;
+/** the knocked props are checked for respawning once every this many steps: a second */
+const RESPAWN_CHECK_STEPS = 60;
 /** props are found by a grid of cells this size (m) */
 const PROP_CELL_M = 16;
 /** cell keys are numbers: (column + offset) * stride + row + offset, for any column and row within ±offset */
@@ -91,7 +99,7 @@ const _v = { x: 0, y: 0, z: 0 };
 export class PhysicsWorld {
   /** the props in Rapier's world, by index: the ones a car has come near */
   readonly joined: number[] = [];
-  /** the props knocked loose, by index, in the order they came loose */
+  /** the props knocked loose and not yet back on their stands, by index, in the order they came loose */
   readonly loosened: number[] = [];
   private readonly R: Rapier;
   private readonly world: InstanceType<Rapier['World']>;
@@ -102,6 +110,11 @@ export class PhysicsWorld {
   private readonly propBodies: (Body | null)[];
   /** whether each prop has been knocked loose: anchored where it stands until a car touches it */
   private readonly loose: Uint8Array;
+  /** the step each loose prop was knocked at */
+  private readonly looseAtStep: Float64Array;
+  /** where the player is, on foot or in a car: a prop in sight of it isn't put back */
+  private viewerX = 0;
+  private viewerZ = 0;
   /** which prop each joined prop's collider belongs to, by the collider's handle */
   private readonly propByCollider = new Map<number, number>();
   private readonly events: InstanceType<Rapier['EventQueue']>;
@@ -122,6 +135,7 @@ export class PhysicsWorld {
     this.propReach = Float64Array.from(props, p => Math.hypot(p.widthM, p.depthM) / 2);
     this.propBodies = props.map(() => null);
     this.loose = new Uint8Array(props.length);
+    this.looseAtStep = new Float64Array(props.length);
     props.forEach((p, i) => {
       const key = cellKey(Math.floor(p.x / PROP_CELL_M), Math.floor(p.z / PROP_CELL_M)),
         cell = this.propCells.get(key);
@@ -158,8 +172,10 @@ export class PhysicsWorld {
    * Moves the cars and the player to where the game put them this frame, and brings the props near the cars into the
    * world. The player pushes what is loose but knocks nothing loose: walking past a mailbox leaves it standing.
    */
-  follow(cars: readonly CarBody[], player: { x: number; z: number } | null) {
+  follow(cars: readonly CarBody[], player: { x: number; z: number } | null, viewer: { x: number; z: number }) {
     const { R, seen } = this;
+    this.viewerX = viewer.x;
+    this.viewerZ = viewer.z;
     seen.clear();
     for (const car of cars) {
       seen.add(car);
@@ -221,6 +237,7 @@ export class PhysicsWorld {
       }
       this.world.step(this.events);
       this.events.drainCollisionEvents(this.loosenTouched);
+      if (++this.stepCount % RESPAWN_CHECK_STEPS === 0) this.respawnUnseen();
     }
     if (steps > 0)
       for (const t of this.targets.values())
@@ -231,7 +248,6 @@ export class PhysicsWorld {
           t.fromZ = t.z;
           t.fromAngle = t.angle;
         }
-    this.stepCount += steps;
     this.lastStepMs = now() - t0;
     return steps;
   }
@@ -241,6 +257,11 @@ export class PhysicsWorld {
     let n = 0;
     for (const i of this.loosened) if (this.isAwake(i)) n++;
     return n;
+  }
+
+  /** Whether prop i has been knocked loose and isn't back on its stand. Until then it stands, anchored, where it is drawn. */
+  isLoose(i: number) {
+    return this.loose[i] === 1;
   }
 
   /** Whether prop i is loose and awake: moving, or settling. A sleeping prop stays where it last came to rest. */
@@ -404,9 +425,33 @@ export class PhysicsWorld {
     }
   };
 
+  /** Puts back on its stand, anchored, every prop knocked PROP_RESPAWN_S ago that no one is within PROP_RESPAWN_M of. */
+  private respawnUnseen() {
+    const { R, loosened } = this,
+      due = this.stepCount - PROP_RESPAWN_S / PHYSICS_STEP_S;
+    for (let k = loosened.length - 1; k >= 0; k--) {
+      const i = loosened[k],
+        body = this.propBodies[i];
+      if (!body || this.looseAtStep[i] > due) continue;
+      const t = body.translation(),
+        p = this.props[i];
+      if (Math.hypot(t.x - this.viewerX, t.z - this.viewerZ) < PROP_RESPAWN_M) continue;
+      if (Math.hypot(p.x - this.viewerX, p.z - this.viewerZ) < PROP_RESPAWN_M) continue; // nor where it reappears
+      body.setBodyType(R.RigidBodyType.Fixed, false);
+      _v.x = p.x;
+      _v.y = p.baseY + p.heightM / 2;
+      _v.z = p.z;
+      body.setTranslation(_v, false);
+      body.setRotation(yaw(p.rotationY), false);
+      this.loose[i] = 0;
+      loosened.splice(k, 1);
+    }
+  }
+
   private setLoose(i: number) {
     if (this.loose[i]) return;
     this.loose[i] = 1;
+    this.looseAtStep[i] = this.stepCount;
     this.loosened.push(i);
     const body = this.propBodies[i];
     if (!body) return;

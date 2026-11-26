@@ -225,6 +225,11 @@ export class StreetFurniture {
   private readonly batches: { list: readonly FurniturePlacement[]; meshes: THREE.InstancedMesh[] }[] = [];
   /** where each placement is drawn, built by the first `detach`: only ?lab=rapier asks, so the game doesn't hold it */
   private slots: Map<FurniturePlacement, [mesh: THREE.InstancedMesh, index: number][]> | null = null;
+  /** each detached placement's object, and the slots and matrices it had in its batch, for `reattach` */
+  private readonly detached = new Map<
+    FurniturePlacement,
+    { object: THREE.Object3D; slots: [mesh: THREE.InstancedMesh, index: number][]; matrices: THREE.Matrix4[] }
+  >();
 
   constructor(placements: readonly FurniturePlacement[], { groundAt, debugSources = false }: StreetFurnitureOptions) {
     this.materials = {
@@ -298,9 +303,11 @@ export class StreetFurniture {
     if (!slots) return null;
     this.slots.delete(p);
     const group = new THREE.Group(),
-      m = new THREE.Matrix4();
+      matrices: THREE.Matrix4[] = [];
     for (const [mesh, i] of slots) {
+      const m = new THREE.Matrix4();
       mesh.getMatrixAt(i, m);
+      matrices.push(m.clone());
       const part = new THREE.Mesh(mesh.geometry, mesh.material);
       part.castShadow = mesh.castShadow;
       part.receiveShadow = mesh.receiveShadow;
@@ -309,7 +316,22 @@ export class StreetFurniture {
       mesh.setMatrixAt(i, m.makeScale(0, 0, 0)); // gone from the batch: a zero-size instance draws nothing
       mesh.instanceMatrix.needsUpdate = true;
     }
+    this.detached.set(p, { object: group, slots, matrices });
     return group;
+  }
+
+  /** Puts a detached placement back in its batch, where it stood, and takes its object out of the scene. */
+  reattach(p: FurniturePlacement) {
+    const d = this.detached.get(p);
+    if (!d) return false;
+    this.detached.delete(p);
+    d.slots.forEach(([mesh, i], k) => {
+      mesh.setMatrixAt(i, d.matrices[k]);
+      mesh.instanceMatrix.needsUpdate = true;
+    });
+    this.slots?.set(p, d.slots);
+    d.object.removeFromParent();
+    return true;
   }
 
   dispose() {

@@ -186,6 +186,25 @@ describe('StreetFurniture', () => {
     f.dispose();
   });
 
+  it('puts a detached placement back in its batch where it stood, and takes its object out of the scene', () => {
+    const f = new StreetFurniture(placements, { groundAt: () => 0 }),
+      lamps = f.meshes.find(m => m.name === 'furniture:lamp-arm')!,
+      before = new THREE.Matrix4(),
+      after = new THREE.Matrix4();
+    lamps.getMatrixAt(0, before);
+    const scene = new THREE.Scene(),
+      lamp = f.detach(placements[0])!;
+    scene.add(lamp);
+    lamp.position.x += 5; // knocked over and thrown
+    expect(f.reattach(placements[0])).toBe(true);
+    lamps.getMatrixAt(0, after);
+    expect(after.equals(before)).toBe(true);
+    expect(lamp.parent).toBeNull();
+    expect(f.reattach(placements[0])).toBe(false); // once only
+    expect(f.detach(placements[0])).not.toBeNull(); // and it can be knocked again
+    f.dispose();
+  });
+
   it('frees every geometry and material it made', () => {
     const f = new StreetFurniture(placements, { groundAt: () => 0 });
     const disposed = new Set<object>();

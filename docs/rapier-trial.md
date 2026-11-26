@@ -67,7 +67,7 @@ And by eye: does a mailbox you drive into look and feel right? Screenshots or a 
 
 - **Two grounds.** Rapier's ground is the terrain. The furniture is drawn on the game's ground, which adds curbs, road lifts and floors. So a knocked prop drops up to a curb's height and can rest partly in a sidewalk. The car and player shapes don't follow bridge decks either.
 - **Missing shapes.** Only the buildings' walls are in Rapier's world, not the fences at Skroten or the kiosk.
-- **Knocked props add up.** Traffic knocks props over anywhere in the village. Each knocked prop is a draw call of its own from then on, two with its shadow, and props never leave the world once they have joined. A long session would show it in the numbers.
+- **Knocked props go back after 90 s.** Traffic knocks props over anywhere in the village, and each one down is a draw call of its own, two with its shadow. So a knocked prop goes back to its stand, anchored and back in its batch, 90 s after it was knocked, once the player is more than 60 m from both where it lies and where it stood. Props never leave the world once they have joined, though: a long session would show it in the numbers.
 - **A hit costs the car nothing.** A 40 kg mailbox stand at 90 km/h doesn't slow the car or damage it: Rapier's cars are moved by the game and can't be pushed back.
 - **The file has no version in its name.** `vendor/rapier.mjs` can be cached for a few minutes past an upgrade.
 - **The time step is a stand-in for #49.** The trial keeps its own clock and spreads each frame's move over its steps only because the game's cars don't move on a fixed step yet. Once #49 gives the sim its steps, Rapier steps inside them and both go.
@@ -77,7 +77,7 @@ And by eye: does a mailbox you drive into look and feel right? Screenshots or a 
 - **Should a hit come back to the game?** Crashes (#40), damage and a star for wrecking a neighbour's mailbox all need the physics world to say what it hit, as the `knocked-over` event ARCHITECTURE.md names for the event bus (#367). Is that part of "keep"?
 - **Step 4 needs people in the world.** #510 hits pedestrians, up to 42 of them, and none are in Rapier's world yet. 500 shots against a world without people would make the casts look cheaper than they are, and leave out moving 42 more capsules every frame.
 - **The same everywhere?** #510 asks that a hit never depend on the frame rate, and under multiplayer (#411) every browser runs its own world. Knocked props differ between players and with the frame rate today: fine while they are only for show, not if one can block a road or a shot.
-- **Is traffic knocking props everywhere wanted?** Measure how many props are joined and loose after ten minutes of play, not only after a short drive.
+- **Is traffic knocking props everywhere wanted?** They go back after 90 s out of sight. Measure how many props are joined and loose after ten minutes of play, not only after a short drive.
 - **Measure what the decision needs:** on a phone, the load with the plain `.wasm`, the memory Rapier holds, and the step with the village's 80 cars.
 
 ## How we decide

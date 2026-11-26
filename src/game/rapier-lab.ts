@@ -28,10 +28,12 @@ export interface RapierLabDeps {
   /** the ground the furniture is drawn on: curbs, road lifts and floors included */
   groundAt(x: number, z: number): number;
   placements: readonly FurniturePlacement[];
-  furniture: Pick<StreetFurniture, 'detach'>;
+  furniture: Pick<StreetFurniture, 'detach' | 'reattach'>;
   cars: readonly CarBody[];
   player: { x: number; z: number };
   inCar(): boolean;
+  /** the car the player drives, while in one */
+  playerCar(): { x: number; z: number } | null;
   /** runs a function once every frame, after the cars and the player have moved */
   addFrameUpdate(update: (dt: number) => void): void;
 }
@@ -109,7 +111,7 @@ export async function startRapierLab(g: RapierLabDeps): Promise<RapierLabState> 
   });
   const now = () => performance.now();
   g.addFrameUpdate(dt => {
-    world.follow(g.cars, g.inCar() ? null : g.player);
+    world.follow(g.cars, g.inCar() ? null : g.player, g.playerCar() ?? g.player);
     world.step(dt, now);
     draw.update();
   });

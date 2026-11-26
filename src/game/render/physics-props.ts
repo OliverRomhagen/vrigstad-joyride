@@ -10,8 +10,8 @@ const _pose: PropPose = { x: 0, y: 0, z: 0, qx: 0, qy: 0, qz: 0, qw: 1 };
 
 export interface PhysicsPropsDeps {
   scene: THREE.Scene;
-  furniture: Pick<StreetFurniture, 'detach'>;
-  world: Pick<PhysicsWorld, 'loosened' | 'isAwake' | 'propPose'>;
+  furniture: Pick<StreetFurniture, 'detach' | 'reattach'>;
+  world: Pick<PhysicsWorld, 'loosened' | 'isLoose' | 'isAwake' | 'propPose'>;
   /** the placement behind each of the world's props, in the same order */
   placements: readonly FurniturePlacement[];
   /** each prop's height (m): the body's middle is this far above the model's foot */
@@ -21,6 +21,8 @@ export interface PhysicsPropsDeps {
 export class PhysicsProps {
   private readonly g: PhysicsPropsDeps;
   private readonly drawn: (THREE.Object3D | null)[];
+  /** the props drawn on their own, by index */
+  private readonly detached: number[] = [];
 
   constructor(g: PhysicsPropsDeps) {
     this.g = g;
@@ -30,6 +32,14 @@ export class PhysicsProps {
   /** Moves every knocked prop's model to its body, taking it out of its batch the first time it leaves its stand. */
   update() {
     const { scene, furniture, world, placements, heights } = this.g;
+    // back on its stand: back in its batch
+    for (let k = this.detached.length - 1; k >= 0; k--) {
+      const i = this.detached[k];
+      if (world.isLoose(i)) continue;
+      furniture.reattach(placements[i]);
+      this.drawn[i] = null;
+      this.detached.splice(k, 1);
+    }
     for (const i of world.loosened) {
       let model = this.drawn[i];
       if (!model) {
@@ -37,6 +47,7 @@ export class PhysicsProps {
         if (!model) continue;
         scene.add(model);
         this.drawn[i] = model;
+        this.detached.push(i);
       } else if (!world.isAwake(i)) continue;
       const p = world.propPose(i, _pose);
       model.quaternion.set(p.qx, p.qy, p.qz, p.qw);

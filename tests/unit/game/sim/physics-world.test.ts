@@ -54,7 +54,7 @@ function drive(speed: number, z = 0, fps = 60) {
     c = car(0, z);
   for (let t = 0; t < 1.5; t += 1 / fps) {
     c.x += speed / fps;
-    w.follow([c], null);
+    w.follow([c], null, c);
     w.step(1 / fps);
   }
   const p = w.propPose(0, pose());
@@ -90,12 +90,12 @@ describe('PhysicsWorld', () => {
   it('leaves the props out of the world until a car drives near, not the player', () => {
     const w = world(bumpy, [mailbox(10, 0), mailbox(60, 0)]);
     for (let i = 0; i < 30; i++) w.step(PHYSICS_STEP_S);
-    w.follow([], { x: 0, z: 0 });
+    w.follow([], { x: 0, z: 0 }, { x: 0, z: 0 });
     expect(w.joined).toEqual([]);
     const c = car(-1);
-    w.follow([c], null); // a car that has just come into the world hasn't moved yet
+    w.follow([c], null, c); // a car that has just come into the world hasn't moved yet
     c.x += 1;
-    w.follow([c], null);
+    w.follow([c], null, c);
     expect(w.joined).toEqual([0]); // 10 m away, not the one 60 m away
     w.dispose();
   });
@@ -111,7 +111,7 @@ describe('PhysicsWorld', () => {
       c = car(15);
     for (let i = 0; i < 10; i++) {
       c.x += 0.5;
-      w.follow([c], null);
+      w.follow([c], null, c);
       w.step(PHYSICS_STEP_S);
     }
     for (let i = 0; i < 180; i++) w.step(PHYSICS_STEP_S);
@@ -127,7 +127,7 @@ describe('PhysicsWorld', () => {
     // 15 m/s, about 54 km/h, for a second
     for (let i = 0; i < 60; i++) {
       c.x += 15 * PHYSICS_STEP_S;
-      w.follow([c], null);
+      w.follow([c], null, c);
       w.step(PHYSICS_STEP_S);
     }
     const p = w.propPose(0, pose());
@@ -164,7 +164,7 @@ describe('PhysicsWorld', () => {
       c = car(0);
     for (let i = 0; i < 6; i++) {
       c.x += 0.5;
-      w.follow([c], { x: 9.3, z: 0 }); // the car brings it into the world; the player stands touching it
+      w.follow([c], { x: 9.3, z: 0 }, { x: 9.3, z: 0 }); // the car brings it into the world; the player stands touching it
       w.step(PHYSICS_STEP_S);
     }
     expect(w.joined).toEqual([0]);
@@ -175,12 +175,35 @@ describe('PhysicsWorld', () => {
   it("jumps a car that is put somewhere far, so it doesn't sweep across the village and launch what it touches", () => {
     const w = world(flat, [mailbox(10, 0)]),
       c = car(-60);
-    w.follow([c], null);
+    w.follow([c], null, c);
     w.step(PHYSICS_STEP_S);
     c.x = 50; // a respawn: past the mailbox, in one frame
-    w.follow([c], null);
+    w.follow([c], null, c);
     w.step(PHYSICS_STEP_S);
     expect(w.loosened).toEqual([]);
+    w.dispose();
+  });
+
+  it('puts a knocked mailbox back on its stand after a minute and a half, once no one is near', () => {
+    const w = world(flat, [mailbox(10, 0)]),
+      c = car(0);
+    for (let i = 0; i < 60; i++) {
+      c.x += 15 * PHYSICS_STEP_S;
+      w.follow([c], null, c);
+      w.step(PHYSICS_STEP_S);
+    }
+    expect(w.loosened).toEqual([0]);
+    // the car stops 25 m on, in sight of where it hit: the mailbox stays down
+    for (let i = 0; i < 100 * 60; i++) w.step(PHYSICS_STEP_S);
+    expect(w.loosened).toEqual([0]);
+    // it drives off out of sight: within a second the mailbox is back, anchored where it stood
+    c.x = 200;
+    w.follow([c], null, c);
+    for (let i = 0; i < 61; i++) w.step(PHYSICS_STEP_S);
+    expect(w.loosened).toEqual([]);
+    expect(w.isLoose(0)).toBe(false);
+    const p = w.propPose(0, pose());
+    expect([p.x, p.y, p.z]).toEqual([10, expect.closeTo(0.65, 5), 0]);
     w.dispose();
   });
 
