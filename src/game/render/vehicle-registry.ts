@@ -121,6 +121,11 @@ export const VEHICLES = [
 ] as const satisfies readonly (Record<string, unknown> & { archetype: CarType })[];
 export type VehicleId = (typeof VEHICLES)[number]['id'];
 export const vehicleDefinition = (id: string | null) => VEHICLES.find(v => v.id === id);
+/** The kind of car each civilian model is, by id, and the tractor, which has no model of its own: what Skroten buys and sells and `car <model>` spawns. */
+export const CIVILIAN_CAR_TYPES: ReadonlyMap<string, CarType> = new Map<string, CarType>([
+  ...VEHICLES.filter(v => !v.police).map(v => [v.id, v.archetype] as const),
+  ['traktor', 'traktor'],
+]);
 // The models each simulation type can wear, with relative weights; every model is in the world.
 export const VEHICLE_VARIANTS: Readonly<Partial<Record<CarType, readonly (readonly [VehicleId, number])[]>>> = {
   volvo: [

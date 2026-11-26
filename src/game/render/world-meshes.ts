@@ -7,7 +7,7 @@ import { type BuildingShape, HOUSE_MAX_M2, HOUSE_MIN_M2 } from '../../world/buil
 import type { WorldData } from '../../world/data';
 import type { Heightfield } from '../../world/heightfield';
 import { BridgeMesh } from '../../world/mesh/bridge-mesh';
-import { PaintedBuildingShells } from '../../world/mesh/building-shells';
+import { type EmitVertex, PaintedBuildingShells } from '../../world/mesh/building-shells';
 import { ParkingMesh } from '../../world/mesh/parking-mesh';
 import { RoadRibbons } from '../../world/mesh/road-ribbons';
 import { ShoreProps } from '../../world/mesh/shore-props';
@@ -151,9 +151,17 @@ export function addBridges(scene: THREE.Scene, bridges: BridgeIndex, heightfield
 }
 
 // ---------- buildings (painted in Swedish house colours) ----------
-// house details: windows (a texture on a skin just outside the walls), white corner boards and eave boards, a dark plinth, and a chimney on gabled roofs
+// house details: windows (a texture on a skin just outside the walls), and in the shell's own mesh, so they have edges for the
+// toon style's lines (#413): a dark plinth and white corner boards standing out from the walls, eaves that run on past the
+// walls of gabled roofs, ending in a white fascia board, a white board under flat roofs, and a chimney on gabled roofs
 const WIN_W = 2.6,
   STOREY = 2.8; // window spacing and storey height (m)
+/** how far the plinth stands out from a house's wall (m); the safehouse doors stand clear of it (render/places.ts) */
+export const PLINTH_OUT_M = 0.08;
+const CORNER_OUT_M = 0.07,
+  EAVE_M = 0.35, // how far a gabled roof runs on past the walls
+  FASCIA_M = 0.15, // the depth of the board at its edge
+  FLAT_BOARD_OUT_M = 0.06;
 /** The game's seeded rnd(), which rolls the house colours so they come out the same every time, and the renderer's anisotropy for the window texture. */
 export interface BuildingMeshOptions {
   rnd(): number;
@@ -162,7 +170,7 @@ export interface BuildingMeshOptions {
   /** A point inside each building to leave out, because the game draws it itself: Skroten's workshop and carport (render/skroten.ts). */
   skip?: readonly { x: number; z: number }[];
 }
-/** The house shells in their colours, and one mesh of windows and trim. Rolls rnd() once or twice per house, in data order. */
+/** The house shells in their colours with their trim, and one mesh of windows. Rolls rnd() once or twice per house, in data order. */
 export function addBuildings(
   scene: THREE.Scene,
   D: WorldData,
@@ -199,8 +207,6 @@ export function addBuildings(
       paint = { wall: c, wallFoot: c3, roof: c2 };
     const wp: number[] = [],
       wu: number[] = [],
-      tp: number[] = [],
-      tc: number[] = [],
       WHITE = col('#f1efe8'),
       PLINTH = col('#5b5d5b');
     const house = ['#9c3a2c', '#9c3a2c', '#a8452f', '#e8e2d2', '#e8e2d2', '#d9b65a', '#cfc8b8', '#8d9a8f'],
@@ -209,19 +215,23 @@ export function addBuildings(
     // a vertical quad from (x1, z1) to (x2, z2), bottom and top heights at each end
     const quad = (out: number[], ...[x1, z1, x2, z2, b1, t1, b2, t2]: Quad) =>
       out.push(x1, b1, z1, x2, b2, z2, x2, t2, z2, x1, b1, z1, x2, t2, z2, x1, t1, z1);
-    const trim = (k: THREE.Color, ...q: Quad) => {
-      quad(tp, ...q);
-      for (let i = 0; i < 6; i++) tc.push(k.r, k.g, k.b);
+    type Corner = [x: number, y: number, z: number];
+    // a flat four-cornered face, in order round its edge, into the shell's mesh; wound to face `out`, whichever way the
+    // outline runs, so its normal points out of the trim (the sun's shadow normalBias goes along it)
+    const face = (emit: EmitVertex, k: THREE.Color, out: Corner, ...q: [Corner, Corner, Corner, Corner]) => {
+      const [p, r, t] = q,
+        ax = r[0] - p[0],
+        ay = r[1] - p[1],
+        az = r[2] - p[2],
+        bx = t[0] - p[0],
+        by = t[1] - p[1],
+        bz = t[2] - p[2],
+        facing = (ay * bz - az * by) * out[0] + (az * bx - ax * bz) * out[1] + (ax * by - ay * bx) * out[2];
+      for (const i of facing >= 0 ? [0, 1, 2, 0, 2, 3] : [0, 2, 1, 0, 3, 2]) emit(q[i][0], q[i][1], q[i][2], k);
     };
-    const box = (
-      emit: (x: number, y: number, z: number, k: THREE.Color) => void,
-      x: number,
-      z: number,
-      y0: number,
-      y1: number,
-      s: number,
-      k: THREE.Color,
-    ) => {
+    const UP: Corner = [0, 1, 0],
+      DOWN: Corner = [0, -1, 0];
+    const box = (emit: EmitVertex, x: number, z: number, y0: number, y1: number, s: number, k: THREE.Color) => {
       const h = s / 2,
         // counter-clockwise on the map, so the walls face out
         P = [
@@ -266,52 +276,158 @@ export function addBuildings(
       c3.copy(c).multiplyScalar(0.62); // walls darken towards the ground
       return paint;
     };
-    const details = (
-      { building: b, ring, yAt, base, top, hi, area, winding: wind }: BuildingShape,
-      emit: (x: number, y: number, z: number, k: THREE.Color) => void,
-    ) => {
-      if (b.k === 1 || area < HOUSE_MIN_M2 || area > HOUSE_MAX_M2 || isSkipped(b.p)) return; // not the church and its tower, not sheds or barns, not one drawn elsewhere
+    // not the church and its tower, not sheds or barns, not one drawn elsewhere
+    const trimmed = ({ building: b, area }: BuildingShape) =>
+      b.k !== 1 && area >= HOUSE_MIN_M2 && area <= HOUSE_MAX_M2 && !isSkipped(b.p);
+    // a trimmed gabled house's walls stop at its soffit, which closes them under the eave, so the roof's edge along the
+    // walls is shared only with the eave, in its own plane, and the toon style draws no line 0.35 m in from the fascia's
+    const wallDrop = (shape: BuildingShape) => (shape.building.g && trimmed(shape) ? FASCIA_M : 0);
+    const details = (shape: BuildingShape, emit: EmitVertex) => {
+      if (!trimmed(shape)) return;
+      const { building: b, ring, yAt, roofY, base, top, hi, winding: wind } = shape;
       const m = ring.length,
         yb = hi + 0.2,
         yt = top - 0.25,
         rows = Math.max(1, Math.round((yt - yb) / STOREY));
+      // a wall's outward normal, from p to q
+      const normal = (p: { x: number; z: number }, q: { x: number; z: number }): [number, number] => {
+        const l = Math.hypot(q.x - p.x, q.z - p.z) || 1;
+        return [(wind * (q.z - p.z)) / l, (-wind * (q.x - p.x)) / l];
+      };
       for (let i = 0; i < m; i++) {
         const a = ring[i],
           d = ring[(i + 1) % m],
           ex = d.x - a.x,
           ez = d.z - a.z,
           len = Math.hypot(ex, ez);
-        if (len < 0.4) continue;
+        if (len < 1e-3) continue;
+        const short = len < 0.4; // no windows or corner boards, but the plinth and the eave still run on along it
         const ux = ex / len,
           uz = ez / len,
           ox = wind * uz,
           oz = -wind * ux,
-          o = (k: number, s: number): [number, number, number, number] => [
-            a.x + ox * k - ux * s,
-            a.z + oz * k - uz * s,
-            d.x + ox * k + ux * s,
-            d.z + oz * k + uz * s,
-          ];
+          prev = normal(ring[(i + m - 1) % m], a),
+          next = normal(d, ring[(i + 2) % m]),
+          // how far a line `k` m out from this wall runs on past a corner, to where the neighbour's line `k` m out crosses
+          // it: a mitre, so corners of any angle close (none where the outline only splits at the ridge)
+          mitre = (n: [number, number], along: number, k: number) =>
+            (-k / Math.max(0.3, 1 + ox * n[0] + oz * n[1])) * (n[0] * ux + n[1] * uz) * along,
+          // the ends of that line, mitred at both corners unless `mitred` is false
+          o = (k: number, mitred = true): [number, number, number, number] => {
+            const sa = mitred ? mitre(prev, 1, k) : 0,
+              sd = mitred ? mitre(next, -1, k) : 0;
+            return [a.x + ox * k - ux * sa, a.z + oz * k - uz * sa, d.x + ox * k + ux * sd, d.z + oz * k + uz * sd];
+          },
+          // whether that line still runs from a's end to d's: on a wall shorter than what its mitres at inside corners
+          // take off it, its ends swap places
+          forwards = (k: number) => len + mitre(prev, 1, k) + mitre(next, -1, k) > 0;
         const nwin = Math.round(len / WIN_W); // whole windows only: the tile stretches a little to fit the wall
         if (len >= 1.6 && nwin > 0) {
-          quad(wp, ...o(0.04, 0), yb, yt, yb, yt);
+          // from d to a where the outline runs the other way, so its front faces out, as the shell's walls do: the shadow's
+          // normalBias moves the lookup along the normal, into the wall's own shadow when it points in. The tile is
+          // symmetric, so it needs no mirroring
+          const [s1x, s1z, s2x, s2z] = o(0.04, false);
+          if (wind > 0) quad(wp, s2x, s2z, s1x, s1z, yb, yt, yb, yt);
+          else quad(wp, s1x, s1z, s2x, s2z, yb, yt, yb, yt);
           wu.push(0, 0, nwin, 0, nwin, rows, 0, 0, nwin, rows, 0, rows);
         }
-        trim(PLINTH, ...o(0.05, 0.05), base, hi + 0.45, base, hi + 0.45);
-        trim(WHITE, ...o(0.06, 0.06), yAt(a) - 0.22, yAt(a) + 0.02, yAt(d) - 0.22, yAt(d) + 0.02);
+        const ya = yAt(a),
+          yd = yAt(d),
+          py = hi + 0.45,
+          [p1x, p1z, p2x, p2z] = o(PLINTH_OUT_M),
+          OUT: Corner = [ox, 0, oz];
+        face(emit, PLINTH, OUT, [p1x, base, p1z], [p2x, base, p2z], [p2x, py, p2z], [p1x, py, p1z]);
+        face(emit, PLINTH, UP, [a.x, py, a.z], [d.x, py, d.z], [p2x, py, p2z], [p1x, py, p1z]);
+        // no eave on a wall too short for its mitres, whose eave line would run backwards and come out crossed
+        if (b.g && forwards(EAVE_M)) {
+          // the roof runs on EAVE_M past the wall in its own plane, mitred at the corners; each corner's height comes from
+          // the corner point alone, so the two walls that meet there agree on it, and never rises above the wall's own top,
+          // which a gable askew to the ridge would otherwise do
+          const [ax2, az2, dx2, dz2] = o(EAVE_M),
+            ya2 = Math.min(ya, roofY({ x: ax2, z: az2 })),
+            yd2 = Math.min(yd, roofY({ x: dx2, z: dz2 }));
+          face(emit, c2, UP, [a.x, ya, a.z], [d.x, yd, d.z], [dx2, yd2, dz2], [ax2, ya2, az2]);
+          face(
+            emit,
+            WHITE,
+            OUT,
+            [ax2, ya2, az2],
+            [dx2, yd2, dz2],
+            [dx2, yd2 - FASCIA_M, dz2],
+            [ax2, ya2 - FASCIA_M, az2],
+          );
+          face(
+            emit,
+            WHITE,
+            DOWN,
+            [a.x, ya - FASCIA_M, a.z],
+            [d.x, yd - FASCIA_M, d.z],
+            [dx2, yd2 - FASCIA_M, dz2],
+            [ax2, ya2 - FASCIA_M, az2],
+          );
+        } else if (b.g) {
+          // the wall stops FASCIA_M short of the roof (wallDrop) for the soffit to close; with no soffit, close it here
+          face(emit, c, OUT, [a.x, ya - FASCIA_M, a.z], [d.x, yd - FASCIA_M, d.z], [d.x, yd, d.z], [a.x, ya, a.z]);
+        } else {
+          const [f1x, f1z, f2x, f2z] = o(FLAT_BOARD_OUT_M),
+            lo = -0.22;
+          face(
+            emit,
+            WHITE,
+            OUT,
+            [f1x, ya + lo, f1z],
+            [f2x, yd + lo, f2z],
+            [f2x, yd + 0.02, f2z],
+            [f1x, ya + 0.02, f1z],
+          );
+          face(emit, WHITE, DOWN, [a.x, ya + lo, a.z], [d.x, yd + lo, d.z], [f2x, yd + lo, f2z], [f1x, ya + lo, f1z]);
+          // and its top, back to the wall, so there's no slot to see into between it and the roof
+          face(
+            emit,
+            WHITE,
+            UP,
+            [a.x, ya + 0.02, a.z],
+            [d.x, yd + 0.02, d.z],
+            [f2x, yd + 0.02, f2z],
+            [f1x, ya + 0.02, f1z],
+          );
+        }
+        if (short) continue;
+        const board = o(CORNER_OUT_M);
         for (const [v, p, s] of [
           [a, ring[(i + m - 1) % m], 1],
           [d, ring[(i + 2) % m], -1],
         ] as const) {
-          // corner boards where the outline turns
+          // corner boards where the outline turns: a face out from the wall, and a side
           const fx = s > 0 ? v.x - p.x : p.x - v.x,
             fz = s > 0 ? v.z - p.z : p.z - v.z,
             fl = Math.hypot(fx, fz) || 1;
           if (Math.abs((fx * uz - fz * ux) / fl) < 0.3) continue;
+          // the front starts at the mitre with the next wall's board, so the two close the corner
           const k = Math.min(0.18, len / 2),
-            cx = v.x + ox * 0.07,
-            cz = v.z + oz * 0.07;
-          trim(WHITE, cx, cz, cx + ux * k * s, cz + uz * k * s, base, yAt(v) - 0.2, base, yAt(v) - 0.2);
+            cx = board[s > 0 ? 0 : 2],
+            cz = board[s > 0 ? 1 : 3],
+            ex2 = v.x + ux * k * s,
+            ez2 = v.z + uz * k * s,
+            y1 = yAt(v) - (b.g ? FASCIA_M : 0.2);
+          face(
+            emit,
+            WHITE,
+            OUT,
+            [cx, py, cz],
+            [ex2 + ox * CORNER_OUT_M, py, ez2 + oz * CORNER_OUT_M],
+            [ex2 + ox * CORNER_OUT_M, y1, ez2 + oz * CORNER_OUT_M],
+            [cx, y1, cz],
+          );
+          face(
+            emit,
+            WHITE,
+            [ux * s, 0, uz * s],
+            [ex2, py, ez2],
+            [ex2 + ox * CORNER_OUT_M, py, ez2 + oz * CORNER_OUT_M],
+            [ex2 + ox * CORNER_OUT_M, y1, ez2 + oz * CORNER_OUT_M],
+            [ex2, y1, ez2],
+          );
         }
       }
       if (b.g) {
@@ -327,22 +443,17 @@ export function addBuildings(
       material: new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }),
       colours,
       extra: details,
+      wallDrop,
     }).mesh;
     shells.userData[INK_FLAG] = true; // the toon style inks the houses' corners and roof edges too
     scene.add(shells);
-    // window skin first, trim after: one mesh, two materials
-    const sg = new THREE.BufferGeometry(),
-      nw = wp.length / 3,
-      nt = tp.length / 3,
-      sc = new Float32Array((nw + nt) * 3).fill(1);
-    sc.set(tc, nw * 3);
-    sg.setAttribute('position', new THREE.Float32BufferAttribute(wp.concat(tp), 3));
-    sg.setAttribute('uv', new THREE.Float32BufferAttribute(wu.concat(new Array(nt * 2).fill(0)), 2));
-    sg.setAttribute('color', new THREE.BufferAttribute(sc, 3));
+    // the window skin: the trim is in the shells now (#413)
+    const sg = new THREE.BufferGeometry();
+    sg.setAttribute('position', new THREE.Float32BufferAttribute(wp, 3));
+    sg.setAttribute('uv', new THREE.Float32BufferAttribute(wu, 2));
     sg.computeVertexNormals();
-    sg.addGroup(0, nw, 0);
-    sg.addGroup(nw, nt, 1);
-    const skin = new THREE.Mesh(sg, [
+    const skin = new THREE.Mesh(
+      sg,
       new THREE.MeshLambertMaterial({
         map: winTex,
         alphaTest: 0.5,
@@ -351,14 +462,7 @@ export function addBuildings(
         polygonOffsetFactor: -1,
         polygonOffsetUnits: -2,
       }),
-      new THREE.MeshLambertMaterial({
-        vertexColors: true,
-        side: THREE.DoubleSide,
-        polygonOffset: true,
-        polygonOffsetFactor: -1,
-        polygonOffsetUnits: -2,
-      }),
-    ]);
+    );
     skin.receiveShadow = true;
     scene.add(skin);
   })();
