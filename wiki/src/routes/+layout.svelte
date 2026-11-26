@@ -199,28 +199,13 @@ function drawer(dialog: HTMLDialogElement) {
 .top.scrolled {
   --ground-now: var(--road);
 }
+/* the tag stays as it is when the header goes dark under it: its white line keeps the dark "wiki" half apart from the dark
+   ground, so nothing in it needs to turn over */
 @media (prefers-reduced-motion: no-preference) {
-  .top,
-  .brand b {
+  .top {
     transition:
       background-color 200ms ease-out,
-      box-shadow 200ms ease-out,
-      color 200ms ease-out;
-  }
-  /* on the dark ground the tag's "wiki" half turns over; the village's sign reads on the sky and on the dark alike */
-  .scrolled .brand b {
-    color: var(--road);
-    background: var(--cream);
-  }
-  /* its line turns over with it, dark on the cream, and so does the one between the halves, which white would lose there */
-  .scrolled .brand b::after {
-    border-color: var(--road);
-  }
-  .scrolled .brand span::after {
-    border-right-color: var(--road);
-  }
-  .brand :is(span, b)::after {
-    transition: border-color 200ms ease-out;
+      box-shadow 200ms ease-out;
   }
 }
 /* the phone's menu button; the sidebar is always there on a wider screen */
@@ -247,15 +232,15 @@ function drawer(dialog: HTMLDialogElement) {
   white-space: nowrap;
   --round: 5px; /* the tag's outer corners; where the halves meet they are square */
 }
+/* The two words stand on one baseline. Both halves are one line of the tag's own size, with the same room over and under:
+   less over than under, so the capital V stands in the middle of the tag's height and the g's tail hangs into the room
+   below it. */
 .brand :is(span, b) {
-  display: grid;
-  align-items: center;
+  display: block;
+  padding: 0.15em 0.42em 0.25em;
 }
 /* the village's name as the sign at its edge, as you drive in: blue, a white border inside its edge, the name in white */
 .brand span {
-  /* more room below than above: the g's tail hangs under the line, and the white border runs inside the edge */
-  padding: 0.2em 0.44em 0.27em;
-  font-size: 0.9em;
   letter-spacing: 0.03em;
   text-transform: none;
   color: #fff;
@@ -284,12 +269,18 @@ function drawer(dialog: HTMLDialogElement) {
   border-left: 0;
   border-radius: 0 3px 3px 0;
 }
-/* "wiki" on the road's dark: cream straight on the orange sky reads at only 2.2:1 */
+/* "wiki" on the road's dark, in small capitals: as tall as the lower-case letters of the name beside it (the font's
+   x-height is 0.734 of its capitals' height), so the name leads and their tops and feet are level. A smaller line of the
+   same height would put its baseline 0.106 of the tag's em higher (half of what the font's line loses, by its ascent
+   less its descent), so that much room moves from under it to over it. Its measures are in its own, smaller em. */
 .brand b {
   font-weight: inherit;
+  font-size: 0.734em;
+  line-height: 1.362; /* 1 / 0.734: the name's line */
+  letter-spacing: 0.1em;
   color: var(--cream);
-  background: var(--road);
-  padding: 2px 10px 1px;
+  background: var(--line); /* a shade lighter than the road, so the tag keeps its edge when the header goes dark */
+  padding: 0.349em 0.572em 0.196em 0.627em; /* (0.15 + 0.106) / 0.734 over, (0.25 − 0.106) / 0.734 under */
   border-radius: 0 var(--round) var(--round) 0;
 }
 /* a control with an icon beside its words: the two on one line, their middles level */
