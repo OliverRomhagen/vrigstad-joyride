@@ -356,13 +356,24 @@ export interface ShotHit {
 
 /**
  * The speed a shot leaves with: `yaw` is the heading (0 is north, as the camera's), `pitch` radians above the horizon,
- * and `spreadYaw` and `spreadPitch` what the weapon's spread adds, each -1..1 times its spreadRad.
+ * and `spreadYaw` and `spreadPitch` what the weapon's spread adds, each -1..1 times its spreadRad. Written to `out`
+ * when one is passed, so aiming every frame allocates nothing.
  */
-export function aimShot(weapon: Weapon, yaw: number, pitch: number, spreadYaw = 0, spreadPitch = 0) {
+export function aimShot(
+  weapon: Weapon,
+  yaw: number,
+  pitch: number,
+  spreadYaw = 0,
+  spreadPitch = 0,
+  out: { vx: number; vy: number; vz: number } = { vx: 0, vy: 0, vz: 0 },
+) {
   const y = yaw + spreadYaw * weapon.spreadRad,
     p = pitch + spreadPitch * weapon.spreadRad,
     flat = Math.cos(p) * weapon.speedMs;
-  return { vx: Math.sin(y) * flat, vy: Math.sin(p) * weapon.speedMs, vz: -Math.cos(y) * flat };
+  out.vx = Math.sin(y) * flat;
+  out.vy = Math.sin(p) * weapon.speedMs;
+  out.vz = -Math.cos(y) * flat;
+  return out;
 }
 
 const _probe = { x: 0, z: 0 },
@@ -592,14 +603,11 @@ export const newHit = (): ShotHit => ({
  */
 export function flightPath(s: Shot, world: ShotWorld, stepS: number, max: number, out: number[], end: ShotHit): number {
   let n = 0;
-  const put = (x: number, y: number, z: number) => {
-    out[n * 3] = x;
-    out[n * 3 + 1] = y;
-    out[n * 3 + 2] = z;
-    n++;
-  };
   while (n < max - 1) {
-    put(s.x, s.y, s.z);
+    out[n * 3] = s.x;
+    out[n * 3 + 1] = s.y;
+    out[n * 3 + 2] = s.z;
+    n++;
     const step = stepShot(s, stepS, world, end);
     if (step === ShotStep.GONE) return n;
     if (s.lying) {
@@ -611,8 +619,10 @@ export function flightPath(s: Shot, world: ShotWorld, stepS: number, max: number
     }
     if (step === ShotStep.HIT && !end.bounced) break;
   }
-  put(end.x, end.y, end.z);
-  return n;
+  out[n * 3] = end.x;
+  out[n * 3 + 1] = end.y;
+  out[n * 3 + 2] = end.z;
+  return n + 1;
 }
 
 /**
