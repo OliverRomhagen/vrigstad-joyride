@@ -39,6 +39,14 @@ describe('Crashes.crash', () => {
     expect(t.shakes).toEqual([45]);
   });
 
+  it("leaves a car for sale on Skroten's lot whole, so a dented one never comes cheap, and still damages yours", () => {
+    const t = crashes(),
+      forSale = car({ saleKr: 2000 });
+    t.c.crash(t.pcar, forSale, HARD_MS);
+    expect(forSale.dmg).toBe(0);
+    expect(t.pcar.dmg).toBe(45);
+  });
+
   it('hurts you, shakes the camera and says one line, at most once every few seconds', () => {
     const t = crashes();
     t.c.crash(t.pcar, null, HARD_MS);

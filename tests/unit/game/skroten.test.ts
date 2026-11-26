@@ -1,12 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import type { Car } from '../../../src/game/cars';
+import { fmtKr } from '../../../src/game/economy';
 import type { MenuItem } from '../../../src/game/pets';
-import { OWNER_LINES, Skroten, type SkrotenDeps } from '../../../src/game/skroten';
-import { OWNER_UV, yardToWorld } from '../../../src/game/skroten-yard';
+import { carsForSale, OWNER_LINES, Skroten, type SkrotenDeps } from '../../../src/game/skroten';
+import { OWNER_UV, type YardCar, yardHeading, yardToWorld } from '../../../src/game/skroten-yard';
 import { newGameState } from '../../../src/game/state';
 
+const LIFT = { x: 50, z: 0 };
+
 // You drive `car` onto Skroten's ring with `stars`; `open` holds the last menu, `choose` picks from it.
-function skroten(o: { car?: Partial<Car>; model?: string; stars?: number } = {}) {
+function skroten(o: { car?: Partial<Car>; model?: string; stars?: number; kr?: number } = {}) {
   const calls: string[] = [];
   let open: {
     kind: string;
@@ -15,9 +18,9 @@ function skroten(o: { car?: Partial<Car>; model?: string; stars?: number } = {})
     pick: (k: string) => void;
     stay?: (() => boolean) | null;
   } | null = null;
-  const car = { type: 'volvo', dmg: 0, ...o.car } as Car;
+  const car = { type: 'volvo', dmg: 0, x: 0, z: 0, v: 0, ...o.car } as Car;
   const game = { ...newGameState(), inCar: true, pcar: car as Car | null },
-    wallet = { kr: 0 };
+    wallet = { kr: o.kr ?? 0 };
   let onRing = true;
   const g: SkrotenDeps = {
     game,
@@ -28,7 +31,9 @@ function skroten(o: { car?: Partial<Car>; model?: string; stars?: number } = {})
     },
     toast: m => void calls.push('toast ' + m),
     atSkroten: () => onRing,
+    liftAt: LIFT,
     modelId: () => o.model,
+    carName: () => 'Volvo 240',
     wallet,
     sellCar: c => {
       calls.push('sold ' + c.type);
@@ -46,6 +51,11 @@ function skroten(o: { car?: Partial<Car>; model?: string; stars?: number } = {})
     choose: (k: string) => open!.pick(k),
     leaveRing: () => {
       onRing = false;
+    },
+    driveOntoLift: () => {
+      onRing = false;
+      car.x = LIFT.x + 1;
+      car.z = LIFT.z;
     },
   };
 }
@@ -146,5 +156,198 @@ describe('Skroten', () => {
     moving.choose('sell');
     expect(moving.wallet.kr).toBe(0);
     expect(moving.game.inCar).toBe(true);
+  });
+});
+
+describe('Plåt-Pelle mends the car on the lift', () => {
+  it('names his price for the damage, and mends the car once you pay', () => {
+    const t = skroten({ model: 'volvo240', car: { dmg: 50 }, kr: 500 });
+    t.driveOntoLift();
+    expect(t.s.repairKr()).toBe(200);
+    expect(t.s.open()).toBe(true);
+    expect(t.menu()!.kind).toBe('skrot-fix');
+    expect(t.menu()!.title).toContain(fmtKr(200));
+    t.choose('fix');
+    expect(t.g.game.pcar!.dmg).toBe(0);
+    expect(t.wallet.kr).toBe(300);
+    expect(t.game.inCar).toBe(true);
+  });
+
+  it('keeps the damage and your money when you say no, or cannot pay', () => {
+    const no = skroten({ car: { dmg: 50 }, kr: 500 });
+    no.driveOntoLift();
+    no.s.open();
+    no.choose('no');
+    expect(no.g.game.pcar!.dmg).toBe(50);
+    expect(no.wallet.kr).toBe(500);
+    const broke = skroten({ car: { dmg: 50 }, kr: 10 });
+    broke.driveOntoLift();
+    broke.s.open();
+    broke.choose('fix');
+    expect(broke.g.game.pcar!.dmg).toBe(50);
+    expect(broke.wallet.kr).toBe(10);
+    expect(broke.calls.at(-1)).toContain('Kom tebaks när du har pengarna');
+  });
+
+  it('opens nothing and says nothing for a whole car, so E gets you out, even a police car or with the police after you', () => {
+    for (const o of [{}, { car: { type: 'polis' } }, { stars: 1 }] as const) {
+      const t = skroten({ ...o, car: { dmg: 0, ...('car' in o ? o.car : {}) }, kr: 1000 });
+      t.driveOntoLift();
+      expect(t.s.repairKr()).toBeNull();
+      expect(t.s.open()).toBe(false);
+      expect(t.menu()).toBeNull();
+      expect(t.calls).toEqual([]);
+    }
+  });
+
+  it('names the new price instead of taking it when the car took more damage with the menu open', () => {
+    const t = skroten({ model: 'volvo240', car: { dmg: 50 }, kr: 1000 });
+    t.driveOntoLift();
+    t.s.open();
+    t.g.game.pcar!.dmg = 80; // rammed while you read the menu
+    t.choose('fix');
+    expect(t.wallet.kr).toBe(1000);
+    expect(t.g.game.pcar!.dmg).toBe(80);
+    expect(t.menu()!.title).toContain(fmtKr(320));
+    t.choose('fix');
+    expect(t.wallet.kr).toBe(1000 - 320);
+    expect(t.g.game.pcar!.dmg).toBe(0);
+  });
+
+  it('closes the menu once the car rolls off faster than you can get out', () => {
+    const t = skroten({ car: { dmg: 50 }, kr: 1000 });
+    t.driveOntoLift();
+    t.s.open();
+    t.g.game.pcar!.v = 5;
+    expect(t.menu()!.stay!()).toBe(false);
+    t.choose('fix');
+    expect(t.g.game.pcar!.dmg).toBe(50);
+  });
+
+  it('mends nothing for the police or with them after you', () => {
+    for (const [o, says] of [
+      [{ car: { dmg: 50, type: 'polis' } }, 'En polisbil?'],
+      [{ car: { dmg: 50 }, stars: 1 }, 'Inte mä snuten i hälarna!'],
+    ] as const) {
+      const t = skroten({ ...o, kr: 1000 } as Parameters<typeof skroten>[0]);
+      t.driveOntoLift();
+      expect(t.s.repairKr()).toBeNull();
+      expect(t.s.open()).toBe(false);
+      expect(t.menu()).toBeNull();
+      expect(t.calls.at(-1)).toContain(says);
+    }
+  });
+
+  it('offers nothing off the lift, keeps the menu only while the car stands on it, and mends none that left', () => {
+    const t = skroten({ car: { dmg: 50 }, kr: 500 });
+    t.leaveRing();
+    expect(t.s.repairKr()).toBeNull();
+    expect(t.s.open()).toBe(false);
+    t.driveOntoLift();
+    t.s.open();
+    expect(t.menu()!.stay!()).toBe(true);
+    t.g.game.pcar!.x = LIFT.x + 10;
+    expect(t.menu()!.stay!()).toBe(false);
+    t.choose('fix');
+    expect(t.g.game.pcar!.dmg).toBe(50);
+    expect(t.wallet.kr).toBe(500);
+  });
+});
+
+describe('Skroten sells the cars on its lot', () => {
+  // you stand on foot `away` m from a Volvo on the lot that costs 2 000, with `kr` in your pocket
+  function lot(o: { kr?: number; stars?: number; away?: number } = {}) {
+    const t = skroten({ kr: o.kr ?? 5000, stars: o.stars }),
+      car = { type: 'volvo', x: 0, z: 0, saleKr: 2000, owned: false, dmg: 0 } as Car;
+    t.game.inCar = false;
+    t.game.pcar = null;
+    Object.assign(t.g.player, { x: o.away ?? 2, z: 0 });
+    return { ...t, car };
+  }
+
+  it('sells nothing to someone who walked off, and closes the menu once the police are after you', () => {
+    const away = lot();
+    away.s.offerCar(away.car);
+    Object.assign(away.g.player, { x: 50 }); // walked off before choosing
+    away.choose('buy');
+    expect(away.wallet.kr).toBe(5000);
+    expect(away.car.owned).toBe(false);
+    const chased = lot();
+    chased.s.offerCar(chased.car);
+    expect(chased.menu()!.stay!()).toBe(true);
+    (chased.g as { stars: number }).stars = 1;
+    expect(chased.menu()!.stay!()).toBe(false);
+  });
+
+  it('names its price, and the car is yours once you pay it', () => {
+    const t = lot();
+    t.s.offerCar(t.car);
+    expect(t.menu()!.title).toBe('Plåt-Pelle: ”Den där Volvo 240? ' + fmtKr(2000) + ', å den ä din.”');
+    t.choose('buy');
+    expect(t.wallet.kr).toBe(3000);
+    expect(t.car.owned).toBe(true);
+    expect(t.car.saleKr).toBe(0);
+    expect(t.calls[0]).toContain('Den ä din nu');
+  });
+
+  it('keeps the car and your money when you say no, or cannot pay', () => {
+    const no = lot();
+    no.s.offerCar(no.car);
+    no.choose('no');
+    expect(no.wallet.kr).toBe(5000);
+    expect(no.car.owned).toBe(false);
+    const broke = lot({ kr: 1999 });
+    broke.s.offerCar(broke.car);
+    broke.choose('buy');
+    expect(broke.wallet.kr).toBe(1999);
+    expect(broke.car.owned).toBe(false);
+    expect(broke.calls[0]).toContain('Kom tebaks när du har pengarna');
+  });
+
+  it('sells nothing with the police after you, even when they come while the menu is open', () => {
+    const chased = lot({ stars: 1 });
+    chased.s.offerCar(chased.car);
+    expect(chased.menu()).toBeNull();
+    expect(chased.calls[0]).toContain('Inte mä snuten');
+    const late = lot();
+    late.s.offerCar(late.car);
+    (late.g as { stars: number }).stars = 1;
+    late.choose('buy');
+    expect(late.wallet.kr).toBe(5000);
+    expect(late.car.owned).toBe(false);
+  });
+
+  it('keeps his price on the plate only while you stand by the car on foot', () => {
+    const t = lot();
+    t.s.offerCar(t.car);
+    const stay = t.menu()!.stay!;
+    expect(stay()).toBe(true);
+    Object.assign(t.g.player, { x: 6 });
+    expect(stay()).toBe(false);
+  });
+
+  it("turns the yard's cars for sale into cars in the world, priced by model, leaving out models with no type", () => {
+    const spot = (model: YardCar['model'], u: number): YardCar => ({
+      u,
+      v: 30,
+      turn: Math.PI,
+      tilt: 0,
+      pitch: 0,
+      model,
+      colour: '#1f3b6a',
+      stack: 0,
+    });
+    const types: Record<string, 'volvo' | 'saab'> = { volvo240: 'volvo', saab900: 'saab', impala1970: 'volvo' },
+      cars = carsForSale(
+        [spot('volvo240', 16), spot('saab900', 19), spot('impala1970', 21), spot('micra-k11', 24)],
+        id => types[id],
+      );
+    expect(cars.map(c => [c.model, c.type, c.kr])).toEqual([
+      ['volvo240', 'volvo', 2000],
+      ['saab900', 'saab', 2500],
+      ['impala1970', 'volvo', 4000],
+    ]);
+    const at = yardToWorld(16, 30);
+    expect(cars[0]).toMatchObject({ x: at.x, z: at.z, h: yardHeading(Math.PI), colour: '#1f3b6a' });
   });
 });

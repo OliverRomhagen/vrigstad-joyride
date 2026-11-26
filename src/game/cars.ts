@@ -86,7 +86,8 @@ export interface Car extends Point {
   boost: number; // s of turbo left
   mode: CarMode;
   wet: boolean;
-  owned: boolean;
+  owned: boolean; // you've taken it: stolen, bought or parked by the `car` command
+  saleKr: number; // what Plåt-Pelle asks for it on Skroten's lot; 0 when it isn't for sale
   blocked: number; // traffic: s stuck behind something; then it drives through it as a ghost for `ghost` s
   ghost: number;
   stuck: number; // the police's, in police.ts
@@ -130,6 +131,7 @@ export function newCar(
     mode,
     wet: false,
     owned: false,
+    saleKr: 0,
     blocked: 0,
     ghost: 0,
     stuck: 0,
@@ -163,13 +165,30 @@ export interface FleetDeps {
   half: number; // half the map's side (m)
   rnd: () => number; // the game's seeded stream, so the rolls stay in the order they were
   pick: <T>(a: readonly T[]) => T;
-  addCar: (type: CarType, x: number, z: number, h: number, mode: CarMode, model?: string) => Car; // makes a car (of that model, if given), gives it its meshes and adds it with `add`
+  addCar: (
+    type: CarType,
+    x: number,
+    z: number,
+    h: number,
+    mode: CarMode,
+    model?: string | null,
+    colour?: string,
+  ) => Car; // makes a car (of that model, or with null of no model, and of that paint, if given), gives it its meshes and adds it with `add`
   placeCar: (c: Car) => void; // puts the car's meshes where the car is
   crash: (c: Car, o: Car | null, impact: number) => void; // c hit o, or a wall, at `impact` m/s: the damage, and what you hear and feel
   rammed: (c: Car, o: Car) => void; // c hit police car o at speed
   canPark: (x: number, z: number) => boolean; // not on a curb, verge or pavement
   readonly player: Point;
   readonly inCar: boolean;
+}
+
+/** A car on Skroten's lot: where it stands, nose towards h, its model and paint, and its price (kr). */
+export interface CarForSale extends Point {
+  type: CarType;
+  h: number;
+  model: string;
+  colour: string;
+  kr: number;
 }
 
 /** Every car in the village: parked, in traffic, the police's and yours. */
@@ -207,13 +226,22 @@ export class Fleet {
           if (this.g.inCar) return 'Get out of the car first.';
           const o = { x: this.g.player.x + CAR_BY_YOU_M, z: this.g.player.z };
           this.g.buildings.collide(o, PARK_CLEAR_M);
-          const c = this.g.addCar(type, o.x, o.z, facing(), 'parked', id === type ? undefined : id);
+          const c = this.g.addCar(type, o.x, o.z, facing(), 'parked', id === type ? null : id);
           c.owned = true;
           this.noReplacement.add(c);
           return 'Parked a ' + carName(c) + ' next to you.';
         },
       }),
     );
+  }
+
+  /** Parks Skroten's cars for sale on its lot, at their asking price. Selling one back to Skroten parks no new car in the village. */
+  parkForSale(lot: readonly CarForSale[]) {
+    for (const s of lot) {
+      const c = this.g.addCar(s.type, s.x, s.z, s.h, 'parked', s.model === s.type ? null : s.model, s.colour); // the tractor's model is its type: it has none of its own
+      c.saleKr = s.kr;
+      this.noReplacement.add(c);
+    }
   }
 
   /** Puts a new car in the village. */
@@ -522,9 +550,11 @@ export class Fleet {
         c.x += nx * push;
         c.z += nz * push;
         if (Math.abs(c.v) > 6 && o.mode === 'police') rammed(c, o);
-        if (o.mode === 'parked' || o.mode === 'idle') {
+        // a parked car gives a little; one for sale on Skroten's lot stands like a wall, as nothing would stop it leaving the yard
+        if ((o.mode === 'parked' || o.mode === 'idle') && !o.saleKr) {
           o.x -= nx * push * 0.4;
           o.z -= nz * push * 0.4;
+          pushBodyOut(o, this.collideBuildings); // or shove by shove it would go through a wall or a fence
           placeCar(o);
         }
         c.v *= 0.05 ** dt;
