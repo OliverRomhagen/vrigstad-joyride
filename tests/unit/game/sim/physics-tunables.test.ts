@@ -66,26 +66,41 @@ describe('registerPhysicsTunables', () => {
     w.dispose();
   });
 
-  it('lets a knocked mailbox settle, or drift on, as gravity is tuned while the game runs', () => {
-    // ten seconds after a car hits it: with gravity it has landed and come to rest; with none, nothing holds it to the
-    // ground, so it is still on its way
-    const stillMoving = (g: number) => {
-      t.set('physics.gravity', g);
-      const w = new PhysicsWorld(RAPIER, { data: makeWorld({}), heightfield: flat, props: [mailbox(10, 0)] }),
-        c = car(0);
-      for (let i = 0; i < 60; i++) {
-        c.x += 15 * PHYSICS_STEP_S;
-        w.follow([c], null, c);
-        w.step(PHYSICS_STEP_S);
-      }
-      c.x = 500; // the car goes, rather than stand pressing on it
+  // knocks the mailbox at (10, 0) with a car at 15 m/s; the car then goes, rather than stand pressing on it
+  function knocked() {
+    const w = new PhysicsWorld(RAPIER, { data: makeWorld({}), heightfield: flat, props: [mailbox(10, 0)] }),
+      c = car(0);
+    for (let i = 0; i < 45; i++) {
+      c.x += 15 * PHYSICS_STEP_S;
       w.follow([c], null, c);
-      for (let i = 0; i < 600; i++) w.step(PHYSICS_STEP_S);
-      const awake = w.awakeProps;
+      w.step(PHYSICS_STEP_S);
+    }
+    c.x = 500;
+    w.follow([c], null, c);
+    return w;
+  }
+  const pose = { x: 0, y: 0, z: 0, qx: 0, qy: 0, qz: 0, qw: 1 };
+
+  it('changes how a knocked mailbox flies the moment gravity is tuned, in mid-flight', () => {
+    const heightAfter = (g: number) => {
+      const w = knocked();
+      t.set('physics.gravity', g); // after the world was built, while the mailbox is on its way
+      for (let i = 0; i < 30; i++) w.step(PHYSICS_STEP_S);
+      const y = w.propPose(0, pose).y;
       w.dispose();
-      return awake;
+      t.reset();
+      return y;
     };
-    expect(stillMoving(9.81)).toBe(0);
-    expect(stillMoving(0)).toBe(1);
+    expect(heightAfter(0)).toBeGreaterThan(heightAfter(30));
+  });
+
+  it("wakes the knocked props when gravity changes, so one that was asleep doesn't hang where it was", () => {
+    const w = knocked();
+    for (let i = 0; i < 600; i++) w.step(PHYSICS_STEP_S);
+    expect(w.awakeProps).toBe(0); // landed and asleep
+    t.set('physics.gravity', 30);
+    w.step(PHYSICS_STEP_S);
+    expect(w.awakeProps).toBe(1);
+    w.dispose();
   });
 });

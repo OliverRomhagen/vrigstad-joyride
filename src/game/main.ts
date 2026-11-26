@@ -73,7 +73,7 @@ import { addBridges, addBuildings, addRoadRibbons, addStreetscapeMeshes, addTerr
 import { type CarType, specFor } from './sim/vehicle-spec';
 import { Tunables } from './sim/tunables';
 import { registerCarTunables } from './sim/car-tunables';
-import { registerPhysicsTunables } from './sim/physics-tunables';
+import { registerPhysicsTunables } from './sim/physics-tunables';   // statically, though it's ?lab=rapier's: it must register before ?tune= applies
 import { registerTunableCommands } from './sim/tunable-commands';
 import { newGameState, newViewState } from './state';
 import { Trisslott, trisslottSeed } from './trisslott';

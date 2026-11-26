@@ -3,17 +3,15 @@
 // this object every time it needs one, so a change applies at once. Pure: no DOM, no three.js.
 import type { Tunables } from './tunables';
 
+// Each number's unit, range and meaning are in registerPhysicsTunables below, and only there, so they can't drift apart;
+// the comments here keep the reasons.
 export const PHYSICS = {
-  /** a body falls this fast, in m/s² (the Earth's 9.81) */
-  GRAVITY: 9.81,
-  /** a prop joins Rapier's world when a moving car comes this close (m): until then it is only data */
+  GRAVITY: 9.81, // the Earth's
+  // only data until a car comes near, so the world holds the props near the cars, not every one in the village
   PROP_JOIN_M: 12,
-  /** a knocked prop goes back to its stand this long after it was knocked (s), once the player is far from it */
+  // traffic knocks props over all round the village, and each one down is a draw call of its own
   PROP_RESPAWN_S: 90,
-  /**
-   * how far the player must be from where a knocked prop lies and where it stood before it goes back (m): far enough
-   * that a 6.5 m lamp popping back up on an open street isn't seen. Walls and the camera's view aren't asked.
-   */
+  // a 6.5 m lamp popping back up on an open street isn't seen; walls and the camera's view aren't asked
   PROP_RESPAWN_M: 100,
 };
 
@@ -38,7 +36,7 @@ export function registerPhysicsTunables(t: Tunables): void {
     PROP_RESPAWN_M: {
       name: 'prop-respawn-distance',
       unit: 'm',
-      min: 0,
+      min: 5, // nearer, a prop could come back inside the player or a parked car, and be thrown out of it
       max: 2200,
       help: 'how far you must be from a knocked prop before it goes back on its stand',
     },

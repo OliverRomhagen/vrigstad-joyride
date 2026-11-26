@@ -24,10 +24,7 @@ const WALL_FOOT_M = 1;
 const PLAYER_HALF_HEIGHT_M = 0.5;
 /** a car or the player that moves further than this in one frame was put there, not driven: it jumps, unswept (m) */
 const TELEPORT_M = 8;
-// How near a car brings props into the world, how long and how far before a knocked one goes back, and gravity are in
-// PHYSICS (physics-tunables.ts), so the console can change them: a prop is only data until a car comes near, so the
-// world holds the props near the cars, not every one in the village; and traffic knocks props over all round the
-// village, where each one down is a draw call of its own.
+// gravity, and how near and how far for the props, are in PHYSICS (physics-tunables.ts), so the console can change them
 /** the knocked props are checked for respawning once every this many steps: a second */
 const RESPAWN_CHECK_STEPS = 60;
 /** props are found by a grid of cells this size (m) */
@@ -216,7 +213,11 @@ export class PhysicsWorld {
     this.carry = Math.min(this.carry + dt, PHYSICS_STEP_S * MAX_STEPS_PER_FRAME);
     const steps = Math.floor(this.carry / PHYSICS_STEP_S + 1e-9);
     this.carry -= steps * PHYSICS_STEP_S;
-    if (this.world.gravity.y !== -PHYSICS.GRAVITY) this.world.gravity = { x: 0, y: -PHYSICS.GRAVITY, z: 0 }; // tuned
+    if (this.world.gravity.y !== -PHYSICS.GRAVITY) {
+      this.world.gravity = { x: 0, y: -PHYSICS.GRAVITY, z: 0 };
+      // a change of gravity wakes nothing by itself: a prop asleep in mid-air at zero gravity would stay there
+      for (const i of this.loosened) this.propBodies[i]?.wakeUp();
+    }
     // Each car and the player cover this frame's move evenly over its steps: Rapier gives a kinematic body the whole
     // move in the first step it's told of, so at 30 fps a car would hit a mailbox at twice its speed, then stand still.
     for (let k = 1; k <= steps; k++) {
