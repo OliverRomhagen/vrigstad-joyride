@@ -66,6 +66,9 @@ function input(opts: { coarse?: boolean; started?: boolean; menuKey?: (e: Keyboa
     rain: () => {
       calls.push('rain');
     },
+    toggleView: () => {
+      calls.push('view');
+    },
     jump: () => {
       calls.push('jump');
     },
@@ -112,7 +115,9 @@ describe('Input', () => {
     fire(win, 'keydown', { code: 'KeyR' });
     fire(win, 'keydown', { code: 'KeyL' });
     fire(win, 'keydown', { code: 'KeyL', repeat: true });
-    expect(calls).toEqual(['jump', 'action', 'action', 'respawn', 'rain']);
+    fire(win, 'keydown', { code: 'KeyV' });
+    fire(win, 'keydown', { code: 'KeyV', repeat: true });
+    expect(calls).toEqual(['jump', 'action', 'action', 'respawn', 'rain', 'view']);
     expect(e.defaultPrevented).toBe(true); // Space doesn't scroll the page
   });
 
@@ -187,7 +192,8 @@ describe('Input', () => {
     fire(els['p-brake'], 'pointerleave');
     expect(i.keys.brake).toBe(false);
     fire(els['p-act'], 'click');
-    expect(calls).toEqual(['jump', 'action']);
+    fire(els['p-view'], 'click');
+    expect(calls).toEqual(['jump', 'action', 'view']);
   });
 
   it('zooms out with the wheel on the game, and blocks the browser zoom anywhere', () => {
@@ -476,8 +482,36 @@ describe('Input.addControl', () => {
     expect(() => i.addControl({ codes: ['KeyX'] })).toThrow('KeyX');
     expect(() => i.addControl({ mouseButton: MouseButton.LEFT })).toThrow('mouse button 1');
     expect(() => i.addControl({ codes: ['KeyP'] })).toThrow('KeyP'); // the pets menu's
+    // a menu's number key closes the menu, and its next repeat would press the control
+    expect(() => i.addControl({ codes: ['Digit1'] })).toThrow('Digit1');
+    expect(() => i.addControl({ codes: ['Numpad9'] })).toThrow('Numpad9');
+    expect(() => i.addControl({ codes: ['Digit0'] })).not.toThrow(); // no menu has an option 0
     // a refused control adds nothing: its other key is still free
     expect(() => i.addControl({ codes: ['KeyZ', 'KeyE'] })).toThrow('KeyE');
     expect(() => i.addControl({ codes: ['KeyZ'] })).not.toThrow();
+  });
+
+  it('keeps the touch from the browser before the press runs, so a press that throws leaves it kept', () => {
+    const t = input(),
+      button = stub();
+    let e: Event | undefined, keptAtPress: boolean | undefined;
+    t.i
+      .addControl({
+        press: () => {
+          keptAtPress = e?.defaultPrevented;
+        },
+      })
+      .hold(button);
+    e = new Event('pointerdown', { cancelable: true });
+    button.dispatchEvent(e);
+    expect(keptAtPress).toBe(true);
+  });
+
+  it('refuses ctrl, alt and ⌘ as keys: their own keydown says a modifier is held, so they can’t be relied on', () => {
+    const { i } = fireControl();
+    for (const code of ['ControlLeft', 'ControlRight', 'AltLeft', 'AltRight', 'MetaLeft', 'MetaRight', 'OSLeft'])
+      expect(() => i.addControl({ codes: [code] })).toThrow(`${code} is a modifier`);
+    expect(() => i.addControl({ codes: ['KeyZ', 'AltLeft'] })).toThrow('AltLeft');
+    expect(() => i.addControl({ codes: ['KeyZ'] })).not.toThrow(); // nothing was added
   });
 });
