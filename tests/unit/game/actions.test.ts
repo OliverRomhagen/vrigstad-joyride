@@ -322,7 +322,7 @@ describe('enter and exit as commands', () => {
     expect(t.ran).toEqual(['enter from test', 'enter from test']);
   });
 
-  it('enter says why not: no car, a car for sale, inside a house, a menu open, or the game not running', () => {
+  it('enter says why not: no car, a car for sale, inside a house, a menu open, before Start, or under a title card', () => {
     expect(actions().commands.run('enter')).toBe('No car in reach.');
     const lot = actions({ cars: [parked({ saleKr: 2000 })] });
     expect(lot.commands.run('enter')).toBe('The Volvo is for sale at Skroten.');
@@ -333,10 +333,10 @@ describe('enter and exit as commands', () => {
     expect(shopping.commands.run('enter')).toBe('Close the menu first.');
     const waiting = actions({ cars: [parked()] });
     waiting.game.started = false;
-    expect(waiting.commands.run('enter')).toBe('Not now: the game is not running.');
+    expect(waiting.commands.run('enter')).toBe('Press Start first.');
     waiting.game.started = true;
     waiting.game.titleCardT = 1;
-    expect(waiting.commands.run('exit')).toBe('Not now: the game is not running.');
+    expect(waiting.commands.run('exit')).toBe('Wait for the title card to go.');
     for (const t of [lot, home, shopping, waiting]) expect(t.game.inCar).toBe(false);
   });
 

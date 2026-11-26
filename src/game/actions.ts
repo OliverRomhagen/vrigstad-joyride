@@ -66,7 +66,9 @@ export interface ActionsDeps {
   pickLine(lines: readonly string[]): string;
 }
 
-const NOT_NOW = 'Not now: the game is not running.';
+// why you can't act yet, if you can't: Start not pressed, or a title card (Gripen!, Däckad!) still up. E ignores the press then
+const notYet = (game: GameState) =>
+  !game.started ? 'Press Start first.' : game.titleCardT > 0 ? 'Wait for the title card to go.' : undefined;
 const TOO_FAST = 'Slow down before you get out.';
 
 // a car you can get straight back into: one you got out of, while it still drives
@@ -206,7 +208,8 @@ export class Actions {
       pickLine,
     } = this.g;
     // E checks these before it picks, but a typed line, a script or a test gets here without E
-    if (!game.started || game.titleCardT > 0) return NOT_NOW;
+    const wait = notYet(game);
+    if (wait) return wait;
     if (places.inside) return 'You are inside a house.';
     if (menuOpen()) return 'Close the menu first.';
     if (game.inCar) return 'You are already in the ' + carName(game.pcar!) + '.';
@@ -256,7 +259,8 @@ export class Actions {
   /** The `exit` command: out of the car you drive, unless it is still too fast. Returns the line the console shows. */
   exitCar = (): string => {
     const { game, toast, carName } = this.g;
-    if (!game.started || game.titleCardT > 0) return NOT_NOW;
+    const wait = notYet(game);
+    if (wait) return wait;
     if (!game.inCar) return 'You are not in a car.';
     if (tooFastToGetOut(game.pcar!)) {
       toast(TOO_FAST, 2);
