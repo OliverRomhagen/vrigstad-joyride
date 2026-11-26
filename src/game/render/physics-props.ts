@@ -23,14 +23,14 @@ export class PhysicsProps {
   private readonly g: PhysicsPropsDeps;
   private readonly drawn: (THREE.Object3D | null)[];
   /** whether each prop was awake when last drawn */
-  private readonly wasAwake: Uint8Array;
+  private readonly propAwakeWhenDrawn: Uint8Array;
   /** the props drawn on their own, by index */
   private readonly detached: number[] = [];
 
   constructor(g: PhysicsPropsDeps) {
     this.g = g;
     this.drawn = g.placements.map(() => null);
-    this.wasAwake = new Uint8Array(g.placements.length);
+    this.propAwakeWhenDrawn = new Uint8Array(g.placements.length);
   }
 
   /** Moves every knocked prop's model to its body, taking it out of its batch the first time it leaves its stand. */
@@ -53,9 +53,9 @@ export class PhysicsProps {
         scene.add(model);
         this.drawn[i] = model;
         this.detached.push(i);
-      } else if (!world.isAwake(i) && !this.wasAwake[i]) continue;
+      } else if (!world.isAwake(i) && !this.propAwakeWhenDrawn[i]) continue;
       // once more the frame it falls asleep: the last frame drew it blended, a little short of where it rests
-      this.wasAwake[i] = world.isAwake(i) ? 1 : 0;
+      this.propAwakeWhenDrawn[i] = world.isAwake(i) ? 1 : 0;
       const p = world.drawnPose(i, _pose);
       model.quaternion.set(p.qx, p.qy, p.qz, p.qw);
       _v.set(0, -heights[i] / 2, 0).applyQuaternion(model.quaternion);
