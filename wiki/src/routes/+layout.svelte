@@ -470,10 +470,6 @@ footer p {
   border-radius: 6px;
   cursor: pointer;
 }
-/* a finger needs more room than a pointer */
-.drawer a:not(.play) {
-  padding-block: 9px;
-}
 /* the drawer's links are cream and stand one to a line; Play keeps its own dark on gold, and its own shape */
 .drawer .play {
   display: inline-flex;
