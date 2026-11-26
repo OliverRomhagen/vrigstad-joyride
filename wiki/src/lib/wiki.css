@@ -1,0 +1,225 @@
+/* What every page of the wiki shares: the colours and fonts, the page's ground, text, and the few classes more than one
+   component uses. A component's own look is in its own <style>, which Svelte keeps to that component.
+   The poster's look, as on the marketing page (#171): sky over a dark road, cream and gold.
+   Sizes of text are in rem, so they follow the size the reader has set in their browser. */
+:root {
+  --sky-1: #f3c98b;
+  --sky-2: #e58a5c;
+  --road: #1d1f24;
+  --panel: #262931;
+  --line: #3a3e48;
+  --ground: #101116; /* the village at nightfall and the ground under it, at the foot of the page */
+  --cream: #f4ecd8;
+  --muted: #b8b09c;
+  --gold: #e8b44a;
+  --sign-blue: #0b5aa2; /* a Swedish place-name sign: white letters and border on blue */
+  --hairline: #ffffff2a; /* a pane's edge */
+  --font: "Barlow Condensed", "Avenir Next Condensed", "Arial Narrow", system-ui, sans-serif;
+  --body: system-ui, -apple-system, "Segoe UI", sans-serif;
+  color-scheme: dark;
+}
+* {
+  box-sizing: border-box;
+}
+html {
+  background: var(--road);
+}
+body {
+  margin: 0;
+  /* thinner, evener letters on a dark page (macOS draws light text on dark too heavy otherwise) */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  color: var(--cream);
+  /* 17px at the browser's usual size: reference text beside a sidebar and tables, in a wide system font, about 70 letters a line */
+  font: 1.0625rem / 1.6 var(--body);
+  /* the sky fades into the road on an eased curve, many stops so it has no visible edge, with a dusk tint that lingers. From
+     the sidebar's first heading (about 115px) down it is dark enough for small muted text at WCAG AA (4.5:1) */
+  background:
+    linear-gradient(
+      180deg,
+      var(--sky-2) 0,
+      #d77b5b 24px,
+      #b9685b 48px,
+      #8f565b 72px,
+      #6a4655 96px,
+      #4f3a4a 120px,
+      #3d3140 150px,
+      #302a36 195px,
+      #28252e 260px,
+      #222229 350px,
+      var(--road) 480px
+    )
+    no-repeat,
+    var(--road);
+  min-height: 100vh;
+}
+a {
+  color: var(--gold);
+  /* the underline where the font wants it, and not through a g's or a y's tail */
+  text-underline-position: from-font;
+  text-decoration-skip-ink: auto;
+}
+code {
+  font-size: 0.9em;
+  background: #0006;
+  padding: 0.1em 0.35em;
+  border-radius: 4px;
+}
+h1,
+h2,
+h3 {
+  font-family: var(--font);
+  line-height: 1.1;
+  text-wrap: balance; /* a heading on two lines breaks into two alike */
+}
+h1 {
+  font-size: clamp(2.5rem, 7vw, 4rem);
+  text-transform: uppercase;
+  margin: 4px 0 8px;
+}
+h2 {
+  font-size: 1.75rem;
+  margin-top: 40px;
+}
+
+/* for a screen reader only: text that says what the page shows another way */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* a heading a link jumps to lands under the header that stays at the window's top, not behind it */
+:is(h2, h3)[id],
+:target {
+  scroll-margin-top: 5.5rem;
+}
+
+/* ---------- text ---------- */
+/* a page's prose, written in Markdown: a line no longer than reads well */
+.prose {
+  max-width: 68ch;
+}
+/* the small gold line over a title: what kind of page this is */
+.kind {
+  font: 600 0.9375rem var(--font);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--gold);
+  margin: 0;
+}
+.summary {
+  text-wrap: pretty; /* no last line of one word */
+  font-size: 1.25rem;
+  color: var(--muted);
+  margin-top: 0;
+  max-width: 60ch;
+}
+.muted {
+  color: var(--muted);
+  font-size: 0.9375rem;
+}
+.button {
+  /* its words and an icon beside them on one line, their middles level */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font: 600 1.125rem var(--font);
+  text-transform: uppercase;
+  text-align: center;
+  background: var(--gold);
+  color: var(--road);
+  padding: 7px 14px;
+  border-radius: 6px;
+  text-decoration: none;
+}
+/* a finger leaves :hover stuck on after a tap: only for a pointer that can hover */
+@media (hover: hover) {
+  .button:hover {
+    filter: brightness(1.08);
+  }
+}
+/* a button gives a little under the finger, for those who haven't asked for less motion */
+@media (prefers-reduced-motion: no-preference) {
+  .button {
+    transition: scale 200ms ease-out;
+  }
+  .button:active {
+    scale: 0.97;
+  }
+}
+
+/* ---------- tables: the game's numbers, and any table a page writes in Markdown ---------- */
+.table-wrap {
+  overflow-x: auto;
+  margin: 24px 0;
+}
+.data-table,
+.prose table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 1rem;
+}
+:is(.data-table, .prose table) :is(th, td) {
+  text-align: left;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+/* the last column is the one with a sentence in it: it wraps, so a phone shows the table whole */
+:is(.data-table, .prose table) td:last-child {
+  white-space: normal;
+  min-width: 6rem;
+}
+:is(.data-table, .prose table) thead th {
+  font: 600 0.875rem var(--font);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+:is(.data-table, .prose table) tbody th {
+  font: 700 1.1875rem var(--font);
+  text-transform: uppercase;
+}
+
+/* ---------- over a map or a model while it loads: a turning wheel and what is coming, in the frame's middle ---------- */
+.loading-3d {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin: 0;
+  font: 600 1rem var(--font);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--cream);
+  background: var(--panel);
+  border-radius: inherit;
+  pointer-events: none;
+}
+.loading-3d::before {
+  content: "";
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 3px solid var(--line);
+  border-top-color: var(--gold);
+}
+/* only for those who don't ask for less motion; with less, the wheel stands still */
+@media (prefers-reduced-motion: no-preference) {
+  .loading-3d::before {
+    animation: spin 0.9s linear infinite;
+  }
+}
+@keyframes spin {
+  to {
+    rotate: 1turn;
+  }
+}
