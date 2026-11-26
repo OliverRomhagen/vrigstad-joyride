@@ -82,9 +82,12 @@ export interface PersonBody {
   down?: boolean;
 }
 
+/** What a ray cast can meet: the weapons' hits are the same kinds (HitKind in shots.ts). */
+export type SurfaceKind = 'ground' | 'wall' | 'car' | 'person' | 'prop';
+
 /** What a line met: the point, the surface's normal there, and what it belongs to. */
 export interface SegmentHit {
-  kind: 'ground' | 'wall' | 'car' | 'person' | 'prop';
+  kind: SurfaceKind;
   x: number;
   y: number;
   z: number;

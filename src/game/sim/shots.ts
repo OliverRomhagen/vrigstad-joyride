@@ -2,6 +2,7 @@
 // weapons and hits side by side: the weapon decides how a shot is delivered, the hit flavour what it does on landing.
 // Plain data and functions: no three.js, no DOM.
 import { bodyRadius, type CarBody, nearestOnSpine, PERSON_RADIUS_M } from './car-body';
+import type { SurfaceKind } from './physics-world';
 
 /** How a weapon delivers its shots. */
 export interface Weapon {
@@ -319,8 +320,11 @@ export interface ShotWorld {
   cast?(x0: number, y0: number, z0: number, x1: number, y1: number, z1: number, out: ShotHit): ShotHit | null;
 }
 
-/** what a shot can land on: a prop is street furniture, which only a world with a ray cast holds */
-export type HitKind = 'ground' | 'wall' | 'person' | 'car' | 'prop';
+/**
+ * what a shot can land on, the kinds a physics world's ray cast meets: a prop is street furniture, which only a world
+ * with a ray cast holds
+ */
+export type HitKind = SurfaceKind;
 
 /** Where a shot landed, on what, and how it was flying. `n` is the surface's normal; `d` the way the shot flew along the ground. */
 export interface ShotHit {
