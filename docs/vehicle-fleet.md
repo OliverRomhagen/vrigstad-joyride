@@ -94,28 +94,44 @@ npm test
 npm run build
 ```
 
-The script runs `gltfpack -c -kn -km -noq` for each public GLB: meshopt compression,
+Before compressing, the script merges each export's static parts into one mesh per
+material (`tools/vehicle-parts.ts`, #408): a mesh is a draw call, and most models
+arrive as dozens of small parts that never move on their own. Only the body's own
+children merge, into the body's space, so they still ride the suspension. Kept as
+they are: the body (painted), `glass_*` (cracked), `body_*` (painted with the body),
+the police beacons `lamp_blue_module*` and `lamp_police_grille*` (flashing), the
+wheels and everything under them (spinning), and any part with attributes other than
+position and normal. Merged parts are named `parts_<material>`. A model with nothing
+left to merge passes through unchanged. A Vitest asset test fails if a delivered
+model's body carries two static parts of one material.
+
+Then it runs `gltfpack -c -kn -km -noq` for each public GLB: meshopt compression,
 retained named nodes/materials, no mesh simplification or vertex quantization.
 Always start from the originals, never an already compressed derivative. The
 loader and both Vitest asset/controller loaders configure MeshoptDecoder explicitly.
 Normal startup keeps the procedural fallback if decoding fails.
 
-| Delivery file | Original export in pinned source tree | Original bytes | Compressed bytes |
-| --- | --- | ---: | ---: |
-| volvo240.glb | experiments/volvo240/refinement/review-only.glb | 266208 | 136696 |
-| saab900-t16.glb | experiments/saab900/build/saab900-t16.glb | 345828 | 155088 |
-| xc70-civilian.glb | experiments/xc70p2/build/xc70-civilian.glb | 534248 | 213936 |
-| xc70-police.glb | experiments/xc70p2/build/xc70-police.glb | 557692 | 223992 |
-| impala1970.glb | experiments/impala1970/build/impala1970-hardtop.glb | 715264 | 378468 |
-| micra-k11.glb | media/vehicles/micra-k11.glb | 369336 | 225556 |
-| duett-p210-epa.glb | media/vehicles/duett-p210-epa.glb | 270612 | 151136 |
+| Delivery file | Original export in pinned source tree | Original bytes | Compressed bytes | Draw calls |
+| --- | --- | ---: | ---: | ---: |
+| volvo240.glb | experiments/volvo240/refinement/review-only.glb | 266208 | 136140 | 14 |
+| saab900-t16.glb | experiments/saab900/build/saab900-t16.glb | 345828 | 154152 | 20 |
+| xc70-civilian.glb | experiments/xc70p2/build/xc70-civilian.glb | 534248 | 214612 | 19 |
+| xc70-police.glb | experiments/xc70p2/build/xc70-police.glb | 557692 | 224672 | 24 |
+| impala1970.glb | experiments/impala1970/build/impala1970-hardtop.glb | 715264 | 374372 | 25 |
+| micra-k11.glb | media/vehicles/micra-k11.glb | 369336 | 218028 | 15 |
+| duett-p210-epa.glb | media/vehicles/duett-p210-epa.glb | 270612 | 148424 | 19 |
 
-Total: 3,059,188 to 1,484,872 bytes (51.5% smaller).
+Total: 3,059,188 to 1,470,400 bytes (51.9% smaller). Draw calls per model are
+its meshes as three.js draws them, wheels included. Before the merge they were
+31, 39, 57, 65, 27, 24 and 25, in the table's order: 132 fewer for all seven.
 
 Local original-vs-decoded comparisons verified all named model nodes, triangle
 positions to 0.01 mm, material colours/emissive/roughness/metalness/opacity within
-1e-6, transparency/sidedness, and wheel hub positions within 1e-6 m. Generated
-primitive mesh names may change; authored nodes and material names are retained.
+1e-6, transparency/sidedness, and wheel hub positions within 1e-6 m. The merge was
+checked the same way against the previous deliveries: the same triangles per
+material in world space to 0.01 mm, the same normal at every vertex, and the body
+and wheel hubs unmoved. Generated primitive mesh names may change; authored nodes
+and material names are retained, except the merged parts' names.
 This is geometric verification, not human silhouette/livery approval.
 
 Uniform inherited wheel scales are supported; bake nonuniform ancestor scales

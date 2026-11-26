@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { BODY_NODE, type VehicleId, vehicleDefinition, WHEEL_NODES } from './vehicle-registry';
+import { BEACON_PARTS, BODY_NODE, type VehicleId, vehicleDefinition, WHEEL_NODES } from './vehicle-registry';
 
 type Car = { mesh: THREE.Object3D; x: number; z: number; h: number; saleKr?: number };
 type Definition = NonNullable<ReturnType<typeof vehicleDefinition>>;
@@ -83,7 +83,7 @@ export class VehicleVisuals {
           if (!(node instanceof THREE.Mesh)) return;
           node.castShadow = !this.coarse;
           node.receiveShadow = true;
-          if (view.definition.police && /^lamp_(blue_module|police_grille)/.test(node.name)) {
+          if (view.definition.police && BEACON_PARTS.test(node.name)) {
             node.material = node.material.clone();
             view.materials.add(node.material);
             node.material.emissive.set(0x176cff).convertSRGBToLinear();

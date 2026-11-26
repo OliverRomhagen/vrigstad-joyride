@@ -10,6 +10,7 @@ import {
   VEHICLES,
   WHEEL_NODES,
 } from '../../../src/game/render/vehicle-registry';
+import { type Gltf, staticPartGroups } from '../../../tools/vehicle-parts';
 
 const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
 test.each(VEHICLES)('$id decodes with named body, wheel hubs and metre dimensions', async spec => {
@@ -34,6 +35,11 @@ test.each(VEHICLES)('$id decodes with named body, wheel hubs and metre dimension
   expect(size.y).toBeLessThan(3);
   expect(size.z).toBeGreaterThan(3);
   expect(size.z).toBeLessThan(7);
+});
+test.each(VEHICLES)('$id has one static part per material on its body (#408)', async spec => {
+  const bytes = readFileSync('src/public/' + spec.url);
+  const json = JSON.parse(bytes.subarray(20, 20 + bytes.readUInt32LE(12)).toString()) as Gltf;
+  expect(staticPartGroups(json)).toEqual([]); // exactly the compression tool's eligibility and material identity
 });
 test('every model is in the world, worn only by its own simulation type', () => {
   const used = Object.entries(VEHICLE_VARIANTS).flatMap(([archetype, variants]) =>
