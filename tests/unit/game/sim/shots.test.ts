@@ -11,6 +11,7 @@ import {
   newHit,
   pangCar,
   type Shot,
+  ShotStep,
   type ShotWorld,
   sight,
   stepShot,
@@ -54,7 +55,7 @@ function fly(s: Shot, w: ShotWorld, dt = 1 / 60) {
   const out = newHit();
   for (let i = 0; i < 600; i++) {
     const step = stepShot(s, dt, w, out);
-    if (step !== 'flying') return step === 'hit' ? out : step;
+    if (step !== ShotStep.FLYING) return step === ShotStep.HIT ? out : step;
   }
   throw new Error('still flying after 10 s');
 }
@@ -83,13 +84,13 @@ describe('stepShot', () => {
     // level from MUZZLE_M: it falls for sqrt(2 h / g) seconds
     const fallS = Math.sqrt((2 * MUZZLE_M) / GRAVITY_MS2);
     expect(-s.z).toBeCloseTo(WEAPONS[PICKADOLL].speedMs * fallS, 0);
-    if (hit !== 'gone') expect(-hit.z).toBeCloseTo(WEAPONS[PICKADOLL].speedMs * fallS, 0);
+    if (hit !== ShotStep.GONE) expect(-hit.z).toBeCloseTo(WEAPONS[PICKADOLL].speedMs * fallS, 0);
   });
 
   it('hits the wall of a house, and says which way the wall faces', () => {
     const hit = fly(shot(), world());
     expect(hit).toMatchObject({ kind: 'wall', nx: 0, nz: 1 }); // the south wall faces south
-    if (hit !== 'gone') expect(hit.z).toBeCloseTo(-20); // on the wall's face, not where the shot was noticed inside it
+    if (hit !== ShotStep.GONE) expect(hit.z).toBeCloseTo(-20); // on the wall's face, not where the shot was noticed inside it
   });
 
   it('hits a person in the way, not the house behind them', () => {
@@ -109,7 +110,7 @@ describe('stepShot', () => {
     // a car at z = -10 pointing east: its body is 0.9 m either side of its spine
     const hit = fly(shot(), world({ cars: [{ x: 0, z: -10, h: Math.PI / 2, T }] }));
     expect(hit).toMatchObject({ kind: 'car', target: 0 });
-    if (hit !== 'gone') {
+    if (hit !== ShotStep.GONE) {
       expect(hit.z).toBeCloseTo(-10 + T.widthM / 2); // on the body's side
       expect(hit.nz).toBeCloseTo(1); // the side that faces the shooter
     }
@@ -163,7 +164,7 @@ describe('a shot that bounces', () => {
     const s = shot(GULD),
       w = world({ collide: () => false });
     let hits = 0;
-    for (let hit = fly(s, w); hit !== 'gone' && hit.bounced; hit = fly(s, w)) hits++;
+    for (let hit = fly(s, w); hit !== ShotStep.GONE && hit.bounced; hit = fly(s, w)) hits++;
     expect(hits).toBeGreaterThan(1);
     expect(hits).toBeLessThanOrEqual(WEAPONS[GULD].bounces);
   });
@@ -187,8 +188,8 @@ describe('a thrown shot with a fuse', () => {
     let touches = 0;
     for (let i = 0; i < 600; i++) {
       const step = stepShot(s, 1 / 60, w, out);
-      if (step === 'gone') throw new Error('gone before its fuse');
-      if (step === 'flying') continue;
+      if (step === ShotStep.GONE) throw new Error('gone before its fuse');
+      if (step === ShotStep.FLYING) continue;
       if (out.burst) return { touches, hit: out };
       expect(out.bounced).toBe(true); // it never stops on what it touches
       touches++;
@@ -226,7 +227,8 @@ describe('a bounce on a slope', () => {
       s = { ...shot(GULD), ...aimShot(WEAPONS[GULD], 0, 0.5) },
       out = newHit();
     let first: number | null = null;
-    for (let i = 0; i < 600 && first === null; i++) if (stepShot(s, 1 / 60, w, out) !== 'flying') first = s.bounced;
+    for (let i = 0; i < 600 && first === null; i++)
+      if (stepShot(s, 1 / 60, w, out) !== ShotStep.FLYING) first = s.bounced;
     expect(first).toBe(1); // it met the slope still rising, and bounced off it
     expect(out.ny).toBeCloseTo(2 / Math.hypot(1, 2)); // the slope's own normal, leaning back south
     expect(out.nz).toBeCloseTo(1 / Math.hypot(1, 2));
@@ -410,7 +412,7 @@ describe('aimAt', () => {
         world(),
       );
       expect(hit).toMatchObject({ kind: 'wall' });
-      if (hit !== 'gone') {
+      if (hit !== ShotStep.GONE) {
         expect(hit.x).toBeCloseTo(2, 0);
         expect(hit.y).toBeCloseTo(3, 0);
       }
