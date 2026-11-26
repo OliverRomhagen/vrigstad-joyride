@@ -4,6 +4,10 @@
 import { damageCar } from '../health';
 import { bodyRadius, type CarBody, nearestOnSpine, PERSON_RADIUS_M } from './car-body';
 
+/** What a weapon's shot leaves on the ground where it lands: SPIKES are fotanglar. */
+export const WeaponZone = { NONE: '', SPIKES: 'spikes' } as const;
+export type WeaponZone = (typeof WeaponZone)[keyof typeof WeaponZone];
+
 /** How a weapon delivers its shots. */
 export interface Weapon {
   id: string;
@@ -19,7 +23,7 @@ export interface Weapon {
   bounces: number; // how many times a shot bounces off the ground, a wall or a car before it stops
   thrown: boolean; // lobbed by hand, not fired
   fuseS: number; // it goes off this long after it leaves, wherever it is by then; until then it only bounces and lies. 0 for none
-  zone: '' | 'spikes'; // what it leaves on the ground where it lands: spikes are fotanglar
+  zone: WeaponZone; // what it leaves on the ground where it lands
   shotM: number; // the radius it is drawn with
   tracerM: number; // drawn as a streak this long behind it, not as a ball: for a shot too fast to see. 0 for a ball
   scope: number; // aiming looks through a scope that magnifies this many times; 0 for none
@@ -44,7 +48,7 @@ export const WEAPONS = [
     bounces: 0,
     thrown: false,
     fuseS: 0,
-    zone: '',
+    zone: WeaponZone.NONE,
     shotM: 0.07,
     tracerM: 0,
     scope: 0,
@@ -63,7 +67,7 @@ export const WEAPONS = [
     bounces: 0,
     thrown: false,
     fuseS: 0,
-    zone: '',
+    zone: WeaponZone.NONE,
     shotM: 0.07,
     tracerM: 0,
     scope: 0,
@@ -82,7 +86,7 @@ export const WEAPONS = [
     bounces: 0,
     thrown: false,
     fuseS: 0,
-    zone: '',
+    zone: WeaponZone.NONE,
     shotM: 0.07,
     tracerM: 0,
     scope: 0,
@@ -101,7 +105,7 @@ export const WEAPONS = [
     bounces: 0,
     thrown: false,
     fuseS: 0,
-    zone: '',
+    zone: WeaponZone.NONE,
     shotM: 0.07,
     tracerM: 0,
     scope: 0,
@@ -120,7 +124,7 @@ export const WEAPONS = [
     bounces: 0,
     thrown: false,
     fuseS: 0,
-    zone: '',
+    zone: WeaponZone.NONE,
     shotM: 0.07,
     tracerM: 0,
     scope: 0,
@@ -139,7 +143,7 @@ export const WEAPONS = [
     bounces: 0,
     thrown: false,
     fuseS: 0,
-    zone: '',
+    zone: WeaponZone.NONE,
     shotM: 0.07,
     tracerM: 0,
     scope: 0,
@@ -159,7 +163,7 @@ export const WEAPONS = [
     bounces: 12,
     thrown: false,
     fuseS: 0,
-    zone: '',
+    zone: WeaponZone.NONE,
     shotM: 0.07,
     tracerM: 0,
     scope: 0,
@@ -179,7 +183,7 @@ export const WEAPONS = [
     bounces: 0,
     thrown: false,
     fuseS: 0,
-    zone: '',
+    zone: WeaponZone.NONE,
     shotM: 0.03,
     tracerM: 5,
     scope: 0,
@@ -199,7 +203,7 @@ export const WEAPONS = [
     bounces: 0,
     thrown: false,
     fuseS: 0,
-    zone: '',
+    zone: WeaponZone.NONE,
     shotM: 0.03,
     tracerM: 3,
     scope: 3,
@@ -219,7 +223,7 @@ export const WEAPONS = [
     bounces: 0,
     thrown: false,
     fuseS: 0,
-    zone: '',
+    zone: WeaponZone.NONE,
     shotM: 0.04,
     tracerM: 14,
     scope: 8,
@@ -239,7 +243,7 @@ export const WEAPONS = [
     bounces: 6,
     thrown: true,
     fuseS: 2.2,
-    zone: '',
+    zone: WeaponZone.NONE,
     shotM: 0.13,
     tracerM: 0,
     scope: 0,
@@ -258,7 +262,7 @@ export const WEAPONS = [
     bounces: 0,
     thrown: true,
     fuseS: 0,
-    zone: 'spikes',
+    zone: WeaponZone.SPIKES,
     shotM: 0.1,
     tracerM: 0,
     scope: 0,
@@ -266,12 +270,15 @@ export const WEAPONS = [
 ] as const satisfies readonly Weapon[];
 
 /** What a hit does: the answers to try side by side. */
+export const HitFlavour = { GEGGA: 'gegga', PANG: 'pang', DANS: 'dans' } as const;
+export type HitFlavour = (typeof HitFlavour)[keyof typeof HitFlavour];
+
+/** The flavours in the order the lab steps through them, with the names it shows. */
 export const HIT_FLAVOURS = [
-  { id: 'gegga', name: 'Gegga' }, // a bright splat where it lands; nobody is hurt
-  { id: 'pang', name: 'Pang' }, // people are thrown and cars shoved; no colour
-  { id: 'dans', name: 'Dans' }, // a prank: who is hit dances for a while
-] as const;
-export type HitFlavour = (typeof HIT_FLAVOURS)[number]['id'];
+  { id: HitFlavour.GEGGA, name: 'Gegga' }, // a bright splat where it lands; nobody is hurt
+  { id: HitFlavour.PANG, name: 'Pang' }, // people are thrown and cars shoved; no colour
+  { id: HitFlavour.DANS, name: 'Dans' }, // a prank: who is hit dances for a while
+] as const satisfies readonly { id: HitFlavour; name: string }[];
 
 export const GRAVITY_MS2 = 9.8;
 export const MUZZLE_M = 1.35; // a shot leaves this far above the shooter's feet

@@ -19,7 +19,7 @@ import {
   blastPush,
   flightPath,
   HIT_FLAVOURS,
-  type HitFlavour,
+  HitFlavour,
   HitKind,
   MUZZLE_M,
   newHit,
@@ -32,6 +32,7 @@ import {
   sight,
   stepShot,
   WEAPONS,
+  WeaponZone,
 } from './sim/shots';
 import { dropSpike, newSpikeStep, type Spike, type SpikeWorld, stepSpikes } from './sim/spikes';
 import type { GameState, ViewState } from './state';
@@ -565,7 +566,11 @@ export class Pickadoll {
   }
 
   private readonly colourOf = (s: { seed: number; flavour: HitFlavour }) =>
-    s.flavour === 'gegga' ? GEGGA[Math.floor(s.seed * GEGGA.length)] : s.flavour === 'dans' ? DANCE_COLOUR : SCUFF;
+    s.flavour === HitFlavour.GEGGA
+      ? GEGGA[Math.floor(s.seed * GEGGA.length)]
+      : s.flavour === HitFlavour.DANS
+        ? DANCE_COLOUR
+        : SCUFF;
 
   private fire(car: RenderedCar | null, yaw: number, pitch: number) {
     const { rnd, player } = this.g,
@@ -599,10 +604,10 @@ export class Pickadoll {
     const { fx, crowd, rnd } = this.g,
       weapon = WEAPONS[s.weapon],
       colour = this.colourOf(s),
-      splatM = s.flavour === 'gegga' ? weapon.splatM : weapon.splatM * 0.45;
+      splatM = s.flavour === HitFlavour.GEGGA ? weapon.splatM : weapon.splatM * 0.45;
     if (hit.bounced && weapon.fuseS) return; // a grenade only bounces and lies until its fuse runs out
     this.hits++;
-    if (weapon.zone === 'spikes') {
+    if (weapon.zone === WeaponZone.SPIKES) {
       dropSpike(this.spikes, hit, this.g.world.groundAt, s.seed);
       fx.drawSpikes(this.spikes);
       return;
@@ -611,7 +616,7 @@ export class Pickadoll {
       car = hit.kind === HitKind.CAR ? this.world.cars[hit.target] : null;
     if (person) this.hitPerson(person, s.flavour, hit.dx, hit.dz, hit.y, weapon.power, weapon.splatM, colour, s.seed);
     else if (car) {
-      if (s.flavour === 'pang') this.shoveCar(car, hit.dx, hit.dz, weapon.power);
+      if (s.flavour === HitFlavour.PANG) this.shoveCar(car, hit.dx, hit.dz, weapon.power);
       fx.splatOn(car.mesh, hit, splatM, colour, s.seed);
     } else fx.splat(hit, splatM, colour, s.seed);
     if (person || car) this.mark();
@@ -622,11 +627,11 @@ export class Pickadoll {
       this.hitPerson(n, s.flavour, push.dx, push.dz, hit.y + 1, weapon.power * 0.6, weapon.splatM, colour, rnd());
       this.mark();
     }
-    if (s.flavour === 'pang')
+    if (s.flavour === HitFlavour.PANG)
       for (const c of this.world.cars)
         if (c !== car && blastPush(hit.x, hit.z, weapon.blastM, c.x, c.z, push))
           this.shoveCar(c, push.dx, push.dz, weapon.power * 0.6);
-    if (s.flavour === 'gegga')
+    if (s.flavour === HitFlavour.GEGGA)
       for (let i = 0; i < BLAST_DROPS; i++) {
         const a = rnd() * Math.PI * 2,
           reach = weapon.blastM * (0.3 + rnd() * 0.7),
@@ -660,10 +665,10 @@ export class Pickadoll {
     turn: number,
   ) {
     const { fx, crowd, ragdolls } = this.g;
-    if (flavour === 'gegga') {
+    if (flavour === HitFlavour.GEGGA) {
       fx.splatOnPerson(n.mesh, dx, dz, y, splatM, colour, turn);
       crowd.stare(n, 0.1, STARE_S);
-    } else if (flavour === 'pang') {
+    } else if (flavour === HitFlavour.PANG) {
       // too many down already: they are only knocked a step back
       if (!ragdolls.push(n, dx, dz, PANG_THROW_MS + power * PANG_THROW_PER_POWER_MS)) {
         n.x += dx * 0.5;
