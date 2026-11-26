@@ -1,13 +1,17 @@
 // Smoke test for the wiki, as built into dist/wiki/ next to the game: BASE_PATH=/wiki npm run build --prefix wiki, after the
 // game's own build. The prerender already checks every page's markup and links; this checks what only a browser shows.
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
 import { watchErrors } from './render-helpers.js';
 
-// The wiki is its own build, so a local run of the game's tests doesn't need it. CI builds it (e2e.yml) and never skips.
+// The wiki is its own build, so a local run of the game's tests doesn't need it: without one built for /wiki (a build
+// with no BASE_PATH is for the root, and its pages ask the server for the wrong files here) the test is skipped. CI
+// builds it (e2e.yml) and never skips.
+const HOME = 'dist/wiki/index.html';
+const builtForWiki = existsSync(HOME) && readFileSync(HOME, 'utf8').includes('assets: "/wiki"');
 test.skip(
-  !process.env.CI && !existsSync('dist/wiki/index.html'),
-  'the wiki is not built: BASE_PATH=/wiki npm run build --prefix wiki',
+  !process.env.CI && !builtForWiki,
+  'the wiki is not built for /wiki: BASE_PATH=/wiki npm run build --prefix wiki',
 );
 
 test('wiki: the menu leads to a place with its map and to a character in 3D, with no console errors', async ({
@@ -28,26 +32,35 @@ test('wiki: the menu leads to a place with its map and to a character in 3D, wit
   const drawer = page.locator('#wiki-drawer');
   const menu = page.getByRole('button', { name: 'Menu' });
   await expect(async () => {
-    await menu.click();
+    // a click that worked leaves the button behind the open drawer: don't wait there for a second one
+    if (!(await drawer.isVisible())) await menu.click({ timeout: 2000 });
     await expect(drawer).toBeVisible({ timeout: 1000 });
   }).toPass();
-  await drawer.getByRole('link', { name: 'Torget' }).click();
-  await expect(page.locator('h1')).toHaveText('Torget');
-  await expect(drawer).toBeHidden();
+  // Pages are found by their file's name, and what they say is read from the page: a title or a position edited in
+  // docs/lore/ doesn't run these tests (e2e.yml skips a PR of only .md files), so it mustn't be able to fail them.
+  const openPage = async path => {
+    const link = drawer.locator(`a[href$="${path}"]`);
+    const title = await link.textContent();
+    await link.click();
+    await expect(page.locator('h1')).toHaveText(title);
+    await expect(drawer).toBeHidden();
+    return title;
+  };
+  await openPage('places/torget');
 
-  // a place: the game's map in a frame, over the place, and a link that starts the game there
-  await expect(page.getByRole('link', { name: 'Drive here' })).toHaveAttribute('href', '/?at=-9,30');
+  // a place: a link that starts the game there, and the game's map in a frame, over the same spot
+  const driveHere = await page.getByRole('link', { name: 'Drive here' }).getAttribute('href');
+  expect(driveHere).toMatch(/^\/\?at=-?[\d.]+,-?[\d.]+$/);
   await expect(page.locator('.map-embed [role=status]')).toHaveCount(0); // the map's page has loaded in the frame
   expect(page.frames().map(frame => new URL(frame.url()).pathname + new URL(frame.url()).search)).toContain(
-    '/map.html?focus=-9,30&embed',
+    `/map.html?focus=${driveHere.slice('/?at='.length)}&embed`,
   );
   await page.screenshot({ path: info.outputPath('wiki-place.png') });
 
   // a character: the game's own model, drawn on a canvas
   await menu.click();
-  await drawer.getByRole('link', { name: 'Plåt-Pelle' }).click();
-  await expect(page.locator('h1')).toHaveText('Plåt-Pelle');
-  const scene = page.getByRole('img', { name: 'Plåt-Pelle in 3D: drag to look around' });
+  const name = await openPage('characters/plat-pelle');
+  const scene = page.getByRole('img', { name: `${name} in 3D: drag to look around` });
   await expect(scene.locator('canvas')).toBeVisible();
   await expect(page.locator('figure [role=status]')).toHaveCount(0); // the model stands in the scene
   await page.screenshot({ path: info.outputPath('wiki-character.png') });

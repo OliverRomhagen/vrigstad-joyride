@@ -71,6 +71,9 @@ jobs:
         with:
           node-version: lts/*
           cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            wiki/package-lock.json
       - run: npm ci
       # data/vrigstad.json is committed: fail if it is not what tools/process.py makes from data/raw/.
       - run: npm run data && git diff --exit-code -- data/vrigstad.json
