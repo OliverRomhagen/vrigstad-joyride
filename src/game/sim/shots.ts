@@ -280,6 +280,7 @@ const BOUNCE_KEEP = 0.78, // the share of its speed a shot keeps in a bounce
   BOUNCE_MIN_MS = 4, // slower than this after a bounce, it stops there
   BOUNCE_CLEAR_M = 0.08; // a bounced shot starts this far off the surface, so it isn't hit again at once
 const STEP_M = 0.25; // a shot is checked every this far along its path, so it can't skip through a person
+const CAST_STEP_M = 2; // with a world's ray cast, a shot's path is cast in straight pieces this long: its arc bends little over one
 const WALL_MAX_M = 9; // houses are taken to be this tall: a shot above it flies over
 const PERSON_TALL_M = 1.85; // a standard person, to the top of the head
 const CAR_TALL_M = 1.5;
@@ -310,9 +311,16 @@ export interface ShotWorld {
   /** who stands in the way: `scale` is their size, 1 for the standard person; `down` ones lie on the ground and aren't hit */
   people: readonly { x: number; z: number; scale: number; down?: boolean }[];
   cars: readonly CarBody[];
+  /**
+   * What the straight line from (x0, y0, z0) to (x1, y1, z1) meets first, written to `out`, or null: a physics world's
+   * ray cast (?lab=rapier, shot-physics.ts). With it, shots and the line of sight ask it instead of the checks below,
+   * and the ground as drawn still stops a shot it would let through. Without it, those checks find the hit.
+   */
+  cast?(x0: number, y0: number, z0: number, x1: number, y1: number, z1: number, out: ShotHit): ShotHit | null;
 }
 
-export type HitKind = 'ground' | 'wall' | 'person' | 'car';
+/** what a shot can land on: a prop is street furniture, which only a world with a ray cast holds */
+export type HitKind = 'ground' | 'wall' | 'person' | 'car' | 'prop';
 
 /** Where a shot landed, on what, and how it was flying. `n` is the surface's normal; `d` the way the shot flew along the ground. */
 export interface ShotHit {
@@ -325,7 +333,7 @@ export interface ShotHit {
   nz: number;
   dx: number;
   dz: number;
-  /** index in world.people or world.cars for a person or a car, else -1 */
+  /** index in world.people or world.cars for a person or a car, the prop's number for a prop, else -1 */
   target: number;
   /** the shot bounced off and flies on; false when it stopped here */
   bounced: boolean;
@@ -355,18 +363,22 @@ export function stepShot(s: Shot, dt: number, world: ShotWorld, out: ShotHit): S
     s.lifeS += dt;
     return s.lifeS >= fuseS ? burst(s, world, out) : null;
   }
-  const speed = Math.hypot(s.vx, s.vy, s.vz),
-    steps = Math.max(1, Math.ceil((speed * dt) / STEP_M)),
+  const { cast } = world,
+    speed = Math.hypot(s.vx, s.vy, s.vz),
+    steps = Math.max(1, Math.ceil((speed * dt) / (cast ? CAST_STEP_M : STEP_M))),
     h = dt / steps;
   for (let i = 0; i < steps; i++) {
     s.lifeS += h;
     if (fuseS && s.lifeS >= fuseS) return burst(s, world, out);
+    const x0 = s.x,
+      y0 = s.y,
+      z0 = s.z;
     s.vy -= GRAVITY_MS2 * h;
     s.x += s.vx * h;
     s.y += s.vy * h;
     s.z += s.vz * h;
     s.ageS += h;
-    const hit = hitAt(s, world, out);
+    const hit = cast ? (cast(x0, y0, z0, s.x, s.y, s.z, out) ?? groundBelow(s, world, out)) : hitAt(s, world, out);
     if (hit) {
       hit.bounced = bounce(s, hit);
       // a shot with a fuse that is out of bounces or speed lies where it stopped until the fuse runs out
@@ -425,15 +437,8 @@ function hitAt(
   people?: readonly number[],
   cars?: readonly number[],
 ): ShotHit | null {
-  const flat = Math.hypot(s.vx, s.vz) || 1;
-  out.x = s.x;
-  out.y = s.y;
-  out.z = s.z;
-  out.dx = s.vx / flat;
-  out.dz = s.vz / flat;
-  out.target = -1;
-  const ground = world.groundAt(s.x, s.z),
-    up = s.y - ground;
+  at(s, out);
+  const up = s.y - world.groundAt(s.x, s.z);
   for (let k = 0, n = people ? people.length : world.people.length; k < n; k++) {
     const i = people ? people[k] : k,
       p = world.people[i];
@@ -458,19 +463,7 @@ function hitAt(
       out.z = _onCar.z + nz * bodyRadius(c);
       return surface(out, 'car', i, nx, 0, nz);
     }
-  if (up <= 0) {
-    // back along its path to where it met the ground
-    const pastS = s.vy < 0 ? Math.min(up / s.vy, STEP_M / (Math.hypot(s.vx, s.vy, s.vz) || 1)) : 0;
-    out.x = s.x - s.vx * pastS;
-    out.z = s.z - s.vz * pastS;
-    out.y = world.groundAt(out.x, out.z);
-    // the way the ground faces there: on a slope a shot bounces off the slope, not off level ground
-    const d = SLOPE_STEP_M,
-      sx = world.groundAt(out.x - d, out.z) - world.groundAt(out.x + d, out.z),
-      sz = world.groundAt(out.x, out.z - d) - world.groundAt(out.x, out.z + d),
-      len = Math.hypot(sx, 2 * d, sz);
-    return surface(out, 'ground', -1, sx / len, (2 * d) / len, sz / len);
-  }
+  if (up <= 0) return onGround(s, world, out, up, STEP_M);
   if (up < WALL_MAX_M) {
     _probe.x = s.x;
     _probe.z = s.z;
@@ -488,6 +481,40 @@ function hitAt(
     }
   }
   return null;
+}
+
+// where the shot is now, and the way it flies along the ground, before what it met is known
+function at(s: Shot, out: ShotHit) {
+  const flat = Math.hypot(s.vx, s.vz) || 1;
+  out.x = s.x;
+  out.y = s.y;
+  out.z = s.z;
+  out.dx = s.vx / flat;
+  out.dz = s.vz / flat;
+  out.target = -1;
+}
+
+// the ground as drawn, for a shot a world's ray cast let through: that ground is coarser, and has no curbs
+function groundBelow(s: Shot, world: ShotWorld, out: ShotHit): ShotHit | null {
+  const up = s.y - world.groundAt(s.x, s.z);
+  if (up > 0) return null;
+  at(s, out);
+  return onGround(s, world, out, up, CAST_STEP_M);
+}
+
+// a shot `up` metres above the ground, at or below it: back along its path, at most the `stepM` it last moved, to
+// where it met the ground
+function onGround(s: Shot, world: ShotWorld, out: ShotHit, up: number, stepM: number): ShotHit {
+  const pastS = s.vy < 0 ? Math.min(up / s.vy, stepM / (Math.hypot(s.vx, s.vy, s.vz) || 1)) : 0;
+  out.x = s.x - s.vx * pastS;
+  out.z = s.z - s.vz * pastS;
+  out.y = world.groundAt(out.x, out.z);
+  // the way the ground faces there: on a slope a shot bounces off the slope, not off level ground
+  const d = SLOPE_STEP_M,
+    sx = world.groundAt(out.x - d, out.z) - world.groundAt(out.x + d, out.z),
+    sz = world.groundAt(out.x, out.z - d) - world.groundAt(out.x, out.z + d),
+    len = Math.hypot(sx, 2 * d, sz);
+  return surface(out, 'ground', -1, sx / len, (2 * d) / len, sz / len);
 }
 
 function surface(out: ShotHit, kind: HitKind, target: number, nx: number, ny: number, nz: number): ShotHit {
@@ -601,6 +628,16 @@ export function sight(
   s.vx = dx;
   s.vy = dy;
   s.vz = dz;
+  if (world.cast) {
+    // one straight line, which the ray cast follows to what it meets first
+    const flat = Math.hypot(dx, dz) || 1;
+    if (world.cast(x + dx * fromM, y + dy * fromM, z + dz * fromM, x + dx * toM, y + dy * toM, z + dz * toM, out)) {
+      out.dx = dx / flat;
+      out.dz = dz / flat;
+      return true;
+    }
+    return miss(x, y, z, dx, dy, dz, toM, out);
+  }
   // only who and what stands near the line can be met: found once, so each step along it tests a few, not everyone
   const ax = x + dx * fromM,
     az = z + dz * fromM,
@@ -621,6 +658,11 @@ export function sight(
     s.z = z + dz * d;
     if (hitAt(s, world, out, _nearPeople, _nearCars)) return true;
   }
+  return miss(x, y, z, dx, dy, dz, toM, out);
+}
+
+// the line of sight met nothing: `out` is its far end
+function miss(x: number, y: number, z: number, dx: number, dy: number, dz: number, toM: number, out: ShotHit) {
   surface(out, 'ground', -1, 0, 1, 0);
   out.x = x + dx * toM;
   out.y = y + dy * toM;

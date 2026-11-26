@@ -8,7 +8,13 @@ import type { FurniturePlacement } from '../world/furniture/placement';
 import { FURNITURE_MODELS, type StreetFurniture } from '../world/mesh/street-furniture';
 import { PhysicsProps } from './render/physics-props';
 import type { CarBody } from './sim/car-body';
-import { PhysicsWorld, type PhysicsWorldOptions, type PropSpec, type Rapier } from './sim/physics-world';
+import {
+  type PersonBody,
+  PhysicsWorld,
+  type PhysicsWorldOptions,
+  type PropSpec,
+  type Rapier,
+} from './sim/physics-world';
 
 /** what a car can knock over, and what each weighs (kg) */
 const PROP_MASS_KG: Partial<Record<FurnitureKind, number>> = {
@@ -35,6 +41,8 @@ export interface RapierLabDeps {
   placements: readonly FurniturePlacement[];
   furniture: Pick<StreetFurniture, 'detach' | 'reattach'>;
   cars: readonly CarBody[];
+  /** the pedestrians: the ones near the player join the world, for shots to hit */
+  people: readonly PersonBody[];
   player: { x: number; z: number };
   inCar(): boolean;
   /** the car the player drives, while in one */
@@ -59,6 +67,10 @@ export interface RapierLabState {
   readonly stepMs: number;
   /** the steps run since the world was built */
   readonly steps: number;
+  /** the people near the player that the world holds */
+  readonly people: number;
+  /** the world itself, for the weapons' ray casts (?lab=pickadoll); not for the test hook */
+  world: PhysicsWorld;
 }
 
 /** A model's size: across, front to back and up from its foot (m), from its own geometry, as a stand's width depends on its boxes. */
@@ -133,7 +145,9 @@ export async function startRapierLab(g: RapierLabDeps): Promise<RapierLabState> 
   });
   const now = () => performance.now();
   g.addFrameUpdate(dt => {
-    world.follow(g.cars, g.inCar() ? null : g.player, g.playerCar() ?? g.player);
+    const viewer = g.playerCar() ?? g.player;
+    world.follow(g.cars, g.inCar() ? null : g.player, viewer);
+    world.followPeople(g.people, viewer);
     world.step(dt, now);
     draw.update();
   });
@@ -159,5 +173,9 @@ export async function startRapierLab(g: RapierLabDeps): Promise<RapierLabState> 
     get steps() {
       return world.steps;
     },
+    get people() {
+      return world.people;
+    },
+    world,
   };
 }

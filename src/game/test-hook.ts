@@ -177,6 +177,7 @@ export function installTestHook(g: TestHookDeps) {
           awake: g.rapier.awake,
           stepMs: g.rapier.stepMs,
           steps: g.rapier.steps,
+          people: g.rapier.people,
         },
         pickadoll: g.pickadoll,
         x: player.x,

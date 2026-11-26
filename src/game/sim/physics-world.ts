@@ -1,7 +1,7 @@
 // The Rapier trial (#54, ?lab=rapier, docs/rapier-trial.md): one Rapier world beside the game's own collisions, which
-// stay in charge. The ground and the buildings' walls are fixed shapes; the cars and the player are shapes the game
-// moves, so driving and walking feel as they do; street furniture is bodies that a car knocks over. Pure: no
-// three.js, no DOM. The Rapier module is passed in, so the page decides how it is loaded.
+// stay in charge. The ground and the buildings' walls are fixed shapes; the cars, the player and the people near the
+// player are shapes the game moves, so driving and walking feel as they do; street furniture is bodies that a car
+// knocks over. Shots find what they hit by its ray casts (castSegment). Pure: no three.js, no DOM. The Rapier module is passed in, so the page decides how it is loaded.
 import type RAPIER from '@dimforge/rapier3d-compat';
 import { type BuildingShape, forEachBuilding } from '../../world/buildings';
 import type { WorldData } from '../../world/data';
@@ -24,6 +24,15 @@ const WALL_FOOT_M = 1;
 const PLAYER_HALF_HEIGHT_M = 0.5;
 /** a car or the player that moves further than this in one frame was put there, not driven: it jumps, unswept (m) */
 const TELEPORT_M = 8;
+/** people further than this from the player aren't in the world: as far as the weapons' line of sight reaches (m) */
+const PERSON_JOIN_M = 160;
+/**
+ * the props this near the player join the world, anchored, so a shot meets them: a shot further off passes through one
+ * no car has been near. Short of the line of sight, as each one joined stays (m)
+ */
+const PROP_SHOT_JOIN_M = 40;
+/** and they are looked for again once the player has gone this far (m) */
+const PROP_SHOT_JOIN_EVERY_M = 5;
 // gravity, and how near and how far for the props, are in PHYSICS (physics-tunables.ts), so the console can change them
 /** the knocked props are checked for respawning once every this many steps: a second */
 const RESPAWN_CHECK_STEPS = 60;
@@ -50,6 +59,43 @@ export interface PropSpec {
    */
   parts?: readonly { x: number; y: number; z: number; hx: number; hy: number; hz: number; massKg: number }[];
 }
+
+/** A person the world holds while they're near the player, standing: `scale` is their size, 1 the standard person. */
+export interface PersonBody {
+  x: number;
+  z: number;
+  scale: number;
+  /** lying on the ground, knocked over: not in the world, as the ragdolls have them */
+  down?: boolean;
+}
+
+/** What a line met: the point, the surface's normal there, and what it belongs to. */
+export interface SegmentHit {
+  kind: 'ground' | 'wall' | 'car' | 'person' | 'prop';
+  x: number;
+  y: number;
+  z: number;
+  nx: number;
+  ny: number;
+  nz: number;
+  car: CarBody | null;
+  person: PersonBody | null;
+  /** the prop's index in the world's props, or -1 */
+  prop: number;
+}
+
+export const newSegmentHit = (): SegmentHit => ({
+  kind: 'ground',
+  x: 0,
+  y: 0,
+  z: 0,
+  nx: 0,
+  ny: 1,
+  nz: 0,
+  car: null,
+  person: null,
+  prop: -1,
+});
 
 /** Where a prop is: its middle and its rotation as a quaternion. */
 export interface PropPose {
@@ -117,8 +163,18 @@ export class PhysicsWorld {
   private readonly ray: InstanceType<Rapier['Ray']>;
   private readonly propCells = new Map<number, number[]>();
   private readonly carBodies = new Map<CarBody, Body>();
+  private readonly carByCollider = new Map<number, CarBody>();
+  private readonly personBodies = new Map<PersonBody, Body>();
+  private readonly personByCollider = new Map<number, PersonBody>();
   private readonly playerBody: Body;
-  private readonly seen = new Set<CarBody>();
+  private readonly groundCollider: number;
+  private readonly seen = new Set<object>();
+  /** the collider a ray cast passes through: the car the shot was fired from */
+  private skipCollider = -1;
+  private readonly notSkipped = (c: { handle: number }) => c.handle !== this.skipCollider;
+  /** where the props near the player were last looked for */
+  private joinedAtX = Number.NaN;
+  private joinedAtZ = Number.NaN;
   private readonly targets = new Map<Body, Target>();
   private carry = 0;
   private stepCount = 0;
@@ -144,7 +200,10 @@ export class PhysicsWorld {
     this.ray = new R.Ray({ x: 0, y: 0, z: 0 }, { x: 0, y: -1, z: 0 });
     const fixed = this.world.createRigidBody(R.RigidBodyDesc.fixed());
     const ground = groundTriangles(heightfield);
-    this.world.createCollider(R.ColliderDesc.trimesh(ground.vertices, ground.indices), fixed);
+    this.groundCollider = this.world.createCollider(
+      R.ColliderDesc.trimesh(ground.vertices, ground.indices),
+      fixed,
+    ).handle;
     const walls = wallTriangles(data, heightfield);
     if (walls.indices.length) this.world.createCollider(R.ColliderDesc.trimesh(walls.vertices, walls.indices), fixed);
     this.playerBody = this.world.createRigidBody(
@@ -183,11 +242,12 @@ export class PhysicsWorld {
           R.RigidBodyDesc.kinematicPositionBased().setTranslation(car.x, this.heightAt(car.x, car.z) + r, car.z),
         );
         // a capsule lies along the body's z, and the body turns so that z points where the car does
-        this.world.createCollider(
+        const collider = this.world.createCollider(
           R.ColliderDesc.capsule(half, r).setRotation({ x: Math.SQRT1_2, y: 0, z: 0, w: Math.SQRT1_2 }),
           body,
         );
         this.carBodies.set(car, body);
+        this.carByCollider.set(collider.handle, car);
       }
       // the game's heading h points the car at (sin h, -cos h); a turn of π - h about y takes z there
       const target = this.aim(body, car.x, this.heightAt(car.x, car.z) + r, car.z, Math.PI - car.h);
@@ -197,6 +257,7 @@ export class PhysicsWorld {
     }
     for (const [car, body] of this.carBodies)
       if (!seen.has(car)) {
+        this.carByCollider.delete(body.collider(0).handle);
         this.world.removeRigidBody(body);
         this.carBodies.delete(car);
         this.targets.delete(body);
@@ -205,6 +266,49 @@ export class PhysicsWorld {
       const y = this.heightAt(player.x, player.z) + PERSON_RADIUS_M + PLAYER_HALF_HEIGHT_M;
       this.aim(this.playerBody, player.x, y, player.z, Number.NaN);
     } else this.aim(this.playerBody, 0, -1000, 0, Number.NaN); // in a car: out of the way
+  }
+
+  /**
+   * Moves the people within PERSON_JOIN_M of `near` (the player) to where the game put them, as capsules of their size,
+   * so a shot can hit them. Like the player, they push what is loose but knock nothing loose. One knocked down leaves.
+   * The props within PROP_SHOT_JOIN_M of `near` join the world too, for the shots.
+   */
+  followPeople(people: readonly PersonBody[], near: { x: number; z: number }) {
+    const { R, seen } = this;
+    if (!(Math.hypot(near.x - this.joinedAtX, near.z - this.joinedAtZ) < PROP_SHOT_JOIN_EVERY_M)) {
+      this.joinNear(near.x, near.z, PROP_SHOT_JOIN_M);
+      this.joinedAtX = near.x;
+      this.joinedAtZ = near.z;
+    }
+    seen.clear();
+    for (const p of people) {
+      if (p.down || Math.hypot(p.x - near.x, p.z - near.z) > PERSON_JOIN_M) continue;
+      seen.add(p);
+      const y = this.heightAt(p.x, p.z) + (PERSON_RADIUS_M + PLAYER_HALF_HEIGHT_M) * p.scale;
+      let body = this.personBodies.get(p);
+      if (!body) {
+        body = this.world.createRigidBody(R.RigidBodyDesc.kinematicPositionBased().setTranslation(p.x, y, p.z));
+        const collider = this.world.createCollider(
+          R.ColliderDesc.capsule(PLAYER_HALF_HEIGHT_M * p.scale, PERSON_RADIUS_M * p.scale),
+          body,
+        );
+        this.personBodies.set(p, body);
+        this.personByCollider.set(collider.handle, p);
+      }
+      this.aim(body, p.x, y, p.z, Number.NaN);
+    }
+    for (const [p, body] of this.personBodies)
+      if (!seen.has(p)) {
+        this.personByCollider.delete(body.collider(0).handle);
+        this.world.removeRigidBody(body);
+        this.personBodies.delete(p);
+        this.targets.delete(body);
+      }
+  }
+
+  /** how many people the world holds */
+  get people() {
+    return this.personBodies.size;
   }
 
   /** Runs the steps this frame's time asks for; returns how many ran. */
@@ -311,6 +415,76 @@ export class PhysicsWorld {
     return hit ? hit.timeOfImpact : null;
   }
 
+  /**
+   * What the line from (x0, y0, z0) to (x1, y1, z1) meets first, written to `out`; false when it meets nothing. The
+   * player is passed through, and so is `skip`, the car a shot is fired from. Reads the world as the last step left it.
+   */
+  castSegment(
+    x0: number,
+    y0: number,
+    z0: number,
+    x1: number,
+    y1: number,
+    z1: number,
+    skip: CarBody | null,
+    out: SegmentHit,
+  ) {
+    const dx = x1 - x0,
+      dy = y1 - y0,
+      dz = z1 - z0,
+      len = Math.hypot(dx, dy, dz);
+    if (len < 1e-6) return false;
+    const { ray } = this;
+    ray.origin.x = x0;
+    ray.origin.y = y0;
+    ray.origin.z = z0;
+    ray.dir.x = dx / len;
+    ray.dir.y = dy / len;
+    ray.dir.z = dz / len;
+    const skipBody = skip && this.carBodies.get(skip);
+    this.skipCollider = skipBody ? skipBody.collider(0).handle : -1;
+    const hit = this.world.castRayAndGetNormal(
+      ray,
+      len,
+      true,
+      undefined,
+      undefined,
+      undefined,
+      this.playerBody,
+      skipBody ? this.notSkipped : undefined,
+    );
+    if (!hit) return false;
+    const t = hit.timeOfImpact,
+      h = hit.collider.handle;
+    out.x = x0 + ray.dir.x * t;
+    out.y = y0 + ray.dir.y * t;
+    out.z = z0 + ray.dir.z * t;
+    out.nx = hit.normal.x;
+    out.ny = hit.normal.y;
+    out.nz = hit.normal.z;
+    out.car = this.carByCollider.get(h) ?? null;
+    out.person = this.personByCollider.get(h) ?? null;
+    out.prop = this.propByCollider.get(h) ?? -1;
+    out.kind = out.car
+      ? 'car'
+      : out.person
+        ? 'person'
+        : out.prop >= 0
+          ? 'prop'
+          : h === this.groundCollider
+            ? 'ground'
+            : 'wall';
+    return true;
+  }
+
+  /** Knocks prop i loose, if it isn't, and gives it the impulse (ix, iy, iz) at (x, y, z): a shot's hit (N·s). */
+  knockProp(i: number, x: number, y: number, z: number, ix: number, iy: number, iz: number) {
+    const body = this.propBodies[i];
+    if (!body) return;
+    this.setLoose(i);
+    body.applyImpulseAtPoint({ x: ix, y: iy, z: iz }, { x, y, z }, true);
+  }
+
   dispose() {
     this.world.free();
   }
@@ -349,9 +523,8 @@ export class PhysicsWorld {
   }
 
   /** Brings every prop within PHYSICS.PROP_JOIN_M of (x, z) into the world. */
-  private joinNear(x: number, z: number) {
-    const join = PHYSICS.PROP_JOIN_M,
-      c0 = Math.floor((x - join) / PROP_CELL_M),
+  private joinNear(x: number, z: number, join = PHYSICS.PROP_JOIN_M) {
+    const c0 = Math.floor((x - join) / PROP_CELL_M),
       c1 = Math.floor((x + join) / PROP_CELL_M),
       r0 = Math.floor((z - join) / PROP_CELL_M),
       r1 = Math.floor((z + join) / PROP_CELL_M);

@@ -28,7 +28,7 @@ One lab experiment, `?lab=rapier`. With the flag off, the game runs exactly as t
 3. **Something falls over.** The mailboxes, wheelie bins, waste bins and street lamps (from `src/world/furniture/`) become real bodies. A lamp collides as its pole, with its arm and head as a second box at the top, not one box round the whole model. A car that drives into one sends it flying, and it lands and rolls. Their meshes follow the bodies.
 4. **Shots through it.** On top of the weapons branch ([#514](https://github.com/OliverRomhagen/vrigstad-joyride/pull/514)), the pickadoll finds its hits with Rapier's ray cast instead of stepping, and a hit knocks a mailbox too. We fire about 500 shots at once (a minigun's worth for eight players) and time it.
 
-Steps 1 to 3 are one draft PR from `main`. Step 4 needs the pickadoll, which only exists on the weapons branch, so it is a small second PR on top of #514.
+Steps 1 to 3 are one draft PR from `main`. Step 4 needs the pickadoll, which only exists on the weapons branch, so it is a branch that merges the weapons branch into the trial's (`54-rapier-shots`), and runs with both flags: `?lab=rapier,pickadoll`.
 
 ## Where the code goes
 
@@ -66,6 +66,14 @@ And by eye: does a mailbox you drive into look and feel right? Screenshots or a 
 - **Tunable while you play:** with `?dev&lab=rapier`, the console's `tune` changes `physics.gravity`, `physics.prop-join-distance`, `physics.prop-respawn-time` and `physics.prop-respawn-distance` at once (`src/game/sim/physics-tunables.ts`), and `?tune=physics.gravity:3` sets one at load. These are the first numbers a sandbox mode would hand to players.
 - **By eye:** a Volvo at 60 km/h throws a mailbox several metres, turning over. Traffic knocks over the odd mailbox too.
 
+## Found in step 4: shots through Rapier
+
+- **The weapons ask one question.** What a shot can hit (`ShotWorld` in `src/game/sim/shots.ts`) gained an optional ray cast: what the line from here to there meets first. With both flags on, `src/game/sim/shot-physics.ts` answers it through Rapier (`PhysicsWorld.castSegment`), so each step of a shot is one ray cast instead of a check every 0.25 m, and the line of sight is one cast instead of 640. Without Rapier the weapons' own checks find the hit, unchanged. The ground as the game draws it still stops a shot that Rapier's coarser ground would let through.
+- **The people near the player are in the world**, as capsules of their size, moved where the game puts them, out to 160 m (the line of sight). Like the player, they push what is loose but knock nothing loose. One knocked down leaves, as the ragdolls have them. At Torget that was 36 to 39 people.
+- **A shot passes through the shooter and the car they sit in**, and hits other cars, people, walls, the ground and street furniture. A prop is a new kind of hit: it knocks the prop loose with a push of 40 N·s for each point of the weapon's power. A pickadoll shot sends a mailbox over and only rocks a 120 kg street lamp; nothing splats on a prop, as the mark would hang in the air once it falls.
+- **Props near the player join too**, within 40 m, anchored as before, so a shot meets one that no car has been near.
+- **Measured** in Node, against the real village with 42 people and 20 cars, 500 shots kept in the air: 0.55 to 0.6 ms a frame through Rapier, against 0.9 to 1.2 ms for the weapons' own checks. Not yet measured in a browser or on a phone.
+
 ## Known limits of the trial
 
 - **Two grounds.** Rapier's ground is the terrain. The furniture is drawn on the game's ground, which adds curbs, road lifts and floors. So a knocked prop drops up to a curb's height and can rest partly in a sidewalk. The car and player shapes don't follow bridge decks either.
@@ -74,12 +82,13 @@ And by eye: does a mailbox you drive into look and feel right? Screenshots or a 
 - **A prop pressed by a car never sleeps.** A mailbox that ends up under or against a car that has stopped stays awake for as long as the car stands there: Rapier doesn't let a body sleep while something presses on it. Each costs a little every step.
 - **A hit costs the car nothing.** A 40 kg mailbox stand at 90 km/h doesn't slow the car or damage it: Rapier's cars are moved by the game and can't be pushed back.
 - **The file has no version in its name.** `vendor/rapier.mjs` can be cached for a few minutes past an upgrade.
+- **Shots meet only the props that have joined.** Past 40 m from the player, a shot passes through a prop no car has been near.
+- **People stand on the terrain** in Rapier's world, not on the curbs and floors the game draws them on: a shot at their feet can meet the ground first.
 - **The time step is a stand-in for #49.** The trial keeps its own clock and spreads each frame's move over its steps only because the game's cars don't move on a fixed step yet. Once #49 gives the sim its steps, Rapier steps inside them and both go.
 
 ## Questions for the decision
 
 - **Should a hit come back to the game?** Crashes (#40), damage and a star for wrecking a neighbour's mailbox all need the physics world to say what it hit, as the `knocked-over` event ARCHITECTURE.md names for the event bus (#367). Is that part of "keep"?
-- **Step 4 needs people in the world.** #510 hits pedestrians, up to 42 of them, and none are in Rapier's world yet. 500 shots against a world without people would make the casts look cheaper than they are, and leave out moving 42 more capsules every frame.
 - **The same everywhere?** #510 asks that a hit never depend on the frame rate, and under multiplayer (#411) every browser runs its own world. Knocked props differ between players and with the frame rate today: fine while they are only for show, not if one can block a road or a shot.
 - **Is traffic knocking props everywhere wanted?** They go back after 90 s out of sight. Measure how many props are joined and loose after ten minutes of play, not only after a short drive.
 - **Measure what the decision needs:** on a phone, the load with the plain `.wasm`, the memory Rapier holds, and the step with the village's 80 cars.

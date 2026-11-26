@@ -12,6 +12,8 @@ import type { Ragdolls } from './ragdolls';
 import type { RenderedCar } from './render/car-meshes';
 import type { Person } from './render/models';
 import { GEGGA, type ShotFx } from './render/shot-fx';
+import type { PhysicsWorld } from './sim/physics-world';
+import { physicsCast } from './sim/shot-physics';
 import {
   aimAtMoving,
   aimShot,
@@ -63,6 +65,10 @@ const ASSIST_CONE_RAD = 0.3,
   ASSIST_RANGE_M = 45;
 const PULL_KEEP_S = 0.12; // a click this long before the weapon is ready still fires when it is
 const INTRO_AFTER_S = 5.5; // the lab's own line comes this long after Start, once the start line is gone
+// with ?lab=rapier, a shot knocks street furniture over: this hard for each point of the weapon's power (N·s), so the
+// pickadoll's sends a 12 kg mailbox off at about 3 m/s
+const KNOCK_NS_PER_POWER = 40,
+  KNOCK_UP = 0.3; // and this much of it upwards, so the prop tips rather than slides
 // pang: a hit throws people and shoves cars
 const PANG_THROW_MS = 5, // a person leaves at this, plus PANG_THROW_PER_POWER_MS for each point of the weapon's power
   PANG_THROW_PER_POWER_MS = 2.5,
@@ -131,6 +137,8 @@ export interface PickadollDeps {
   readonly inside: boolean; // in a safehouse
   toast(msg: string, secs?: number): void;
   hurtPlayer(n: number): void;
+  /** ?lab=rapier's world once it has loaded, whose ray casts then find what a shot hits; null without it */
+  readonly physics: Pick<PhysicsWorld, 'castSegment' | 'knockProp'> | null;
 }
 
 /** The lab's weapons: built once, stepped every frame. */
@@ -192,6 +200,8 @@ export class Pickadoll {
   private aimK = 0; // 0 the game's camera, 1 over the shoulder
   private aimPitch = 0; // rad above level, while aiming
   private ready = false;
+  private castThrough: PickadollDeps['physics'] = null; // the world this.world.cast asks
+  private firedFrom: RenderedCar | null = null; // the car you sit in this frame, which your shots pass through
   /** shots fired and hits landed so far, for the test hook */
   fired = 0;
   hits = 0;
@@ -301,6 +311,7 @@ export class Pickadoll {
       scoped: this.isScoped,
       spikes: this.spikes.length,
       limping: this.limping.length,
+      throughPhysics: !!this.world.cast, // ?lab=rapier's ray casts find the hits
     };
   }
 
@@ -327,6 +338,12 @@ export class Pickadoll {
     const cars = this.world.cars;
     cars.length = 0;
     for (const c of this.g.cars) if (c !== car) cars.push(c);
+    this.firedFrom = car;
+    const { physics } = this.g;
+    if (physics !== this.castThrough) {
+      this.castThrough = physics;
+      this.world.cast = physics ? physicsCast(physics, this.world, () => this.firedFrom) : undefined;
+    }
 
     // The line of sight is read from the camera as the last frame left it. On the first frame after Start that is
     // still the intro's, circling far off, so the lab waits one frame
@@ -598,7 +615,11 @@ export class Pickadoll {
       car = hit.kind === 'car' ? this.world.cars[hit.target] : null;
     if (person) this.hitPerson(person, s.flavour, hit.dx, hit.dz, hit.y, weapon.power, weapon.splatM, colour, s.seed);
     else if (car) this.hitCar(car, s.flavour, hit, weapon.power, weapon.splatM, colour, s.seed);
-    else fx.splat(hit, s.flavour === 'gegga' ? weapon.splatM : weapon.splatM * 0.45, colour, s.seed);
+    else if (hit.kind === 'prop') {
+      // knocked over, with no splat: a mark left in the air where it stood would hang there
+      const k = weapon.power * KNOCK_NS_PER_POWER;
+      this.g.physics?.knockProp(hit.target, hit.x, hit.y, hit.z, hit.dx * k, k * KNOCK_UP, hit.dz * k);
+    } else fx.splat(hit, s.flavour === 'gegga' ? weapon.splatM : weapon.splatM * 0.45, colour, s.seed);
     if (person || car) this.mark();
     if (!weapon.blastM) return;
     const { push } = this;
