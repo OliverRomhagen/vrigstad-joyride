@@ -13,6 +13,11 @@ would become are drafted at the end.
 - **Recordings stay possible.** Swedish voice lines (#132) can't be synthesized. A recording would be one more kind of
   module, one that plays a file, so it goes through the same mix; it brings a loader and a `LICENSE` entry per file,
   and isn't part of the first ticket.
+- **Generated voices fit the same slot.** The design doc proposal (PR #214, still open) plans two things no ticket
+  covers yet: scripted Swedish lines generated from text when the game is built, and talking to people in the game
+  through a model that runs in the browser on WebGPU. To the player, the first is a recording. The second would be a
+  kind of module whose signal arrives live from the model, mixed, placed in the world and ducked like any other
+  voice. Neither is designed here; the point is that the voice bus is where both would plug in.
 - **A studio in the console** edits the same patches the game plays. You build a board from modules and wires, a
   change is heard at once, in the game, and Copy gives the patch as code to paste into the repo.
 
@@ -70,19 +75,23 @@ export const WAVE = { SINE: 'sine', TRIANGLE: 'triangle', SAW: 'sawtooth', SQUAR
 export const FILTER = { LOWPASS: 'lowpass', HIGHPASS: 'highpass', BANDPASS: 'bandpass' } as const;
 export const CURVE = { LINEAR: 'linear', EXPONENTIAL: 'exponential' } as const;
 export const GAME_INPUT = { REVS: 'revs', THROTTLE: 'throttle', SPEED: 'speed', DAMAGE: 'damage' } as const;
+/** the knobs a wire can end at; the values are the names typed in the console */
+export const KNOB = { FREQUENCY_HZ: 'frequency-hz', CUTOFF_HZ: 'cutoff-hz', GAIN: 'gain' /* … */ } as const;
+/** where every patch ends: its bus */
+export const OUT = 'out';
 
 interface Patch {
   /** another patch's id: this one starts as a copy of it, and its `modules` and `mix` override knob by knob */
   base?: string;
   /** id → module: a union by `kind`, so each kind has exactly its own knobs and the compiler checks them */
   modules: Record<string, Module>;
-  /** from a module's output to another module's signal input (`'band'`) or to one of its knobs (`'band.cutoff-hz'`);
-   *  `'out'` is always there and isn't listed in `modules` */
-  wires: [from: string, to: string][];
+  /** a module's output into another module's signal input, or into one of its knobs when `knob` is given;
+   *  `OUT` is always there and isn't listed in `modules` */
+  wires: { from: string; to: string; knob?: Knob }[];
   /** a loop holds its envelopes open until it is stopped, then lets them release; a one-shot runs them once */
   loops: boolean;
-  /** share of a knob's value that is rolled per play: { 'thump.frequency-hz': 0.15 } */
-  variation?: Record<string, number>;
+  /** share of a knob's value that is rolled per play: { module: 'thump', knob: KNOB.FREQUENCY_HZ, share: 0.15 } */
+  variation?: { module: string; knob: Knob; share: number }[];
   mix: {
     bus: Bus;
     gainDb: number;
@@ -97,23 +106,28 @@ interface Patch {
 }
 
 // a siren: an LFO switches a square oscillator between two tones
-const siren: Patch = {
+// `definePatch` returns the patch as it is, and makes TypeScript check each wire against this patch's own modules
+const siren = definePatch({
   modules: {
     tone: { kind: KIND.OSCILLATOR, wave: WAVE.SQUARE, frequencyHz: 760 },
     // an LFO's depth is in the unit of the knob it is wired to: here Hz, so 650 to 870 Hz
     swing: { kind: KIND.LFO, wave: WAVE.SQUARE, rateHz: 1.1, depth: 110 },
     band: { kind: KIND.FILTER, type: FILTER.BANDPASS, cutoffHz: 1200 },
   },
-  wires: [['swing', 'tone.frequency-hz'], ['tone', 'band'], ['band', 'out']],
+  wires: [
+    { from: 'swing', to: 'tone', knob: KNOB.FREQUENCY_HZ },
+    { from: 'tone', to: 'band' },
+    { from: 'band', to: OUT },
+  ],
   loops: true,
   mix: { bus: BUS.EFFECTS, gainDb: -6, positional: true, referenceM: 15, maxM: 400, maxVoices: 3, priority: 9 },
-};
+});
 
 // the part of an engine that opens up with throttle: a game input is a module too, with the range it maps to
 const engineLoad = {
   throttle: { kind: KIND.INPUT, input: GAME_INPUT.THROTTLE, toMin: 300, toMax: 2500, curve: CURVE.LINEAR, smoothS: 0.05 },
   load: { kind: KIND.FILTER, type: FILTER.LOWPASS, cutoffHz: 300 },
-  // wires: ['throttle', 'load.cutoff-hz']
+  // wires: { from: 'throttle', to: 'load', knob: KNOB.CUTOFF_HZ }
 };
 ```
 
@@ -141,10 +155,13 @@ What the sketch settles and what it leaves:
   whole world muffled inside a safehouse. Not in the first ticket, which has plain buses, but the format shouldn't
   rule it out.
 - **Names:** no fixed set is a bare string: kinds, waves, filter types, curves and game inputs are `as const` maps.
-  A knob is an ordinary camelCase property (`frequencyHz`), and its typed path is the kebab form
-  (`tone.frequency-hz`), as `topSpeed` is `top-speed` for the cars. Two kinds of string remain, because they are free
-  names and not a fixed set: the module ids a patch's author picks (`tone`, `swing`) and the wire ends that refer to
-  them. Registering a patch checks that every wire end exists.
+  A knob is an ordinary camelCase property (`frequencyHz`), and where a wire or a variation names one it is a
+  constant (`KNOB.FREQUENCY_HZ`), as is the patch's end (`OUT`). The dotted path `tone.frequency-hz` exists only where
+  someone types it, in the console and the tunables, as `topSpeed` is `top-speed` for the cars.
+- **One kind of string remains:** the module names a patch's author picks (`tone`, `swing`). They are made up per
+  patch, like variable names, so no shared map can list them. `definePatch` makes the compiler check them all the
+  same: a wire to a module the patch doesn't have fails the typecheck. A patch built in the studio or loaded from a
+  link is checked the same way when it is registered.
 
 ## How the engine would work
 
