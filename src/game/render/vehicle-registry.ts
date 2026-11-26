@@ -37,7 +37,7 @@ export const VEHICLES = [
     radius: 0.305,
     wheelbase: 2.517,
     rearAxle: 1.257,
-    length: 4.68,
+    length: 4.688,
     width: 1.69,
     police: false,
   },
