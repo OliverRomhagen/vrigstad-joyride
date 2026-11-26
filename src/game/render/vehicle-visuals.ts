@@ -3,7 +3,7 @@ import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { BODY_NODE, type VehicleId, vehicleDefinition, WHEEL_NODES } from './vehicle-registry';
 
-type Car = { mesh: THREE.Object3D; x: number; z: number; h: number };
+type Car = { mesh: THREE.Object3D; x: number; z: number; h: number; saleKr?: number };
 type Definition = NonNullable<ReturnType<typeof vehicleDefinition>>;
 type Wheel = { pivot: THREE.Group; spin: THREE.Group; front: boolean };
 type View = {
@@ -181,10 +181,12 @@ export class VehicleVisuals {
       this.views.sort((a, b) => a.distance - b.distance);
       let count = 0;
       for (const view of this.views) {
+        // a car for sale on Skroten's lot always shows its model, outside the cap: it's what you're asked to pay for, and the
+        // lot's cars would fill the cap between them and leave the car you came in as a box
         view.selected =
           view.status !== 'failed' &&
           view.distance < DETAIL_RANGE_M &&
-          count++ < (this.coarse ? DETAIL_CAP_COARSE : DETAIL_CAP_DESKTOP);
+          (!!view.car.saleKr || count++ < (this.coarse ? DETAIL_CAP_COARSE : DETAIL_CAP_DESKTOP));
         if (view.selected) this.loadModel(view);
         this.updateVisibility(view);
       }
@@ -196,6 +198,11 @@ export class VehicleVisuals {
   /** Whether the car's detailed model has loaded (false while loading, if it failed, or for a car without one). */
   loaded(car: Car) {
     return this.records.get(car)?.status === 'loaded';
+  }
+  /** The car's detailed model while it shows, else null: then its procedural body shows. */
+  visibleModel(car: Car) {
+    const root = this.records.get(car)?.root;
+    return root?.visible ? root : null;
   }
   definition(car: Car) {
     return this.records.get(car)?.definition;
