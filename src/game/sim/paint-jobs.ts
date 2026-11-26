@@ -1,6 +1,6 @@
 // Plåt-Pelle's limited paint jobs (#76): colours no car in the village is born with, and decals such as flames. Only his workshop's
 // lift sells them: nothing spawns with one, since the fleet picks a new car's paint from its type's own colours (VEHICLE_SPECS cols)
-// and gives it no decal. Plain data, no three.js, no DOM; render/paint-decals.ts draws the decals.
+// or, on his lot, from the yard's (skroten-yard.ts), and gives it no decal. Plain data, no three.js, no DOM; render/paint-decals.ts draws the decals.
 
 /** The decals he paints on, by id. */
 const DECALS = { FLAMES: 'flames', STRIPES: 'stripes', RALLY_NUMBER: 'rally-number' } as const;

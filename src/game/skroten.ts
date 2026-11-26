@@ -1,5 +1,5 @@
 // Skroten buys the car you drive in (#76): drive onto its ring, press E, and Plåt-Pelle makes an offer by the car's model and damage.
-// He mends and upgrades the car you drive onto the workshop's lift, and sells the cars on his lot: press E by one for his price. Neither with the police after you, and he never buys a police car.
+// He mends, upgrades and paints the car you drive onto the workshop's lift (special paints and decals too), and sells the cars on his lot: press E by one for his price. Neither with the police after you, and he never buys a police car.
 // On foot you can talk to him. main.ts passes in the menu plate, the wallet and what happens to the car. No three.js or DOM here.
 import type { Car, CarForSale } from './cars';
 import {
@@ -170,7 +170,7 @@ export class Skroten {
     return true;
   };
 
-  // the lift's menu: mending, the upgrades the car hasn't got, and a respray; it comes back after each job, for the next
+  // the lift's menu: mending, the upgrades the car hasn't got, a respray, his special paints and decals; it comes back after each job, for the next
   private openLift(c: Car) {
     const { openMenu, toast, carName } = this.g,
       no = this.refusesLift(c);

@@ -393,6 +393,16 @@ describe("Plåt-Pelle's limited paint jobs", () => {
     expect(t.menu()!.items).toHaveLength(WORKSHOP_PAINTS.length); // the paint it has is left out
   });
 
+  it('resprays a specially painted car in any of its stock colours, which takes the special paint off', () => {
+    const t = onLift(1000);
+    t.choose('special');
+    t.choose('p0');
+    t.choose('paint');
+    expect(t.menu()!.items).toHaveLength(specFor('volvo').cols.length + 1); // every stock colour, and no
+    t.choose('p0');
+    expect(t.g.game.pcar!.color).toBe(specFor('volvo').cols[0]);
+  });
+
   it('paints a decal on, swaps it for another, and takes it off for free', () => {
     const t = onLift(2000);
     t.choose('decal');
