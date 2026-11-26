@@ -3,7 +3,7 @@
 import { command } from './command-args';
 import type { Commands } from './commands';
 
-/** Every emote, in the picker's order. `secs` is how long it plays; 0 loops until you move. */
+/** Every emote. `secs` is how long it plays; 0 loops until you move. */
 export const EMOTES = [
   { id: 'dance', label: 'Dance', secs: 0 },
   { id: 'kiss', label: 'Blow a kiss', secs: 1.6 },

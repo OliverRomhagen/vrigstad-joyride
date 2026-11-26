@@ -28,7 +28,6 @@ Play it at https://oliverromhagen.github.io/vrigstad-joyride/, or run `npm insta
 | Jump on foot / brake in a car | Space | Jump button, which becomes Brake in a car |
 | Look around | Move the mouse (click the game to lock it, Esc frees the cursor) | Drag the view |
 | Back to Torget | R | |
-| Emote on foot: dance, blow a kiss, the finger, … | G, then a number | Emote button |
 | Go inside a safehouse / scratch a trisslott | E | Use button |
 
 Taking an occupied car always earns a wanted star; a parked one sometimes does. So does knocking someone over: hit a pedestrian at more than 15 km/h and they fly, tumble, and get back up a few seconds later. Each star (up to three) sends a police car. Stay about 170 m clear of them for 18 seconds and they give up. Get boxed in at low speed and you are *gripen* and sent back to Torget.
@@ -37,7 +36,7 @@ Three houses are safehouses, shown as green houses on the minimap and marked wit
 
 Money is in riksdaler, everyday Swedish for kronor when you want to sound a little funny. You start with 200, shown under the stars. The kiosk on Torget sells trisslotter (30 riksdaler), cat treats and food. One ticket in ten wins, from 30 riksdaler up to a rare 10 000, and the more losing tickets you scratch in a row, the worse your language gets. Skroten, the scrapyard by the workshop hall on Stockarydsvägen, buys the cars you steal: follow the signs, drive onto the ring inside the gate and press E. Plåt-Pelle, who runs it, has a word for you if you walk up to him. A clean car pays up to 1 600 riksdaler, a wreck only scrap, and nobody there buys a police car or deals with you while the police are after you. He also sells the cars by the TILL SALU sign and under the carport, for two and a half times what Skroten pays for one whole (up to 4 000 riksdaler), and keeps them as new until they're sold: press E by one to buy it, and it's yours. Drive a damaged car onto the lift in his workshop and press E, and he mends it for up to half what he would pay for it whole. Getting *gripen* costs a fine: a quarter of your money, or 100 riksdaler per star if that is more. And if 1 000 riksdaler is burning a hole in your pocket, press L.
 
-For testing, `npm run dev` or `?dev` on any build's URL turns on dev mode: `§` (or `` ` ``) opens a console, where `help` lists the commands, `kr 500` adds 500 riksdaler, `mynt` adds 1 000 riksdaler, `adopt cat` gives you a new cat, `car volvo240` parks that car next to you, already yours, `damage 60` damages the car you drive, and `go skroten` takes you to Skroten (or to `torget`, the `kiosk`, `verkstan`, Plåt-Pelle's lift, or a safehouse by its street).
+For testing, `npm run dev` or `?dev` on any build's URL turns on dev mode: `§` (or `` ` ``) opens a console, where `help` lists the commands, `kr 500` adds 500 riksdaler, `mynt` adds 1 000 riksdaler, `adopt cat` gives you a new cat, `car volvo240` parks that car next to you, already yours, `damage 60` damages the car you drive, `dance` (or `kiss`, `finger`, `twerk`, `wave`, `shrug`, `grodorna`, `sit`) plays an emote on foot until you move or press E, and `go skroten` takes you to Skroten (or to `torget`, the `kiosk`, `verkstan`, Plåt-Pelle's lift, or a safehouse by its street).
 
 ## How it is built
 

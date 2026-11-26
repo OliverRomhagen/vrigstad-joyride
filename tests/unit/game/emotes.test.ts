@@ -31,8 +31,7 @@ describe('emotes', () => {
     expect(p.emote).toEqual({ id: 'wave', t: 0 });
   });
 
-  it('fits the picker: at most eight, one per number key, each id once', () => {
-    expect(EMOTES.length).toBeLessThanOrEqual(8);
+  it('names each emote once', () => {
     expect(new Set(EMOTES.map(e => e.id)).size).toBe(EMOTES.length);
   });
 
