@@ -59,11 +59,14 @@ export class Crashes {
     return colony.owned && colony.owned.ride === game.pcar ? colony.owned : null;
   };
 
+  // the car you drive in god mode, and Plåt-Pelle's cars for sale: he sells them as new, so a dented one never comes cheap
+  private spared = (k: Car) => k.saleKr > 0 || (this.g.god && k === this.g.game.pcar);
+
   // one hit: both cars take the damage, and the player too if they're in one; the glass cracks in updateSmoke
   crash = (c: Car, o: Car | null, impact: number) => {
-    const { game, toast, hurtPlayer, shake, viewer, god } = this.g,
+    const { game, toast, hurtPlayer, shake, viewer } = this.g,
       { catAboard, pickLine } = this;
-    const hits = crashCars(game.clockS, impact, c, o, god ? game.pcar : null);
+    const hits = crashCars(game.clockS, impact, c, o, this.spared);
     if (!hits.length) return;
     let said = false; // one line per crash: wrecked, then smoke, then the crash itself
     for (const { car: k, wrecked: w, smokeUp } of hits) {
