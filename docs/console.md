@@ -133,8 +133,8 @@ line.
    function beside the rule (see [The shape](#the-shape)).
 2. Build it with `command()`: a `help` line of up to 80 characters, `examples` that start with its name, and typed
    `args`, so parsing, the usage line and Tab come for free.
-3. Keep `run` to reading its values and calling the module's API, and return one line to show, or `refuse(reason)`
-   when the module's rule said no.
+3. Keep `run` to reading its values and calling the module's API, and return one line to show, or
+   `refuse(code, reason)` when the module's rule said no.
 4. Call the register function in the module's unit test: a missing help line or a bad example fails there, in
    seconds, rather than when the page starts.
 5. Call it once from `src/game/main.ts`, next to the others. `help` lists the command; nothing else needs to change.
@@ -180,10 +180,12 @@ commands.register('go', command({
 - **A command is thin.** It reads its arguments and calls the module's own API, and the rule lives in the module,
   where a unit test reaches it without the console. `run` returns one line to show (English: it is UI text), or ''.
 - **A run is done or refused.** A string from `run` means the command was done. When it understood the line but the
-  game's rules said no, it returns `refuse('No car in reach.')` (`src/game/commands.ts`) with the reason as the line
-  to show. A refusal is a returned value, not an exception: the rule that says no is a plain function that other code
+  game's rules said no, it returns `refuse('no-car-in-reach', 'No car in reach.')` (`src/game/commands.ts`): the
+  refusal's name, kebab-case, and the reason as the line to show. Code that reacts to a refusal (a tutorial, a sound,
+  a test) matches on the name in `outcome.code`, never on the sentence, which stays free to be reworded. The registry's
+  own refusals are named in `REFUSAL`: `unknown-command`, `not-allowed`, `usage` and `hook`. A refusal is a returned value, not an exception: the rule that says no is a plain function that other code
   calls too. Bad arguments still throw a `UsageError`. `commands.execute(line, source)` gives the caller the whole
-  `Outcome`, `{ ok, text }`, and `commands.run(line, source)` only its `text`, for a caller that just shows the line,
+  `Outcome`, `{ ok, text, code }`, and `commands.run(line, source)` only its `text`, for a caller that just shows the line,
   such as the console box. Not `ok`: a refusal by the command or by a hook, a `UsageError`, an unknown command and
   one that isn't allowed here. Everything else is `ok`, an empty line and an answer to `--help` included. No command
   returns a refusal yet; the player commands (#366) are the first.
@@ -201,16 +203,16 @@ it doesn't exist. Multiplayer (#1) adds its own question here (host only, or a v
 
 ```ts
 const stop = commands.use((call, next) => {    // call: { name, args, source }
-  if (call.source === 'url' && call.name === 'kr') return 'Not from a link.';   // a refusal: { ok: false, text }
+  if (call.source === 'url' && call.name === 'kr') return 'Not from a link.';   // a refusal: { ok: false, text, code: 'hook' }
   return next();                               // run the command and the hooks inside this one: { ok, text }
 });
 ```
 
 A hook wraps every command that runs: it can look at the call, refuse it, change or record the result. Its type is
 `Hook = (call: Call, next: () => Outcome) => Outcome | string`. `next()` gives the run's `Outcome`, and a hook that
-lets the command run returns it. A plain string from a hook is its own line, not the command's, so it counts as a
-refusal: the short form above. A hook that changes the line of a run keeps whether it was done, with
-`return { ...outcome, text }`. The first one added is the outermost. This is where cross-cutting work goes, so no command has to know about it:
+lets the command run returns it. A plain string from a hook that never called `next()` stopped the command, so it counts as a
+refusal: the short form above. A string from a hook that did call `next()` only changes the line shown; whether the
+run was done stays what `next()` said, as with `return { ...outcome, text }`. The first one added is the outermost. This is where cross-cutting work goes, so no command has to know about it:
 
 | Hook | What it does | Issue |
 |---|---|---|

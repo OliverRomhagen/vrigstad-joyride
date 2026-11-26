@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { type Call, Commands, HELP_MAX, type Outcome, parseKr, refuse, UsageError } from '../../../src/game/commands';
+import {
+  type Call,
+  Commands,
+  HELP_MAX,
+  type Outcome,
+  parseKr,
+  REFUSAL,
+  refuse,
+  UsageError,
+} from '../../../src/game/commands';
 
 describe('commands', () => {
   const echo = () => {
@@ -234,6 +243,7 @@ describe('commands', () => {
   });
 
   describe('execute', () => {
+    const NO_CAR = { ok: false, text: 'No car in reach.', code: 'no-car-in-reach' };
     /** A registry with a car to get into only once one is parked near, and how many times `enter` ran. */
     const garage = (allowed?: (access: string) => boolean) => {
       const c = new Commands({ allowed });
@@ -244,7 +254,7 @@ describe('commands', () => {
         access: 'player',
         run: () => {
           runs++;
-          return near ? 'You are in the Volvo 240.' : refuse('No car in reach.');
+          return near ? 'You are in the Volvo 240.' : refuse('no-car-in-reach', 'No car in reach.');
         },
       });
       c.register('kr', { usage: '<amount>', help: 'money', run: a => String(parseKr(a[0])) });
@@ -266,22 +276,35 @@ describe('commands', () => {
 
     it('says a run was refused, with the reason, for a command that returns refuse()', () => {
       const { c } = garage();
-      expect(refuse('No car in reach.')).toEqual({ ok: false, text: 'No car in reach.' });
-      expect(c.execute('enter')).toEqual({ ok: false, text: 'No car in reach.' });
+      expect(refuse('no-car-in-reach', 'No car in reach.')).toEqual(NO_CAR);
+      expect(c.execute('enter')).toEqual(NO_CAR);
+      expect(() => refuse('No car', 'No car in reach.')).toThrow('kebab-case');
       expect(c.run('enter')).toBe('No car in reach.');
     });
 
     it('counts bad arguments as not done, with the usage line as before', () => {
       const { c } = garage();
-      expect(c.execute('kr lots')).toEqual({ ok: false, text: 'Usage: kr <amount>' });
-      expect(c.execute('help fly')).toEqual({ ok: false, text: 'No command called fly. Usage: help [command]' });
+      expect(c.execute('kr lots')).toEqual({ ok: false, text: 'Usage: kr <amount>', code: REFUSAL.USAGE });
+      expect(c.execute('help fly')).toEqual({
+        ok: false,
+        text: 'No command called fly. Usage: help [command]',
+        code: REFUSAL.USAGE,
+      });
       expect(c.run('kr lots')).toBe('Usage: kr <amount>');
     });
 
     it('counts an unknown command, and one that is not allowed here, as not done', () => {
       const { c } = garage(a => a === 'player');
-      expect(c.execute('fly 3')).toEqual({ ok: false, text: 'Unknown command: fly. Type help for the list.' });
-      expect(c.execute('kr 5')).toEqual({ ok: false, text: 'kr works in dev mode only (?dev).' });
+      expect(c.execute('fly 3')).toEqual({
+        ok: false,
+        text: 'Unknown command: fly. Type help for the list.',
+        code: REFUSAL.UNKNOWN_COMMAND,
+      });
+      expect(c.execute('kr 5')).toEqual({
+        ok: false,
+        text: 'kr works in dev mode only (?dev).',
+        code: REFUSAL.NOT_ALLOWED,
+      });
       expect(c.run('fly 3')).toBe('Unknown command: fly. Type help for the list.');
       expect(c.run('kr 5')).toBe('kr works in dev mode only (?dev).');
     });
@@ -339,7 +362,7 @@ describe('commands', () => {
         if (call.source === 'url' && call.name === 'enter') return 'Not from a link.';
         return next();
       });
-      expect(c.execute('enter', 'url')).toEqual({ ok: false, text: 'Not from a link.' });
+      expect(c.execute('enter', 'url')).toEqual({ ok: false, text: 'Not from a link.', code: REFUSAL.HOOK });
       expect(c.run('enter', 'url')).toBe('Not from a link.');
       expect(runs()).toBe(0);
       expect(c.execute('enter')).toEqual({ ok: true, text: 'You are in the Volvo 240.' });
@@ -355,8 +378,8 @@ describe('commands', () => {
         return outcome;
       });
       c.use(() => 'Not now.');
-      expect(c.execute('enter')).toEqual({ ok: false, text: 'Not now.' });
-      expect(seen).toEqual([{ ok: false, text: 'Not now.' }]);
+      expect(c.execute('enter')).toEqual({ ok: false, text: 'Not now.', code: REFUSAL.HOOK });
+      expect(seen).toEqual([{ ok: false, text: 'Not now.', code: REFUSAL.HOOK }]);
     });
 
     it('hands on the outcome a hook passes through unchanged, done or refused', () => {
@@ -365,7 +388,7 @@ describe('commands', () => {
         const answer = next();
         return answer;
       });
-      expect(c.execute('enter')).toEqual({ ok: false, text: 'No car in reach.' });
+      expect(c.execute('enter')).toEqual(NO_CAR);
       park();
       expect(c.execute('enter')).toEqual({ ok: true, text: 'You are in the Volvo 240.' });
     });
@@ -376,9 +399,18 @@ describe('commands', () => {
         const outcome = next();
         return { ...outcome, text: outcome.text.toUpperCase() };
       });
-      expect(c.execute('enter')).toEqual({ ok: false, text: 'NO CAR IN REACH.' });
+      expect(c.execute('enter')).toEqual({ ...NO_CAR, text: 'NO CAR IN REACH.' });
       park();
       expect(c.execute('enter')).toEqual({ ok: true, text: 'YOU ARE IN THE VOLVO 240.' });
+    });
+
+    it('keeps whether the run was done when a hook that ran the command returns a line of its own', () => {
+      const { c, park, runs } = garage();
+      c.use((_call, next) => '[' + next().text + ']');
+      expect(c.execute('enter')).toEqual({ ...NO_CAR, text: '[No car in reach.]' });
+      park();
+      expect(c.execute('enter')).toEqual({ ok: true, text: '[You are in the Volvo 240.]' });
+      expect(runs()).toBe(2);
     });
 
     it('gives a hook that calls next twice the same outcome, from one run', () => {
@@ -389,10 +421,10 @@ describe('commands', () => {
         seen.push(next());
         return next();
       });
-      expect(c.execute('enter')).toEqual({ ok: false, text: 'No car in reach.' });
+      expect(c.execute('enter')).toEqual(NO_CAR);
       expect(seen[1]).toBe(seen[0]);
       expect(runs()).toBe(1);
-      expect(c.execute('kr lots')).toEqual({ ok: false, text: 'Usage: kr <amount>' });
+      expect(c.execute('kr lots')).toEqual({ ok: false, text: 'Usage: kr <amount>', code: REFUSAL.USAGE });
     });
   });
 

@@ -117,13 +117,14 @@ describe('command', () => {
       command({
         help: 'buy a car',
         args: [choice('car', ['volvo', 'saab'])],
-        run: ({ car }) => (owned.includes(car) ? refuse(`You already own the ${car}.`) : `Bought the ${car}.`),
+        run: ({ car }) =>
+          owned.includes(car) ? refuse('already-owned', `You already own the ${car}.`) : `Bought the ${car}.`,
       }),
     );
-    expect(c.execute('t volvo')).toEqual({ ok: false, text: 'You already own the volvo.' });
+    expect(c.execute('t volvo')).toEqual({ ok: false, text: 'You already own the volvo.', code: 'already-owned' });
     expect(c.run('t volvo')).toBe('You already own the volvo.');
     expect(c.execute('t saab')).toEqual({ ok: true, text: 'Bought the saab.' });
-    expect(c.execute('t')).toEqual({ ok: false, text: 'Usage: t <car>' });
+    expect(c.execute('t')).toEqual({ ok: false, text: 'Usage: t <car>', code: 'usage' });
   });
 
   it("shows each described argument, the details and the examples in the command's help", () => {

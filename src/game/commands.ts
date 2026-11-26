@@ -51,25 +51,44 @@ export interface Command {
   run(args: string[], call: Call): string | Outcome;
 }
 
-/** What a run came to: `ok` with the line to show, or not `ok` with the reason it didn't happen. */
+/** What a run came to: `ok` with the line to show, or not `ok` with which refusal it was and the reason to show. */
 export interface Outcome {
   readonly ok: boolean;
   readonly text: string;
+  /**
+   * Which refusal it was, when not `ok`: a kebab-case name that code matches on (`too-fast`), so a tutorial, a sound
+   * or a test never compares the sentence, which stays free to be reworded.
+   */
+  readonly code?: string;
 }
 
+/** The refusals the registry gives itself; a command names its own (`no-car-in-reach`). */
+export const REFUSAL = {
+  /** no command by that name */
+  UNKNOWN_COMMAND: 'unknown-command',
+  /** the command needs dev mode */
+  NOT_ALLOWED: 'not-allowed',
+  /** arguments the command can't use: the text is its usage line */
+  USAGE: 'usage',
+  /** a hook answered with a line of its own without running the command */
+  HOOK: 'hook',
+} as const;
+
 /**
- * The outcome of a command that understood its line but didn't do it: `return refuse('No car in reach.')`. Returned,
- * not thrown: the rule that says no is a plain function that other code calls too.
+ * The outcome of a command that understood its line but didn't do it: `return refuse('no-car-in-reach', 'No car in
+ * reach.')`, the refusal's name and the reason to show. Returned, not thrown: the rule that says no is a plain
+ * function that other code calls too.
  */
-export function refuse(reason: string): Outcome {
-  return { ok: false, text: reason };
+export function refuse(code: string, reason: string): Outcome {
+  if (!NAME.test(code)) throw new Error('refusal codes are kebab-case: ' + code);
+  return { ok: false, text: reason, code };
 }
 
 /**
  * Wraps every run, for logging, recording or refusing: return `next()` to run the command (and the hooks inside this
- * one), or a line of your own to stop it, which counts as a refusal. `next()` gives the Outcome, so a hook can keep
- * only the runs that were done; to change the line of one, return `{ ...outcome, text }`. The first hook added is the
- * outermost.
+ * one), or a line of your own to stop it, which counts as a refusal (`hook`). `next()` gives the Outcome, so a hook
+ * can keep only the runs that were done. A hook that ran the command and returns a line changes only what is shown:
+ * whether it was done stays what `next()` said. The first hook added is the outermost.
  */
 export type Hook = (call: Call, next: () => Outcome) => Outcome | string;
 
@@ -161,8 +180,9 @@ export class Commands {
     if (!typed) return done('');
     const name = this.resolve(typed.toLowerCase());
     const cmd = name === undefined ? undefined : this.byName.get(name);
-    if (!cmd || name === undefined) return refuse(`Unknown command: ${typed}. Type help for the list.`);
-    if (!this.canRun(cmd)) return refuse(`${name} works in dev mode only (?dev).`);
+    if (!cmd || name === undefined)
+      return refuse(REFUSAL.UNKNOWN_COMMAND, `Unknown command: ${typed}. Type help for the list.`);
+    if (!this.canRun(cmd)) return refuse(REFUSAL.NOT_ALLOWED, `${name} works in dev mode only (?dev).`);
     const found = descend(name, cmd, args);
     // every command answers --help the same way, before it runs, so none can forget to
     if (found.args.length === 1 && HELP_FLAGS.includes(found.args[0])) return done(this.helpFor(found));
@@ -181,16 +201,22 @@ export class Commands {
           failure = { err };
           throw err;
         }
-        outcome = refuse(`${err.message ? err.message + ' ' : ''}Usage: ${usage(found)}`);
+        outcome = refuse(REFUSAL.USAGE, `${err.message ? err.message + ' ' : ''}Usage: ${usage(found)}`);
       }
       return outcome;
     };
-    // The first hook is the outermost: fold from the last one in. A line a hook returns is its own, not the command's,
-    // so it is a refusal; a hook that lets the command run hands on the outcome next() gave it.
+    // The first hook is the outermost: fold from the last one in. A line from a hook that never called next() stopped
+    // the command, so it is a refusal. A line from one that did call it only changes what is shown: the command ran,
+    // and saying it didn't would have E tell you "no" after it got you into the car.
     const chain = this.hooks.reduceRight<() => Outcome>(
       (next, hook) => () => {
-        const answer = hook(call, next);
-        return typeof answer === 'string' ? refuse(answer) : answer;
+        let inside: Outcome | undefined;
+        const answer = hook(call, () => {
+          inside = next();
+          return inside;
+        });
+        if (typeof answer !== 'string') return answer;
+        return inside ? { ...inside, text: answer } : refuse(REFUSAL.HOOK, answer);
       },
       inner,
     );
