@@ -107,6 +107,31 @@ test('police retain authored paint and their real beacon meshes flash', async ()
   expect(beacons[0].emissiveIntensity).not.toBe(lit);
 });
 
+test('only the body, the tyres and big parts cast shadows, and none on coarse devices (#405)', async () => {
+  const casters = async (coarse: boolean) => {
+    const assets = new VehicleVisuals(coarse),
+      c = car();
+    assets.attach(c, 'xc70-police', c.fallback);
+    assets.update(focus, 0.01);
+    await settle(assets, [c]);
+    const names: string[] = [];
+    c.mesh.traverse(node => {
+      if (node instanceof THREE.Mesh && node !== c.fallback && node.castShadow) names.push(node.name);
+    });
+    return names.sort();
+  };
+  expect(await casters(false)).toEqual([
+    'body',
+    'parts_charcoal_plastic_rubber', // bumpers, sills, roof rails
+    'parts_satin_alloy', // skid plates, handles, light bar base
+    'wheel_fl',
+    'wheel_fr',
+    'wheel_rl',
+    'wheel_rr',
+  ]);
+  expect(await casters(true)).toEqual([]);
+});
+
 test('failed nearest models leave capacity for the healthy fourth model', async () => {
   vi.mocked(GLTFLoader.prototype.loadAsync).mockImplementation(async url => {
     if (url.endsWith('micra-k11.glb')) throw new Error('Expected missing asset');

@@ -73,7 +73,7 @@ describe('Cockpit (the driver’s view, lab: cockpit)', () => {
     k.update();
     expect(k.inside).toBe(true);
     const eye = inFrameOf(sprung, camera.position);
-    expect(eye.x).toBeCloseTo(-0.81 * 0.45, 2); // Swedish cars are left-hand drive: 45 % of the glass's half width
+    expect(eye.x).toBeCloseTo(-0.37, 2); // the round-3 Volvo cabin reaches the 37 cm left-hand-drive offset cap
     expect(eye.y).toBeGreaterThan(0.94 + 0.2); // the Volvo's glass runs from 0.94 m to 1.43 m
     expect(eye.y).toBeLessThan(1.43 - 0.1);
     expect(eye.z).toBeGreaterThan(-0.85); // behind the windscreen's foot, ahead of the rear window
