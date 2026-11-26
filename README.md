@@ -4,6 +4,7 @@ A small open-world driving game set in the real village of Vrigstad, Sweden (57.
 
 - **The game** (`src/index.html`): walk around, steal a Volvo 240, a Saab 900, an EPA-traktor or a tractor, and outrun the police.
 - **The map** (`src/map.html`) is an interactive 3D terrain model of the same 2.2 × 2.2 km area.
+- **The marketing site** (`src/about.html`): the teaser, a tiny top-down getaway on the real map, the garage and a trisslott to scratch.
 
 <p align="center">
   <a href="https://oliverromhagen.github.io/vrigstad-joyride/media/teaser.mp4"><img src="media/teaser.gif" width="640" alt="Teaser trailer: the village from the air, a red Volvo 240 chased by three police cars, an EPA-traktor at 30 km/h, and the title card"></a><br>
@@ -45,18 +46,19 @@ Contributors (human or agent): read [AGENTS.md](AGENTS.md) for conventions, incl
 ```
 src/index.html     the game page (HTML, CSS); its code is src/game/main.ts
 src/map.html       the 3D map page; its code is src/map/main.ts
+src/about.html     the marketing page; its code is src/about/main.ts
 data/raw/          OpenStreetMap extract (osm.json) and one elevation tile (tile.png)
 data/vrigstad.json processed data: buildings, roads, water, land use, 25 m elevation grid
 tools/fetch.sh     re-downloads data/raw from the Overpass API and Mapzen terrain tiles
 tools/process.py   projects and clips the raw data into data/vrigstad.json
-tools/build.mjs    builds both pages with Vite into dist/, each as one HTML file, with its fonts and models beside it
+tools/build.mjs    builds the pages with Vite into dist/, each as one HTML file, with its fonts and models beside it
 ```
 
 It needs Node. Work on it with a dev server, and rebuild after changing anything in `src/`:
 
 ```sh
 npm install
-npm run dev      # http://localhost:5173/ is the game, /map.html the map
+npm run dev      # http://localhost:5173/ is the game, /map.html the map, /about.html the marketing page
 npm run build
 ```
 

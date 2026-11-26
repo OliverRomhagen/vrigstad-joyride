@@ -10,12 +10,12 @@ A browser open-world driving game set in the real village of Vrigstad, Sweden, b
 
 ```sh
 npm install                 # once
-npm run dev                 # dev server with hot reload: the game at http://localhost:5173/, the map at /map.html
+npm run dev                 # dev server with hot reload: the game at http://localhost:5173/, the map at /map.html, the marketing page at /about.html
 npm run check               # typecheck, lint and format check (Biome), then the static gate (Fallow); run before every commit, with npm test, and CI runs it on every PR that changes code
 npm run format              # apply Biome's formatting and safe lint fixes
 npm test                    # unit tests (Vitest), once
 npm run analyze:report      # reading passes (Fallow): copied code and complexity hotspots; reported, never fails
-npm run build               # production build into dist/ (index.html, map.html)
+npm run build               # production build into dist/ (index.html, map.html, about.html)
 npm run preview             # serve the built dist/ locally
 npx playwright install chromium   # once, for the smoke tests
 npm run test:e2e            # Playwright smoke tests against the built pages in dist/; build first. Before a commit, run only yours (see Tests)
@@ -196,7 +196,7 @@ Until the migration reaches a given rule, don't make the existing code worse in 
 - The numbers in the tunables registry take `?dev&tune=driving.grip:8,vehicle.volvo.top-speed:45` (keys in `src/game/sim/car-tunables.ts`), in dev mode only; a key or value it can't use is a warning in the browser's console, and the rest still apply. In the console, `tune set`, `tune get`, `tune list` and `tune reset` change them while you play.
 - The sky's clouds take URL parameters for visual testing: `?clouds=clear|scattered|partly|mostly|off`, `cloudSeed=7`, `wind=250,7` (from degrees, m/s), `cloudSoft=1.3` and `cloudQuality=low|high` (`src/world/clouds.ts`).
 - `?sunrays=off` leaves out the sunlight streaks and the sun disc (`src/game/render/sun-streaks.ts`), for comparing with them on; `?time=16&cycle=off` holds the sun at one hour.
-- The smoke tests live in `tests/e2e/` and run in CI on every PR that changes more than docs, labels, issue forms, agent files or other workflows (`.github/workflows/e2e.yml`), split across three runners with Playwright's `--shard` and reported as one `Smoke tests (Playwright)` check. The workflow also fails if the committed `data/vrigstad.json` is stale, and uploads screenshots of both pages as the `e2e-screenshots` artifact. They read game state from `window.__joyride.state()` (defined in `src/game/test-hook.ts`); add a field there when a new smoke step needs one, and keep the hook read-only.
+- The smoke tests live in `tests/e2e/` and run in CI on every PR that changes more than docs, labels, issue forms, agent files or other workflows (`.github/workflows/e2e.yml`), split across three runners with Playwright's `--shard` and reported as one `Smoke tests (Playwright)` check. The workflow also fails if the committed `data/vrigstad.json` is stale, and uploads screenshots of the pages as the `e2e-screenshots` artifact. They read game state from `window.__joyride.state()` (defined in `src/game/test-hook.ts`); add a field there when a new smoke step needs one, and keep the hook read-only.
 - **Static analysis** ([Fallow](https://github.com/fallow-rs/fallow), [#107](https://github.com/OliverRomhagen/vrigstad-joyride/issues/107)), configured in `fallow.toml`, is the last step of `npm run check`, so it runs before every commit and in CI (`.github/workflows/check.yml`), and takes well under a second:
   - The gate (`fallow dead-code`) fails on: an unused file, export, class member or dependency; a circular import; an import across the layers in `fallow.toml` (`world` imports only `world`; `sim` only `sim` and `world`; `render` anything but the page code).
   - Biome (`biome.jsonc` and `tools/biome/`) and tsc check the architecture rules Fallow can't see, on the same zones. Rule 2, in `world` and `sim` code: `tsconfig.sim.json` leaves out the DOM library, so tsc rejects every page global and type there (`window`, `innerWidth`, `HTMLElement`, …); Biome flags the common ones as you type, `addEventListener` on any object, and a `three` import outside `src/world/mesh/` and `three-legacy.ts`. Rule 3: Biome flags the keyboard, mouse, pointer, touch, wheel and gamepad event types and event names in `world`, `sim` and `render` code. Rule 5: Biome flags `Math.random` anywhere in `src/` but the map, and any other use of `Math` than reading a property such as `Math.floor`, since `const { random } = Math` or `const M = Math` hands it on. Two names aren't flagged, since they name other things as often: `"wheel"` and `"click"`. They still miss an event name built at runtime (`` `key${'down'}` ``) and a raw key read such as `keys.run`, which looks like any other property without types.
@@ -212,7 +212,7 @@ Until the migration reaches a given rule, don't make the existing code worse in 
 - World units are **metres**. Origin is at 57.3555° N, 14.4756° E (near Torget). **x points east, z points south**, y is up. The playable square is 2200 m × 2200 m, from −1100 to 1100.
 - `data/vrigstad.json` is generated by `tools/process.py`. Don't edit it by hand; change the script and rebuild.
 - `data/raw/` is the downloaded source data. Only refresh it on purpose (it changes the map).
-- Map data is © OpenStreetMap contributors (ODbL). Keep the attribution visible in both pages. Any new third-party asset, model, font or sound needs its licence added to `LICENSE`.
+- Map data is © OpenStreetMap contributors (ODbL). Keep the attribution visible in every page. Any new third-party asset, model, font or sound needs its licence added to `LICENSE`.
 
 ## Language and tone
 
