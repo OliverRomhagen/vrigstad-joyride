@@ -482,8 +482,20 @@ describe('Input.addControl', () => {
     expect(() => i.addControl({ codes: ['KeyX'] })).toThrow('KeyX');
     expect(() => i.addControl({ mouseButton: MouseButton.LEFT })).toThrow('mouse button 1');
     expect(() => i.addControl({ codes: ['KeyP'] })).toThrow('KeyP'); // the pets menu's
+    // a menu's number key closes the menu, and its next repeat would press the control
+    expect(() => i.addControl({ codes: ['Digit1'] })).toThrow('Digit1');
+    expect(() => i.addControl({ codes: ['Numpad9'] })).toThrow('Numpad9');
+    expect(() => i.addControl({ codes: ['Digit0'] })).not.toThrow(); // no menu has an option 0
     // a refused control adds nothing: its other key is still free
     expect(() => i.addControl({ codes: ['KeyZ', 'KeyE'] })).toThrow('KeyE');
     expect(() => i.addControl({ codes: ['KeyZ'] })).not.toThrow();
+  });
+
+  it('refuses ctrl, alt and ⌘ as keys: their own keydown says a modifier is held, so they would never press', () => {
+    const { i } = fireControl();
+    for (const code of ['ControlLeft', 'ControlRight', 'AltLeft', 'AltRight', 'MetaLeft', 'MetaRight', 'OSLeft'])
+      expect(() => i.addControl({ codes: [code] })).toThrow(`${code} is a modifier`);
+    expect(() => i.addControl({ codes: ['KeyZ', 'AltLeft'] })).toThrow('AltLeft');
+    expect(() => i.addControl({ codes: ['KeyZ'] })).not.toThrow(); // nothing was added
   });
 });
