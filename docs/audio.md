@@ -65,12 +65,17 @@ A sketch, to show the size of it, not to fix the names:
 
 ```ts
 export const BUS = { ENGINE: 'engine', EFFECTS: 'effects', VOICE: 'voice', AMBIENCE: 'ambience', UI: 'ui' } as const;
+export const KIND = { OSCILLATOR: 'oscillator', NOISE: 'noise', FILTER: 'filter', LFO: 'lfo', INPUT: 'input' /* … */ } as const;
+export const WAVE = { SINE: 'sine', TRIANGLE: 'triangle', SAW: 'sawtooth', SQUARE: 'square' } as const;
+export const FILTER = { LOWPASS: 'lowpass', HIGHPASS: 'highpass', BANDPASS: 'bandpass' } as const;
+export const CURVE = { LINEAR: 'linear', EXPONENTIAL: 'exponential' } as const;
+export const GAME_INPUT = { REVS: 'revs', THROTTLE: 'throttle', SPEED: 'speed', DAMAGE: 'damage' } as const;
 
 interface Patch {
   /** another patch's id: this one starts as a copy of it, and its `modules` and `mix` override knob by knob */
   base?: string;
-  /** id → module; `kind` is a key in the registry of module kinds, the rest are its knobs */
-  modules: Record<string, { kind: ModuleKind; [knob: string]: number | string }>;
+  /** id → module: a union by `kind`, so each kind has exactly its own knobs and the compiler checks them */
+  modules: Record<string, Module>;
   /** from a module's output to another module's signal input (`'band'`) or to one of its knobs (`'band.cutoff-hz'`);
    *  `'out'` is always there and isn't listed in `modules` */
   wires: [from: string, to: string][];
@@ -94,10 +99,10 @@ interface Patch {
 // a siren: an LFO switches a square oscillator between two tones
 const siren: Patch = {
   modules: {
-    tone: { kind: 'oscillator', wave: 'square', 'frequency-hz': 760 },
+    tone: { kind: KIND.OSCILLATOR, wave: WAVE.SQUARE, frequencyHz: 760 },
     // an LFO's depth is in the unit of the knob it is wired to: here Hz, so 650 to 870 Hz
-    swing: { kind: 'lfo', wave: 'square', 'rate-hz': 1.1, depth: 110 },
-    band: { kind: 'filter', type: 'bandpass', 'cutoff-hz': 1200 },
+    swing: { kind: KIND.LFO, wave: WAVE.SQUARE, rateHz: 1.1, depth: 110 },
+    band: { kind: KIND.FILTER, type: FILTER.BANDPASS, cutoffHz: 1200 },
   },
   wires: [['swing', 'tone.frequency-hz'], ['tone', 'band'], ['band', 'out']],
   loops: true,
@@ -106,8 +111,8 @@ const siren: Patch = {
 
 // the part of an engine that opens up with throttle: a game input is a module too, with the range it maps to
 const engineLoad = {
-  throttle: { kind: 'input', name: 'throttle', 'to-min': 300, 'to-max': 2500, curve: 'linear', 'smooth-s': 0.05 },
-  load: { kind: 'filter', type: 'lowpass', 'cutoff-hz': 300 },
+  throttle: { kind: KIND.INPUT, input: GAME_INPUT.THROTTLE, toMin: 300, toMax: 2500, curve: CURVE.LINEAR, smoothS: 0.05 },
+  load: { kind: KIND.FILTER, type: FILTER.LOWPASS, cutoffHz: 300 },
   // wires: ['throttle', 'load.cutoff-hz']
 };
 ```
@@ -121,12 +126,25 @@ What the sketch settles and what it leaves:
   the crash.
 - **An octave down** is an oscillator's `ratio` knob (0.5) on the frequency it is wired to. More arithmetic than
   that would be a kind of its own.
+- **Bussing inside a patch needs nothing extra.** Any number of wires can end at the same module, and Web Audio adds
+  them together: three oscillators into one filter is a bus. One module can feed several others.
+- **Side-chaining is a wire to a knob:** one signal steering another's gain or cutoff. A `follower` kind, which turns
+  a signal's loudness into a control value, would let one part of a patch duck another.
+- **Feedback goes through a delay.** Web Audio allows a loop in the graph only with a delay in it, so an output wired
+  back to an earlier module through a `delay` module gives echo, comb filters and plucked strings. A loop without one
+  is refused when the patch is registered.
 - **A module has one signal input** in the first version, so a wire's target is either a module or one of its knobs.
-  A kind with several named inputs (a mixer, a ring modulator) would need a third form, left open.
-- **Names:** a module's knobs are keyed by the name people type, as a tunable's key is, so `tone.frequency-hz` is the
-  same in the patch, the console and the studio. `mix` is ordinary code, in camelCase, and its typed path is the
-  kebab form (`mix.gain-db`), as `topSpeed` is `top-speed`. The kind, wave, filter and curve names would be
-  `as const` maps in the real code, not the bare strings shown here.
+  That only limits a kind that treats two inputs differently (a ring modulator, a crossfader), which would need a
+  third form, left open.
+- **A mix bus is a board too.** Each bus (engine, effects, voice) is built from the same modules, so it can carry a
+  filter or a reverb that every patch on it shares, and one bus can duck another: voices over the engine, or the
+  whole world muffled inside a safehouse. Not in the first ticket, which has plain buses, but the format shouldn't
+  rule it out.
+- **Names:** no fixed set is a bare string: kinds, waves, filter types, curves and game inputs are `as const` maps.
+  A knob is an ordinary camelCase property (`frequencyHz`), and its typed path is the kebab form
+  (`tone.frequency-hz`), as `topSpeed` is `top-speed` for the cars. Two kinds of string remain, because they are free
+  names and not a fixed set: the module ids a patch's author picks (`tone`, `swing`) and the wire ends that refer to
+  them. Registering a patch checks that every wire end exists.
 
 ## How the engine would work
 
@@ -204,6 +222,13 @@ This would be the first sound format, the first audio module, among the first ev
 console panels. Others will copy what it does. The part most likely to be copied is the module-kind registry: a
 declared kind that the tool draws itself from is the same idea the weapon lab's characteristics (#511) and the
 tunables panel (#277) reach for, and whichever lands first should be built so the others can share it.
+
+What is shared is an extension of what the tunables already have, not a new abstraction. A tunable declares a number
+with a unit, a range and a line of help. That description grows to cover a choice from a fixed set (a wave, a filter
+type), and later an on/off; a module kind declares its knobs with it, and a panel needs one piece of code that draws a
+control from a description, whoever declared it. A general registry of "kinds" for sounds, weapons and tunables alike
+is not proposed: they store different things, and with one user its shape would be a guess. If the weapon lab ends up
+declaring kinds the way sounds do, the common part is extracted then, with two real cases to fit.
 
 - **The event bus isn't built** (#367). The engine and a menu click don't need it: one reads state, the other is page
   code. The crash, the siren's start and stop, and the star sounds do. Proposed: the first slice ships without them,
