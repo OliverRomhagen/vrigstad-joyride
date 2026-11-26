@@ -156,8 +156,9 @@ export function addBridges(scene: THREE.Scene, bridges: BridgeIndex, heightfield
 // walls of gabled roofs, ending in a white fascia board, a white board under flat roofs, and a chimney on gabled roofs
 const WIN_W = 2.6,
   STOREY = 2.8; // window spacing and storey height (m)
-const PLINTH_OUT_M = 0.08,
-  CORNER_OUT_M = 0.07,
+/** how far the plinth stands out from a house's wall (m); the safehouse doors stand clear of it (render/places.ts) */
+export const PLINTH_OUT_M = 0.08;
+const CORNER_OUT_M = 0.07,
   EAVE_M = 0.35, // how far a gabled roof runs on past the walls
   FASCIA_M = 0.15, // the depth of the board at its edge
   FLAT_BOARD_OUT_M = 0.06;

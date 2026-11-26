@@ -110,29 +110,43 @@ describe('house trim', () => {
     expect(along).toEqual([]);
   });
 
-  it('leaves out the eave of a wall shorter than its mitre, which would come out crossed', () => {
+  it('leaves out the eave of a wall shorter than its mitre, which would come out crossed, and closes the wall instead', () => {
     // an L whose inner wall the ridge crosses 0.18 m from the inside corner, at (5, 6): from there to the corner, the
     // mitre shortens the eave line by 0.35 m, so it would run backwards, from (5, 6.35) to (5.17, 6.35)
     const ell = { ...pitched, p: [0, 0, 10, 0, 10, 6, 4.82, 6, 4.82, 10, 0, 10], g: [5, 0, 5, 10, 5] as Building['g'] };
-    const pos = shellsOf(ell).geometry.getAttribute('position');
-    // the crossed overhang's diagonal, from the wall's end at the ridge to the corner that swapped places with it; the
-    // eaves either side have one of these corners each, never both
-    const at = (i: number, x: number, z: number) => Math.hypot(pos.getX(i) - x, pos.getZ(i) - z) < 0.01;
-    const crossed: number[] = [];
-    for (let i = 0; i < pos.count; i += 3) {
-      const corners = [i, i + 1, i + 2];
-      if (corners.some(j => at(j, 5, 6)) && corners.some(j => at(j, 5.17, 6.35))) crossed.push(i);
+    for (const b of [ell, reversed(ell)]) {
+      const pos = shellsOf(b).geometry.getAttribute('position');
+      // the crossed overhang's diagonal, from the wall's end at the ridge to the corner that swapped places with it; the
+      // eaves either side have one of these corners each, never both
+      const at = (i: number, x: number, z: number) => Math.hypot(pos.getX(i) - x, pos.getZ(i) - z) < 0.01;
+      const crossed: number[] = [];
+      for (let i = 0; i < pos.count; i += 3) {
+        const corners = [i, i + 1, i + 2];
+        if (corners.some(j => at(j, 5, 6)) && corners.some(j => at(j, 5.17, 6.35))) crossed.push(i);
+      }
+      expect(crossed).toEqual([]);
+      // and the wall, which stops FASCIA_M short of the roof for a soffit to close, is closed up to the roof without one:
+      // faces in its plane (z 6, x 4.82 to 5) between the wall's top, 8.35 to 8.224 m, and the roof's edge, 8.5 to 8.374,
+      // covering the 0.18 m by 0.15 m strip, however it's split into triangles
+      const [p, q, r] = [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()];
+      let area = 0;
+      for (let i = 0; i < pos.count; i += 3) {
+        const corners = [i, i + 1, i + 2];
+        const inStrip = (j: number) =>
+          Math.abs(pos.getZ(j) - 6) < 0.001 &&
+          pos.getX(j) > 4.819 &&
+          pos.getX(j) < 5.001 &&
+          pos.getY(j) > 8.2 &&
+          pos.getY(j) < 8.51;
+        if (corners.every(inStrip))
+          area += new THREE.Triangle(
+            p.fromBufferAttribute(pos, i),
+            q.fromBufferAttribute(pos, i + 1),
+            r.fromBufferAttribute(pos, i + 2),
+          ).getArea();
+      }
+      expect(area).toBeCloseTo(0.18 * 0.15, 4);
     }
-    expect(crossed).toEqual([]);
-    // and the wall, which stops FASCIA_M short of the roof for a soffit to close, is closed up to the roof without one:
-    // from FASCIA_M under the roof's edge at the ridge, (5, 8.35, 6), up to the roof's edge at the corner, (4.82, 8.374, 6)
-    const at3 = (i: number, x: number, y: number, z: number) => at(i, x, z) && Math.abs(pos.getY(i) - y) < 0.01;
-    let closed = 0;
-    for (let i = 0; i < pos.count; i += 3) {
-      const corners = [i, i + 1, i + 2];
-      if (corners.some(j => at3(j, 5, 8.35, 6)) && corners.some(j => at3(j, 4.82, 8.374, 6))) closed++;
-    }
-    expect(closed).toBeGreaterThan(0);
   });
 
   it('faces the windows out of the house, whichever way the outline runs', () => {
