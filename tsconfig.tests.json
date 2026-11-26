@@ -5,5 +5,11 @@
     // the wiki's alias for the game's code (wiki/vite.config.ts), for tests of wiki code that reads them
     "paths": { "#game/*": ["./src/game/*"] }
   },
-  "include": ["tests/unit", "tools/streetscape-report.ts", "vite.config.ts", "vitest.config.ts"]
+  "include": [
+    "tests/unit",
+    "tools/streetscape-report.ts",
+    "tools/vehicle-parts.ts",
+    "vite.config.ts",
+    "vitest.config.ts"
+  ]
 }
