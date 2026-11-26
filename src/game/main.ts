@@ -238,7 +238,7 @@ const shake = cameraRig.shake;
 const grainPos = new THREE.Vector3(), grainQuat = new THREE.Quaternion();
 // the driver's view (#473), with ?lab=cockpit: V in a car puts the camera in the driver's seat, after the rig has placed it
 let cockpit: Cockpit | null = null;   // a type-only import: the module itself loads below, only with the flag
-if (lab.on('cockpit')) import('./render/cockpit').then(m => { cockpit = new m.Cockpit({ camera, game, view, profiles: { ...PROFILES, traktor: TRACTOR_CAB }, renderer, doc: document, get hour() { return dayClock.hour; } }); }).catch(err => console.warn('Lab: cockpit failed', err));
+if (lab.on('cockpit')) import('./render/cockpit').then(m => { cockpit = new m.Cockpit({ camera, game, view, profiles: { ...PROFILES, traktor: TRACTOR_CAB }, renderer, doc: document, get hour() { return dayClock.hour; }, repaint: c => vehicleVisuals.paint(c, c.color) }); }).catch(err => console.warn('Lab: cockpit failed', err));
 // sunlight streaks and the sun disc (#212, src/game/render/sun-streaks.ts): the day cycle's direct light times the clouds' shade; ?sunrays=off leaves them out
 const sunStreaks = dayQs.get('sunrays') === 'off' ? null : new SunStreaks({ sunDir: SUN_DIR });
 if (sunStreaks) scene.add(sunStreaks.object);
