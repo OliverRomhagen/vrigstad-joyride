@@ -292,8 +292,8 @@ function drawTreats() { const el = $('treats'); el.hidden = false; el.textConten
 const player = { x: HOME.x, z: HOME.z, y: 0, vy: 0, h: 0, speed: 0, phase: 0, emote: null as Emoting['emote'], mesh: personParts('#f2c230', '#2b3a55', null, true, true) };   // y: metres above the ground
 collide(player, 0.6); scene.add(player.mesh);
 const playerPose = new PlayerPose(player.mesh);   // walking, jumping and emotes (src/game/render/player-pose.ts)
-// why you can't start an emote now (src/game/emotes.ts), or null; moving, a jump or Gripen! stop one in the loop
-function whyCantEmote() { return game.inCar ? 'Get out of the car first.' : places.inside ? 'Come out of the house first.' : null; }
+// why you can't start an emote now (src/game/emotes.ts), or null: the states the loop stops one in, and wading, where sit would sink your head
+function whyCantEmote() { return game.inCar ? 'Get out of the car first.' : places.inside ? 'Come out of the house first.' : inWater(player.x, player.z) ? 'Not in the water.' : game.titleCardT > 0 || player.y > 0 ? 'Not now.' : null; }
 const jumpOk = () => !game.inCar && !places.inside && game.titleCardT <= 0;   // queue only where a jump can start, so a press inside a safehouse or under Gripen! can't fire as it ends
 const health = newHealth();
 const wallet = newWallet();
