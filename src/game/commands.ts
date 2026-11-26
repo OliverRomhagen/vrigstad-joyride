@@ -187,27 +187,16 @@ export class Commands {
     // every command answers --help the same way, before it runs, so none can forget to
     if (found.args.length === 1 && HELP_FLAGS.includes(found.args[0])) return done(this.helpFor(found));
     const call: Call = { name, args, source };
-    let outcome: Outcome | undefined, failure: { err: unknown } | undefined;
-    // runs the command once, however many times the hooks call next(): a second call gets the same outcome back, or
-    // the same error, so a hook that retries can't run a command that threw halfway a second time
-    const inner = () => {
-      if (failure) throw failure.err;
-      if (outcome) return outcome;
-      try {
-        const answer = found.cmd.run(found.args, call);
-        outcome = typeof answer === 'string' ? done(answer) : answer;
-      } catch (err) {
-        if (!(err instanceof UsageError)) {
-          failure = { err };
-          throw err;
-        }
-        outcome = refuse(REFUSAL.USAGE, `${err.message ? err.message + ' ' : ''}Usage: ${usage(found)}`);
-      }
-      return outcome;
-    };
-    // The first hook is the outermost: fold from the last one in. A line from a hook that never called next() stopped
-    // the command, so it is a refusal. A line from one that did call it only changes what is shown: the command ran,
-    // and saying it didn't would have E tell you "no" after it got you into the car.
+    return this.throughHooks(call, onceOnly(found, call));
+  }
+
+  /**
+   * Runs `inner` inside every hook; the first hook added is the outermost. A line from a hook that never called next()
+   * stopped the command, so it is a refusal. A line from one that did call it only changes what is shown: the command
+   * ran, and saying it didn't would have E tell you "no" after it got you into the car.
+   */
+  private throughHooks(call: Call, inner: () => Outcome): Outcome {
+    // fold from the last hook in, so the first is the outermost
     const chain = this.hooks.reduceRight<() => Outcome>(
       (next, hook) => () => {
         let inside: Outcome | undefined;
@@ -292,6 +281,30 @@ export class Commands {
 
 function done(text: string): Outcome {
   return { ok: true, text };
+}
+
+/**
+ * The run of one command, as the hooks call it: it runs once, however many times they call next(). A second call gets
+ * the same outcome back, or the same error, so a hook that retries can't run a command that threw halfway a second
+ * time. Arguments the command can't use come back as a refusal with its usage line.
+ */
+function onceOnly(found: Found, call: Call): () => Outcome {
+  let outcome: Outcome | undefined, failure: { err: unknown } | undefined;
+  return () => {
+    if (failure) throw failure.err;
+    if (outcome) return outcome;
+    try {
+      const answer = found.cmd.run(found.args, call);
+      outcome = typeof answer === 'string' ? done(answer) : answer;
+    } catch (err) {
+      if (!(err instanceof UsageError)) {
+        failure = { err };
+        throw err;
+      }
+      outcome = refuse(REFUSAL.USAGE, `${err.message ? err.message + ' ' : ''}Usage: ${usage(found)}`);
+    }
+    return outcome;
+  };
 }
 
 function usage({ path, cmd }: Pick<Found, 'path' | 'cmd'>) {
