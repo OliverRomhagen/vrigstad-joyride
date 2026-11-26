@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { HOUSE_SHELLS_MATERIAL } from './house-materials';
 import { inkEdges } from './ink-edges';
 import { INK_FLAG } from './ink-flag';
 
@@ -14,8 +15,9 @@ export const FINISH_LEVELS = {
   metal: [30, 200, 70, 255], // chrome's stripes: a bright band before a dark one, as a reflection gives
   glass: [12, 28, 50, 165], // dark, with one hard highlight facing the sun
   lamp: [110, 130, 150, 180], // lenses barely shade, so they read as lamps from any side
-  // the houses' walls: under a high sun every wall's dot is below 0.5, so the paint ramp gives most of them one band and
-  // their corners vanish; six levels split them by how far each turns from the sun (#413)
+  // the houses' shells (walls, roofs and trim): under a high sun every wall's dot is below 0.5, so the paint ramp gives
+  // most walls one band and their corners vanish; six levels split them by how far each turns from the sun (#413). The
+  // windows on the walls stay on the paint ramp: on this one, white frames are lit as the wall and sink into a pale one
   house: [9, 32, 72, 125, 185, 255],
 } as const;
 export type Finish = keyof typeof FINISH_LEVELS;
@@ -51,7 +53,7 @@ const isOpaque = (material: MeshMaterial) =>
 
 export function finishOf(material: THREE.Material): Finish {
   const name = material.name.toLowerCase();
-  if (name === 'house shells') return 'house';
+  if (name === HOUSE_SHELLS_MATERIAL) return 'house';
   if (/glass|glazing|window/.test(name)) return 'glass';
   if (/lamp|lens|beam|indicator|reflector/.test(name)) return 'lamp';
   if (/rubber|tire|tyre|weatherstrip/.test(name)) return 'rubber';

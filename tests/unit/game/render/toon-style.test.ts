@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { expect, test, vi } from 'vitest';
+import { HOUSE_SHELLS_MATERIAL } from '../../../../src/game/render/house-materials';
 import { INK_FLAG } from '../../../../src/game/render/ink-flag';
 import {
   FINISH_LEVELS,
@@ -45,7 +46,7 @@ test('vehicle finishes come from the GLB material names, or metalness', () => {
   expect(finishOf(named('restrained satin chrome', 0.7))).toBe('metal');
   expect(finishOf(named('period wheel covers', 0.5))).toBe('metal');
   expect(finishOf(new THREE.MeshLambertMaterial())).toBe('paint');
-  expect(finishOf(new THREE.MeshLambertMaterial({ name: 'house shells' }))).toBe('house');
+  expect(finishOf(new THREE.MeshLambertMaterial({ name: HOUSE_SHELLS_MATERIAL }))).toBe('house');
 });
 
 test('each finish draws with its own ramp, shared between materials', () => {
@@ -63,12 +64,27 @@ test('each finish draws with its own ramp, shared between materials', () => {
 });
 
 test('the houses get more, finer bands, so two walls at different angles to the sun shade apart (#413)', () => {
-  // under a high sun every wall's dot is below 0.5: one facing the sun (0.45) and one turned from it (0.1) share a band on
-  // the paint ramp, not on the house ramp
-  const band = (levels: readonly number[], dot: number) =>
-    Math.min(levels.length - 1, Math.floor((dot * 0.5 + 0.5) * levels.length));
-  expect(band(FINISH_LEVELS.paint, 0.45)).toBe(band(FINISH_LEVELS.paint, 0.1));
-  expect(band(FINISH_LEVELS.house, 0.45)).toBeGreaterThan(band(FINISH_LEVELS.house, 0.1));
+  const scene = new THREE.Scene(),
+    [house, car] = [HOUSE_SHELLS_MATERIAL, 'body paint'].map(
+      name => new THREE.Mesh(box, new THREE.MeshLambertMaterial({ name })),
+    );
+  scene.add(house, car);
+  const renderer = recordingRenderer(scene);
+  new ToonStyle(renderer).render(scene, camera);
+  // the light a material is drawn with at a normal-light dot, from the ramp the style gave it, sampled as three does
+  // (gradientmap_pars_fragment: coord = dot * 0.5 + 0.5, nearest texel)
+  const light = (mesh: THREE.Mesh, dot: number) => {
+    const texels = ((renderer.seen.get(mesh) as THREE.MeshToonMaterial).gradientMap as THREE.DataTexture).image
+      .data as Uint8Array;
+    return texels[Math.min(texels.length - 1, Math.floor((dot * 0.5 + 0.5) * texels.length))];
+  };
+  // under a high sun every wall's dot is below 0.5: one facing the sun (0.45) and one turned from it (0.1) are lit the
+  // same on the paint ramp, not on the house ramp
+  expect(light(car, 0.45)).toBe(light(car, 0.1));
+  expect(light(house, 0.45)).toBeGreaterThan(light(house, 0.1));
+  // and every band is lighter than the one before it, so no two neighbours merge
+  const levels: readonly number[] = FINISH_LEVELS.house;
+  for (let i = 1; i < levels.length; i++) expect(levels[i]).toBeGreaterThan(levels[i - 1]);
 });
 
 test('light shifts from the fill to the sun while drawing, and back after', () => {
