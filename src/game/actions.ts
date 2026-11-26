@@ -4,7 +4,7 @@ import { wrap } from '../world/math';
 import type { Car } from './cars';
 import type { Cat } from './cats';
 import { fine, fmtKr, pay, type Wallet } from './economy';
-import { type Health, HP_MAX, wakeSpot } from './health';
+import { type Health, HP_MAX, wakeSpot, wrecked } from './health';
 import type { Place, Places } from './places';
 import { carInReach, HOME, type PlayerState, standAt, stepOut, tooFastToGetOut } from './player';
 import type { Wanted } from './police';
@@ -44,6 +44,7 @@ export interface ActionsDeps {
   openSkroten(): boolean; // Skroten's offer for the car you drive on its ring; false when it makes none, so E gets you out
   nearOwner(): boolean; // you stand on foot next to Plåt-Pelle
   talkToOwner(): void;
+  offerCar(c: Car): void; // Plåt-Pelle's price for a car on Skroten's lot
   collide(o: Point, r: number): unknown;
   placeCar(c: Car): void;
   rnd(): number;
@@ -60,6 +61,9 @@ export interface ActionsDeps {
   pickLine(lines: readonly string[]): string;
 }
 
+// a car you can get straight back into: one you got out of, while it still drives
+const enterable = (c: Car) => c.mode === 'idle' && !wrecked(c);
+
 /** What E does, and putting you back on your feet. */
 export class Actions {
   private readonly g: ActionsDeps;
@@ -69,8 +73,11 @@ export class Actions {
   }
 
   nearestCar = () => {
-    const { player, cars } = this.g;
-    return carInReach(player, cars);
+    const { player, cars } = this.g,
+      c = carInReach(player, cars);
+    // E only asks the price of a car on Skroten's lot, so the car you got out of beats a nearer one of those: you step out right
+    // beside them. Only then: anywhere else the nearest car wins, or you couldn't walk up to a car beside your own and take it
+    return c?.saleKr ? (carInReach(player, cars, enterable) ?? c) : c;
   };
   // park the car where it stands and put you on foot; the caller places you
   leaveCar = () => {
@@ -114,6 +121,7 @@ export class Actions {
       openSkroten,
       nearOwner,
       talkToOwner,
+      offerCar,
       rnd,
       pick,
       toast,
@@ -159,6 +167,10 @@ export class Actions {
     }
     const c = this.nearestCar();
     if (!c) return;
+    if (c.saleKr) {
+      offerCar(c);
+      return;
+    }
     if (c.mode === 'ai') {
       driverOut(c);
       toast(
