@@ -353,7 +353,7 @@ const WRECK_GAP_M = 2.6; // between the middles of neighbours in a row
 const FRESH_GAP_M = 2.9; // the same for the cars for sale: about a metre between two cars' sides, room to walk in and stand by the one you want
 const WRECK_HALF_LEN_M = 2.7; // half the longest car's length, for the row's outline
 const WRECK_SPREAD_M = 0.5; // how far a wreck's jitter (±0.4 m, ±0.15 rad) can carry its ends past its row's line
-const TRACTORS = [
+export const TRACTORS = [
   // two old tractors: a broken red one in the yard, leaning where its wheel came off, and a green one that still runs, for sale in the
   // carport's last bay (here only when there is no carport)
   { u: -27, v: 14, turn: 0.4, colour: '#8a2f2a', broken: true, bay: null },
