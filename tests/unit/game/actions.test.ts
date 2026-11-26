@@ -304,11 +304,36 @@ describe('enter and exit as commands', () => {
     expect(onRing.ran).toEqual(['enter from input']);
   });
 
-  it('a hook that refuses the command keeps you on foot', () => {
+  it('a hook that refuses the command keeps you on foot, and E shows its reason', () => {
     const t = actions({ cars: [parked()] });
     t.commands.use(call => 'No ' + call.name + ' here.');
     t.a.action();
     expect(t.game.inCar).toBe(false);
+    expect(t.calls).toEqual(['toast No enter here.']);
+  });
+
+  it('E shows the reason when exit refuses, and nothing when a command is done', () => {
+    const c = parked({ owned: true }),
+      t = actions({ cars: [c] });
+    t.a.action(); // in: done, so no toast for the line
+    expect(t.calls).toEqual([]);
+    c.v = 20;
+    t.a.action();
+    expect(t.calls).toEqual(['toast Slow down before you get out.']);
+    expect(t.game.inCar).toBe(true);
+  });
+
+  it('a run is done or refused: execute says which, and a typed line shows no toast', () => {
+    const c = parked({ owned: true }),
+      t = actions({ cars: [c] });
+    expect(t.commands.execute('exit')).toEqual({ ok: false, text: 'You are not in a car.' });
+    expect(t.commands.execute('enter')).toEqual({ ok: true, text: 'You are in the Volvo.' });
+    expect(t.commands.execute('enter')).toEqual({ ok: false, text: 'You are already in the Volvo.' });
+    c.v = 20;
+    expect(t.commands.execute('exit')).toEqual({ ok: false, text: 'Slow down before you get out.' });
+    c.v = 0;
+    expect(t.commands.execute('exit')).toEqual({ ok: true, text: 'You got out of the Volvo.' });
+    expect(t.calls).toEqual([]); // the console shows the line; only E toasts a reason
   });
 
   it('enter gets you into the car in reach without a key, as taking it by E does', () => {
@@ -347,7 +372,6 @@ describe('enter and exit as commands', () => {
     t.commands.run('enter');
     c.v = 20;
     expect(t.commands.run('exit')).toBe('Slow down before you get out.');
-    expect(t.calls.at(-1)).toBe('toast Slow down before you get out.');
     expect(t.game.inCar).toBe(true);
     c.v = 0;
     expect(t.commands.run('exit')).toBe('You got out of the Volvo.');

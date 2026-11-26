@@ -1,12 +1,13 @@
 // What pressing E does (walk into a place, pet a cat, open the kiosk, get in or out of a car, steal one), and where you end up after Gripen! or a knock-out.
 // Moved from src/game/main.ts (#177); main.ts passes in the places, the cats' menus, the police, what the HUD draws and whether the player's mesh shows. No three.js or DOM here.
 // Getting in and out of a car are commands, `enter` and `exit` (#366): E only picks which and runs it through the registry,
-// so a hook, the console and a test reach the same rule. The other actions follow.
+// so a hook, the console and a test reach the same rule. A rule that says no returns refuse(reason), and E shows the
+// reason of a refusal as a toast. The other actions follow.
 import { wrap } from '../world/math';
 import type { Car } from './cars';
 import type { Cat } from './cats';
 import { command } from './command-args';
-import type { Commands } from './commands';
+import { type Commands, type Outcome, refuse } from './commands';
 import { fine, fmtKr, pay, type Wallet } from './economy';
 import { type Health, HP_MAX, wakeSpot, wrecked } from './health';
 import type { Place, Places } from './places';
@@ -34,7 +35,7 @@ export interface ActionsDeps {
   wanted: Pick<Wanted, 'addStar' | 'police' | 'stars' | 'clear'>;
   health: Health;
   wallet: Wallet;
-  commands: Pick<Commands, 'register' | 'run'>; // where enter and exit are registered, and what E runs them through
+  commands: Pick<Commands, 'register' | 'execute'>; // where enter and exit are registered, and what E runs them through
   menuOpen(): boolean; // the menu plate is up: E closes it
   closeMenu(): void;
   showPlayer(shown: boolean): void; // the player's mesh: hidden while you drive
@@ -66,10 +67,10 @@ export interface ActionsDeps {
   pickLine(lines: readonly string[]): string;
 }
 
-// why you can't act yet, if you can't: Start not pressed, or a title card (Gripen!, Däckad!) still up. E ignores the press then
-const notYet = (game: GameState) =>
+// the reason nobody can act right now, if there is one: Start not pressed, or a title card (Gripen!, Däckad!) still up.
+// E ignores the press then
+const notPlayingReason = (game: GameState) =>
   !game.started ? 'Press Start first.' : game.titleCardT > 0 ? 'Wait for the title card to go.' : undefined;
-const TOO_FAST = 'Slow down before you get out.';
 
 // a car you can get straight back into: one you got out of, while it still drives
 const enterable = (c: Car) => c.mode === 'idle' && !wrecked(c);
@@ -136,7 +137,6 @@ export class Actions {
     const {
       game,
       places,
-      commands,
       menuOpen,
       closeMenu,
       nearPlace,
@@ -178,17 +178,22 @@ export class Actions {
       return;
     }
     if (game.inCar) {
-      // too fast, exit says so; otherwise Skroten's offer for the car on its ring comes before getting out
-      if (tooFastToGetOut(game.pcar!) || !openSkroten()) commands.run('exit', 'input');
+      // too fast, exit refuses; otherwise Skroten's offer for the car on its ring comes before getting out
+      if (tooFastToGetOut(game.pcar!) || !openSkroten()) this.press('exit');
       return;
     }
     const c = this.nearestCar();
     if (!c) return;
     if (c.saleKr) offerCar(c);
-    else commands.run('enter', 'input');
+    else this.press('enter');
   };
-  /** The `enter` command: into the car in reach, taking it if it isn't yours. Returns the line the console shows. */
-  enterCar = (): string => {
+  // runs a command as the player's key press; when it is refused, by its rule or by a hook, the reason is what you see
+  private press = (line: string) => {
+    const outcome = this.g.commands.execute(line, 'input');
+    if (!outcome.ok) this.g.toast(outcome.text, 2);
+  };
+  /** The `enter` command: into the car in reach, taking it if it isn't yours. Returns the line to show, or a refusal with its reason. */
+  enterCar = (): string | Outcome => {
     const {
       game,
       view,
@@ -208,14 +213,14 @@ export class Actions {
       pickLine,
     } = this.g;
     // E checks these before it picks, but a typed line, a script or a test gets here without E
-    const wait = notYet(game);
-    if (wait) return wait;
-    if (places.inside) return 'You are inside a house.';
-    if (menuOpen()) return 'Close the menu first.';
-    if (game.inCar) return 'You are already in the ' + carName(game.pcar!) + '.';
+    const reason = notPlayingReason(game);
+    if (reason) return refuse(reason);
+    if (places.inside) return refuse('You are inside a house.');
+    if (menuOpen()) return refuse('Close the menu first.');
+    if (game.inCar) return refuse('You are already in the ' + carName(game.pcar!) + '.');
     const c = this.nearestCar();
-    if (!c) return 'No car in reach.';
-    if (c.saleKr) return 'The ' + carName(c) + ' is for sale at Skroten.';
+    if (!c) return refuse('No car in reach.');
+    if (c.saleKr) return refuse('The ' + carName(c) + ' is for sale at Skroten.');
     if (c.mode === 'ai') {
       driverOut(c);
       toast(
@@ -256,16 +261,13 @@ export class Actions {
     view.camYaw = c.h;
     return 'You are in the ' + carName(c) + '.';
   };
-  /** The `exit` command: out of the car you drive, unless it is still too fast. Returns the line the console shows. */
-  exitCar = (): string => {
-    const { game, toast, carName } = this.g;
-    const wait = notYet(game);
-    if (wait) return wait;
-    if (!game.inCar) return 'You are not in a car.';
-    if (tooFastToGetOut(game.pcar!)) {
-      toast(TOO_FAST, 2);
-      return TOO_FAST;
-    }
+  /** The `exit` command: out of the car you drive, unless it is still too fast. Returns the line to show, or a refusal with its reason. */
+  exitCar = (): string | Outcome => {
+    const { game, carName } = this.g;
+    const reason = notPlayingReason(game);
+    if (reason) return refuse(reason);
+    if (!game.inCar) return refuse('You are not in a car.');
+    if (tooFastToGetOut(game.pcar!)) return refuse('Slow down before you get out.');
     const name = carName(game.pcar!);
     this.getOut();
     return 'You got out of the ' + name + '.';

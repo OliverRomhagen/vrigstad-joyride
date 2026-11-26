@@ -144,13 +144,14 @@ line.
 
 1. `Actions` (`src/game/actions.ts`) registers `enter` and `exit` with access `player`. Each one's `run` calls the
    rule beside it, `enterCar` or `exitCar`, which checks that it can happen (a car in reach, slow enough to get out)
-   and returns the line to show.
+   and returns the line to show, or a refusal.
 2. **E only picks.** `Actions.action` looks at where you stand: inside a house, at a cat, at the kiosk, in a car, beside
-   one. For getting in or out it runs `commands.run('enter', 'input')` and does nothing else, so a key press, a typed
-   `enter` and a test's `commands.run('enter', 'test')` reach the same rule through the same hooks.
-   E shows nothing of the line that comes back: what the player needs to see, the rule shows itself (a toast). So a
-   hook that refuses an `input` call has to say why itself, or the key press does nothing in silence.
-3. **The hooks see it** as `{ name: 'enter', args: [], source: 'input' }`. That call is all a replay or another player
+   one. For getting in or out it runs `commands.execute('enter', 'input')`, so a key press, a typed `enter` and a test's
+   `commands.run('enter', 'test')` reach the same rule through the same hooks.
+3. **A refusal carries its reason.** A rule that says no returns `refuse('Slow down before you get out.')`. E shows
+   the reason of a refused `input` call as a toast, in one place, so no rule toasts for itself and a hook that refuses
+   is heard too. The line of a run that was done, E drops: the player sees that happen. The console shows either.
+4. **The hooks see it** as `{ name: 'enter', args: [], source: 'input' }`. That call is all a replay or another player
    needs (#361, #1), and what a tutorial waits for.
 
 Getting in and out of a car came first (#366). The other things E does (the kiosk, the cats, a safehouse, Skroten)
@@ -204,8 +205,8 @@ commands.register('go', command({
   calls too. Bad arguments still throw a `UsageError`. `commands.execute(line, source)` gives the caller the whole
   `Outcome`, `{ ok, text, code }`, and `commands.run(line, source)` only its `text`, for a caller that just shows the line,
   such as the console box. Not `ok`: a refusal by the command or by a hook, a `UsageError`, an unknown command and
-  one that isn't allowed here. Everything else is `ok`, an empty line and an answer to `--help` included. No command
-  returns a refusal yet; the player commands (#366) are the first.
+  one that isn't allowed here. Everything else is `ok`, an empty line and an answer to `--help` included. `enter` and
+  `exit` (#366) are the first commands that refuse.
 - `register` returns a function that takes the command out again, for a lab experiment that stops or a module that
   goes away.
 
