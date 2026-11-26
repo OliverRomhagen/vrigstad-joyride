@@ -211,6 +211,10 @@ function drawer(dialog: HTMLDialogElement) {
   .scrolled .brand b {
     color: var(--road);
     background: var(--cream);
+    /* its line turns over with it: dark on the cream */
+    box-shadow:
+      inset 0 0 0 2px var(--cream),
+      inset 0 0 0 3.5px var(--road);
   }
 }
 /* the phone's menu button; the sidebar is always there on a wider screen */
@@ -260,8 +264,12 @@ function drawer(dialog: HTMLDialogElement) {
   font-weight: inherit;
   color: var(--cream);
   background: var(--road);
-  padding: 2px 8px 1px;
+  padding: 2px 10px 1px;
   border-radius: 0 var(--round) var(--round) 0;
+  /* the sign's white line runs on round this half too, so the tag has one outline */
+  box-shadow:
+    inset 0 0 0 2px var(--road),
+    inset 0 0 0 3.5px #fff;
 }
 /* a control with an icon beside its words: the two on one line, their middles level */
 .menu,
