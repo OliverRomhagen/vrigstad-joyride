@@ -438,11 +438,21 @@ header > * {
   grid-template-columns: auto 1fr auto;
   align-items: center;
   gap: 8px;
-  padding: 14px 10px;
-  background: #1d1f24a6; /* smoked glass: the yard shows through, blurred, and the text still reads */
-  border-radius: 16px;
-  box-shadow: var(--lift);
-  backdrop-filter: blur(16px) saturate(1.3);
+  /* no panel: the words lie on the yard's own ground, which the shade below darkens, so the card is no taller than
+     what it says and the car has the window */
+  text-shadow: 0 1px 2px #000a;
+}
+/* dusk on the ground at the window's foot, the whole window wide: the text reads on it whatever the camera shows there. It
+   starts above the card and is let through to the scene, so a drag that begins on it still turns the yard. */
+.card::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: -56px auto -30px 50%;
+  width: 100vw;
+  translate: -50% 0;
+  background: linear-gradient(#1d1f2400, #1d1f2480 56px, #1d1f24b3);
+  pointer-events: none;
 }
 .info {
   min-width: 0;
@@ -460,14 +470,17 @@ header > * {
 }
 .info h2 {
   text-wrap: balance;
-  font-size: clamp(1.75rem, 6vw, 2.75rem);
+  font-size: clamp(1.5rem, 5vw, 2.25rem);
   text-transform: uppercase;
-  margin: 2px 0 0;
+  margin: 0;
+}
+.info .kind {
+  font-size: 0.75rem;
 }
 .spoken {
-  margin: 2px 0 10px;
+  margin: 0 0 8px;
   color: var(--muted);
-  font-size: 1rem;
+  font-size: 0.875rem;
 }
 .step {
   display: grid;
@@ -479,8 +492,9 @@ header > * {
   color: var(--road);
   background: var(--gold);
   border: 0;
-  border-radius: 6px; /* the card's 16px less the 10px between them: the two corners run side by side */
+  border-radius: 8px;
   cursor: pointer;
+  box-shadow: 0 2px 6px #0005;
 }
 @media (hover: hover) {
   .step:hover {
@@ -491,27 +505,27 @@ dl {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 10px;
-  margin: 0 0 10px;
+  margin: 0 0 8px;
   text-align: left;
 }
 dt {
-  font: 600 0.8125rem var(--font);
+  font: 600 0.6875rem var(--font);
   text-transform: uppercase;
   letter-spacing: 0.1em;
   color: var(--muted);
 }
 dd {
   margin: 2px 0 0;
-  font-size: 0.9375rem;
+  font-size: 0.875rem;
   font-variant-numeric: tabular-nums;
 }
 /* a bar filled to --v, from 0 to 1 */
 dd i {
   display: block;
-  height: 6px;
-  margin-bottom: 4px;
+  height: 5px;
+  margin-bottom: 2px;
   border-radius: 3px;
-  background: linear-gradient(90deg, var(--gold) calc(var(--v) * 100%), #ffffff1a 0);
+  background: linear-gradient(90deg, var(--gold) calc(var(--v) * 100%), #ffffff33 0);
 }
 .paints {
   display: flex;
@@ -678,24 +692,31 @@ dd i {
     font-size: 1rem;
     padding: 8px 10px 8px 8px;
   }
-  /* on a phone it hangs from its foot, level with his face, and grows upwards with its lines: over the yard's fence and
-     not over the car. Its foot never comes higher than leaves room for four lines under the header. */
+  /* on a phone he stands at the window's edge with the car close beside him, so the bubble goes over his head, its tail
+     pointing down at him, and grows upwards with its lines. Its foot never comes higher than leaves room for four lines
+     under the header. */
   .says {
     top: auto;
-    bottom: min(calc(100% - var(--pelle-y, 150px) - 34px), calc(100% - 190px));
-    transform-origin: calc(100% + 12px) calc(100% - 16px);
+    bottom: min(calc(100% - var(--pelle-y, 150px) + 14px), calc(100% - 180px));
+    right: clamp(16px, calc(100% - var(--pelle-x, 100%) - 22px), calc(100% - var(--width) - 16px));
+    transform-origin: calc(100% - 24px) calc(100% + 12px);
   }
   .says::after {
-    top: auto;
-    bottom: 9px;
+    top: calc(100% - 5px);
+    left: auto;
+    right: 18px;
+    border: 0;
+    border-right: var(--line);
+    border-bottom: var(--line);
+    border-radius: 0 0 2px;
+    transform: skewX(14deg) rotate(45deg);
   }
   .card {
     bottom: 28px;
-    padding: 10px 6px;
   }
   .step {
     width: 36px;
-    height: 52px;
+    height: 48px;
     font-size: 1.625rem;
   }
   dl {
