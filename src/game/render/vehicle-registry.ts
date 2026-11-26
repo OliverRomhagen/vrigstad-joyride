@@ -6,10 +6,11 @@ export const BODY_NODE = 'body';
 export const WHEEL_NODES = ['wheel_fl', 'wheel_fr', 'wheel_rl', 'wheel_rr'] as const;
 export const GLASS_PREFIX = 'glass_';
 export const BEACON_PARTS = /^lamp_(blue_module|police_grille)/;
+/** Whether a model's node by this name is painted bodywork: the body, or a panel of it named body_… */
+export const isPaintedPanel = (name: string) => name === BODY_NODE || name.startsWith(BODY_NODE + '_');
 /** Parts the game addresses separately, which compression must keep named. */
 export const keepVehiclePart = (name: string) =>
-  name === BODY_NODE ||
-  name.startsWith(BODY_NODE + '_') ||
+  isPaintedPanel(name) ||
   name.startsWith(GLASS_PREFIX) ||
   BEACON_PARTS.test(name) ||
   WHEEL_NODES.some(wheel => wheel === name);

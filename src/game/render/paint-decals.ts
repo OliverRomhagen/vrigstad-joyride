@@ -6,6 +6,9 @@ import { DecalGeometry } from 'three/addons/geometries/DecalGeometry.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { type Decal, RALLY_NUMBER } from '../sim/paint-jobs';
 
+/** The name on a decal's meshes, so the driver's view clips them with the body they're painted on (cockpit.ts). */
+export const DECAL_NODE = 'decal';
+
 /** A painted panel, and the matrix that places it in the car's frame (metres; x right, y up, -z forward). */
 export interface Panel {
   geometry: THREE.BufferGeometry;
@@ -67,6 +70,7 @@ export function decalMeshes(
     if (pieces.length > 1) for (const g of pieces) g.dispose();
     if (!geo) continue;
     const m = new THREE.Mesh(geo, material(pr.tex));
+    m.name = DECAL_NODE;
     m.receiveShadow = true;
     out.push(m);
   }

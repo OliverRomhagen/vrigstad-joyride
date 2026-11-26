@@ -3,7 +3,15 @@ import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import type { Decal } from '../sim/paint-jobs';
 import { decalMeshes, disposeDecal, type Panel } from './paint-decals';
-import { BEACON_PARTS, BODY_NODE, type VehicleId, vehicleDefinition, WHEEL_NODES } from './vehicle-registry';
+import {
+  BEACON_PARTS,
+  BODY_NODE,
+  GLASS_PREFIX,
+  isPaintedPanel,
+  type VehicleId,
+  vehicleDefinition,
+  WHEEL_NODES,
+} from './vehicle-registry';
 
 type Car = { mesh: THREE.Object3D; x: number; z: number; h: number; saleKr?: number };
 type Definition = NonNullable<ReturnType<typeof vehicleDefinition>>;
@@ -28,7 +36,6 @@ type View = {
   decal: Decal | null; // Plåt-Pelle's decal, and its meshes on the loaded model's body
   decals: THREE.Mesh[];
 };
-const GLASS_NODE = 'glass'; // a model's windows are the nodes named glass…; a decal stays off them
 const DETAIL_RANGE_M = 120,
   DETAIL_KEEP_M = 15, // a detailed car keeps its model until it is this much further away than the next candidate, so it doesn't pop back and forth
   DETAIL_CAP_COARSE = 3,
@@ -161,7 +168,7 @@ export class VehicleVisuals {
       return m;
     };
     body?.traverse(node => {
-      if (!(node instanceof THREE.Mesh) || (node !== body && !node.name.startsWith(BODY_NODE + '_'))) return;
+      if (!(node instanceof THREE.Mesh) || !isPaintedPanel(node.name)) return;
       node.material = Array.isArray(node.material) ? node.material.map(recolor) : recolor(node.material);
     });
   }
@@ -190,13 +197,13 @@ export class VehicleVisuals {
       const toFrame = frame.matrixWorld.clone().invert(),
         panels: Panel[] = [];
       body.traverse(node => {
-        if (!(node instanceof THREE.Mesh) || (node !== body && !node.name.startsWith(BODY_NODE + '_'))) return;
+        if (!(node instanceof THREE.Mesh) || !isPaintedPanel(node.name)) return;
         panels.push({ geometry: node.geometry, toFrame: toFrame.clone().multiply(node.matrixWorld) });
       });
       const glass = new THREE.Box3(),
         part = new THREE.Box3();
       root.traverse(node => {
-        if (!(node instanceof THREE.Mesh) || !node.name.startsWith(GLASS_NODE)) return;
+        if (!(node instanceof THREE.Mesh) || !node.name.startsWith(GLASS_PREFIX)) return;
         node.geometry.boundingBox ?? node.geometry.computeBoundingBox();
         glass.union(part.copy(node.geometry.boundingBox!).applyMatrix4(toFrame.clone().multiply(node.matrixWorld)));
       });
@@ -308,6 +315,7 @@ export class VehicleVisuals {
             spin: w.spin.rotation.x,
           })),
           fallback: view.fallback.visible,
+          decals: view.decals.length, // the decal's meshes built on the model: an empty projection would show nothing
         }
       : null;
   }

@@ -5,6 +5,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { beforeAll, describe, expect, it } from 'vitest';
 import type { RenderedCar } from '../../../../src/game/render/car-meshes';
 import { Cockpit, needleAngle } from '../../../../src/game/render/cockpit';
+import { DECAL_NODE } from '../../../../src/game/render/paint-decals';
 import { BODY_NODE } from '../../../../src/game/render/vehicle-registry';
 
 let template: THREE.Group;
@@ -123,6 +124,21 @@ describe('Cockpit (the driver’s view, lab: cockpit)', () => {
     expect(glass.visible).toBe(true);
     expect((body as THREE.Mesh).material).toBe(paint);
     expect(camera.near).toBe(0.8);
+  });
+
+  it('clips a decal with the body it is painted on, and puts its material back when you leave', () => {
+    const { car, body } = volvo();
+    const own = new THREE.MeshBasicMaterial(),
+      decal = Object.assign(new THREE.Mesh(new THREE.PlaneGeometry(), own), { name: DECAL_NODE });
+    body.add(decal);
+    const { k } = cockpit(car);
+    k.toggle();
+    k.update();
+    expect(decal.material).not.toBe(own);
+    expect((decal.material as THREE.Material).clippingPlanes).toHaveLength(3);
+    k.toggle();
+    k.update();
+    expect(decal.material).toBe(own);
   });
 
   it('paints the model again when you leave after a respray inside, and only then', () => {

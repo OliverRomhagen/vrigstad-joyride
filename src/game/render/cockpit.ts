@@ -5,7 +5,8 @@
 import * as THREE from 'three';
 import type { GameState, ViewState } from '../state';
 import type { RenderedCar } from './car-meshes';
-import { BODY_NODE } from './vehicle-registry';
+import { DECAL_NODE } from './paint-decals';
+import { BODY_NODE, isPaintedPanel } from './vehicle-registry';
 
 /** The car's cabin in its body's frame (m; -z is forward, +y up, x to the right): its glass from the belt line to the roof. */
 interface Cabin {
@@ -329,7 +330,8 @@ export class Cockpit {
     belt.set(new THREE.Vector3(0, -1, 0), cabin.belt + CLIP_OVER_BELT_M);
     screen.set(new THREE.Vector3(0, 0, -1), cabin.front);
     rearWindow.set(new THREE.Vector3(0, 0, 1), -cabin.rear);
-    const painted = (o: THREE.Object3D) => o === car.body || o.name === BODY_NODE || o.name.startsWith(BODY_NODE + '_');
+    // a decal bought while inside stays unclipped until you sit in again: the lift's menu is open then, the view hardly matters
+    const painted = (o: THREE.Object3D) => o === car.body || isPaintedPanel(o.name) || o.name === DECAL_NODE;
     body.traverse(o => {
       if (!(o instanceof THREE.Mesh) || !painted(o)) return;
       this.clipped.push({ mesh: o, material: o.material });

@@ -772,6 +772,8 @@ test.describe('game (index.html)', () => {
     await page.locator('#kmenu button', { hasText: 'Flammor' }).click();
     await expect(page.locator('#kr')).toHaveText('210 riksdaler');
     expect((await state(page)).carDecal).toBe('flames');
+    const v = (await state(page)).activeVehicle;
+    if (v?.status === 'loaded') expect(v.decals).toBeGreaterThan(0); // projected onto the model, not only set on the car
     await page.locator('#kmenu button', { hasText: 'Kliv ur' }).click(); // E on the lift opens the menu, so getting out is on it
     await expect.poll(async () => (await state(page)).inCar).toBe(false);
     expect(errors).toEqual([]);
