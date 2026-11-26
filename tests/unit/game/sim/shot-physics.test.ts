@@ -56,7 +56,7 @@ function setUp(o: { people?: PersonBody[]; cars?: CarBody[]; props?: PropSpec[] 
     cars = o.cars ?? [];
   const player = { x: 0, z: 0 };
   let firedFrom: CarBody | null = null;
-  physics.follow(cars, firedFrom ? null : player, player);
+  physics.follow(cars, player, player);
   physics.followPeople(people, player);
   physics.step(PHYSICS_STEP_S); // ray casts see what a step has put in place
   const world: ShotWorld = {
@@ -172,6 +172,42 @@ describe('shots through the physics world', () => {
     expect(sight(0, 1.2, 0, 0, 0, -1, 0.5, 160, world, out)).toBe(true);
     expect(out.kind).toBe('person');
     expect(out.dz).toBeCloseTo(-1, 6);
+    physics.dispose();
+  });
+
+  it('passes through someone knocked down this frame, before their capsule leaves', () => {
+    const near = person(0, -10);
+    const { physics, world } = setUp({ people: [near, person(0, -20)] });
+    near.down = true; // the first pellet of a spread knocked them over; followPeople hasn't run since
+    const hit = fly(shot(), world);
+    expect(hit.kind).toBe('person');
+    expect(hit.target).toBe(1);
+    physics.dispose();
+  });
+
+  it('casts safely right after a body leaves, before the next step', () => {
+    const p = person(0, -20);
+    const { physics, world } = setUp({ people: [p] });
+    p.x = 500; // walks out of reach: their body is removed, and no step runs before the next shot
+    physics.followPeople([p], { x: 0, z: 0 });
+    expect(physics.people).toBe(0);
+    expect(fly(shot(), world).kind).not.toBe('person');
+    physics.dispose();
+  });
+
+  it('passes through a car the weapons have left out of their list', () => {
+    const other = car(0, -20);
+    const { physics, world } = setUp({ cars: [other] });
+    world.cars = []; // say, the car you just got out of, still in the physics world this frame
+    expect(fly(shot(), world).kind).toBe('wall');
+    physics.dispose();
+  });
+
+  it('gives the far end of the line of sight when the ray cast meets nothing', () => {
+    const { physics, world } = setUp();
+    const out = newHit();
+    expect(sight(0, 1.2, 0, 0, 1, 0, 0.5, 50, world, out)).toBe(false); // straight up
+    expect(out.y).toBeCloseTo(51.2, 6);
     physics.dispose();
   });
 });

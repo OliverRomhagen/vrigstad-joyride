@@ -630,12 +630,8 @@ export function sight(
   s.vz = dz;
   if (world.cast) {
     // one straight line, which the ray cast follows to what it meets first
-    const flat = Math.hypot(dx, dz) || 1;
-    if (world.cast(x + dx * fromM, y + dy * fromM, z + dz * fromM, x + dx * toM, y + dy * toM, z + dz * toM, out)) {
-      out.dx = dx / flat;
-      out.dz = dz / flat;
+    if (world.cast(x + dx * fromM, y + dy * fromM, z + dz * fromM, x + dx * toM, y + dy * toM, z + dz * toM, out))
       return true;
-    }
     return miss(x, y, z, dx, dy, dz, toM, out);
   }
   // only who and what stands near the line can be met: found once, so each step along it tests a few, not everyone

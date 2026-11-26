@@ -83,6 +83,9 @@ And by eye: does a mailbox you drive into look and feel right? Screenshots or a 
 - **A hit costs the car nothing.** A 40 kg mailbox stand at 90 km/h doesn't slow the car or damage it: Rapier's cars are moved by the game and can't be pushed back.
 - **The file has no version in its name.** `vendor/rapier.mjs` can be cached for a few minutes past an upgrade.
 - **Shots meet only the props that have joined.** Past 40 m from the player, a shot passes through a prop no car has been near.
+- **Only a direct hit knocks a prop.** A grenade's blast throws people and shoves cars, but leaves the props standing.
+- **Each ray cast that meets something allocates** a few small objects in Rapier's JavaScript: the aiming arc of a throw casts up to 64 times a frame.
+- **People and the props near the player join only with both flags.** `?lab=rapier` alone holds only the cars and the player, as in steps 1 to 3.
 - **People stand on the terrain** in Rapier's world, not on the curbs and floors the game draws them on: a shot at their feet can meet the ground first.
 - **The time step is a stand-in for #49.** The trial keeps its own clock and spreads each frame's move over its steps only because the game's cars don't move on a fixed step yet. Once #49 gives the sim its steps, Rapier steps inside them and both go.
 

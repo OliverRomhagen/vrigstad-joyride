@@ -1,7 +1,8 @@
 // The Rapier trial (#54, ?lab=rapier, docs/rapier-trial.md): one Rapier world beside the game's own collisions, which
 // stay in charge. The ground and the buildings' walls are fixed shapes; the cars, the player and the people near the
 // player are shapes the game moves, so driving and walking feel as they do; street furniture is bodies that a car
-// knocks over. Shots find what they hit by its ray casts (castSegment). Pure: no three.js, no DOM. The Rapier module is passed in, so the page decides how it is loaded.
+// knocks over. Shots find what they hit by its ray casts (castSegment). Pure: no three.js, no DOM. The Rapier module
+// is passed in, so the page decides how it is loaded.
 import type RAPIER from '@dimforge/rapier3d-compat';
 import { type BuildingShape, forEachBuilding } from '../../world/buildings';
 import type { WorldData } from '../../world/data';
@@ -171,7 +172,10 @@ export class PhysicsWorld {
   private readonly seen = new Set<object>();
   /** the collider a ray cast passes through: the car the shot was fired from */
   private skipCollider = -1;
-  private readonly notSkipped = (c: { handle: number }) => c.handle !== this.skipCollider;
+  // what a ray cast can meet: not the car fired from, nor someone knocked down this frame, whose capsule only leaves at
+  // the next followPeople: the second pellet of a shotgun's spread would stop at it
+  private readonly castable = (c: { handle: number }) =>
+    c.handle !== this.skipCollider && !this.personByCollider.get(c.handle)?.down;
   /** where the props near the player were last looked for */
   private joinedAtX = Number.NaN;
   private joinedAtZ = Number.NaN;
@@ -275,6 +279,7 @@ export class PhysicsWorld {
    */
   followPeople(people: readonly PersonBody[], near: { x: number; z: number }) {
     const { R, seen } = this;
+    // the first time, joinedAt is NaN, and a NaN distance is never near: they're looked for
     if (!(Math.hypot(near.x - this.joinedAtX, near.z - this.joinedAtZ) < PROP_SHOT_JOIN_EVERY_M)) {
       this.joinNear(near.x, near.z, PROP_SHOT_JOIN_M);
       this.joinedAtX = near.x;
@@ -451,7 +456,7 @@ export class PhysicsWorld {
       undefined,
       undefined,
       this.playerBody,
-      skipBody ? this.notSkipped : undefined,
+      this.castable,
     );
     if (!hit) return false;
     const t = hit.timeOfImpact,

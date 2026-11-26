@@ -41,8 +41,8 @@ export interface RapierLabDeps {
   placements: readonly FurniturePlacement[];
   furniture: Pick<StreetFurniture, 'detach' | 'reattach'>;
   cars: readonly CarBody[];
-  /** the pedestrians: the ones near the player join the world, for shots to hit */
-  people: readonly PersonBody[];
+  /** the pedestrians, with ?lab=pickadoll: the ones near the player join the world, for shots to hit. Null without */
+  people: readonly PersonBody[] | null;
   player: { x: number; z: number };
   inCar(): boolean;
   /** the car the player drives, while in one */
@@ -147,7 +147,7 @@ export async function startRapierLab(g: RapierLabDeps): Promise<RapierLabState> 
   g.addFrameUpdate(dt => {
     const viewer = g.playerCar() ?? g.player;
     world.follow(g.cars, g.inCar() ? null : g.player, viewer);
-    world.followPeople(g.people, viewer);
+    if (g.people) world.followPeople(g.people, viewer);
     world.step(dt, now);
     draw.update();
   });

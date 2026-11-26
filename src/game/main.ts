@@ -416,7 +416,7 @@ if (lab.on('toon')) import('./render/toon-style').then(m => loop.drawThrough(new
 // ?lab=rapier runs a Rapier world beside the game's own collisions, where a car knocks mailboxes and bins over (#54, src/game/rapier-lab.ts)
 let rapierLab: RapierLabState | null = null;
 if (lab.on('rapier')) import('./rapier-lab').then(m => m.startRapierLab({ scene, data: D, heightfield, groundAt, placements: furniture.layout.placements, furniture: furniture.draw,
-  cars, people: crowd.npcs, player, inCar: () => game.inCar, playerCar: () => game.pcar, addFrameUpdate: update => loop.addFrameUpdate(update) })).then(s => { rapierLab = s; }).catch(err => console.warn('Lab: rapier failed', err));
+  cars, people: lab.on('pickadoll') ? crowd.npcs : null, player, inCar: () => game.inCar, playerCar: () => game.pcar, addFrameUpdate: update => loop.addFrameUpdate(update) })).then(s => { rapierLab = s; }).catch(err => console.warn('Lab: rapier failed', err));
 // ?lab=pickadoll: weapons to try, and three answers to what a hit does (#17: src/game/pickadoll.ts). Stepped after the crowd, above
 let pickadoll: Pickadoll | null = null;
 if (lab.on('pickadoll')) Promise.all([import('./pickadoll'), import('./render/shot-fx')]).then(([m, fx]) => {
