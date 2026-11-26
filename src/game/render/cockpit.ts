@@ -60,7 +60,6 @@ const _e = new THREE.Euler(0, 0, 0, 'YXZ');
 const _m = new THREE.Matrix4();
 const _box = new THREE.Box3();
 
-/** What the driver's view reads from the rest of the game. */
 // whether `now` wears another colour than `was`; a material without one (the simple car's paint is in its geometry) never does
 const recoloured = (now: THREE.Material, was: THREE.Material | undefined) => {
   const a = (now as { color?: THREE.Color }).color,
@@ -68,6 +67,7 @@ const recoloured = (now: THREE.Material, was: THREE.Material | undefined) => {
   return !!a && !!b && !a.equals(b);
 };
 
+/** What the driver's view reads from the rest of the game. */
 export interface CockpitDeps {
   camera: THREE.PerspectiveCamera;
   game: Pick<GameState, 'inCar' | 'pcar'>;
