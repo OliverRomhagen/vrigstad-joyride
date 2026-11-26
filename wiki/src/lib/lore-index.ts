@@ -25,24 +25,21 @@ export type LoreRules = { models: ReadonlySet<string>; tables: ReadonlySet<strin
 /** The frontmatter keys every kind takes; a kind adds its own (KINDS), and any other key is a typo or another kind's. */
 const BASE_KEYS = ['kind', 'title', 'summary', 'tags', 'tables'];
 
-class LoreError extends Error {
-  constructor(slug: string, problem: string) {
-    super(`docs/lore/${slug}.md: ${problem}`);
-  }
-}
+/** An error that names the lore file it's about, so a failed build says which page to fix. */
+const loreError = (slug: string, problem: string) => new Error(`docs/lore/${slug}.md: ${problem}`);
 
 const isStrings = (v: unknown): v is string[] => Array.isArray(v) && v.every(x => typeof x === 'string');
 
 function optionalString(file: LoreFile, key: string): string | undefined {
   const v = file.meta[key];
   if (v === undefined) return undefined;
-  if (typeof v !== 'string') throw new LoreError(file.slug, `\`${key}\` should be text`);
+  if (typeof v !== 'string') throw loreError(file.slug, `\`${key}\` should be text`);
   return v;
 }
 
 function requiredString(file: LoreFile, key: string): string {
   const v = optionalString(file, key);
-  if (v === undefined) throw new LoreError(file.slug, `needs a \`${key}\``);
+  if (v === undefined) throw loreError(file.slug, `needs a \`${key}\``);
   return v;
 }
 
@@ -51,14 +48,14 @@ function optionalPoint(file: LoreFile, key: string): [number, number] | undefine
   const p = file.meta[key];
   if (p === undefined) return undefined;
   if (!(Array.isArray(p) && p.length === 2 && p.every(n => typeof n === 'number' && Number.isFinite(n))))
-    throw new LoreError(file.slug, `\`${key}\` should be [x, z] in metres`);
+    throw loreError(file.slug, `\`${key}\` should be [x, z] in metres`);
   return p as [number, number];
 }
 
 function strings(file: LoreFile, key: string): string[] {
   const v = file.meta[key];
   if (v === undefined) return [];
-  if (!isStrings(v)) throw new LoreError(file.slug, `\`${key}\` should be a list of text`);
+  if (!isStrings(v)) throw loreError(file.slug, `\`${key}\` should be a list of text`);
   return v;
 }
 
@@ -66,7 +63,7 @@ function strings(file: LoreFile, key: string): string[] {
 function optionalModel(file: LoreFile, rules: LoreRules): { model?: string } {
   const model = optionalString(file, 'model');
   if (model !== undefined && !rules.models.has(model))
-    throw new LoreError(file.slug, `no 3D model "${model}" in wiki/src/lib/npc-models.ts`);
+    throw loreError(file.slug, `no 3D model "${model}" in wiki/src/lib/npc-models.ts`);
   return { model };
 }
 
@@ -97,8 +94,7 @@ const KINDS = {
       const position = optionalPoint(file, 'position');
       const start = optionalPoint(file, 'start');
       // the infobox, and with it "Drive here", shows only for a place with a position
-      if (start && !position)
-        throw new LoreError(file.slug, '`start` needs a `position`, the place it starts you near');
+      if (start && !position) throw loreError(file.slug, '`start` needs a `position`, the place it starts you near');
       return { position, start };
     },
     hasInfobox: (e: { position?: unknown }) => e.position !== undefined,
@@ -145,17 +141,17 @@ export function parseEntry(file: LoreFile, rules: LoreRules): Entry {
   const { slug, meta, source } = file;
   // one folder deep: a folder is a section of the wiki (sections.ts), and a folder inside one would be a section of its own
   if (slug.split('/').length > 2)
-    throw new LoreError(slug, 'is more than one folder deep; a page goes in docs/lore/ or in one folder of it');
+    throw loreError(slug, 'is more than one folder deep; a page goes in docs/lore/ or in one folder of it');
   const kind = meta.kind ?? 'note';
   if (!isKind(kind))
-    throw new LoreError(
+    throw loreError(
       slug,
       `unknown kind "${String(kind)}"; the wiki knows ${Object.keys(KINDS).join(', ')} (wiki/src/lib/lore-index.ts)`,
     );
   const known = [...BASE_KEYS, ...KINDS[kind].keys];
   for (const key of Object.keys(meta))
     if (!known.includes(key))
-      throw new LoreError(
+      throw loreError(
         slug,
         `\`${key}\` isn't a key for kind ${kind}; it takes ${known.map(k => `\`${k}\``).join(', ')}`,
       );
@@ -169,8 +165,8 @@ export function parseEntry(file: LoreFile, rules: LoreRules): Entry {
     links: linksOf(slug, source),
   };
   for (const [i, id] of base.tables.entries()) {
-    if (!rules.tables.has(id)) throw new LoreError(slug, `no game table "${id}" in wiki/src/lib/game-tables.ts`);
-    if (base.tables.indexOf(id) !== i) throw new LoreError(slug, `the game table "${id}" is listed twice`);
+    if (!rules.tables.has(id)) throw loreError(slug, `no game table "${id}" in wiki/src/lib/game-tables.ts`);
+    if (base.tables.indexOf(id) !== i) throw loreError(slug, `the game table "${id}" is listed twice`);
   }
   // the kind's own fields, checked by the kind; `kind` says which member of Entry they make
   return { ...base, kind, ...KINDS[kind].parse(file, rules) } as Entry;
