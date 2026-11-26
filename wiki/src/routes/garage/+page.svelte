@@ -28,6 +28,13 @@ const most = {
   acc: Math.max(...cars.map(c => c.spec.acc)),
 };
 
+// where every car stands on each number's line, from 0 to 1
+const shares = {
+  max: cars.map(c => c.spec.max / most.max),
+  acc: cars.map(c => c.spec.acc / most.acc),
+  off: cars.map(c => c.spec.off),
+};
+
 let index = $state(0);
 let paints = $state<Record<string, string | undefined>>({});
 let papers = $state<HTMLDialogElement>();
@@ -150,25 +157,30 @@ function steer(e: KeyboardEvent) {
 
   <section class="card" aria-label="The car on the ring" bind:this={cardEl} bind:offsetHeight={cardHeight}>
     <button type="button" class="step" onclick={() => step(-1)} aria-label="Previous car">
-      <ChevronLeft size="1em" strokeWidth={3} />
+      <ChevronLeft size="1em" strokeWidth={2.5} />
     </button>
+    <!-- one number: the value in words, and under it a line with this car's mark among the other cars' -->
+    {#snippet stat(label: string, value: number, unit: string, share: number, all: number[])}
+      <div>
+        <dt>{label}</dt>
+        <dd>
+          {value} <small>{unit}</small>
+          <i style:--v={share} aria-hidden="true">
+            {#each all as at, n (n)}
+              <span style:--v={at}></span>
+            {/each}
+          </i>
+        </dd>
+      </div>
+    {/snippet}
     {#snippet about(c: (typeof cars)[number], i: number)}
       <p class="kind">{i + 1} / {cars.length} on the ring</p>
       <h2>{c.name}</h2>
       <p class="spoken"><span lang="sv">“{c.spokenName}”</span> · drives as the {c.spec.name}</p>
       <dl>
-        <div>
-          <dt>Top speed</dt>
-          <dd><i style:--v={c.spec.max / most.max}></i>{kmh(c.spec.max)} km/h</dd>
-        </div>
-        <div>
-          <dt>Pull</dt>
-          <dd><i style:--v={c.spec.acc / most.acc}></i>{c.spec.acc} m/s²</dd>
-        </div>
-        <div>
-          <dt>Off road</dt>
-          <dd><i style:--v={c.spec.off}></i>{Math.round(c.spec.off * 100)} %</dd>
-        </div>
+        {@render stat('Top speed', kmh(c.spec.max), 'km/h', c.spec.max / most.max, shares.max)}
+        {@render stat('Pull', c.spec.acc, 'm/s²', c.spec.acc / most.acc, shares.acc)}
+        {@render stat('Off road', Math.round(c.spec.off * 100), '%', c.spec.off, shares.off)}
       </dl>
       {#if c.police}
         <p class="muted">Police livery. Plåt-Pelle won't buy this one.</p>
@@ -177,7 +189,7 @@ function steer(e: KeyboardEvent) {
           {#each c.spec.cols as paint (paint)}
             <button
               type="button"
-              style:background={paint}
+              style:--paint={paint}
               title="Paint it {colourName(paint)}"
               aria-label="Paint it {colourName(paint)}"
               aria-pressed={paints[c.id] === paint}
@@ -204,7 +216,7 @@ function steer(e: KeyboardEvent) {
       {/each}
     </div>
     <button type="button" class="step" onclick={() => step(1)} aria-label="Next car">
-      <ChevronRight size="1em" strokeWidth={3} />
+      <ChevronRight size="1em" strokeWidth={2.5} />
     </button>
   </section>
   <!-- the wiki's footer isn't drawn here, and the hall and carport are OSM outlines, so their credit stays in sight
@@ -282,7 +294,6 @@ header > * {
   padding: 8px 14px 8px 11px; /* less on the icon's side, so the two sides look alike */
   white-space: nowrap;
   border-radius: 8px;
-  box-shadow: var(--lift);
   text-decoration: none;
   cursor: pointer;
   backdrop-filter: blur(10px);
@@ -433,11 +444,9 @@ header > * {
   left: 50%;
   bottom: 30px; /* over the credit */
   translate: -50% 0;
-  width: min(40rem, calc(100% - 32px));
+  width: min(30rem, calc(100% - 32px));
   display: grid;
   grid-template-columns: auto 1fr auto;
-  align-items: center;
-  gap: 8px;
   /* no panel: the words lie on the yard's own ground, which the shade below darkens, so the card is no taller than
      what it says and the car has the window */
   text-shadow: 0 1px 2px #000a;
@@ -454,11 +463,17 @@ header > * {
   background: linear-gradient(#1d1f2400, #1d1f2480 56px, #1d1f24b3);
   pointer-events: none;
 }
+/* the text has the card's whole width; the two arrows lie over its first row, either side of the car's name */
 .info {
+  grid-area: 1 / 1 / 2 / -1;
   min-width: 0;
   text-align: center;
   display: grid;
   align-items: center;
+}
+/* the two lines the arrows stand beside keep clear of them; the line under has the whole width */
+.info :is(.kind, h2) {
+  padding-inline: 52px;
 }
 /* every car's text in the one cell, so the cell is as big as the biggest */
 .info > div {
@@ -474,32 +489,52 @@ header > * {
   text-transform: uppercase;
   margin: 0;
 }
+/* gold is for what you can press */
 .info .kind {
   font-size: 0.75rem;
+  color: var(--muted);
 }
 .spoken {
-  margin: 0 0 8px;
-  color: var(--muted);
+  margin: 4px 0 10px;
+  text-wrap: balance;
+  color: var(--cream);
+  opacity: 0.85;
   font-size: 0.875rem;
 }
+/* a ring of gold round a chevron, on a little of the ground's dark so it reads over gravel: 44px, a finger's width */
 .step {
+  grid-row: 1;
+  align-self: start;
+  z-index: 1;
   display: grid;
   place-items: center;
-  width: 48px;
-  height: 64px;
+  width: 44px;
+  height: 44px;
+  margin-top: 14px; /* its middle level with the name's, under the small line above it */
   padding: 0;
-  font-size: 2rem; /* the chevron's size */
-  color: var(--road);
-  background: var(--gold);
-  border: 0;
-  border-radius: 8px;
+  font-size: 1.5rem; /* the chevron's size */
+  color: var(--gold);
+  background: #1d1f2473;
+  border: 2px solid var(--gold);
+  border-radius: 50%;
   cursor: pointer;
-  box-shadow: 0 2px 6px #0005;
+}
+/* each in its own column, said outright: the text fills the whole row, so a column left to chance would be a fourth */
+.step:first-of-type {
+  grid-column: 1;
+}
+.step:last-of-type {
+  grid-column: 3;
 }
 @media (hover: hover) {
   .step:hover {
-    filter: brightness(1.1);
+    color: var(--road);
+    background: var(--gold);
   }
+}
+:is(.step, .paints button):focus-visible {
+  outline: 2px solid var(--cream);
+  outline-offset: 2px;
 }
 dl {
   display: grid;
@@ -514,36 +549,73 @@ dt {
   letter-spacing: 0.1em;
   color: var(--muted);
 }
+/* the number is the fact; the line under it only says where this car stands among the others */
 dd {
-  margin: 2px 0 0;
-  font-size: 0.875rem;
+  margin: 0;
+  font: 600 1.125rem / 1.2 var(--font);
   font-variant-numeric: tabular-nums;
 }
-/* a bar filled to --v, from 0 to 1 */
+dd small {
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: var(--muted);
+}
+/* a hairline filled to --v, from 0 to 1, with a gold mark at its end */
 dd i {
   display: block;
-  height: 5px;
-  margin-bottom: 2px;
-  border-radius: 3px;
-  background: linear-gradient(90deg, var(--gold) calc(var(--v) * 100%), #ffffff33 0);
+  position: relative;
+  height: 2px;
+  margin: 6px 0 3px;
+  background: linear-gradient(90deg, var(--cream) calc(var(--v) * 100%), #ffffff33 0);
+}
+dd i::after,
+dd i span {
+  content: "";
+  position: absolute;
+  left: calc(var(--v) * 100%);
+  translate: -100% 0;
+}
+dd i::after {
+  top: -3px;
+  width: 2px;
+  height: 8px;
+  background: var(--gold);
+}
+/* every car's place on the line, this one's included, under its gold mark */
+dd i span {
+  top: -2px;
+  width: 1px;
+  height: 6px;
+  background: #ffffff66;
 }
 .paints {
   display: flex;
   justify-content: center;
-  gap: 8px;
 }
-/* 28px across: room for a finger */
+/* a dot of paint in a button a finger can hit: the dot is 24px, the button round it 38 by 44 */
 .paints button {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  border: 2px solid #fff3;
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 44px;
   padding: 0;
+  background: none;
+  border: 0;
+  border-radius: 8px;
   cursor: pointer;
 }
-.paints button[aria-pressed="true"] {
-  border-color: var(--gold);
-  box-shadow: 0 0 0 2px var(--road);
+.paints button::before {
+  content: "";
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--paint);
+  border: 2px solid var(--road);
+}
+/* the paint that is on the car: a cream ring, which shows round the pale paints too */
+.paints button[aria-pressed="true"]::before {
+  outline: 2px solid var(--cream);
+  outline-offset: 2px;
 }
 .credit {
   position: absolute;
@@ -563,7 +635,10 @@ dd i {
   .pane,
   .step,
   .paints button {
-    transition: scale 200ms ease-out;
+    transition:
+      scale 200ms ease-out,
+      color 120ms ease-out,
+      background-color 120ms ease-out;
   }
   :is(.pane, .step):active {
     scale: 0.97;
@@ -714,10 +789,9 @@ dd i {
   .card {
     bottom: 28px;
   }
+  /* the name is smaller here, so its middle is higher */
   .step {
-    width: 36px;
-    height: 48px;
-    font-size: 1.625rem;
+    margin-top: 7px;
   }
   dl {
     gap: 6px;

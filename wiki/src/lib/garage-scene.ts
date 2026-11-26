@@ -19,6 +19,9 @@ const HORIZON = '#d9a27a'; // the fog: sRGB, as the game's (three applies fog af
 // half the width round the ring that the camera keeps in frame. No more: a narrow window backs the camera off to fit
 // it, and much further back it would stand outside the gate, looking through the fence
 const CAR_R_M = 3;
+// across, the frame also holds Plåt-Pelle beside the ring (PELLE_FROM_RING, 3.2 m out, and half of him), so a window taller
+// than it is wide still shows him whole with the car in its middle
+const FRAME_R_M = 3.6;
 const CAR_HALF_H_M = 1.5; // half the height it keeps in frame: the car and the ground just around it
 const MAX_DIST_M = 26; // how far you can zoom out, unless the window needs more to fit the car
 const ZOOM_OUT = 1.4; // and then this much past the fitted distance
@@ -28,7 +31,6 @@ const LOOK_AT_M = 0.8; // the height above the ring the camera looks at
 // car as you come in, 3.2 m out, so a turning car's corner clears him, and 1.7 m off the line the cars drive in and out
 // along. In the game he stands 7.5 m off, which a narrow window wouldn't show.
 const PELLE_FROM_RING = { u: -2.7, v: -1.7 };
-const LOOK_TOWARDS_PELLE = 0.15; // the camera looks this share of the way from the ring to him, so both are in frame
 const PELLE_HEAD_M = 1.95; // just over his cap: where his words come from
 const ARRIVE_S = 1.4; // how long the camera takes to ease in on the first car, as the yard fades in
 const ARRIVE_ZOOM = 0.93; // how wide it starts, as a share of its zoom once it has arrived
@@ -61,7 +63,7 @@ const offsetOf = (s: Swap) => {
 export class GarageScene {
   private readonly stage: Stage;
   private readonly ring = yardToWorld(RING_UV.u, RING_UV.v);
-  /** what the camera looks at and turns about: the ring, a little towards Plåt-Pelle */
+  /** what the camera looks at and turns about: the ring's middle, so the car stays in the window's middle as you turn the yard */
   private readonly lookAt: THREE.Vector3;
   /** the way the cars drive on and off the ring, along the yard */
   private readonly along: THREE.Vector3;
@@ -110,10 +112,7 @@ export class GarageScene {
     // the yard sets its own shadows, as in the game (none cast on a phone)
     const pelleUV = { u: RING_UV.u + PELLE_FROM_RING.u, v: RING_UV.v + PELLE_FROM_RING.v };
     const pelle = yardToWorld(pelleUV.u, pelleUV.v);
-    this.lookAt = new THREE.Vector3(ring.x, LOOK_AT_M, ring.z).lerp(
-      new THREE.Vector3(pelle.x, LOOK_AT_M, pelle.z),
-      LOOK_TOWARDS_PELLE,
-    );
+    this.lookAt = new THREE.Vector3(ring.x, LOOK_AT_M, ring.z);
     const head = new THREE.Vector3(pelle.x, PELLE_HEAD_M, pelle.z);
     const onScreen = new THREE.Vector3();
     let headX = Number.NaN,
@@ -322,7 +321,7 @@ export class GarageScene {
     const view = this.clear(height);
     const tanHalf = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
     // far enough to fit it across the window, and up and down in the clear part
-    const across = CAR_R_M / (tanHalf * (width / height));
+    const across = Math.max(CAR_R_M, FRAME_R_M) / (tanHalf * (width / height));
     const upDown = CAR_HALF_H_M / ((tanHalf * view.height) / height);
     const dist = Math.max(controls.minDistance, across, upDown);
     controls.maxDistance = Math.max(MAX_DIST_M, dist * ZOOM_OUT);
