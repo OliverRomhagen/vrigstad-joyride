@@ -16,20 +16,19 @@ const SWAP_S = 0.9; // how long a car takes to drive off the ring, and the next 
 const SWAP_M = 14; // how far along the yard they drive
 const TURN_RAD_S = 0.12; // the ring turns the car slowly, so you see it from all sides without dragging
 const HORIZON = '#d9a27a'; // the fog: sRGB, as the game's (three applies fog after the colour space conversion)
-// half the width round the ring that the camera keeps in frame. No more: a narrow window backs the camera off to fit
-// it, and much further back it would stand outside the gate, looking through the fence
-const CAR_R_M = 3;
-// across, the frame is a little wider, so a window taller than it is wide still shows Plåt-Pelle whole beside the ring
-// (PELLE_FROM_RING), with the image moved left for him (LEFT_SHARE). At 3.6 a phone's camera stands so far back that a
-// roof over it comes into the sky
+// half the width round the ring that the camera keeps in frame: the car, 3 m, and a little more, so a narrow window
+// still shows Plåt-Pelle whole beside the ring (PELLE_FROM_RING), with the image moved left for him (LEFT_SHARE). No
+// more: a narrow window backs the camera off to fit it, and much further back it would stand outside the gate, looking
+// through the fence. At 3.6 a phone's camera already stands so far back that a roof over it comes into the sky
 const FRAME_R_M = 3.3;
-const CAR_HALF_H_M = 1.5;
-// A window taller than it is wide fits the car across, and has room to spare above and below it. Drawn in the middle of
-// that room the car looks high, with the sky over it and bare ground under it down to the card, and Plåt-Pelle beside it
-// pulls the pair to the right. So the image is let down by this share of the spare room, and moved left by this share
-// of the window's width when all the room is spare; a wide window, with none to spare, stays as it is.
+const CAR_HALF_H_M = 1.5; // half the height it keeps in frame: the car and the ground just around it
+// A window narrow enough to be fitted to the car across, such as a phone's, has room to spare above and below it. Drawn
+// in the middle of that room the car looks high, with the sky over it and bare ground under it down to the card, and
+// Plåt-Pelle beside it pulls the pair to the right. So the image is let down by this share of the spare room, and moved
+// left by up to this share of the window's width, the more of the room that is spare; a window fitted to the car up
+// and down has none to spare, and stays as it is.
 const DROP_SHARE = 0.35;
-const LEFT_SHARE = 0.09; // half the height it keeps in frame: the car and the ground just around it
+const LEFT_SHARE = 0.09;
 const MAX_DIST_M = 26; // how far you can zoom out, unless the window needs more to fit the car
 const ZOOM_OUT = 1.4; // and then this much past the fitted distance
 const VIEW_MIN = 0.35; // the share of the window's height the scene keeps however tall the header and card are
@@ -320,7 +319,7 @@ export class GarageScene {
   private fit(width: number, height: number) {
     const view = this.clear(height);
     const tanHalf = Math.tan(THREE.MathUtils.degToRad(this.stage.camera.fov / 2));
-    const across = Math.max(CAR_R_M, FRAME_R_M) / (tanHalf * (width / height));
+    const across = FRAME_R_M / (tanHalf * (width / height));
     const upDown = CAR_HALF_H_M / ((tanHalf * view.height) / height);
     const dist = Math.max(across, upDown);
     // the room over and under the car in the clear part (px, each way), when it is fitted across: none when up and down
