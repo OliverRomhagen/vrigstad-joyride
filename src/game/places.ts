@@ -28,6 +28,14 @@ export const KIOSK = { x: -13, z: 25.5, w: 3, d: 2.2, counterZ: 2.3 } as const;
 /** Skroten: its ring, just inside the yard's gate on the south side of Stockarydsvägen (skroten-yard.ts). */
 export const SKROTEN = yardToWorld(RING_UV.u, RING_UV.v);
 
+/** Where `go` takes you; `h` turns the car you drive that way when you get there (a car's heading, radians). */
+export interface GoSpot {
+  x: number;
+  z: number;
+  name: string;
+  h?: number;
+}
+
 export interface Place {
   kind: 'safe' | 'kiosk' | 'skrot';
   name: string;
@@ -112,12 +120,17 @@ export class Places {
   }
 
   /**
-   * go <place> (also tp): takes you to Torget or to a place's ring (the kiosk, Skroten, a safehouse by its street), in the car if you
-   * are in one. `goTo` moves you, and says where you are.
+   * go <place> (also tp): takes you to Torget, to a place's ring (the kiosk, Skroten, a safehouse by its street) or to one of `more`
+   * (Skroten's workshop lift), in the car if you are in one. `goTo` moves you, and says where you are.
    */
-  registerCommands(commands: Pick<Commands, 'register'>, goTo: (x: number, z: number, name: string) => string) {
-    const spots = new Map<string, { x: number; z: number; name: string }>([['torget', { ...HOME, name: 'Torget' }]]);
+  registerCommands(
+    commands: Pick<Commands, 'register'>,
+    goTo: (x: number, z: number, name: string, h?: number) => string,
+    more: Readonly<Record<string, GoSpot>> = {},
+  ) {
+    const spots = new Map<string, GoSpot>([['torget', { ...HOME, name: 'Torget' }]]);
     for (const p of this.list) spots.set(p.kind === 'kiosk' ? 'kiosk' : p.name.toLowerCase(), p);
+    for (const [key, spot] of Object.entries(more)) spots.set(key, spot);
     const names = [...spots.keys()];
     commands.register(
       'go',
@@ -125,10 +138,12 @@ export class Places {
         help: 'go to a place, in the car if you are in one',
         examples: ['go skroten', 'go torget'],
         aliases: ['tp'],
-        args: [described(choice('place', names), 'Torget, the kiosk, Skroten or a safehouse by its street')],
+        args: [
+          described(choice('place', names), 'Torget, the kiosk, Skroten, its workshop or a safehouse by its street'),
+        ],
         run: ({ place }) => {
           const spot = spots.get(place)!; // choice() only gives back a name from the list
-          return goTo(spot.x, spot.z, spot.name);
+          return goTo(spot.x, spot.z, spot.name, spot.h);
         },
       }),
     );

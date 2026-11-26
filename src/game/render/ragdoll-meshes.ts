@@ -1,12 +1,11 @@
 // Draws the people your car knocked over (src/game/ragdolls.ts): the same boxes as personParts, but each limb on its own,
 // while the pedestrian's own mesh is hidden; once they are up, their own mesh comes back where they stand.
 import * as THREE from 'three';
+import type { BoxPart } from '../box-part';
 import type { KnockedDown } from '../ragdolls';
 import { HEAD, L_FOOT, L_HAND, L_HIP, L_SHOULDER, R_FOOT, R_HAND, R_HIP, R_SHOULDER } from '../sim/ragdoll';
 
 const SKIN = '#e2b796'; // personParts' skin colour
-
-type BoxPart = [number, number, number, number, number, number, string]; // [sx, sy, sz, x, y, z, colour], as boxGeo in ./models.ts takes it
 
 /** What the ragdoll meshes read from the rest of the game. */
 export interface RagdollMeshDeps {
@@ -15,6 +14,7 @@ export interface RagdollMeshDeps {
   geoCache: Record<string, THREE.BufferGeometry>;
   boxGeo(parts: BoxPart[]): THREE.BufferGeometry;
   paintMat: THREE.Material;
+  blob(parent: THREE.Object3D, w: number, l: number): THREE.Object3D;
   ragdolls: { readonly bodies: readonly KnockedDown[] };
 }
 
@@ -26,6 +26,7 @@ interface Drawn {
   head: THREE.Mesh;
   arms: THREE.Mesh[];
   legs: THREE.Mesh[];
+  shadow: THREE.Object3D; // a blob on the ground under the torso, as the person had standing
 }
 
 const _a = new THREE.Vector3(),
@@ -73,8 +74,7 @@ export class RagdollMeshes {
     const { shirt, pants, hair } = body.npc.look,
       part = (key: string, parts: BoxPart[]) => {
         this.g.geoCache[key] ??= this.g.boxGeo(parts);
-        const m = new THREE.Mesh(this.g.geoCache[key], this.g.paintMat);
-        m.castShadow = true;
+        const m = new THREE.Mesh(this.g.geoCache[key], this.g.paintMat); // no real shadow, as when they stood (#425)
         m.scale.setScalar(body.r.scale);
         return m;
       };
@@ -87,9 +87,10 @@ export class RagdollMeshes {
     const legs = [0, 1].map(() => part('rag-leg' + pants, [[0.19, 0.8, 0.21, 0, 0, 0, pants]]));
     const group = new THREE.Group();
     group.add(torso, head, ...arms, ...legs);
+    const shadow = this.g.blob(group, 1.1, 1.1);
     body.npc.mesh.visible = false;
     this.g.scene.add(group);
-    return { body, group, torso, head, arms, legs };
+    return { body, group, torso, head, arms, legs, shadow };
   }
 
   private sync(d: Drawn) {
@@ -112,6 +113,7 @@ export class RagdollMeshes {
       .add(at(p, R_HIP, _z))
       .multiplyScalar(0.25);
     d.torso.position.copy(_a);
+    d.shadow.position.set(_a.x, this.g.groundAt(_a.x, _a.z) + 0.06, _a.z);
     d.head.position.copy(at(p, HEAD, _a));
     limb(d.arms[0], L_SHOULDER, L_HAND, p);
     limb(d.arms[1], R_SHOULDER, R_HAND, p);

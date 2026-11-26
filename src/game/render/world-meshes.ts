@@ -159,8 +159,9 @@ const WIN_W = 2.6,
 const BOARD_M = 0.2, // the width of a timber house's panel boards in the toon style (m)
   BOARD_SEAM_ALPHA = 0.28,
   TIMBER_MAX_M2 = 450; // the same size that gives a house the big buildings' plaster colours
-const PLINTH_OUT_M = 0.08,
-  CORNER_OUT_M = 0.07,
+/** how far the plinth stands out from a house's wall (m); the safehouse doors stand clear of it (render/places.ts) */
+export const PLINTH_OUT_M = 0.08;
+const CORNER_OUT_M = 0.07,
   EAVE_M = 0.35, // how far a gabled roof runs on past the walls
   FASCIA_M = 0.15, // the depth of the board at its edge
   FLAT_BOARD_OUT_M = 0.06;
@@ -283,14 +284,18 @@ export function addBuildings(
       ).convertSRGBToLinear();
       c2.set(b.k === 2 ? '#a8573f' : b.k ? '#3f4447' : rnd() < 0.35 ? '#4d4a48' : '#a8573f').convertSRGBToLinear();
       if (isSkipped(b.p)) return null; // after the rolls above, so the houses after it keep their colours
-      c3.copy(c).multiplyScalar(flatWalls ? 1 : 0.62); // walls darken towards the ground
+      c3.copy(c).multiplyScalar(flatWalls ? 1 : 0.62); // walls darken towards the ground, unless flat for the toon style's bands
       return paint;
     };
-    const details = (
-      { building: b, ring, yAt, base, top, hi, area, winding: wind }: BuildingShape,
-      emit: EmitVertex,
-    ) => {
-      if (b.k === 1 || area < HOUSE_MIN_M2 || area > HOUSE_MAX_M2 || isSkipped(b.p)) return; // not the church and its tower, not sheds or barns, not one drawn elsewhere
+    // not the church and its tower, not sheds or barns, not one drawn elsewhere
+    const trimmed = ({ building: b, area }: BuildingShape) =>
+      b.k !== 1 && area >= HOUSE_MIN_M2 && area <= HOUSE_MAX_M2 && !isSkipped(b.p);
+    // a trimmed gabled house's walls stop at its soffit, which closes them under the eave, so the roof's edge along the
+    // walls is shared only with the eave, in its own plane, and the toon style draws no line 0.35 m in from the fascia's
+    const wallDrop = (shape: BuildingShape) => (shape.building.g && trimmed(shape) ? FASCIA_M : 0);
+    const details = (shape: BuildingShape, emit: EmitVertex) => {
+      if (!trimmed(shape)) return;
+      const { building: b, area, ring, yAt, roofY, base, top, hi, winding: wind } = shape;
       const m = ring.length,
         yb = hi + 0.2,
         yt = top - 0.25,
@@ -316,29 +321,42 @@ export function addBuildings(
           uz = ez / len,
           ox = wind * uz,
           oz = -wind * ux,
-          o = (k: number, s: number): [number, number, number, number] => [
-            a.x + ox * k - ux * s,
-            a.z + oz * k - uz * s,
-            d.x + ox * k + ux * s,
-            d.z + oz * k + uz * s,
-          ];
+          prev = normal(ring[(i + m - 1) % m], a),
+          next = normal(d, ring[(i + 2) % m]),
+          // how far a line `k` m out from this wall runs on past a corner, to where the neighbour's line `k` m out crosses
+          // it: a mitre, so corners of any angle close (none where the outline only splits at the ridge)
+          mitre = (n: [number, number], along: number, k: number) =>
+            (-k / Math.max(0.3, 1 + ox * n[0] + oz * n[1])) * (n[0] * ux + n[1] * uz) * along,
+          // the ends of that line, mitred at both corners unless `mitred` is false
+          o = (k: number, mitred = true): [number, number, number, number] => {
+            const sa = mitred ? mitre(prev, 1, k) : 0,
+              sd = mitred ? mitre(next, -1, k) : 0;
+            return [a.x + ox * k - ux * sa, a.z + oz * k - uz * sa, d.x + ox * k + ux * sd, d.z + oz * k + uz * sd];
+          },
+          // whether that line still runs from a's end to d's: on a wall shorter than what its mitres at inside corners
+          // take off it, its ends swap places
+          forwards = (k: number) => len + mitre(prev, 1, k) + mitre(next, -1, k) > 0;
         const nwin = Math.round(len / WIN_W); // whole windows only: the tile stretches a little to fit the wall
         if (len >= 1.6 && nwin > 0) {
-          quad(wp, ...o(0.04, 0), yb, yt, yb, yt);
+          // from d to a where the outline runs the other way, so its front faces out, as the shell's walls do: the shadow's
+          // normalBias moves the lookup along the normal, into the wall's own shadow when it points in. The tile is
+          // symmetric, so it needs no mirroring
+          const [s1x, s1z, s2x, s2z] = o(0.04, false);
+          if (wind > 0) quad(wp, s2x, s2z, s1x, s1z, yb, yt, yb, yt);
+          else quad(wp, s1x, s1z, s2x, s2z, yb, yt, yb, yt);
           wu.push(0, 0, nwin, 0, nwin, rows, 0, 0, nwin, rows, 0, rows);
         }
         const ya = yAt(a),
           yd = yAt(d),
           py = hi + 0.45,
-          [w1x, w1z, w2x, w2z] = o(0, PLINTH_OUT_M),
-          [p1x, p1z, p2x, p2z] = o(PLINTH_OUT_M, PLINTH_OUT_M), // its ends run on, so the corners close
+          [p1x, p1z, p2x, p2z] = o(PLINTH_OUT_M),
           OUT: Corner = [ox, 0, oz];
         if (boardSeams && !b.k && area <= TIMBER_MAX_M2) {
           // between the wall and the windows' skin, from the plinth up to the eaves; u counts boards along the wall
           const under = b.g ? FASCIA_M : 0.22,
             u0 = seamTo === i && ux * seamUx + uz * seamUz > 0.999 ? seamU : 0,
             u1 = u0 + len / BOARD_M;
-          quad(bp, ...o(0.02, 0), py, ya - under, py, yd - under);
+          quad(bp, ...o(0.02, false), py, ya - under, py, yd - under);
           bu.push(u0, 0, u1, 0, u1, 1, u0, 0, u1, 1, u0, 1);
           seamTo = i + 1;
           seamU = u1;
@@ -346,22 +364,15 @@ export function addBuildings(
           seamUz = uz;
         }
         face(emit, PLINTH, OUT, [p1x, base, p1z], [p2x, base, p2z], [p2x, py, p2z], [p1x, py, p1z]);
-        face(emit, PLINTH, UP, [w1x, py, w1z], [w2x, py, w2z], [p2x, py, p2z], [p1x, py, p1z]);
-        if (b.g) {
-          // the roof runs on EAVE_M past the wall, falling as it rose over the last EAVE_M inside; at every corner it also runs
-          // on along the wall to where the next wall's eave line crosses it (none where the outline only splits at the ridge) (a mitre, so corners of any angle close), but its
-          // corners never rise above the wall's own top, which a gable askew to the ridge would otherwise do
-          const mitre = (n: [number, number], along: number) =>
-              (-EAVE_M / Math.max(0.3, 1 + ox * n[0] + oz * n[1])) * (n[0] * ux + n[1] * uz) * along,
-            runA = mitre(normal(ring[(i + m - 1) % m], a), 1),
-            runD = mitre(normal(d, ring[(i + 2) % m]), -1),
-            slope = (yd - ya) / len,
-            ax2 = a.x - ux * runA + ox * EAVE_M,
-            az2 = a.z - uz * runA + oz * EAVE_M,
-            dx2 = d.x + ux * runD + ox * EAVE_M,
-            dz2 = d.z + uz * runD + oz * EAVE_M,
-            ya2 = Math.min(ya, 2 * ya - yAt({ x: a.x - ox * EAVE_M, z: a.z - oz * EAVE_M }) - slope * runA),
-            yd2 = Math.min(yd, 2 * yd - yAt({ x: d.x - ox * EAVE_M, z: d.z - oz * EAVE_M }) + slope * runD);
+        face(emit, PLINTH, UP, [a.x, py, a.z], [d.x, py, d.z], [p2x, py, p2z], [p1x, py, p1z]);
+        // no eave on a wall too short for its mitres, whose eave line would run backwards and come out crossed
+        if (b.g && forwards(EAVE_M)) {
+          // the roof runs on EAVE_M past the wall in its own plane, mitred at the corners; each corner's height comes from
+          // the corner point alone, so the two walls that meet there agree on it, and never rises above the wall's own top,
+          // which a gable askew to the ridge would otherwise do
+          const [ax2, az2, dx2, dz2] = o(EAVE_M),
+            ya2 = Math.min(ya, roofY({ x: ax2, z: az2 })),
+            yd2 = Math.min(yd, roofY({ x: dx2, z: dz2 }));
           face(emit, c2, UP, [a.x, ya, a.z], [d.x, yd, d.z], [dx2, yd2, dz2], [ax2, ya2, az2]);
           face(
             emit,
@@ -381,9 +392,11 @@ export function addBuildings(
             [dx2, yd2 - FASCIA_M, dz2],
             [ax2, ya2 - FASCIA_M, az2],
           );
+        } else if (b.g) {
+          // the wall stops FASCIA_M short of the roof (wallDrop) for the soffit to close; with no soffit, close it here
+          face(emit, c, OUT, [a.x, ya - FASCIA_M, a.z], [d.x, yd - FASCIA_M, d.z], [d.x, yd, d.z], [a.x, ya, a.z]);
         } else {
-          const [f1x, f1z, f2x, f2z] = o(FLAT_BOARD_OUT_M, FLAT_BOARD_OUT_M),
-            [g1x, g1z, g2x, g2z] = o(0, FLAT_BOARD_OUT_M),
+          const [f1x, f1z, f2x, f2z] = o(FLAT_BOARD_OUT_M),
             lo = -0.22;
           face(
             emit,
@@ -394,19 +407,20 @@ export function addBuildings(
             [f2x, yd + 0.02, f2z],
             [f1x, ya + 0.02, f1z],
           );
-          face(emit, WHITE, DOWN, [g1x, ya + lo, g1z], [g2x, yd + lo, g2z], [f2x, yd + lo, f2z], [f1x, ya + lo, f1z]);
+          face(emit, WHITE, DOWN, [a.x, ya + lo, a.z], [d.x, yd + lo, d.z], [f2x, yd + lo, f2z], [f1x, ya + lo, f1z]);
           // and its top, back to the wall, so there's no slot to see into between it and the roof
           face(
             emit,
             WHITE,
             UP,
-            [g1x, ya + 0.02, g1z],
-            [g2x, yd + 0.02, g2z],
+            [a.x, ya + 0.02, a.z],
+            [d.x, yd + 0.02, d.z],
             [f2x, yd + 0.02, f2z],
             [f1x, ya + 0.02, f1z],
           );
         }
         if (short) continue;
+        const board = o(CORNER_OUT_M);
         for (const [v, p, s] of [
           [a, ring[(i + m - 1) % m], 1],
           [d, ring[(i + 2) % m], -1],
@@ -416,10 +430,10 @@ export function addBuildings(
             fz = s > 0 ? v.z - p.z : p.z - v.z,
             fl = Math.hypot(fx, fz) || 1;
           if (Math.abs((fx * uz - fz * ux) / fl) < 0.3) continue;
-          // the front starts CORNER_OUT_M back past the corner, where the next wall's board stands, so the two close the corner
+          // the front starts at the mitre with the next wall's board, so the two close the corner
           const k = Math.min(0.18, len / 2),
-            cx = v.x + ox * CORNER_OUT_M - ux * s * CORNER_OUT_M,
-            cz = v.z + oz * CORNER_OUT_M - uz * s * CORNER_OUT_M,
+            cx = board[s > 0 ? 0 : 2],
+            cz = board[s > 0 ? 1 : 3],
             ex2 = v.x + ux * k * s,
             ez2 = v.z + uz * k * s,
             y1 = yAt(v) - (b.g ? FASCIA_M : 0.2);
@@ -456,6 +470,7 @@ export function addBuildings(
       material: new THREE.MeshLambertMaterial({ name: 'house shells', vertexColors: true, side: THREE.DoubleSide }), // the name gives it the toon style's house ramp
       colours,
       extra: details,
+      wallDrop,
     }).mesh;
     shells.userData[INK_FLAG] = true; // the toon style inks the houses' corners and roof edges too
     scene.add(shells);

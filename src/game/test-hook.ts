@@ -11,6 +11,7 @@ import type { Car } from './cars';
 import type { Health } from './health';
 import type { PlayerState } from './player';
 import type { Sky } from './render/sky';
+import type { SunStreaks } from './render/sun-streaks';
 import type { GameState, ViewState } from './state';
 
 /** What the smoke tests can read. The getters are read when a test asks. */
@@ -27,8 +28,10 @@ export interface TestHookDeps {
   readonly cats: number;
   readonly ownCat: boolean;
   readonly displayCar: Car | null; // the car parked by Torget at the start, ?vehicle= picks it
+  lift: { readonly x: number; readonly z: number; readonly inX: number; readonly inZ: number } | null; // the middle of the lift's bay in Skroten's workshop, and the way in from its door
   // what the car's model and springs are doing
   vehicleVisuals: { state(car: Car): unknown };
+  crackShown(car: Car): number; // the crack level its glass shows
   bodyMotion: { state(car: Car): unknown };
   skyDome: Pick<Sky, 'state'>;
   street: { layout: StreetscapeLayout; meshes: readonly unknown[]; tris: number; ms: number };
@@ -59,16 +62,19 @@ export interface TestHookDeps {
   build: string; // the commit the page was built from (vite.config.ts)
   readonly fps: boolean; // the console's frame times show
   readonly day: { readonly hour: number; readonly night: number; readonly sunLight: number }; // the clock (src/game/day-cycle.ts) and the sun's share of its light
+  sunStreaks: Pick<SunStreaks, 'state'> | null; // null with ?sunrays=off
 }
 
 /** Puts the hook on `window.__joyride`. */
 export function installTestHook(g: TestHookDeps) {
   const { game, view, player, health, cars, vehicleVisuals, bodyMotion, skyDome, street } = g;
-  // installed before the first frame, while every car still stands where it was placed: the smallest gap between two (#409)
+  // installed before the first frame, while every car still stands where it was placed: the smallest gap between two (#409). Skroten's
+  // lot is left out of it: its cars stand side by side on purpose, FRESH_GAP_M apart (src/game/skroten-yard.ts)
   let startGapM = Infinity;
   for (let i = 0; i < cars.length; i++)
     for (let j = i + 1; j < cars.length; j++)
-      startGapM = Math.min(startGapM, Math.hypot(cars[i].x - cars[j].x, cars[i].z - cars[j].z));
+      if (!(cars[i].saleKr && cars[j].saleKr))
+        startGapM = Math.min(startGapM, Math.hypot(cars[i].x - cars[j].x, cars[i].z - cars[j].z));
   function furnitureState() {
     const { layout, draw, ms } = g.furniture;
     const count = (key: 'kind' | 'source', value: string) => layout.placements.filter(p => p[key] === value).length;
@@ -185,6 +191,8 @@ export function installTestHook(g: TestHookDeps) {
         fps: g.fps,
         hp: health.hp,
         carDmg: game.pcar ? game.pcar.dmg : null,
+        carCrack: game.pcar ? g.crackShown(game.pcar) : null,
+        carAt: game.pcar ? { x: game.pcar.x, z: game.pcar.z, h: game.pcar.h } : null, // where the car you drive stands, and its heading
         ownCat: g.ownCat,
         vehicle: displayCar ? vehicleVisuals.state(displayCar) : null,
         nearSelectedVehicle: n === displayCar,
@@ -192,11 +200,14 @@ export function installTestHook(g: TestHookDeps) {
         body: game.pcar ? bodyMotion.state(game.pcar) : null,
         wheelbase: (game.pcar || displayCar)?.T.handling.wheelbaseM ?? 0,
         startGapM,
+        lift: g.lift && { x: g.lift.x, z: g.lift.z, inX: g.lift.inX, inZ: g.lift.inZ },
+        forSale: cars.filter(c => c.saleKr).map(c => ({ x: c.x, z: c.z, h: c.h, kr: c.saleKr })), // Skroten's lot
         traffic: cars.filter(c => c.mode === 'ai').map(c => ({ type: c.type, vehicle: vehicleVisuals.state(c) })),
         clouds: skyDome.state(),
         hour: g.day.hour,
         night: g.day.night,
         sunLight: g.day.sunLight,
+        sunStreaks: g.sunStreaks?.state() ?? null,
         streetscape: streetscapeState(),
         furniture: furnitureState(),
         water: waterState(),
