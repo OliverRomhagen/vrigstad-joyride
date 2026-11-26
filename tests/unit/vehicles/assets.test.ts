@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import { Box3, Vector3 } from 'three';
+import { Box3, Mesh, Vector3 } from 'three';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { expect, test } from 'vitest';
@@ -33,6 +33,7 @@ test.each(VEHICLES)('$id decodes with named body, wheel hubs and metre dimension
   expect(size.x).toBeLessThan(3);
   expect(size.y).toBeGreaterThan(1);
   expect(size.y).toBeLessThan(3);
+  expect(Math.abs(size.z - spec.length)).toBeLessThan(0.005); // registry hitbox length follows the delivered model, within 5 mm
   expect(size.z).toBeGreaterThan(3);
   expect(size.z).toBeLessThan(7);
 });
@@ -57,3 +58,17 @@ test('variant rolls follow the weights', () => {
   expect(pickVariant('saab', 0.999)).toBe('micra-k11');
   expect(pickVariant('traktor', 0.5)).toBeUndefined();
 });
+
+test.each(VEHICLES.filter(v => v.id === 'xc70' || v.id === 'xc70-police'))(
+  '$id stays within the delivery budget',
+  async spec => {
+    const bytes = readFileSync('src/public/' + spec.url);
+    expect(bytes.length).toBeLessThan(300000);
+    const { scene } = await loader.parseAsync(new Uint8Array(bytes).buffer, '');
+    let triangles = 0;
+    scene.traverse(o => {
+      if (o instanceof Mesh) triangles += (o.geometry.index?.count ?? o.geometry.attributes.position!.count) / 3;
+    });
+    expect(triangles).toBeLessThan(36000); // counts every rendered wheel instance, not just unique meshes
+  },
+);

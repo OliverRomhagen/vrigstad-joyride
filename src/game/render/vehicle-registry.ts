@@ -50,7 +50,7 @@ export const VEHICLES = [
     radius: 0.345,
     wheelbase: 2.763,
     rearAxle: 1.393,
-    length: 4.74,
+    length: 4.72,
     width: 1.86,
     // a tall, heavy estate on the Saab's type: slower to answer, softer and leaning more
     handling: { steerResponseS: 0.14, throttleResponseS: 0.25 },
@@ -73,7 +73,7 @@ export const VEHICLES = [
     radius: 0.345,
     wheelbase: 2.763,
     rearAxle: 1.393,
-    length: 4.74,
+    length: 4.905,
     width: 1.86,
     police: true,
   },
