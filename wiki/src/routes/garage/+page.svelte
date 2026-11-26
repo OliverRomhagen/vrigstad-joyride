@@ -329,7 +329,7 @@ header > * {
    window, and under the header, when he is near an edge or out of sight. Narrow, so a line breaks into a few short ones,
    as in a comic, and it keeps out of the middle of the window, where the car is. */
 .says {
-  --width: min(14.5rem, calc(100% - 32px));
+  --width: min(15rem, calc(100% - 32px));
   --line: 2px solid var(--road); /* an inked outline, as the game's own look draws things */
   position: absolute;
   /* its right edge, and the tail on it, just left of his head */
@@ -339,7 +339,7 @@ header > * {
   width: max-content;
   max-width: var(--width);
   margin: 0;
-  padding: 11px 13px 7px;
+  padding: 13px 16px 10px;
   /* solid paper: an outlined bubble that let the yard through would show its outline through its own tail */
   --paper: #fffaf0;
   background: var(--paper);
