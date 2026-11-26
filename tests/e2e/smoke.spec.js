@@ -676,10 +676,13 @@ test.describe('game (index.html)', () => {
     // last, as it loads the page again: lab on <id> puts the flag in the address and keeps ?dev (#501)
     await page.keyboard.press('Backquote');
     await expect(await run('lab')).toContainText('hello [off]: Hello lab.');
+    const here = await state(page);
     await page.keyboard.type('lab on hello');
     await page.keyboard.press('Enter');
-    await page.waitForURL(/\?dev&lab=hello$/);
+    await page.waitForURL(/\?dev&lab=hello&at=[-\d.,]+$/);
     await expect.poll(async () => (await state(page)).lab).toEqual(['hello']);
+    const there = await state(page); // the page starts where you stood
+    expect(Math.hypot(there.x - here.x, there.z - here.z)).toBeLessThan(0.2);
   });
 
   test('Skroten buys the car you drive onto its ring', async ({ page }, testInfo) => {

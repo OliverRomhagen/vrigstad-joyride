@@ -1,15 +1,18 @@
 // The console's way to the lab flags (#501): `lab` lists the experiments, `lab on <id>` and `lab off <id>` switch one.
 // The game reads the flags once, at page load, so a switch only writes the URL and loads the page again: LabFlags stays
-// the one place gameplay asks. No DOM here: the page hands in its query string and how to reload. docs/console.md.
+// the one place gameplay asks. The address also gets `at=`, so the page starts where you stood. No DOM here: the page
+// hands in its query string, where you are and how to reload. docs/console.md.
 import { choice, command, group } from '../game/command-args';
 import { type Commands, UsageError } from '../game/commands';
-import { LAB_EXPERIMENTS, type LabFlags, type LabId, withLabFlag } from './flags';
+import { LAB_EXPERIMENTS, type LabFlags, type LabId, withLabFlag, withParam } from './flags';
 
 export interface LabCommandsDeps {
   /** the flags this page load runs with */
   lab: Pick<LabFlags, 'on'>;
   /** the page's query string now: `location.search` */
   search(): string;
+  /** where you stand and look, as `?at=` reads it (`x,z,yaw,pitch`), so the page loads with you there again */
+  at(): string;
   /** loads the page again with this query string, '' for none */
   reload(search: string): void;
 }
@@ -23,12 +26,12 @@ export function registerLabCommands(commands: Pick<Commands, 'register'>, deps: 
   const switchTo = (on: boolean) =>
     command({
       help: `switch an experiment ${on ? 'on' : 'off'}, and load the page again`,
-      details: 'Every other parameter in the address stays as it is. What you were doing in the game is lost.',
+      details: 'You start again where you stand, on foot: the car, your money and the stars are as at a new start.',
       examples: [`lab ${on ? 'on' : 'off'} ${example}`],
       args: [choice('experiment', () => LAB_EXPERIMENTS.map(e => e.id))],
       run: ({ experiment }) => {
         if (lab.on(experiment) === on) return `${experiment} is already ${state(experiment)}.`;
-        deps.reload(withLabFlag(deps.search(), experiment, on));
+        deps.reload(withParam(withLabFlag(deps.search(), experiment, on), 'at', deps.at()));
         return `${experiment} is ${on ? 'on' : 'off'}. Loading the page again…`;
       },
     });

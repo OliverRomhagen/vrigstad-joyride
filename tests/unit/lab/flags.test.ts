@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { LAB_EXPERIMENTS, LabFlags, parseLabFlags, withLabFlag } from '../../../src/lab/flags';
+import { LAB_EXPERIMENTS, LabFlags, parseLabFlags, withLabFlag, withParam } from '../../../src/lab/flags';
 
 describe('parseLabFlags', () => {
   it('is empty without a lab parameter', () => {
@@ -57,6 +57,20 @@ describe('withLabFlag', () => {
 
   it('reads back as the flags it wrote', () => {
     expect(parseLabFlags(withLabFlag('?dev', 'toon', true))).toEqual(['toon']);
+  });
+});
+
+describe('withParam', () => {
+  it('sets a parameter where it was, adds a new one last, and takes one out with null', () => {
+    expect(withParam('?dev&at=1,2&time=16', 'at', '3,4')).toBe('?dev&at=3,4&time=16');
+    expect(withParam('?dev', 'at', '3,4')).toBe('?dev&at=3,4');
+    expect(withParam('', 'at', '3,4')).toBe('?at=3,4');
+    expect(withParam('?dev&at=1,2', 'at', null)).toBe('?dev');
+    expect(withParam('?at=1,2', 'at', null)).toBe('');
+  });
+
+  it('leaves a parameter whose name only starts the same', () => {
+    expect(withParam('?attic=1&at=1,2', 'at', '3,4')).toBe('?attic=1&at=3,4');
   });
 });
 

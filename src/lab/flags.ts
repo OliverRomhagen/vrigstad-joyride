@@ -40,29 +40,38 @@ export function parseLabFlags(search: string): LabId[] {
 }
 
 /**
- * A query string with one experiment switched on or off, to load the page with. Every other parameter stays exactly as
- * it was written (`?dev` stays `?dev`, `at=1,2` keeps its comma), which URLSearchParams would rewrite; only an empty part (`?a&&b`) goes. The experiments
- * that are on end up in one `lab` parameter, where the first one was, or last; ids that aren't experiments are dropped,
- * as parseLabFlags ignores them. With nothing on the parameter goes, and with nothing left the answer is ''.
+ * A query string with one parameter set, or taken out with null. Every other parameter stays exactly as it was written
+ * (`?dev` stays `?dev`, `at=1,2` keeps its comma), which URLSearchParams would rewrite; only an empty part (`?a&&b`)
+ * goes. The value is written as given, so it must need no encoding. A parameter that repeats ends up once, where the
+ * first one was; a new one goes last. With nothing left the answer is ''.
  */
-export function withLabFlag(search: string, id: LabId, on: boolean): string {
-  const ids = new Set(parseLabFlags(search));
-  if (on) ids.add(id);
-  else ids.delete(id);
-  const lab = LAB_EXPERIMENTS.map(e => e.id).filter(i => ids.has(i));
+export function withParam(search: string, name: string, value: string | null): string {
   let placed = false;
   const parts = search
     .replace(/^\?/, '')
     .split('&')
     .filter(Boolean)
     .flatMap(part => {
-      if (!new URLSearchParams(part).has('lab')) return [part];
-      if (placed || !lab.length) return [];
+      if (!new URLSearchParams(part).has(name)) return [part];
+      if (placed || value === null) return [];
       placed = true;
-      return ['lab=' + lab.join(',')];
+      return [`${name}=${value}`];
     });
-  if (!placed && lab.length) parts.push('lab=' + lab.join(','));
+  if (!placed && value !== null) parts.push(`${name}=${value}`);
   return parts.length ? '?' + parts.join('&') : '';
+}
+
+/**
+ * A query string with one experiment switched on or off, to load the page with (see withParam for what stays). The
+ * experiments that are on end up in one `lab` parameter; ids that aren't experiments are dropped, as parseLabFlags
+ * ignores them. With nothing on the parameter goes.
+ */
+export function withLabFlag(search: string, id: LabId, on: boolean): string {
+  const ids = new Set(parseLabFlags(search));
+  if (on) ids.add(id);
+  else ids.delete(id);
+  const lab = LAB_EXPERIMENTS.map(e => e.id).filter(i => ids.has(i));
+  return withParam(search, 'lab', lab.length ? lab.join(',') : null);
 }
 
 /** The experiments switched on for this page load. Everything is off by default. */

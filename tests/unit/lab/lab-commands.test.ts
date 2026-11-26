@@ -10,6 +10,7 @@ function console_(search = '') {
   registerLabCommands(c, {
     lab: LabFlags.fromSearch(search),
     search: () => search,
+    at: () => '12.5,-3.0,0.60,0.34',
     reload: s => reloads.push(s),
   });
   return { c, reloads };
@@ -25,11 +26,17 @@ describe('lab commands', () => {
     expect(reloads).toEqual([]);
   });
 
-  it('switches one on or off by loading the page again, with the other parameters kept', () => {
+  it('switches one on or off by loading the page again where you stand, with the other parameters kept', () => {
     const { c, reloads } = console_('?dev&lab=hello&at=1,2');
     expect(c.run('lab on toon')).toBe('toon is on. Loading the page again…');
     expect(c.run('lab OFF Hello')).toBe('hello is off. Loading the page again…');
-    expect(reloads).toEqual(['?dev&lab=hello,toon&at=1,2', '?dev&at=1,2']);
+    expect(reloads).toEqual(['?dev&lab=hello,toon&at=12.5,-3.0,0.60,0.34', '?dev&at=12.5,-3.0,0.60,0.34']);
+  });
+
+  it('adds where you stand to an address without it', () => {
+    const { c, reloads } = console_('?dev');
+    c.run('lab on toon');
+    expect(reloads).toEqual(['?dev&lab=toon&at=12.5,-3.0,0.60,0.34']);
   });
 
   it('leaves the page alone when the experiment is already there', () => {

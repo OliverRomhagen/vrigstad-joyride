@@ -304,8 +304,8 @@ Each step is a PR of its own, in this order; the first two are what #218 asks fo
    **Lab flags** (#227, built in #501) are the same kind of adapter, over `LAB_EXPERIMENTS`:
    `src/lab/lab-commands.ts` adds `lab`, which lists every experiment with its state, name and cost, and
    `lab on <experiment>` and `lab off <experiment>`. The game reads the flags once, at page load, so a switch
-   rewrites the `lab` parameter in the address, leaves every other parameter as it was written, and loads the page
-   again. `LabFlags` stays the one place gameplay asks.
+   rewrites the `lab` parameter in the address, sets `at` to where you stand and look, leaves every other parameter
+   as it was written, and loads the page again. You start on foot at the same spot; the rest of the game starts over. `LabFlags` stays the one place gameplay asks.
 4. **Tabs, panels and the Log tab.** The console box gets the panel contract (see [Panels and
    plugins](#panels-and-plugins)), and the Dev tab and a Log tab are its first two panels. The Log is a small `Log` in
    sim code (a ring buffer of `{ level, text, at }`) that any module writes to; warnings that go to `console.warn`
