@@ -16,7 +16,10 @@ const PROP_MASS_KG: Partial<Record<FurnitureKind, number>> = {
   'mailbox-stand': 40,
   'wheelie-bin': 25,
   'waste-bin': 15,
+  'street-lamp': 120, // a steel pole, which on a real road is built to break away from its foot when a car hits it
 };
+/** a street lamp collides as its pole, this thick (m): the model's box would reach out to the end of its arm */
+const LAMP_POLE_M = 0.2;
 
 export interface RapierLabDeps {
   scene: THREE.Scene;
@@ -80,7 +83,8 @@ export async function startRapierLab(g: RapierLabDeps): Promise<RapierLabState> 
   for (const p of g.placements) {
     const massKg = PROP_MASS_KG[p.kind];
     if (massKg === undefined) continue;
-    const size = modelSize(p.modelId);
+    const model = modelSize(p.modelId),
+      size = p.kind === 'street-lamp' ? { ...model, widthM: LAMP_POLE_M, depthM: LAMP_POLE_M } : model;
     placements.push(p);
     specs.push({
       x: p.x,
