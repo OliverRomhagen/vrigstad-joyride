@@ -204,9 +204,13 @@ Type Task, `scope:audio`, `lab`, `prio:low`. Blocked by ticket 1 and #358.
 - **What would decide the experiment:** whether the sounds that ship were made in it.
 - **Not in it:** the free board with draggable cables, which is its own ticket once the rack is in use.
 
+## Decided so far
+
+- **The first sounds don't wait for the event bus.** The engine and the menu click ship first; the crash and the siren
+  arrive when the bus (#367) exists, as its listeners, not through direct calls.
+- **The studio is for developers first, with players in mind for later**, like the sandbox mode in #544. It starts
+  behind a lab flag, and nothing in the patch format or the commands should assume a developer is the one using it.
+
 ## Open questions
 
-1. Should the first slice wait for the event bus, or ship the engine and click without it (proposed)?
-2. Is the studio for developers only, or also a toy for players, like the sandbox mode in #544? Proposed: developers
-   first, behind a lab flag; the patch format is the same either way.
-3. Does the player get a new `audio` zone (proposed), or is it listed as page code?
+1. Does the player get a new `audio` zone (proposed), or is it listed as page code?
