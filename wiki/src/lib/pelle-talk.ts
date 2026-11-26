@@ -1,7 +1,22 @@
-// When Plåt-Pelle talks in the garage, and what he says: his greeting first, then one of the game's lines now and then, in no
-// fixed order. Two lines are the garage's own, for a visitor who can't make up their mind, and one who can't stop looking.
+// When Plåt-Pelle talks in the garage, and what he says: his greeting first, then one of his other lines now and then, in no
+// fixed order. Every line is the garage's own: what he says in the game stays there for players to find (AGENTS.md, "The
+// wiki doesn't spoil the game"). Two of them wait for a visitor who can't make up their mind, and one who can't stop looking.
 import type { Clock } from './clock';
 
+/** What he says to someone who has come to look: the greeting first, then the rest, one now and then. */
+export const GARAGE_LINES = [
+  'Jasså, inget å sälja idag? Dä gör inget. Kliv fram å titta, dä ä gratis. Än så länge.',
+  'Titta du. Dä ä dä enda här som inte kostar nåt.',
+  'Varenda bil här har haft en försiktig ägare. Nån gång. Tror ja.',
+  'Siffrorna stämmer. I medvind å nerförsbacke, i alla fall.',
+  'Rost? Nä, dä där ä patina. Dä tar ja extra för.',
+  'Lacken? Den håller ihop mer än du tror.',
+  'Byt färg du, om du vill. Folk köper mä ögonen, dä har ja levt på i alla år.',
+  'Ja ä ingen bilhandlare. Ja ä skrothandlare mä ambitioner.',
+  'Garanti? Jodå. Ja garanterar att den stod här när du köpte’n.',
+  'Stressa inte. Bilarna har stått här länge, dom står en stund till.',
+  'Ho ser bäst ut på håll. Dä gör vi alla.',
+] as const;
 /** What he says when you flick through the cars fast (HURRY_PICKS picks within HURRY_WINDOW_MS). */
 export const HURRY_LINE = 'Nä, nu fåru bestämma dej. Ja har inge tid för vel-pellar.';
 /** What he says when you have looked at one car for STARE_MS. */

@@ -10,7 +10,7 @@ import { type CarType, VEHICLE_SPECS } from '#game/sim/vehicle-spec';
 import type { Clock } from '#lib/clock';
 import { colourName } from '#lib/colour-name';
 import Head from '#lib/Head.svelte';
-import { PelleTalk } from '#lib/pelle-talk';
+import { GARAGE_LINES, PelleTalk } from '#lib/pelle-talk';
 import Skroten from '#lib/Skroten.svelte';
 import SpecTable from '#lib/SpecTable.svelte';
 import { kmh } from '#lib/units';
@@ -76,7 +76,7 @@ onMount(() => {
   paints = Object.fromEntries(
     cars.filter(c => !c.police).map(c => [c.id, c.spec.cols[Math.floor(Math.random() * c.spec.cols.length)]]),
   );
-  const pelle = new PelleTalk(data.pelleLines, clock, Math.random);
+  const pelle = new PelleTalk(GARAGE_LINES, clock, Math.random);
   talk = pelle;
   const listen = () => {
     if (document.hidden) return pelle.lookAway();

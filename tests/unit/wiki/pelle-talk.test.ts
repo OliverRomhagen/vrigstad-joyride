@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { HURRY_LINE, PelleTalk, STARE_LINE } from '../../../wiki/src/lib/pelle-talk';
+import { OWNER_LINES } from '../../../src/game/skroten';
+import { GARAGE_LINES, HURRY_LINE, PelleTalk, STARE_LINE } from '../../../wiki/src/lib/pelle-talk';
 
 const LINES = ['hej', 'a', 'b', 'c'];
 
@@ -71,5 +72,11 @@ describe('PelleTalk', () => {
     talk.lookAway(20_000);
     expect(talk.tick(40_000)).not.toBe(STARE_LINE);
     expect(talk.tick(55_000)).toBe(STARE_LINE);
+  });
+
+  it('says nothing in the garage that he says in the game: those lines are for players to find', () => {
+    const inGame = OWNER_LINES.map(line => line.replace(/^”|”$/g, ''));
+    for (const line of [...GARAGE_LINES, HURRY_LINE, STARE_LINE]) expect(inGame).not.toContain(line);
+    expect(new Set(GARAGE_LINES).size).toBe(GARAGE_LINES.length);
   });
 });
