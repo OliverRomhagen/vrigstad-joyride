@@ -76,7 +76,7 @@ import { registerCarTunables } from './sim/car-tunables';
 import { registerTunableCommands } from './sim/tunable-commands';
 import { newGameState, newViewState } from './state';
 import { Trisslott, trisslottSeed } from './trisslott';
-import { makeClock, skyAt, START_H, tickClock } from './day-cycle';
+import { makeClock, makePace, registerDayCommands, skyAt, START_H, stepClock } from './day-cycle';
 import { Daylight, type DaylightTargets } from './render/daylight';
 import { SunStreaks } from './render/sun-streaks';
 
@@ -126,14 +126,14 @@ const lab = LabFlags.fromSearch(location.search);
 if (lab.on('hello')) console.info('Lab: hello is on.'); // the smallest gate, for trying the flags
 
 // ---------- time of day: 05:00 to 19:00, then a short blend into the next morning (src/game/day-cycle.ts, src/game/render/daylight.ts) ----------
-// ?time=18.5 starts at that hour; ?cycle=off holds it there
+// ?time=18.5 starts at that hour; ?cycle=off holds it there; the console's `time` changes both while you play (#575)
 const dayQs = new URLSearchParams(location.search);
-const dayClock = makeClock(dayQs.get('time') ? Number(dayQs.get('time')) : START_H), dayRuns = dayQs.get('cycle') !== 'off';
+const dayClock = makeClock(dayQs.get('time') ? Number(dayQs.get('time')) : START_H), dayPace = makePace(dayQs.get('cycle') !== 'off');
 const daylight = new Daylight({ sun, hemi, sunDir: SUN_DIR, dome: skyDome.mesh.material.uniforms as DaylightTargets['dome'], fog: (scene.fog as THREE.FogExp2).color, background: scene.background as THREE.Color });
 const sky = skyAt(dayClock, { x: 0, y: 1, z: 0, sun: 1, warm: 0, light: 1 });
 daylight.apply(sky);
 // not on the title screen: Start begins at the start hour
-function updateDaylight(dt: number) { if (dayRuns && game.started) { tickClock(dayClock, dt); daylight.apply(skyAt(dayClock, sky)); } waterLook.tick(dt, daylight.sunIntensity > 0 ? sun.intensity / daylight.sunIntensity : 0); }   // no direct sun midway through the night skip: 0, not 0/0
+function updateDaylight(dt: number) { if (game.started && stepClock(dayClock, dayPace, dt)) daylight.apply(skyAt(dayClock, sky)); waterLook.tick(dt, daylight.sunIntensity > 0 ? sun.intensity / daylight.sunIntensity : 0); }   // no direct sun midway through the night skip: 0, not 0/0
 
 // ---------- ground texture (also feeds the minimap: src/game/render/ground-texture.ts) ----------
 const ground = new GroundTexture(D, { coarse, maxTextureSize: renderer.capabilities.maxTextureSize, maxAnisotropy, shore });
@@ -361,6 +361,7 @@ places.registerCommands(commands, (x, z, name, h) => { leaveHouse(); const c = g
   yard.workshop ? { verkstan: { x: yard.workshop.bay.x, z: yard.workshop.bay.z, name: "Plåt-Pelle's lift", h: Math.atan2(yard.workshop.bay.inX, -yard.workshop.bay.inZ) } } : {});   // go verkstan: onto the lift, nose in from the door, so the body fits between the posts
 fleet.registerCommands(commands, CIVILIAN_CAR_TYPES, () => view.camYaw, c => carName(c));   // car <model>
 debugOverlay?.registerCommands(commands);
+registerDayCommands(commands, dayClock, dayPace, () => daylight.apply(skyAt(dayClock, sky)));   // time <hour>
 
 // ---------- input: keys, mouse look and the touch controls (src/game/input.ts) ----------
 // the dev console sees each key first, then the menus (src/game/menu.ts)
