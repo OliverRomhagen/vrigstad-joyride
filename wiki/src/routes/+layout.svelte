@@ -95,6 +95,9 @@ function drawer(dialog: HTMLDialogElement) {
   <div class="shell">
     <header class={['top', { scrolled }]}>
       <a class="brand" href={resolve('/')}><span lang="sv">Vrigstad</span> <b>wiki</b></a>
+      <a class="play" rel="external" href={GAME_URL}>Play the game <ArrowRight size="1em" strokeWidth={2.5} /></a>
+      <!-- a phone's header has the tag and this, last, at the window's edge, where a phone's menu is looked for; Play is
+           in the drawer it opens -->
       <button
         type="button"
         class="menu"
@@ -106,9 +109,6 @@ function drawer(dialog: HTMLDialogElement) {
         <Menu size="1em" strokeWidth={2.5} />
         Menu
       </button>
-      <a class="play" rel="external" href={GAME_URL}
-        ><span>Play <span class="play-long">the game</span></span> <ArrowRight size="1em" strokeWidth={2.5} /></a
-      >
     </header>
     <nav class="side" aria-label="Wiki">{@render links()}</nav>
     <!-- tabindex: so the skip link can move the keyboard's focus here -->
@@ -140,7 +140,11 @@ function drawer(dialog: HTMLDialogElement) {
   <!-- data-sveltekit-replacestate: a link in the drawer takes the drawer's place in the history, so going back from the
        next page doesn't open the drawer again -->
   <nav class="drawer-panel" aria-label="Wiki" data-sveltekit-replacestate>
-    <button type="button" class="drawer-close" onclick={closeMenu}><X size="1em" strokeWidth={2.5} /> Close</button>
+    <!-- the way to the game first, as the header has no room for it on a phone -->
+    <div class="drawer-top">
+      <a class="play" rel="external" href={GAME_URL}>Play the game <ArrowRight size="1em" strokeWidth={2.5} /></a>
+      <button type="button" class="drawer-close" onclick={closeMenu}><X size="1em" strokeWidth={2.5} /> Close</button>
+    </div>
     {@render links()}
   </nav>
 </dialog>
@@ -231,6 +235,9 @@ function drawer(dialog: HTMLDialogElement) {
   text-decoration: none;
   white-space: nowrap;
   --round: 5px; /* the tag's outer corners; where the halves meet they are square */
+  border-radius: var(--round);
+  /* a faint edge round the whole tag: when the header goes dark under it, the dark half would lose its own */
+  box-shadow: 0 0 0 1px var(--hairline);
 }
 /* The two words stand on one baseline. Both halves are one line of the tag's own size, with the same room over and under:
    less over than under, so the capital V stands in the middle of the tag's height and the g's tail hangs into the room
@@ -269,18 +276,14 @@ function drawer(dialog: HTMLDialogElement) {
   border-left: 0;
   border-radius: 0 3px 3px 0;
 }
-/* "wiki" on the road's dark, in small capitals: as tall as the lower-case letters of the name beside it (the font's
-   x-height is 0.734 of its capitals' height), so the name leads and their tops and feet are level. A smaller line of the
-   same height would put its baseline 0.106 of the tag's em higher (half of what the font's line loses, by its ascent
-   less its descent), so that much room moves from under it to over it. Its measures are in its own, smaller em. */
+/* "wiki" on the road's dark: cream straight on the orange sky reads at only 2.2:1. In capitals as tall as the name's V,
+   on its baseline. Less room before the W than after the I: a W leans away from what is before it, and looks further
+   off than it is. */
 .brand b {
   font-weight: inherit;
-  font-size: 0.734em;
-  line-height: 1.362; /* 1 / 0.734: the name's line */
-  letter-spacing: 0.1em;
   color: var(--cream);
-  background: var(--line); /* a shade lighter than the road, so the tag keeps its edge when the header goes dark */
-  padding: 0.349em 0.572em 0.196em 0.627em; /* (0.15 + 0.106) / 0.734 over, (0.25 − 0.106) / 0.734 under */
+  background: var(--road);
+  padding-left: 0.3em;
   border-radius: 0 var(--round) var(--round) 0;
 }
 /* a control with an icon beside its words: the two on one line, their middles level */
@@ -393,18 +396,16 @@ footer p {
     font-size: 1.375rem;
     min-width: 0;
     overflow: hidden;
-    text-overflow: ellipsis;
   }
-  .menu,
-  .play {
+  /* the tag at one end and the menu at the other; Play is in the drawer */
+  .menu {
+    display: inline-flex;
+    margin-left: auto;
     flex-shrink: 0;
     white-space: nowrap;
     padding: 7px 10px;
   }
-  .menu {
-    display: inline-flex;
-  }
-  .play-long {
+  .top .play {
     display: none;
   }
   /* the drawer (below) takes the sidebar's place */
@@ -451,9 +452,15 @@ footer p {
   padding: 16px 20px 32px;
   font-size: 1rem;
 }
+.drawer-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
 .drawer-close {
   display: flex;
-  margin-left: auto;
   font: 600 1.125rem var(--font);
   text-transform: uppercase;
   color: var(--cream);
@@ -464,7 +471,14 @@ footer p {
   cursor: pointer;
 }
 /* a finger needs more room than a pointer */
-.drawer a {
+.drawer a:not(.play) {
   padding-block: 9px;
+}
+/* the drawer's links are cream and stand one to a line; Play keeps its own dark on gold, and its own shape */
+.drawer .play {
+  display: inline-flex;
+  margin: 0;
+  padding: 7px 11px 7px 14px; /* as tall as Close beside it */
+  color: var(--road);
 }
 </style>
