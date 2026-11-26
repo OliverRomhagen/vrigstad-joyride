@@ -207,7 +207,7 @@ function drawer(dialog: HTMLDialogElement) {
       box-shadow 200ms ease-out,
       color 200ms ease-out;
   }
-  /* on the dark ground the brand's "wiki" sign turns over; the village's sign reads on the sky and on the dark alike */
+  /* on the dark ground the tag's "wiki" half turns over; the village's sign reads on the sky and on the dark alike */
   .scrolled .brand b {
     color: var(--road);
     background: var(--cream);
@@ -225,38 +225,43 @@ function drawer(dialog: HTMLDialogElement) {
   border-radius: 6px;
   cursor: pointer;
 }
+/* one tag in two halves, like a badge: the village's sign, then "wiki". A flex row, so the space between the two words
+   stays in the page for a screen reader and takes no room, and both halves are one height. */
 .brand {
+  display: inline-flex;
   font: 700 1.75rem / 1 var(--font);
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: var(--cream);
   text-decoration: none;
   white-space: nowrap;
+  --round: 5px; /* the tag's outer corners; where the halves meet they are square */
+}
+.brand :is(span, b) {
+  display: grid;
+  align-items: center;
 }
 /* the village's name as the sign at its edge, as you drive in: blue, a white border inside its edge, the name in white */
 .brand span {
-  display: inline-block;
   /* more room below than above: the g's tail hangs under the line, and the white border runs inside the edge */
   padding: 0.2em 0.44em 0.27em;
-  font-size: 0.9em; /* with its padding, as tall as the "wiki" sign beside it */
+  font-size: 0.9em;
   letter-spacing: 0.03em;
   text-transform: none;
   color: #fff;
   background: var(--sign-blue);
-  border-radius: 4px;
+  border-radius: var(--round) 0 0 var(--round);
   box-shadow:
     inset 0 0 0 2px var(--sign-blue),
     inset 0 0 0 3.5px #fff;
-  vertical-align: 0.12em;
 }
-/* "wiki" as a small dark sign on the sky: cream straight on the orange reads at only 2.2:1 */
+/* "wiki" on the road's dark: cream straight on the orange sky reads at only 2.2:1 */
 .brand b {
   font-weight: inherit;
   color: var(--cream);
   background: var(--road);
-  padding: 2px 7px 1px;
-  border-radius: 4px;
-  margin-left: 2px;
+  padding: 2px 8px 1px;
+  border-radius: 0 var(--round) var(--round) 0;
 }
 /* a control with an icon beside its words: the two on one line, their middles level */
 .menu,
@@ -369,7 +374,6 @@ footer p {
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
-    padding-block: 4px; /* room for the "wiki" sign's own padding, which overflow: hidden would cut */
   }
   .menu,
   .play {
