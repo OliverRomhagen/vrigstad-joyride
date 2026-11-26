@@ -44,15 +44,34 @@ export interface Command {
   subcommands?: Readonly<Record<string, Command>>;
   /** The words that fit at argument `index` (0 is the first after the name), given the arguments before it. */
   complete?(index: number, before: readonly string[]): readonly string[];
-  /** Runs the command with the words after its name; returns the line to show. Throw a UsageError for bad arguments. */
-  run(args: string[], call: Call): string;
+  /**
+   * Runs the command with the words after its name; returns the line to show, which means it was done, or `refuse(…)`
+   * when the game's rules said no. Throw a UsageError for bad arguments.
+   */
+  run(args: string[], call: Call): string | Outcome;
+}
+
+/** What a run came to: `ok` with the line to show, or not `ok` with the reason it didn't happen. */
+export interface Outcome {
+  readonly ok: boolean;
+  readonly text: string;
+}
+
+/**
+ * The outcome of a command that understood its line but didn't do it: `return refuse('No car in reach.')`. Returned,
+ * not thrown: the rule that says no is a plain function that other code calls too.
+ */
+export function refuse(reason: string): Outcome {
+  return { ok: false, text: reason };
 }
 
 /**
  * Wraps every run, for logging, recording or refusing: return `next()` to run the command (and the hooks inside this
- * one), or a line of your own to stop it. The first hook added is the outermost.
+ * one), or a line of your own to stop it, which counts as a refusal. `next()` gives the Outcome, so a hook can keep
+ * only the runs that were done; to change the line of one, return `{ ...outcome, text }`. The first hook added is the
+ * outermost.
  */
-export type Hook = (call: Call, next: () => string) => string;
+export type Hook = (call: Call, next: () => Outcome) => Outcome | string;
 
 /** Thrown by a command for arguments it can't use; the console shows its usage line. */
 export class UsageError extends Error {}
@@ -127,42 +146,54 @@ export class Commands {
     return [...this.byName.keys()].filter(n => this.canRun(this.byName.get(n) as Command)).sort();
   }
 
-  /** Runs one line; returns what to show, or '' for an empty line. */
+  /** Runs one line; returns what to show, or '' for an empty line. For whether it was done, see execute(). */
   run(line: string, source: CallSource = 'console'): string {
+    return this.execute(line, source).text;
+  }
+
+  /**
+   * Runs one line; returns what it came to. Not `ok`: a refusal, by the command or by a hook, arguments the command
+   * can't use, an unknown command, and one that isn't allowed here. Everything else is `ok`, an empty line and an
+   * answer to --help included.
+   */
+  execute(line: string, source: CallSource = 'console'): Outcome {
     const [typed, ...args] = line.trim().split(/\s+/).filter(Boolean);
-    if (!typed) return '';
+    if (!typed) return done('');
     const name = this.resolve(typed.toLowerCase());
     const cmd = name === undefined ? undefined : this.byName.get(name);
-    if (!cmd || name === undefined) return `Unknown command: ${typed}. Type help for the list.`;
-    if (!this.canRun(cmd)) return `${name} works in dev mode only (?dev).`;
+    if (!cmd || name === undefined) return refuse(`Unknown command: ${typed}. Type help for the list.`);
+    if (!this.canRun(cmd)) return refuse(`${name} works in dev mode only (?dev).`);
     const found = descend(name, cmd, args);
     // every command answers --help the same way, before it runs, so none can forget to
-    if (found.args.length === 1 && HELP_FLAGS.includes(found.args[0])) return this.helpFor(found);
+    if (found.args.length === 1 && HELP_FLAGS.includes(found.args[0])) return done(this.helpFor(found));
     const call: Call = { name, args, source };
-    let ran = false,
-      answer = '',
-      failure: { err: unknown } | undefined;
-    // runs the command once, however many times the hooks call next(): a second call gets the same line back, or the
-    // same error, so a hook that retries can't run a command that threw halfway a second time
+    let outcome: Outcome | undefined, failure: { err: unknown } | undefined;
+    // runs the command once, however many times the hooks call next(): a second call gets the same outcome back, or
+    // the same error, so a hook that retries can't run a command that threw halfway a second time
     const inner = () => {
-      if (ran) {
-        if (failure) throw failure.err;
-        return answer;
-      }
-      ran = true;
+      if (failure) throw failure.err;
+      if (outcome) return outcome;
       try {
-        answer = found.cmd.run(found.args, call);
+        const answer = found.cmd.run(found.args, call);
+        outcome = typeof answer === 'string' ? done(answer) : answer;
       } catch (err) {
         if (!(err instanceof UsageError)) {
           failure = { err };
           throw err;
         }
-        answer = `${err.message ? err.message + ' ' : ''}Usage: ${usage(found)}`;
+        outcome = refuse(`${err.message ? err.message + ' ' : ''}Usage: ${usage(found)}`);
       }
-      return answer;
+      return outcome;
     };
-    // the first hook is the outermost: fold from the last one in
-    const chain = this.hooks.reduceRight<() => string>((next, hook) => () => hook(call, next), inner);
+    // The first hook is the outermost: fold from the last one in. A line a hook returns is its own, not the command's,
+    // so it is a refusal; a hook that lets the command run hands on the outcome next() gave it.
+    const chain = this.hooks.reduceRight<() => Outcome>(
+      (next, hook) => () => {
+        const answer = hook(call, next);
+        return typeof answer === 'string' ? refuse(answer) : answer;
+      },
+      inner,
+    );
     return chain();
   }
 
@@ -231,6 +262,10 @@ export class Commands {
       ...(cmd.examples?.length ? ['Examples:', ...cmd.examples.map(e => `  ${e}`)] : []), // one a line: an example may hold a comma
     ].join('\n');
   }
+}
+
+function done(text: string): Outcome {
+  return { ok: true, text };
 }
 
 function usage({ path, cmd }: Pick<Found, 'path' | 'cmd'>) {

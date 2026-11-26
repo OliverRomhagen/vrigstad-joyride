@@ -11,7 +11,7 @@ import {
   toggle,
   word,
 } from '../../../src/game/command-args';
-import { Commands } from '../../../src/game/commands';
+import { Commands, refuse } from '../../../src/game/commands';
 
 const PLACES = ['torget', 'Slättsjön', 'skroten'] as const;
 
@@ -109,6 +109,21 @@ describe('command', () => {
     c.register('say', command({ help: 'x', access: 'player', args: [rest('words')], run: ({ words }) => words }));
     expect(c.run('wanted 2')).toBe('stars works in dev mode only (?dev).');
     expect(c.run('say hej')).toBe('hej');
+  });
+
+  it('passes a refusal from run through to the registry, and a plain line as done', () => {
+    const owned = ['volvo'];
+    const c = withCommand(
+      command({
+        help: 'buy a car',
+        args: [choice('car', ['volvo', 'saab'])],
+        run: ({ car }) => (owned.includes(car) ? refuse(`You already own the ${car}.`) : `Bought the ${car}.`),
+      }),
+    );
+    expect(c.execute('t volvo')).toEqual({ ok: false, text: 'You already own the volvo.' });
+    expect(c.run('t volvo')).toBe('You already own the volvo.');
+    expect(c.execute('t saab')).toEqual({ ok: true, text: 'Bought the saab.' });
+    expect(c.execute('t')).toEqual({ ok: false, text: 'Usage: t <car>' });
   });
 
   it("shows each described argument, the details and the examples in the command's help", () => {
