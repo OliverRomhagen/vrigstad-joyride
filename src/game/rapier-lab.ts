@@ -18,8 +18,13 @@ const PROP_MASS_KG: Partial<Record<FurnitureKind, number>> = {
   'waste-bin': 15,
   'street-lamp': 120, // a steel pole, which on a real road is built to break away from its foot when a car hits it
 };
-/** a street lamp collides as its pole, this thick (m): the model's box would reach out to the end of its arm */
-const LAMP_POLE_M = 0.2;
+/**
+ * A street lamp collides as its pole, this thick (m), with its arm and head as a second box at the top: one box round
+ * the whole model would reach out to the end of the arm, and a pole alone lets a fallen lamp lie with its arm in the ground.
+ */
+const LAMP_POLE_M = 0.2,
+  LAMP_ARM_THICK_M = 0.3, // across the arm and the luminaire, and from the arm's foot to the top of the head
+  LAMP_ARM_SHARE = 0.15; // of the lamp's weight, in the arm and head
 
 export interface RapierLabDeps {
   scene: THREE.Scene;
@@ -47,7 +52,7 @@ export interface RapierLabState {
   props: number;
   /** the props a car has come near, which Rapier holds */
   readonly joined: number;
-  /** the props knocked loose, each drawn on its own from then on */
+  /** the props knocked loose and not yet put back, each drawn on its own meanwhile */
   readonly loose: number;
   readonly awake: number;
   /** the last frame's physics steps (ms) */
@@ -58,13 +63,14 @@ export interface RapierLabState {
 
 /** A model's size: across, front to back and up from its foot (m), from its own geometry, as a stand's width depends on its boxes. */
 const modelSize = (() => {
-  const sizes = new Map<FurnitureModelId, { widthM: number; depthM: number; heightM: number }>();
+  const sizes = new Map<FurnitureModelId, { widthM: number; depthM: number; heightM: number; reachM: number }>();
   return (id: FurnitureModelId) => {
     let size = sizes.get(id);
     if (!size) {
       const model = FURNITURE_MODELS[id](),
         box = new THREE.Box3().setFromBufferAttribute(model.body.getAttribute('position') as THREE.BufferAttribute);
-      size = { widthM: box.max.x - box.min.x, depthM: box.max.z - box.min.z, heightM: box.max.y };
+      // reachM: how far it reaches to its front, z (m): a lamp's arm
+      size = { widthM: box.max.x - box.min.x, depthM: box.max.z - box.min.z, heightM: box.max.y, reachM: box.max.z };
       model.body.dispose();
       model.glass?.dispose();
       sizes.set(id, size);
@@ -85,18 +91,34 @@ export async function startRapierLab(g: RapierLabDeps): Promise<RapierLabState> 
   for (const p of g.placements) {
     const massKg = PROP_MASS_KG[p.kind];
     if (massKg === undefined) continue;
-    const model = modelSize(p.modelId),
-      size = p.kind === 'street-lamp' ? { ...model, widthM: LAMP_POLE_M, depthM: LAMP_POLE_M } : model;
+    const size = modelSize(p.modelId),
+      s = p.scale,
+      heightM = size.heightM * s,
+      isLamp = p.kind === 'street-lamp';
     placements.push(p);
     specs.push({
       x: p.x,
       z: p.z,
       rotationY: p.rotationY,
       baseY: g.groundAt(p.x, p.z),
-      widthM: size.widthM * p.scale,
-      depthM: size.depthM * p.scale,
-      heightM: size.heightM * p.scale,
-      massKg,
+      widthM: (isLamp ? LAMP_POLE_M : size.widthM) * s,
+      depthM: (isLamp ? LAMP_POLE_M : size.depthM) * s,
+      heightM,
+      massKg: isLamp ? massKg * (1 - LAMP_ARM_SHARE) : massKg,
+      parts: isLamp
+        ? [
+            {
+              // the arm and head, from the pole to the end of the head, at the top of the lamp
+              x: 0,
+              y: heightM / 2 - (LAMP_ARM_THICK_M * s) / 2,
+              z: (size.reachM * s) / 2,
+              hx: (LAMP_ARM_THICK_M * s) / 2,
+              hy: (LAMP_ARM_THICK_M * s) / 2,
+              hz: (size.reachM * s) / 2,
+              massKg: massKg * LAMP_ARM_SHARE,
+            },
+          ]
+        : undefined,
     });
   }
   const t1 = performance.now();

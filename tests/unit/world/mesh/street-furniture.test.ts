@@ -189,9 +189,12 @@ describe('StreetFurniture', () => {
   it('puts a detached placement back in its batch where it stood, and takes its object out of the scene', () => {
     const f = new StreetFurniture(placements, { groundAt: () => 0 }),
       lamps = f.meshes.find(m => m.name === 'furniture:lamp-arm')!,
+      glass = f.meshes.find(m => m.name === 'furniture:lamp-arm:glass')!,
       before = new THREE.Matrix4(),
+      glassBefore = new THREE.Matrix4(),
       after = new THREE.Matrix4();
     lamps.getMatrixAt(0, before);
+    glass.getMatrixAt(0, glassBefore);
     const scene = new THREE.Scene(),
       lamp = f.detach(placements[0])!;
     scene.add(lamp);
@@ -199,6 +202,8 @@ describe('StreetFurniture', () => {
     expect(f.reattach(placements[0])).toBe(true);
     lamps.getMatrixAt(0, after);
     expect(after.equals(before)).toBe(true);
+    glass.getMatrixAt(0, after);
+    expect(after.equals(glassBefore)).toBe(true);
     expect(lamp.parent).toBeNull();
     expect(f.reattach(placements[0])).toBe(false); // once only
     expect(f.detach(placements[0])).not.toBeNull(); // and it can be knocked again

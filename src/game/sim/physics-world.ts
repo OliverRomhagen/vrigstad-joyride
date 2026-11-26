@@ -1,6 +1,6 @@
 // The Rapier trial (#54, ?lab=rapier, docs/rapier-trial.md): one Rapier world beside the game's own collisions, which
 // stay in charge. The ground and the buildings' walls are fixed shapes; the cars and the player are shapes the game
-// moves, so driving and walking feel as they do; mailboxes and bins are bodies that a car knocks over. Pure: no
+// moves, so driving and walking feel as they do; street furniture is bodies that a car knocks over. Pure: no
 // three.js, no DOM. The Rapier module is passed in, so the page decides how it is loaded.
 import type RAPIER from '@dimforge/rapier3d-compat';
 import { type BuildingShape, forEachBuilding } from '../../world/buildings';
@@ -29,11 +29,13 @@ const TELEPORT_M = 8;
  */
 const PROP_JOIN_M = 12;
 /**
- * A knocked prop goes back to its stand this long after it was knocked (s), once no one is within PROP_RESPAWN_M of it:
- * traffic knocks props over all round the village, and each one down is a draw call of its own.
+ * A knocked prop goes back to its stand this long after it was knocked (s), once the player is further than
+ * PROP_RESPAWN_M from where it lies and where it stood: traffic knocks props over all round the village, and each one
+ * down is a draw call of its own. Far enough that a 6.5 m lamp popping back up on an open street isn't seen; walls and
+ * the camera's view aren't asked.
  */
 const PROP_RESPAWN_S = 90,
-  PROP_RESPAWN_M = 60;
+  PROP_RESPAWN_M = 100;
 /** the knocked props are checked for respawning once every this many steps: a second */
 const RESPAWN_CHECK_STEPS = 60;
 /** props are found by a grid of cells this size (m) */
@@ -53,6 +55,11 @@ export interface PropSpec {
   depthM: number;
   heightM: number;
   massKg: number;
+  /**
+   * More boxes on the same body, beside the main one: a lamp's arm. Each is centred (x, y, z) from the main box's middle,
+   * in the prop's own frame (z its front, as the model's), half `hx` by `hy` by `hz` across, and weighs `massKg`.
+   */
+  parts?: readonly { x: number; y: number; z: number; hx: number; hy: number; hz: number; massKg: number }[];
 }
 
 /** Where a prop is: its middle and its rotation as a quaternion. */
@@ -111,7 +118,7 @@ export class PhysicsWorld {
   /** whether each prop has been knocked loose: anchored where it stands until a car touches it */
   private readonly loose: Uint8Array;
   /** the step each loose prop was knocked at */
-  private readonly looseAtStep: Float64Array;
+  private readonly looseAtStep: Uint32Array;
   /** where the player is, on foot or in a car: a prop in sight of it isn't put back */
   private viewerX = 0;
   private viewerZ = 0;
@@ -135,7 +142,7 @@ export class PhysicsWorld {
     this.propReach = Float64Array.from(props, p => Math.hypot(p.widthM, p.depthM) / 2);
     this.propBodies = props.map(() => null);
     this.loose = new Uint8Array(props.length);
-    this.looseAtStep = new Float64Array(props.length);
+    this.looseAtStep = new Uint32Array(props.length);
     props.forEach((p, i) => {
       const key = cellKey(Math.floor(p.x / PROP_CELL_M), Math.floor(p.z / PROP_CELL_M)),
         cell = this.propCells.get(key);
@@ -237,7 +244,7 @@ export class PhysicsWorld {
       }
       this.world.step(this.events);
       this.events.drainCollisionEvents(this.loosenTouched);
-      if (++this.stepCount % RESPAWN_CHECK_STEPS === 0) this.respawnUnseen();
+      if (++this.stepCount % RESPAWN_CHECK_STEPS === 0) this.respawnFarAway();
     }
     if (steps > 0)
       for (const t of this.targets.values())
@@ -409,8 +416,18 @@ export class PhysicsWorld {
         .setActiveEvents(R.ActiveEvents.COLLISION_EVENTS),
       body,
     );
-    this.propBodies[i] = body;
     this.propByCollider.set(collider.handle, i);
+    for (const part of p.parts ?? []) {
+      const extra = this.world.createCollider(
+        R.ColliderDesc.cuboid(part.hx, part.hy, part.hz)
+          .setTranslation(part.x, part.y, part.z)
+          .setMass(part.massKg)
+          .setActiveEvents(R.ActiveEvents.COLLISION_EVENTS),
+        body,
+      );
+      this.propByCollider.set(extra.handle, i);
+    }
+    this.propBodies[i] = body;
     this.joined.push(i);
   }
 
@@ -425,8 +442,8 @@ export class PhysicsWorld {
     }
   };
 
-  /** Puts back on its stand, anchored, every prop knocked PROP_RESPAWN_S ago that no one is within PROP_RESPAWN_M of. */
-  private respawnUnseen() {
+  /** Puts back on its stand, anchored, every prop knocked PROP_RESPAWN_S ago that the player is far from. */
+  private respawnFarAway() {
     const { R, loosened } = this,
       due = this.stepCount - PROP_RESPAWN_S / PHYSICS_STEP_S;
     for (let k = loosened.length - 1; k >= 0; k--) {

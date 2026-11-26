@@ -1,5 +1,6 @@
-// The Rapier trial's props, drawn (#54, ?lab=rapier): a mailbox or bin stays in its batch of street furniture until
-// it's knocked, then is drawn as an object of its own that follows its body. Reads the physics world, never writes it.
+// The Rapier trial's props, drawn (#54, ?lab=rapier): a mailbox, bin or lamp stays in its batch of street furniture
+// until it's knocked, then is drawn as an object of its own that follows its body, until it is put back on its stand.
+// Reads the physics world, never writes it.
 import * as THREE from 'three';
 import type { FurniturePlacement } from '../../world/furniture/placement';
 import type { StreetFurniture } from '../../world/mesh/street-furniture';

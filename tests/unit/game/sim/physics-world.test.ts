@@ -182,7 +182,7 @@ describe('PhysicsWorld', () => {
     w.dispose();
   });
 
-  it('puts a knocked mailbox back on its stand after a minute and a half, once no one is near', () => {
+  it('puts a knocked mailbox back on its stand 90 s after the knock, once the player is far from it', () => {
     const w = world(flat, [mailbox(10, 0)]),
       c = car(0);
     for (let i = 0; i < 60; i++) {
@@ -191,17 +191,64 @@ describe('PhysicsWorld', () => {
       w.step(PHYSICS_STEP_S);
     }
     expect(w.loosened).toEqual([0]);
-    // the car stops 25 m on, in sight of where it hit: the mailbox stays down
-    for (let i = 0; i < 100 * 60; i++) w.step(PHYSICS_STEP_S);
-    expect(w.loosened).toEqual([0]);
-    // it drives off out of sight: within a second the mailbox is back, anchored where it stood
-    c.x = 200;
+    // the car is put 500 m away at once, out of sight of both where the mailbox lies and where it stood
+    c.x = 500;
     w.follow([c], null, c);
-    for (let i = 0; i < 61; i++) w.step(PHYSICS_STEP_S);
+    const seconds = (s: number) => {
+      for (let i = 0; i < s * 60; i++) w.step(PHYSICS_STEP_S);
+    };
+    seconds(84); // 85 s since the start, 84 and a bit since the knock: still down
+    expect(w.loosened).toEqual([0]);
+    seconds(7); // 91 s since the knock: back, anchored where it stood
     expect(w.loosened).toEqual([]);
     expect(w.isLoose(0)).toBe(false);
     const p = w.propPose(0, pose());
     expect([p.x, p.y, p.z]).toEqual([10, expect.closeTo(0.65, 5), 0]);
+    w.dispose();
+  });
+
+  it('leaves a knocked mailbox down while the player is near where it lies, or where it stood', () => {
+    for (const viewer of [
+      { x: 10, z: 0 }, // at its stand
+      { x: 60, z: 0 }, // past where it lies, 75 m from its stand
+    ]) {
+      const w = world(flat, [mailbox(10, 0)]),
+        c = car(0);
+      for (let i = 0; i < 60; i++) {
+        c.x += 15 * PHYSICS_STEP_S;
+        w.follow([c], null, viewer);
+        w.step(PHYSICS_STEP_S);
+      }
+      c.x = 500;
+      w.follow([c], null, viewer);
+      for (let i = 0; i < 120 * 60; i++) w.step(PHYSICS_STEP_S);
+      expect(w.loosened, `with the player at (${viewer.x}, ${viewer.z})`).toEqual([0]);
+      w.dispose();
+    }
+  });
+
+  it("gives a prop more boxes on the same body, turned with it: a lamp's arm", () => {
+    // a 6 m pole at (10, 0) facing +x (rotationY π/2), with a 1.2 m arm at the top reaching towards +x
+    const lamp: PropSpec = {
+      ...mailbox(10, 0),
+      rotationY: Math.PI / 2,
+      widthM: 0.2,
+      depthM: 0.2,
+      heightM: 6,
+      parts: [{ x: 0, y: 2.85, z: 0.6, hx: 0.15, hy: 0.15, hz: 0.6, massKg: 18 }],
+    };
+    const w = world(flat, [lamp]),
+      c = car(4, 8); // drives along z = 8, far enough not to touch it, near enough to bring it into the world
+    c.x += 1;
+    w.follow([c], null, c);
+    c.x += 1;
+    w.follow([c], null, c);
+    w.step(PHYSICS_STEP_S);
+    expect(w.joined).toEqual([0]);
+    // straight down onto the arm, 1 m out from the pole along +x: it is there, 5.7 to 6 m up
+    expect(10 - (w.castRay(11, 10, 0, 0, -1, 0, 20) ?? 0)).toBeCloseTo(6, 2);
+    // and not on the other side
+    expect(10 - (w.castRay(9, 10, 0, 0, -1, 0, 20) ?? 0)).toBeCloseTo(0, 2);
     w.dispose();
   });
 
