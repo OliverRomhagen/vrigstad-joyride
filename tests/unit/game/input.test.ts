@@ -63,6 +63,9 @@ function input(opts: { coarse?: boolean; started?: boolean; menuKey?: (e: Keyboa
     rain: () => {
       calls.push('rain');
     },
+    toggleView: () => {
+      calls.push('view');
+    },
     jump: () => {
       calls.push('jump');
     },
@@ -109,7 +112,9 @@ describe('Input', () => {
     fire(win, 'keydown', { code: 'KeyR' });
     fire(win, 'keydown', { code: 'KeyL' });
     fire(win, 'keydown', { code: 'KeyL', repeat: true });
-    expect(calls).toEqual(['jump', 'action', 'action', 'respawn', 'rain']);
+    fire(win, 'keydown', { code: 'KeyV' });
+    fire(win, 'keydown', { code: 'KeyV', repeat: true });
+    expect(calls).toEqual(['jump', 'action', 'action', 'respawn', 'rain', 'view']);
     expect(e.defaultPrevented).toBe(true); // Space doesn't scroll the page
   });
 
@@ -184,7 +189,8 @@ describe('Input', () => {
     fire(els['p-brake'], 'pointerleave');
     expect(i.keys.brake).toBe(false);
     fire(els['p-act'], 'click');
-    expect(calls).toEqual(['jump', 'action']);
+    fire(els['p-view'], 'click');
+    expect(calls).toEqual(['jump', 'action', 'view']);
   });
 
   it('zooms out with the wheel on the game, and blocks the browser zoom anywhere', () => {

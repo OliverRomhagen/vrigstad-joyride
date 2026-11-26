@@ -16,6 +16,11 @@ export interface LabExperiment {
 export const LAB_EXPERIMENTS = [
   { id: 'hello', name: 'Hello lab', cost: 'Nothing: logs one line, as the smallest example of a gate' },
   {
+    id: 'cockpit',
+    name: "Driver's view",
+    cost: "A small download; in the driver's seat (V in a car), a simple interior of a few dozen meshes",
+  },
+  {
     id: 'toon',
     name: 'Cel-shaded style',
     cost: 'Every lit material swapped each frame, and an extra line draw per inked mesh, the village shells included',
