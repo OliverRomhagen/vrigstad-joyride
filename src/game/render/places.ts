@@ -1,24 +1,36 @@
-// The places in the scene: a ring on the ground and a spinning gem over each one, a yellow door on each safehouse, and the kiosk building on Torget.
+// The places in the scene: a ring on the ground and a spinning gem over each one, a yellow door on each safehouse, the kiosk building on Torget,
+// and Skroten's ring, wide enough for a car (its yard is render/skroten.ts).
 // Moved from src/game/main.ts (#177); main.ts passes in the scene, the height lookup and the shared box geometry and paint.
 import * as THREE from 'three';
+import type { BoxPart } from '../box-part';
 import { type Door, KIOSK, type Places } from '../places';
+import { INK_FLAG } from './ink-flag';
+import { PLINTH_OUT_M } from './world-meshes';
 
 const SAFE_COLOUR = 0x4fd27a,
-  KIOSK_COLOUR = 0xf2c230; // sRGB
+  KIOSK_COLOUR = 0xf2c230;
+/** Skroten's rings, on the yard and on the workshop's lift (sRGB). */
+export const SKROT_COLOUR = 0xd2692f;
+/** A place's see-through ring; the workshop lift's ring is made from it too, so the rings stay alike when one is retuned. */
+export const ringMaterial = (colour: number) =>
+  new THREE.MeshBasicMaterial({
+    color: new THREE.Color(colour).convertSRGBToLinear(),
+    transparent: true,
+    opacity: 0.8,
+    side: THREE.DoubleSide,
+    depthWrite: false,
+  });
+const SKROT_RING_SCALE = 3; // Skroten's ring is this much wider than the others, round a car
 const GEM_SPIN = 1.6; // rad/s
 const WHITE = '#e8e2d2',
   RED = '#c8372d',
   YELLOW = '#f2c230';
-
-/** One box of a model: size, position and colour, as main.ts's `boxGeo` takes it. */
-type BoxPart = [sx: number, sy: number, sz: number, x: number, y: number, z: number, colour: string];
 
 /** What the places' meshes read from the rest of the game. */
 export interface PlaceMeshDeps {
   scene: THREE.Scene;
   places: Pick<Places, 'list' | 'doors'>;
   heightAt(x: number, z: number): number;
-  col(c: number): THREE.Color; // an sRGB colour in linear space
   boxGeo(parts: BoxPart[]): THREE.BufferGeometry;
   paintMat: THREE.Material; // vertex colours
   glass: string;
@@ -36,22 +48,14 @@ export class PlaceMeshes {
     let doorI = 0;
     for (const p of g.places.list) {
       // each building goes in just before its ring and gem
-      scene.add(
-        p.kind === 'safe'
-          ? door(g.places.doors[doorI++], heightAt, boxGeo, paintMat)
-          : kiosk(heightAt, boxGeo, paintMat, g.glass),
-      );
-      const mat = new THREE.MeshBasicMaterial({
-        color: g.col(p.kind === 'safe' ? SAFE_COLOUR : KIOSK_COLOUR),
-        transparent: true,
-        opacity: 0.8,
-        side: THREE.DoubleSide,
-        depthWrite: false,
-      });
+      if (p.kind === 'safe') scene.add(door(g.places.doors[doorI++], heightAt, boxGeo, paintMat));
+      else if (p.kind === 'kiosk') scene.add(kiosk(heightAt, boxGeo, paintMat, g.glass));
+      const mat = ringMaterial(p.kind === 'safe' ? SAFE_COLOUR : p.kind === 'kiosk' ? KIOSK_COLOUR : SKROT_COLOUR);
       const y = heightAt(p.x, p.z),
         ring = new THREE.Mesh(ringGeo, mat),
         gem = new THREE.Mesh(gemGeo, mat);
       ring.position.set(p.x, y + 0.4, p.z);
+      if (p.kind === 'skrot') ring.scale.setScalar(SKROT_RING_SCALE);
       gem.position.set(p.x, y + 3.6, p.z);
       scene.add(ring, gem);
       this.gems.push(gem);
@@ -64,16 +68,20 @@ export class PlaceMeshes {
 }
 
 function door(d: Door, heightAt: PlaceMeshDeps['heightAt'], boxGeo: PlaceMeshDeps['boxGeo'], paintMat: THREE.Material) {
+  // centred on the wall line, so each box stands out half its depth: the frame 3 cm and the panel 6 cm past the house's
+  // plinth, which they'd otherwise z-fight with, and the handle 4 cm past the panel
+  const out = (cm: number) => 2 * (PLINTH_OUT_M + cm / 100);
   const m = new THREE.Mesh(
     boxGeo([
-      [1.4, 2.35, 0.1, 0, 1.17, 0, YELLOW],
-      [1.05, 2.1, 0.16, 0, 1.05, 0, '#2f5a41'],
-      [0.1, 0.1, 0.24, 0.36, 1.05, 0, YELLOW],
+      [1.4, 2.35, out(3), 0, 1.17, 0, YELLOW],
+      [1.05, 2.1, out(6), 0, 1.05, 0, '#2f5a41'],
+      [0.1, 0.1, out(10), 0.36, 1.05, 0, YELLOW],
     ]),
     paintMat,
   );
   m.position.set(d.mx, heightAt(d.mx, d.mz), d.mz);
   m.rotation.y = Math.atan2(d.nx, d.nz);
+  m.userData[INK_FLAG] = true;
   return m;
 }
 
@@ -98,5 +106,6 @@ function kiosk(
   );
   m.position.set(x, heightAt(x, z), z);
   m.castShadow = true;
+  m.userData[INK_FLAG] = true;
   return m;
 }

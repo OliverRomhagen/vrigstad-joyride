@@ -1,6 +1,16 @@
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
-import { type Cat, type CatCar, CatColony, type CatDeps } from '../../../src/game/cats';
+import type { BoxPart } from '../../../src/game/box-part';
+import {
+  CAT_COLS,
+  type Cat,
+  type CatCar,
+  CatColony,
+  type CatDeps,
+  canTend,
+  catMesh,
+  catParts,
+} from '../../../src/game/cats';
 import type { BuildingIndex } from '../../../src/world/buildings';
 
 // A colony with no houses (so nothing spawns), flat dry ground and the player at the origin, walking.
@@ -17,11 +27,10 @@ function colony(water: (x: number, z: number) => boolean = () => false) {
     groundAt: () => 0,
     half: 1100,
     coarse: false,
-    wrap: a => Math.atan2(Math.sin(a), Math.cos(a)),
     geoCache: {},
     boxGeo: () => new THREE.BufferGeometry(),
     paintMat: new THREE.MeshBasicMaterial(),
-    blob: () => {},
+    blob: () => new THREE.Object3D(),
     cars: drive.cars,
     toast: msg => {
       toasts.push(msg);
@@ -29,7 +38,7 @@ function colony(water: (x: number, z: number) => boolean = () => false) {
     player,
     keys: {},
     joy: { on: false },
-    kmenu: { hidden: true } as HTMLElement,
+    kmenu: { hidden: true },
     get inCar() {
       return drive.inCar;
     },
@@ -160,6 +169,19 @@ describe('owning a cat', () => {
     expect(Math.hypot(cat.x - x, cat.z - z)).toBeCloseTo(0.8);
   });
 
+  it('spawnNear makes a new stray on dry land right by the player, ready to adopt', () => {
+    const { c, player } = colony(x => x > 0); // water east of x = 0: the cat must land west of it
+    player.x = 50;
+    player.z = -20;
+    const k = c.spawnNear({ x: 0, z: -20 });
+    expect(c.cats).toHaveLength(2);
+    expect(k).toMatchObject({ owned: false, pets: 0, name: 'Kisse' });
+    expect(Math.hypot(k.x, k.z + 20)).toBeCloseTo(1.5); // CAT_NEW_M: every try is this far out, and one of them is dry
+    expect(k.x <= 0).toBe(true);
+    c.adopt(k);
+    expect(c.owned).toBe(k);
+  });
+
   it('a second cat cannot be adopted while you own one', () => {
     const { c, cat } = colony();
     petUntilReady(c, cat);
@@ -254,6 +276,17 @@ describe('your cat rides along', () => {
     run(c, player, 3);
     expect(cat.ride).toBe(car);
     expect(stray.ride).toBeNull();
+  });
+
+  it('lands on the ground, not on the car, when the car is taken away mid-hop', () => {
+    const { c, cat, car, player } = getIn('volvo');
+    for (let i = 0; i < 90 && cat.hop?.onto !== car; i++) c.update(player, 1 / 30);
+    expect(cat.hop?.onto).toBe(car); // on its way up
+    c.hopOffCar(car); // Skroten takes the car
+    car.x = 500; // and it is gone
+    run(c, player, 1);
+    expect(cat.ride).toBeNull();
+    expect(car.cat).toBeNull();
   });
 
   it('stays put when the car is out of reach', () => {
@@ -355,6 +388,21 @@ describe('strays on the EPA flak', () => {
     expect(off).toBe(true);
   });
 
+  it('keeps its blob on the ground under it while it hops up, and under it on the flak once it lands', () => {
+    const { c, cat, car, player } = epaScene();
+    const shadow = new THREE.Object3D(),
+      at = new THREE.Vector3();
+    cat.mesh.add(shadow);
+    cat.shadow = shadow;
+    for (let i = 0; i < 3000 && !(cat.hop?.onto === car && cat.hop.p >= 0.5); i++) c.update(player, 1 / 30);
+    expect(cat.hop?.onto).toBe(car);
+    expect(cat.mesh.position.y).toBeGreaterThan(0.5); // up in the air
+    expect(shadow.getWorldPosition(at).y).toBeCloseTo(0.06, 6); // on the ground (0 here)
+    for (let i = 0; i < 60 && cat.hop; i++) c.update(player, 1 / 30);
+    expect(cat.ride).toBe(car);
+    expect(shadow.position.y).toBe(0.06); // on the flak, just under the cat
+  });
+
   it('adopted mid-hop onto the flak, it lands on the ground and leaves the EPA free', () => {
     const { c, cat, car, player } = epaScene();
     for (let i = 0; i < 3000 && cat.state !== 'hop'; i++) {
@@ -369,6 +417,41 @@ describe('strays on the EPA flak', () => {
     run(c, player, 2);
     expect(cat.ride).toBeNull();
     expect(car.cat).toBeNull();
+  });
+
+  it('trotting to an EPA that Skroten takes, it sits down and never boards the gone car', () => {
+    const { c, cat, car, player, drive } = epaScene();
+    for (let i = 0; i < 3000 && cat.state !== 'epa'; i++) {
+      if (cat.state === 'walk' || cat.state === 'flee') {
+        cat.state = 'sit';
+        cat.t = 99;
+      }
+      c.update(player, 1 / 30);
+    }
+    expect(cat.epa).toBe(car); // on its way to the tailgate
+    c.hopOffCar(car); // Skroten takes the car
+    drive.cars.splice(drive.cars.indexOf(car), 1); // and it is gone
+    expect(cat.epa).toBeNull();
+    expect(cat.state).toBe('sit');
+    run(c, player, 10);
+    expect(cat.ride).toBeNull();
+    expect(cat.hop).toBeNull();
+    expect(car.cat).toBeFalsy();
+  });
+
+  it('your cat sent home mid-hop puts its blob back under it', () => {
+    const { c, cat, car, player, drive } = epaScene();
+    const shadow = new THREE.Object3D();
+    cat.mesh.add(shadow);
+    cat.shadow = shadow;
+    c.adopt(cat);
+    cat.x = 2; // within hopping reach of the EPA
+    drive.inCar = true;
+    drive.pcar = car;
+    for (let i = 0; i < 60 && !(cat.hop && cat.hop.p >= 0.5); i++) c.update(player, 1 / 30);
+    expect(shadow.position.y).toBeLessThan(0); // held down on the ground mid-hop
+    c.sendHome();
+    expect(shadow.position.y).toBe(0.06);
   });
 
   it('your cat sent home mid-hop into your car leaves the car free', () => {
@@ -413,5 +496,96 @@ describe('naming your cat', () => {
     c.rename('Måns');
     c.sendHome();
     expect(toasts.at(-1)).toContain('Måns');
+  });
+});
+
+describe("a cat's menu", () => {
+  const player = { x: 0, z: 0 };
+  it("stays open while you are on foot within 4 m and the cat isn't running off", () => {
+    expect(canTend({ x: 3.9, z: 0, state: 'sit' }, player, false)).toBe(true);
+    expect(canTend({ x: 0, z: 2, state: 'follow' }, player, false)).toBe(true); // your own cat, following you
+    expect(canTend({ x: 4, z: 0, state: 'sit' }, player, false)).toBe(false);
+    expect(canTend({ x: 3, z: 3, state: 'follow' }, player, false)).toBe(false); // 4.24 m away
+  });
+  it('closes when the cat bolts or you get in a car', () => {
+    expect(canTend({ x: 1, z: 0, state: 'flee' }, player, false)).toBe(false);
+    expect(canTend({ x: 1, z: 0, state: 'sit' }, player, true)).toBe(false);
+  });
+});
+
+describe('catParts', () => {
+  it('builds every coat standing on the ground, with a chest and muzzle only for the coats that have one', () => {
+    for (const coat of CAT_COLS) {
+      const parts = catParts(coat);
+      expect(parts).toHaveLength(coat[2] ? 13 : 11);
+      // no box reaches more than a centimetre below y = 0: the paws sink 5 mm in, so no gap shows under them
+      for (const [, h, , , y] of parts) expect(y - h / 2).toBeGreaterThanOrEqual(-0.01);
+      expect(parts.map(p => p[6])).toContain(coat[0]);
+    }
+  });
+
+  it('draws the tuxedo exactly as the colony drew it before catParts', () => {
+    // the list CatColony built inline until catParts took it over, for the coat with a white chest and muzzle
+    const [coat, paws, chest] = ['#1e1e20', '#ece9e2', '#ece9e2'];
+    expect(catParts([coat, paws, chest])).toEqual([
+      [0.2, 0.17, 0.42, 0, 0.2, 0, coat],
+      [0.17, 0.15, 0.15, 0, 0.31, -0.25, coat],
+      [0.05, 0.06, 0.03, -0.05, 0.41, -0.26, paws],
+      [0.05, 0.06, 0.03, 0.05, 0.41, -0.26, paws],
+      [0.03, 0.03, 0.01, -0.04, 0.33, -0.33, '#c8d24a'],
+      [0.03, 0.03, 0.01, 0.04, 0.33, -0.33, '#c8d24a'],
+      [0.05, 0.13, 0.05, -0.07, 0.06, -0.15, paws],
+      [0.05, 0.13, 0.05, 0.07, 0.06, -0.15, paws],
+      [0.05, 0.13, 0.05, -0.07, 0.06, 0.15, paws],
+      [0.05, 0.13, 0.05, 0.07, 0.06, 0.15, paws],
+      [0.04, 0.3, 0.04, 0, 0.4, 0.22, coat],
+      [0.14, 0.12, 0.02, 0, 0.21, -0.215, chest],
+      [0.09, 0.05, 0.01, 0, 0.27, -0.33, chest],
+    ]);
+  });
+});
+
+describe('catMesh', () => {
+  it('builds the cat from its parts, at the middle of the strays’ sizes, with its soft shadow', () => {
+    const built: unknown[] = [];
+    const shadows: THREE.Object3D[] = [];
+    const deps = {
+      geoCache: {},
+      boxGeo: (parts: BoxPart[]) => {
+        built.push(parts);
+        return new THREE.BufferGeometry();
+      },
+      paintMat: new THREE.MeshBasicMaterial(),
+      blob: (parent: THREE.Object3D) => {
+        shadows.push(parent);
+        return new THREE.Object3D();
+      },
+    };
+    const cat = catMesh(CAT_COLS[0], deps);
+    expect(cat.castShadow).toBe(false); // the blob is its shadow (#239)
+    expect(cat.shadow).toBeInstanceOf(THREE.Object3D);
+    expect(built).toEqual([catParts(CAT_COLS[0])]);
+    expect(cat.scale.x).toBeCloseTo(1.225);
+    expect(cat.material).toBe(deps.paintMat);
+    expect(shadows).toEqual([cat]);
+  });
+
+  it('builds each coat’s geometry once and shares it', () => {
+    let builds = 0;
+    const deps = {
+      geoCache: {},
+      boxGeo: () => {
+        builds++;
+        return new THREE.BufferGeometry();
+      },
+      paintMat: new THREE.MeshBasicMaterial(),
+      blob: () => new THREE.Object3D(),
+    };
+    const a = catMesh(CAT_COLS[0], deps),
+      b = catMesh(CAT_COLS[0], deps, 1.1);
+    expect(builds).toBe(1);
+    expect(b.geometry).toBe(a.geometry);
+    catMesh(CAT_COLS[1], deps);
+    expect(builds).toBe(2);
   });
 });

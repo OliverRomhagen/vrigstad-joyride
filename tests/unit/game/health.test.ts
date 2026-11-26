@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { Commands } from '../../../src/game/commands';
 import {
   CRASH_COOL_S,
   crackLevel,
@@ -16,6 +17,8 @@ import {
   REGEN_DELAY_S,
   REGEN_HP_S,
   regen,
+  registerCarDamageCommand,
+  registerHealthCommands,
   runOverHurt,
   smokeLevel,
   topSpeedShare,
@@ -41,7 +44,7 @@ describe('player health', () => {
     const h = newHealth();
     h.hp = 50;
     expect(hurt(h, 0)).toBe(false);
-    expect(h).toEqual({ hp: 50, calm: REGEN_DELAY_S });
+    expect(h).toEqual({ hp: 50, calm: REGEN_DELAY_S, god: false });
   });
 
   it('heals up to the maximum', () => {
@@ -133,7 +136,7 @@ describe('crashes', () => {
   const car = (dmg = 0) => ({ dmg, hitAt: -9 });
   const HARD_MS = 27; // 20 m/s over CRASH_MIN_MS: 45 damage
 
-  it('damages both cars in a hard hit, and only the car against a wall', () => {
+  it('damages both cars in a hard hit, only the car against a wall, and never a spared car', () => {
     const a = car(),
       b = car();
     expect(crashCars(0, HARD_MS, a, b).map(h => h.car)).toEqual([a, b]);
@@ -141,6 +144,10 @@ describe('crashes', () => {
     expect(b.dmg).toBe(45);
     const c = car();
     expect(crashCars(0, HARD_MS, c, null).map(h => h.car)).toEqual([c]);
+    const spared = car(),
+      other = car();
+    expect(crashCars(0, HARD_MS, spared, other, k => k === spared).map(h => h.wrecked)).toEqual([false, false]);
+    expect([spared.dmg, other.dmg]).toEqual([0, crashDamage(HARD_MS)]); // god mode spares the car you drive
   });
 
   it('ignores a slow bump, which also leaves the cooldown alone', () => {
@@ -182,5 +189,42 @@ describe('waking up after a knock-out', () => {
 
   it('comes to at home when that is nearer, even with a kiosk closer still', () => {
     expect(wakeSpot(25, 0, home, places)).toBe(home);
+  });
+});
+
+describe('god mode', () => {
+  it('takes no health while on, and fills it up when switched on', () => {
+    const h = newHealth(),
+      c = new Commands();
+    let drawn = 0;
+    registerHealthCommands(c, h, () => drawn++);
+    hurt(h, 40);
+    expect(c.run('god')).toBe('God mode on.');
+    expect(h.hp).toBe(HP_MAX);
+    expect(hurt(h, HP_MAX)).toBe(false);
+    expect(h.hp).toBe(HP_MAX);
+    expect(c.run('god on')).toBe('God mode on.'); // on stays on, rather than flipping
+    expect(c.run('god')).toBe('God mode off.');
+    expect(hurt(h, HP_MAX)).toBe(true);
+    expect(c.run('god maybe')).toBe('mode is on or off. Usage: god [mode]');
+    expect(drawn).toBe(3);
+  });
+});
+
+describe('the damage command', () => {
+  it('sets the damage of the car you drive, within 0 and DMG_MAX', () => {
+    const c = new Commands(),
+      car = { dmg: 10 };
+    registerCarDamageCommand(c, () => car);
+    expect(c.run('damage 60')).toBe('Car damage: 60.');
+    expect(car.dmg).toBe(60);
+    c.run('damage ' + (DMG_MAX + 1));
+    expect(car.dmg).toBe(60);
+  });
+
+  it('asks you to get in a car on foot', () => {
+    const c = new Commands();
+    registerCarDamageCommand(c, () => null);
+    expect(c.run('damage 60')).toBe('Get in a car first.');
   });
 });

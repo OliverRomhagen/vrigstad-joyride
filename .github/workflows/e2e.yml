@@ -16,6 +16,13 @@ on:
 permissions:
   contents: read
 
+# A new push to a PR cancels its run still going: the suite takes three runners for minutes, and only the newest commit's
+# result counts. Runs on main each get their own group, so every merge is tested. smoke-result still runs on a cancelled
+# run (always()) and reports it as cancelled, never as passing.
+concurrency:
+  group: e2e-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   # The smoke tests run in Playwright's image, which has the browser and its system packages, instead of installing them on
   # every run (that took from half a minute to eight). Its tag must match the locked Playwright, so read it from the lock file.
@@ -39,10 +46,16 @@ jobs:
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
+  # Software WebGL is CPU-bound, so more workers on one runner gain little: split the suite over runners instead (#276).
+  # With fullyParallel (playwright.config.js) Playwright splits by test, by count and order, not by how long a test takes.
   smoke:
-    name: Smoke tests (Playwright)
+    name: Smoke tests (Playwright) shard ${{ matrix.shard }}/3
     needs: playwright
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false # a red shard still lets the others finish, so one run shows every failing test
+      matrix:
+        shard: [1, 2, 3]
     container:
       image: mcr.microsoft.com/playwright:v${{ needs.playwright.outputs.version }}-noble
       # Docker's default 64 MB /dev/shm can crash Chromium; Playwright's Docker docs recommend the host's IPC namespace.
@@ -64,11 +77,41 @@ jobs:
       - run: npm run build
       # The built pages are not committed (#45): fail if a merge brought one back.
       - run: test -z "$(git ls-files index.html map.html)"
-      - run: npm run test:e2e
+      - run: npm run test:e2e -- --shard=${{ matrix.shard }}/3
       # Screenshots of both pages, plus a trace of any failed test. Not pixel-diffed: headless WebGL output varies.
+      # Each shard uploads its own; smoke-result merges them into one e2e-screenshots artifact.
       - uses: actions/upload-artifact@v4
         if: ${{ !cancelled() }}
         with:
-          name: e2e-screenshots
+          name: e2e-screenshots-${{ matrix.shard }}
           path: test-results/
+          # As long as the merged artifact: when the merge fails, these are the only copy. delete-merged removes them when it works.
           retention-days: 14
+
+  # One check with a stable name for the whole suite, whatever the number of shards. Before making it a required check, note that
+  # the paths filter above skips the whole workflow, so a PR that changes only docs or .github/ would never report it and couldn't
+  # merge: the filter would have to move into a job first.
+  smoke-result:
+    name: Smoke tests (Playwright)
+    needs: [playwright, smoke]
+    # always(), not !cancelled(): a job its if skips counts as passing a required check, so a cancelled run would let a PR merge untested.
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    steps:
+      # The screenshots are a convenience: a failed merge (say, no shard uploaded anything) mustn't fail a green suite.
+      - uses: actions/upload-artifact/merge@v4
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        with:
+          name: e2e-screenshots
+          pattern: e2e-screenshots-*
+          delete-merged: true
+          retention-days: 14
+      - if: ${{ always() && needs.playwright.result != 'success' }}
+        run: |
+          echo "::error::Playwright version ${{ needs.playwright.result }}: no shard ran."
+          exit 1
+      - if: ${{ always() && needs.playwright.result == 'success' && needs.smoke.result != 'success' }}
+        run: |
+          echo "::error::Smoke tests ${{ needs.smoke.result }}: see the failing shard."
+          exit 1

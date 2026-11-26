@@ -18,6 +18,8 @@ export interface RoofParts {
   ring: PointXZ[];
   /** height of the wall top, which is the roof's edge, at a point on the ring (m) */
   yAt: (v: PointXZ) => number;
+  /** height of the roof's plane at any point, also past the walls, where `yAt` stops at the wall top (m) */
+  roofY: (v: PointXZ) => number;
   /** the roof's faces: the flat roof, or the two halves either side of the ridge */
   sides: PointXZ[][];
 }
@@ -27,20 +29,26 @@ export interface RoofParts {
  * which gets a corner wherever it crosses the ridge.
  */
 export function roofParts(outline: PointXZ[], ridge: Building['g'], top: number): RoofParts {
-  if (!ridge) return { ring: outline, yAt: () => top, sides: [outline] };
+  if (!ridge) return { ring: outline, yAt: () => top, roofY: () => top, sides: [outline] };
   const [ax, az, bx, bz, halfWidth] = ridge;
   const length = Math.hypot(bx - ax, bz - az);
   const nx = (az - bz) / length;
   const nz = (bx - ax) / length;
   const rise = Math.min(halfWidth * ROOF_PITCH, MAX_ROOF_RISE_M);
   const offset = (v: PointXZ) => (v.x - ax) * nx + (v.z - az) * nz;
-  const yAt = (v: PointXZ) => top + rise * Math.max(0, 1 - Math.abs(offset(v)) / halfWidth);
+  // a corner on the ridge line comes out a rounding error off it, which would add a crossing point on top of the corner
+  const sideOf = (v: PointXZ) => {
+    const o = offset(v);
+    return Math.abs(o) < 1e-6 ? 0 : o;
+  };
+  const roofY = (v: PointXZ) => top + rise * (1 - Math.abs(offset(v)) / halfWidth);
+  const yAt = (v: PointXZ) => Math.max(top, roofY(v));
   const ring: PointXZ[] = [];
   const offsets: number[] = [];
   outline.forEach((a, i) => {
     const d = outline[(i + 1) % outline.length];
-    const oa = offset(a);
-    const od = offset(d);
+    const oa = sideOf(a);
+    const od = sideOf(d);
     ring.push(a);
     offsets.push(oa);
     if (oa * od < 0) {
@@ -50,7 +58,7 @@ export function roofParts(outline: PointXZ[], ridge: Building['g'], top: number)
     }
   });
   const sides = [1, -1].map(s => ring.filter((_, i) => s * offsets[i] >= 0)).filter(side => side.length > 2);
-  return { ring, yAt, sides };
+  return { ring, yAt, roofY, sides };
 }
 
 /** One building as the meshes need it: its outline on the terrain, wall heights and roof. */
@@ -66,7 +74,7 @@ export interface BuildingShape extends RoofParts {
   top: number;
   /** footprint area (m²) */
   area: number;
-  /** +1 or -1 with the outline's winding, to find the outside of each wall */
+  /** +1 when the outline runs clockwise on a north-up map (x east, z south), -1 when counter-clockwise */
   winding: number;
 }
 
@@ -113,78 +121,124 @@ export interface Footprint extends Bounds {
 
 /** side of a collision cell (m) */
 export const BUILDING_CELL_M = 40;
+/** footprints in this range (m²) count as homes and shops: the game gives them lawns and house details */
+export const HOUSE_MIN_M2 = 40,
+  HOUSE_MAX_M2 = 1500;
 
 /** Building footprints, a grid over them, and collision against them. */
 export class BuildingIndex {
   readonly footprints: Footprint[] = [];
   /** each cell lists the indices of the footprints whose bounding box touches it */
   readonly grid = new Map<string, number[]>();
+  private readonly barriers: { collide(o: { x: number; z: number }, r: number): boolean }[] = [];
+  /** outlines you collide with that are no buildings (addSolid), and their grid */
+  readonly solids: Footprint[] = [];
+  private readonly solidGrid = new Map<string, number[]>();
 
   constructor(data: WorldData) {
     for (const b of data.b) this.addFootprint(b.p);
   }
 
+  /**
+   * Adds something else that `collide` pushes out from, without a footprint: a bridge's railings (#238), which
+   * people, cats and the streetscape must not take for a house.
+   */
+  addBarrier(barrier: { collide(o: { x: number; z: number }, r: number): boolean }) {
+    this.barriers.push(barrier);
+  }
+
   /** Adds an outline that things collide with; returns its index in `footprints`. */
   addFootprint(p: number[]) {
-    const { x0, x1, z0, z1 } = polygonBounds(p);
-    const index = this.footprints.length;
-    this.footprints.push({ p, x0, x1, z0, z1 });
-    for (let x = Math.floor(x0 / BUILDING_CELL_M); x <= Math.floor(x1 / BUILDING_CELL_M); x++) {
-      for (let z = Math.floor(z0 / BUILDING_CELL_M); z <= Math.floor(z1 / BUILDING_CELL_M); z++) {
-        const k = x + ',' + z;
-        let list = this.grid.get(k);
-        if (!list) {
-          list = [];
-          this.grid.set(k, list);
-        }
-        list.push(index);
-      }
-    }
-    return index;
+    return addTo(this.footprints, this.grid, p);
+  }
+
+  /**
+   * Adds an outline that things collide with but that is no building: a fence, a wall, a heap of scrap. It stays out of `footprints`, so
+   * what reads the buildings there (how busy the streets are, where cats sit) doesn't count it.
+   */
+  addSolid(p: number[]) {
+    addTo(this.solids, this.solidGrid, p);
   }
 
   /** Pushes the circle `o` (radius r, m) out of any footprint it overlaps. True on contact. */
   collide(o: { x: number; z: number }, r: number) {
-    let hit = false;
-    for (let gx = Math.floor((o.x - r) / BUILDING_CELL_M); gx <= Math.floor((o.x + r) / BUILDING_CELL_M); gx++) {
-      for (let gz = Math.floor((o.z - r) / BUILDING_CELL_M); gz <= Math.floor((o.z + r) / BUILDING_CELL_M); gz++) {
-        const list = this.grid.get(gx + ',' + gz);
-        if (!list) continue;
-        for (const bi of list) {
-          const b = this.footprints[bi];
-          if (o.x < b.x0 - r || o.x > b.x1 + r || o.z < b.z0 - r || o.z > b.z1 + r) continue;
-          const p = b.p;
-          let best = 1e9;
-          let qx = 0;
-          let qz = 0;
-          for (let i = 0, j = p.length - 2; i < p.length; j = i, i += 2) {
-            const t = segmentParam(o.x, o.z, p[j], p[j + 1], p[i], p[i + 1]);
-            const cx = p[j] + (p[i] - p[j]) * t;
-            const cz = p[j + 1] + (p[i + 1] - p[j + 1]) * t;
-            const d = Math.hypot(o.x - cx, o.z - cz);
-            if (d < best) {
-              best = d;
-              qx = cx;
-              qz = cz;
-            }
-          }
-          const inside = pointInPolygon(p, o.x, o.z);
-          if (!inside && best >= r) continue;
-          let nx = o.x - qx;
-          let nz = o.z - qz;
-          const length = Math.hypot(nx, nz) || 1;
-          nx /= length;
-          nz /= length;
-          if (inside) {
-            nx = -nx;
-            nz = -nz;
-          }
-          o.x = qx + nx * r;
-          o.z = qz + nz * r;
-          hit = true;
-        }
-      }
-    }
+    let hit = pushOut(o, r, this.footprints, this.grid);
+    if (pushOut(o, r, this.solids, this.solidGrid)) hit = true;
+    for (const b of this.barriers) if (b.collide(o, r)) hit = true;
     return hit;
   }
+
+  /** Stops the footprint at `index` from colliding; it stays in `footprints`. For a building the game rebuilds as walls you can pass between. */
+  stopColliding(index: number) {
+    // a cell left empty is dropped: readers such as the cat spawn take a non-empty list as having a house in it
+    for (const [key, list] of this.grid) {
+      const i = list.indexOf(index);
+      if (i >= 0) list.splice(i, 1);
+      if (!list.length) this.grid.delete(key);
+    }
+  }
+}
+
+// adds outline p to list and to grid's cells under its bounds; returns its index in list
+function addTo(list: Footprint[], grid: Map<string, number[]>, p: number[]) {
+  const { x0, x1, z0, z1 } = polygonBounds(p);
+  const index = list.length;
+  list.push({ p, x0, x1, z0, z1 });
+  for (let x = Math.floor(x0 / BUILDING_CELL_M); x <= Math.floor(x1 / BUILDING_CELL_M); x++) {
+    for (let z = Math.floor(z0 / BUILDING_CELL_M); z <= Math.floor(z1 / BUILDING_CELL_M); z++) {
+      const k = x + ',' + z;
+      let cell = grid.get(k);
+      if (!cell) {
+        cell = [];
+        grid.set(k, cell);
+      }
+      cell.push(index);
+    }
+  }
+  return index;
+}
+
+// pushes the circle o (radius r) out of any outline in list it overlaps, looked up through grid; true on contact
+function pushOut(o: { x: number; z: number }, r: number, list: Footprint[], grid: Map<string, number[]>) {
+  let hit = false;
+  for (let gx = Math.floor((o.x - r) / BUILDING_CELL_M); gx <= Math.floor((o.x + r) / BUILDING_CELL_M); gx++) {
+    for (let gz = Math.floor((o.z - r) / BUILDING_CELL_M); gz <= Math.floor((o.z + r) / BUILDING_CELL_M); gz++) {
+      const cell = grid.get(gx + ',' + gz);
+      if (!cell) continue;
+      for (const bi of cell) {
+        const b = list[bi]!;
+        if (o.x < b.x0 - r || o.x > b.x1 + r || o.z < b.z0 - r || o.z > b.z1 + r) continue;
+        const p = b.p;
+        let best = 1e9;
+        let qx = 0;
+        let qz = 0;
+        for (let i = 0, j = p.length - 2; i < p.length; j = i, i += 2) {
+          const t = segmentParam(o.x, o.z, p[j], p[j + 1], p[i], p[i + 1]);
+          const cx = p[j] + (p[i] - p[j]) * t;
+          const cz = p[j + 1] + (p[i + 1] - p[j + 1]) * t;
+          const d = Math.hypot(o.x - cx, o.z - cz);
+          if (d < best) {
+            best = d;
+            qx = cx;
+            qz = cz;
+          }
+        }
+        const inside = pointInPolygon(p, o.x, o.z);
+        if (!inside && best >= r) continue;
+        let nx = o.x - qx;
+        let nz = o.z - qz;
+        const length = Math.hypot(nx, nz) || 1;
+        nx /= length;
+        nz /= length;
+        if (inside) {
+          nx = -nx;
+          nz = -nz;
+        }
+        o.x = qx + nx * r;
+        o.z = qz + nz * r;
+        hit = true;
+      }
+    }
+  }
+  return hit;
 }

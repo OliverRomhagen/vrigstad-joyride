@@ -20,6 +20,24 @@ describe('collide', () => {
     expect(o).toEqual({ x: 11, z: 11 });
   });
 
+  it('lets a circle through a footprint that stopped colliding, which stays in the list', () => {
+    const index = indexWithHouse(),
+      o = { x: 5, z: 5 };
+    index.stopColliding(0);
+    expect(index.collide(o, 1)).toBe(false);
+    expect(index.footprints).toHaveLength(1);
+    expect([...index.grid.values()].every(list => list.length > 0)).toBe(true);
+  });
+
+  it('collides with a solid too, which is no building and stays out of the footprints', () => {
+    const index = indexWithHouse(),
+      o = { x: 50.5, z: 5 };
+    index.addSolid(square(40, 0, 10));
+    expect(index.collide(o, 1)).toBe(true);
+    expect(o.x).toBeCloseTo(51);
+    expect(index.footprints).toHaveLength(1);
+  });
+
   it('pushes a circle that overlaps a wall out to touch it', () => {
     const o = { x: 10.5, z: 5 };
     expect(indexWithHouse().collide(o, 1)).toBe(true);
@@ -84,6 +102,21 @@ describe('roofParts', () => {
     expect(yAt({ x: 0, z: 0 })).toBeCloseTo(4);
   });
 
+  it('adds no second point on a corner that lies on the ridge, which rounding puts a hair off it', () => {
+    // this ridge puts (4.359, 1.447), a point on its line, 2e-16 m off it
+    const ridge: [number, number, number, number, number] = [0.4, 0.3, 11.1, 3.4, 3];
+    const l = Math.hypot(10.7, 3.1),
+      [ux, uz, nx, nz] = [10.7 / l, 3.1 / l, -3.1 / l, 10.7 / l],
+      at = (u: number, n: number) => ({ x: 4.359 + ux * u + nx * n, z: 1.447 + uz * u + nz * n });
+    const { ring, sides } = roofParts([at(-3, -2), at(0, 0), at(0, 2), at(-3, 2)], ridge, 4);
+    for (let i = 0; i < ring.length; i++) {
+      const a = ring[i],
+        d = ring[(i + 1) % ring.length];
+      expect(Math.hypot(d.x - a.x, d.z - a.z)).toBeGreaterThan(1e-3);
+    }
+    for (const side of sides) expect(side).toContainEqual({ x: 4.359, z: 1.447 });
+  });
+
   it('caps how high a wide roof rises', () => {
     const wide = outline.map(v => ({ x: v.x * 4, z: v.z * 4 }));
     expect(roofParts(wide, [0, 12, 40, 12, 12], 0).yAt({ x: 20, z: 12 })).toBeCloseTo(5);
@@ -130,5 +163,23 @@ describe('forEachBuilding', () => {
       s => windings.push(s.winding),
     );
     expect(windings).toEqual([1, -1]);
+  });
+});
+
+describe('BuildingIndex barriers', () => {
+  it('pushes out from a barrier as from a wall, and reports the hit', () => {
+    const index = new BuildingIndex(makeWorld());
+    const fence = {
+      collide(o: { x: number; z: number }, r: number) {
+        if (o.z >= r) return false;
+        o.z = r;
+        return true;
+      },
+    };
+    index.addBarrier(fence);
+    const o = { x: 0, z: 0.2 };
+    expect(index.collide(o, 1)).toBe(true);
+    expect(o.z).toBe(1);
+    expect(index.collide({ x: 0, z: 5 }, 1)).toBe(false);
   });
 });

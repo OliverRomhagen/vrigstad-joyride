@@ -1,0 +1,23 @@
+// Rule 2 (AGENTS.md): the world and the simulation know nothing about the page, so they run in Node, a worker or a
+// server. Without the DOM library, tsc rejects every page global and type in them (window, innerWidth, HTMLElement,
+// KeyboardEvent, …), which no list in biome.jsonc could keep up with. These are fallow.toml's world, world-mesh and sim
+// zones, as in biome.jsonc: keep the paths the same (tests/unit/zones.test.ts checks). The editor uses tsconfig.json, so this only runs in npm run check.
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "lib": ["ES2022"], "types": [] },
+  "include": ["src/world", "src/game"],
+  "exclude": [
+    "src/game/render",
+    "src/game/presentation",
+    "src/game/main.ts",
+    "src/game/hud.ts",
+    "src/game/input.ts",
+    "src/game/menu.ts",
+    "src/game/loop.ts",
+    "src/game/prompt.ts",
+    "src/game/test-hook.ts",
+    "src/game/capture-hook.ts",
+    "src/game/devconsole.ts",
+    "src/game/confetti.ts"
+  ]
+}

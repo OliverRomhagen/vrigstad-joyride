@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import { Commands } from '../../../src/game/commands';
 import { DMG_MAX } from '../../../src/game/health';
-import { KIOSK, Places, type PlacesDeps, streetDoor } from '../../../src/game/places';
+import { KIOSK, Places, type PlacesDeps, SKROTEN, streetDoor } from '../../../src/game/places';
+import { HOME } from '../../../src/game/player';
 import { RoadClass } from '../../../src/world/data';
 import { square } from '../world/fixture';
 
@@ -53,13 +55,48 @@ describe('streetDoor', () => {
 });
 
 describe('Places', () => {
-  it('has a ring outside each safehouse door that is found, then the kiosk counter', () => {
+  it('has a ring outside each safehouse door that is found, then the kiosk counter and Skroten', () => {
     const { places: p } = places();
     expect(p.doors).toEqual([{ mx: 40, mz: -50, nx: 0, nz: -1 }]);
     expect(p.list).toEqual([
       { kind: 'safe', name: 'Gästgivaregatan', x: 40, z: -51.4 },
       { kind: 'kiosk', name: 'Kiosken', x: KIOSK.x, z: KIOSK.z + KIOSK.counterZ },
+      { kind: 'skrot', name: 'Skroten', x: SKROTEN.x, z: SKROTEN.z },
     ]);
+  });
+
+  it('takes you to Torget, the kiosk, Skroten, its lift or a safehouse with go, turned where a spot says', () => {
+    const { places: p } = places(),
+      c = new Commands(),
+      went: [number, number, number | undefined][] = [];
+    p.registerCommands(
+      c,
+      (x, z, name, h) => {
+        went.push([x, z, h]);
+        return 'You are at ' + name + '.';
+      },
+      { verkstan: { x: 50, z: 60, name: "Plåt-Pelle's lift", h: 1.5 } },
+    );
+    expect(c.run('go Skroten')).toBe('You are at Skroten.');
+    expect(went.at(-1)).toEqual([SKROTEN.x, SKROTEN.z, undefined]); // a car keeps its heading
+    expect(c.run('go torget')).toBe('You are at Torget.');
+    expect(went.at(-1)).toEqual([HOME.x, HOME.z, undefined]);
+    expect(c.run('go kiosk')).toBe('You are at Kiosken.');
+    expect(c.run('go gästgivaregatan')).toBe('You are at Gästgivaregatan.');
+    expect(c.run('go mars')).toBe(
+      'No place called mars. Pick one of: gästgivaregatan, kiosk, skroten, torget, verkstan. Usage: go <place>',
+    );
+    expect(c.run('tp kiosk')).toBe('You are at Kiosken.');
+    expect(c.complete('go ')).toEqual(['gästgivaregatan', 'kiosk', 'skroten', 'torget', 'verkstan']);
+    expect(c.run('go verkstan')).toBe("You are at Plåt-Pelle's lift.");
+    expect(went.at(-1)).toEqual([50, 60, 1.5]); // turned to drive in
+  });
+
+  it('finds Skroten for a car within 4 m of its ring, never for you on foot', () => {
+    const { places: p } = places();
+    expect(p.skrotenAt(SKROTEN.x + 3.9, SKROTEN.z)?.name).toBe('Skroten');
+    expect(p.skrotenAt(SKROTEN.x + 4.1, SKROTEN.z)).toBeNull();
+    expect(p.nearest(SKROTEN.x, SKROTEN.z)).toBeNull();
   });
 
   it('finds the place whose ring you stand on, within 2.2 m', () => {

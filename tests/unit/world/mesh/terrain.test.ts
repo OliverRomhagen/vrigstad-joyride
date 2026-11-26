@@ -1,8 +1,10 @@
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
+import { WaterwayKind } from '../../../../src/world/data';
 import { Heightfield } from '../../../../src/world/heightfield';
 import { TerrainMesh } from '../../../../src/world/mesh/terrain';
-import { makeWorld } from '../fixture';
+import { WaterBodies } from '../../../../src/world/water-shapes';
+import { makeValley, makeWorld } from '../fixture';
 
 // uneven, so each cell's two diagonals give different surfaces
 const UNEVEN = [1001, 1234, 1587, 1102, 1999, 1313, 1050, 1234, 1587];
@@ -54,6 +56,45 @@ describe('TerrainMesh', () => {
     }
     // four edges of two walls each, and three of each wall's six vertices are on top
     expect(tops).toBe(24);
+    terrain.dispose();
+  });
+
+  it('draws refined cells on their finer grid, joined to their neighbours without cracks', () => {
+    const world = makeValley({ ww: [{ k: WaterwayKind.RIVER, p: [-180, 10, 180, 10] }] });
+    const base = new Heightfield(world);
+    const field = new Heightfield(world, { cut: new WaterBodies(world, base) });
+    const material = new THREE.MeshBasicMaterial();
+    const terrain = new TerrainMesh(field, { material, skirtMaterial: material, skirtDepthM: 10 });
+    expect(field.refinedCells).toBeGreaterThan(0);
+    expect(terrain.refined.length).toBeGreaterThan(0);
+    const at = new Map<string, number>();
+    for (const mesh of [terrain.surface, ...terrain.refined]) {
+      const pos = mesh.geometry.getAttribute('position');
+      const index = mesh.geometry.getIndex() as THREE.BufferAttribute;
+      const [ox, oz] = [mesh.position.x, mesh.position.z];
+      // every triangle's middle is on the heightAt surface
+      for (let t = 0; t < index.count; t += 3) {
+        let [x, y, z] = [0, 0, 0];
+        for (let k = 0; k < 3; k++) {
+          const v = index.getX(t + k);
+          x += (pos.getX(v) + ox) / 3;
+          y += pos.getY(v) / 3;
+          z += (pos.getZ(v) + oz) / 3;
+        }
+        expect(field.heightAt(x, z)).toBeCloseTo(y, 3);
+      }
+      for (let v = 0; v < pos.count; v++) {
+        const [x, y, z] = [pos.getX(v) + ox, pos.getY(v), pos.getZ(v) + oz];
+        // every vertex, those on a cell's edge too, is on the surface the cell next to it describes: no T-junction gaps
+        for (const d of [1e-4, -1e-4]) expect(field.heightAt(x + d, z + d)).toBeCloseTo(y, 3);
+        // vertices at the same place share a height, so cells and blocks meet without a step
+        const key = `${x.toFixed(3)},${z.toFixed(3)}`;
+        const seen = at.get(key);
+        if (seen === undefined) at.set(key, y);
+        else expect(y).toBeCloseTo(seen, 4);
+      }
+    }
+    expect(terrain.triangles).toBeGreaterThan(2 * 16 * 16);
     terrain.dispose();
   });
 });

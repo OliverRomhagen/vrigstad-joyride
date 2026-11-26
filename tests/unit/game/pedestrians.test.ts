@@ -9,19 +9,24 @@ import {
   type PersonMesh,
   SHOVE_HP,
 } from '../../../src/game/pedestrians';
+import type { CarBody } from '../../../src/game/sim/car-body';
 import type { BuildingIndex } from '../../../src/world/buildings';
 import type { RoadLine } from '../../../src/world/roads';
 
 const mesh = () =>
   Object.assign(new THREE.Group(), { legs: [new THREE.Object3D(), new THREE.Object3D()] }) as PersonMesh;
 
+// a round car (as long as it's wide), so its spine is a point and the crowd's push is plain distance
+type TestCar = CarBody & { v: number };
+const car = (x: number, z: number, v: number): TestCar => ({ x, z, v, h: 0, T: { lengthM: 1.8, widthM: 1.8 } });
+
 // One footpath along x from -200 to 200 and no roads in the grid (so nothing spawns); the player on foot at the origin.
 function crowd() {
   const toasts: string[] = [],
     hurts: number[] = [];
   const player = { x: 0, z: 0 },
-    drive = { inCar: false, pcar: null as { x: number; z: number; v: number } | null },
-    cars: { x: number; z: number; v: number }[] = [];
+    drive = { inCar: false, pcar: null as TestCar | null },
+    cars: TestCar[] = [];
   const path: RoadLine = {
     p: [
       [-200, 0],
@@ -37,8 +42,8 @@ function crowd() {
     buildings: { collide: () => false, footprints: [] } as unknown as BuildingIndex,
     labels: [],
     groundAt: () => 0,
+    walkOffset: () => 0,
     coarse: false,
-    wrap: a => Math.atan2(Math.sin(a), Math.cos(a)),
     rnd: () => 0.5,
     pick: a => a[0],
     personParts: mesh,
@@ -77,9 +82,11 @@ function crowd() {
     h: 0,
     phase: 0,
     first: false,
+    gawk: 0,
     mad: 0,
     cool: 0,
-    back: 0,
+    look: { shirt: '', pants: '', hair: '' },
+    scale: 1,
     mesh: mesh(),
   };
   c.npcs.push(n);
@@ -92,13 +99,13 @@ function crowd() {
 describe('pedestrians you drive into', () => {
   it('get angry when the player hits them fast, and not when they nudge them', () => {
     const w = crowd(),
-      car = { x: 31, z: 0, v: 2 };
-    w.cars.push(car);
-    w.drive.pcar = car;
+      c = car(30, 1, 2); // within reach: 0.9 m of body and 0.4 m of person, 1 m apart
+    w.cars.push(c);
+    w.drive.pcar = c;
     w.drive.inCar = true;
     w.run(0.05);
     expect(w.n.mad).toBe(0);
-    car.v = 10;
+    c.v = 10;
     w.run(0.05);
     expect(w.n.mad).toBeGreaterThan(MAD_S - 0.1);
     expect(w.toasts).toHaveLength(1);
@@ -106,7 +113,7 @@ describe('pedestrians you drive into', () => {
 
   it('ignore other cars hitting them', () => {
     const w = crowd();
-    w.cars.push({ x: 31, z: 0, v: 10 });
+    w.cars.push(car(30, 1, 10));
     w.run(0.05);
     expect(w.n.mad).toBe(0);
   });
@@ -120,14 +127,14 @@ describe('pedestrians you drive into', () => {
     expect(w.toasts.length).toBeGreaterThan(0);
   });
 
-  it('give up when the player gets far away, then walk back to their path', () => {
+  it('give up when the player gets far away, then run back to their path', () => {
     const w = crowd();
     w.n.mad = MAD_S;
     w.n.x = MAD_GIVE_UP_M + 10;
     w.n.z = 20;
     w.run(0.05);
     expect(w.n.mad).toBe(0);
-    expect(w.n.back).toBeGreaterThan(0);
+    expect(w.n.lost).toBeGreaterThan(0);
     w.run(15);
     expect(Math.abs(w.n.z)).toBeLessThan(0.5);
     expect(w.hurts).toHaveLength(0);

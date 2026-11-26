@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import type { Cat } from '../../../src/game/cats';
+import { Commands } from '../../../src/game/commands';
 import { type MenuItem, type Pet, Pets, type PetsDeps } from '../../../src/game/pets';
 
 // A colony stub that records what the menu asks of it, and a menu that records what it shows.
-function pets(owned: boolean) {
+function pets(owned: boolean, inCar = false) {
   const calls: string[] = [],
     menus: { title: string; items: MenuItem[]; pick: (k: string) => void }[] = [],
     renames: Pet[] = [];
@@ -21,8 +22,13 @@ function pets(owned: boolean) {
       calls.push('free');
       colony.owned = null;
     },
+    spawnNear: (T: { x: number; z: number }) => ({ name: 'Ny', x: T.x }) as unknown as Cat,
+    adopt: (k: Cat) => {
+      calls.push('adopt ' + k.name);
+      colony.owned = k;
+    },
   };
-  const button = { hidden: true } as HTMLElement;
+  const button = { hidden: true };
   const deps: PetsDeps = {
     colony,
     button,
@@ -34,6 +40,10 @@ function pets(owned: boolean) {
     },
     esc: t => t.replace(/</g, '&lt;').replace(/>/g, '&gt;'),
     caller: { x: 7, z: 0 },
+    inCar,
+    showHeart: k => {
+      calls.push('heart ' + k.name);
+    },
   };
   return { p: new Pets(deps), colony, button, calls, menus, renames };
 }
@@ -93,5 +103,26 @@ describe('Pets', () => {
     p.open();
     menus[0].pick('name');
     expect(renames.map(r => r.name)).toEqual(['Kisse']);
+  });
+});
+
+describe('the adopt command', () => {
+  const run = (t: ReturnType<typeof pets>, line: string) => {
+    const c = new Commands();
+    t.p.registerCommands(c);
+    return c.run(line);
+  };
+
+  it('adopts a new cat by you, shows its heart and the Pets button', () => {
+    const t = pets(false);
+    expect(run(t, 'adopt Cat')).toBe('Adopted a cat.');
+    expect(t.calls).toEqual(['adopt Ny', 'heart Ny']);
+    expect(t.button.hidden).toBe(false);
+  });
+
+  it('refuses a second cat, a cat in the car and a pet it does not know', () => {
+    expect(run(pets(true), 'adopt cat')).toMatch(/^You already have a cat, Kisse/);
+    expect(run(pets(false, true), 'adopt cat')).toBe('Get out of the car first.');
+    expect(run(pets(false), 'adopt hund')).toBe('No pet called hund. Usage: adopt <cat>');
   });
 });

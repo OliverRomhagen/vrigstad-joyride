@@ -1,18 +1,24 @@
 # Fallow (#107): the static gate at the end of `npm run check`. AGENTS.md (Tests) says what each pass checks.
 # Fallow finds the Vite, Vitest and Playwright entry points itself; this file adds only what it can't see, the
 # architecture rules, and today's exceptions. Shrink the exceptions; don't grow them.
-# package.json pins Fallow exactly: it is young, and `fallow dead-code` checking cycles, boundaries and the rule pack is
-# due to move to `fallow architecture` in a later major version, so an upgrade must add that command to `check`.
+# package.json pins Fallow exactly: it is young, and `fallow dead-code` checking cycles and boundaries is due to
+# move to `fallow architecture` in a later major version, so an upgrade must add that command to `check`.
 
 # Loaded in ways Fallow can't follow:
 # - src/map/main.ts is map.html's script, and tools/build.mjs builds map.html, but Fallow's Vite plugin finds only index.html.
 # - tools/trailer/rig.js reads inpage.js with fs.readFileSync and runs it in the page.
 entry = ["src/map/main.ts", "tools/trailer/inpage.js"]
 
-# Simulation must not import three.js or call into the DOM (ARCHITECTURE.md, rule 2).
-rulePacks = ["fallow-rules.jsonc"]
-
 # Exceptions: exported, but only used in their own file. Un-export them, or use them in a test, then drop the entry.
+# tools/streetscape-report.mjs loads these through Vite's runnerImport, which Fallow can't follow.
+[[ignoreExports]]
+file = "tools/streetscape-report.ts"
+exports = ["report"]
+
+[[ignoreExports]]
+file = "tools/furniture-report.ts"
+exports = ["report"]
+
 [[ignoreExports]]
 file = "src/game/health.ts"
 exports = ["CRASH_MIN_MS", "CRASH_DMG_PER_MS", "HURT_MIN_MS", "HURT_HP_PER_MS", "RUN_OVER_MIN_MS", "RUN_OVER_HP_PER_MS", "SMOKE_AT", "BLACK_SMOKE_AT", "LIMP_AT", "CRACK_AT"]
@@ -21,11 +27,9 @@ exports = ["CRASH_MIN_MS", "CRASH_DMG_PER_MS", "HURT_MIN_MS", "HURT_HP_PER_MS", 
 file = "src/game/cats.ts"
 exports = ["CAT_NAME", "CAT_NAME_MAX"]
 
-# Rule-pack findings only warn by default; make them fail the gate like the rest.
-[rules]
-policy-violation = "error"
-
-# Layers, from ARCHITECTURE.md. A file belongs to the first zone that matches it.
+# Layers, from ARCHITECTURE.md. A file belongs to the first zone that matches it. biome.jsonc and tsconfig.sim.json
+# check three.js and the DOM, which Fallow can't see, on the world, world-mesh and sim zones: keep the paths of
+# biome.jsonc's rule-2 override and of tsconfig.sim.json the same as these (tests/unit/zones.test.ts checks).
 [boundaries]
 # src/world/: the world's data and queries, shared by both pages. Its three.js code lives only in mesh/ and three-legacy.ts.
 [[boundaries.zones]]
@@ -39,20 +43,21 @@ patterns = ["src/world/**"]
 # The page modules in src/game/, which would otherwise fall into sim below. They are page code (see the last zone).
 [[boundaries.zones]]
 name = "page"
-patterns = ["src/game/main.ts", "src/game/hud.ts", "src/game/input.ts"]
+patterns = ["src/game/main.ts", "src/game/hud.ts", "src/game/input.ts", "src/game/menu.ts", "src/game/loop.ts", "src/game/prompt.ts", "src/game/test-hook.ts", "src/game/capture-hook.ts", "src/game/devconsole.ts", "src/game/confetti.ts"]
 
 [[boundaries.zones]]
 name = "render"
-patterns = ["src/game/render/**"]
+# presentation/: overlays drawn over the whole page (the ISO 800 grain), which own their DOM layer.
+patterns = ["src/game/render/**", "src/game/presentation/**"]
 
-# Game rules as plain data: everything else in src/game/, src/game/sim/ once #177 makes it, so a new module is checked
+# Game rules as plain data: everything else in src/game/, src/game/sim/ once #49 moves the rules there, so a new module is checked
 # from its first commit. A new page module goes in the page list above instead.
 [[boundaries.zones]]
 name = "sim"
 patterns = ["src/game/**"]
 
-# Everything else in src/: the map page and the lab, with the page modules listed above. It may import anything (it has
-# no rule), but the other zones may not import it.
+# Everything else in src/: the map page and the lab flags, with the page modules listed above. It may import anything (it
+# has no rule), but the other zones may not import it, so a lab gate stays in page code (#323).
 [[boundaries.zones]]
 name = "page"
 patterns = ["src/**"]
