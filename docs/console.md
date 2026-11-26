@@ -142,13 +142,14 @@ line.
 
 ### `enter`: a player action, picked by E
 
-1. `Actions` (`src/game/actions.ts`) registers `enter` and `exit` with access `player`. Each one's `run` calls the
+1. `Actions.registerCommands` (`src/game/actions.ts`) registers `enter` and `exit` with access `player`. Each one's `run` calls the
    rule beside it, `enterCar` or `exitCar`, which checks that it can happen (a car in reach, slow enough to get out)
    and returns the line to show, or a refusal.
 2. **E only picks.** `Actions.action` looks at where you stand: inside a house, at a cat, at the kiosk, in a car, beside
    one. For getting in or out it runs `commands.execute('enter', 'input')`, so a key press, a typed `enter` and a test's
    `commands.run('enter', 'test')` reach the same rule through the same hooks.
-3. **A refusal carries its reason.** A rule that says no returns `refuse('Slow down before you get out.')`. E shows
+3. **A refusal carries its reason.** A rule that says no returns `refuse(ACTION_REFUSAL.TOO_FAST, 'Slow down before you get out.')`:
+   the refusal's name, from the `as const` map beside the rules, and the sentence to show. E shows
    the reason of a refused `input` call as a toast, in one place, so no rule toasts for itself and a hook that refuses
    is heard too. The line of a run that was done, E drops: the player sees that happen. The console shows either.
 4. **The hooks see it** as `{ name: 'enter', args: [], source: 'input' }`. That call is all a replay or another player

@@ -388,6 +388,7 @@ const drivers = new ShoutingDrivers({ scene, groundAt, personParts, pick }), dri
 const actions = new Actions({ game, view, player, cars, places, wanted, health, wallet, commands, menuOpen: () => !kmenu.hidden, closeMenu, showPlayer: v => { player.mesh.visible = v; }, nearPlace, openSkroten: skroten.open, nearOwner: () => skroten.nearOwner(nearestCar()), talkToOwner: skroten.talk, offerCar: skroten.offerCar, enterHouse, leaveHouse, nearCat, catFirst, openOwnCat, petCat, openKiosk, collide, placeCar, rnd, pick, toast, carName,
   spokenName: c => vehicleVisuals.definition(meshed(c))?.spokenName, driverOut, replaceTaken: (c, p) => fleet.replaceTaken(c, p), drawStolen: () => { $('count').textContent = 'Cars stolen: ' + game.stolen; }, drawHealth, titleCard, sayLater: line => loop.sayLater(line), pickLine });
 const { nearestCar, action, respawn, busted, knockedOut } = actions;
+actions.registerCommands(commands);   // enter, exit: what E runs at a car
 function hurtPlayer(n: number) { if (!canHurt(health, n)) return; const was = health.hp;
   hud.flashHurt(n); hurt(health, n); drawHealth();
   if (was >= LOW_HP && health.hp < LOW_HP && health.hp > 0) loop.sayLater('”Ja behöver nog en korv me brö.”'); }   // a hint at the kiosk

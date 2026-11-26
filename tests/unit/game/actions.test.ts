@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { Actions, type ActionsDeps } from '../../../src/game/actions';
+import { ACTION_REFUSAL, Actions, type ActionsDeps } from '../../../src/game/actions';
 import type { Car } from '../../../src/game/cars';
 import type { Cat } from '../../../src/game/cats';
 import { Commands } from '../../../src/game/commands';
@@ -119,8 +119,10 @@ function actions(
     sayLater: l => void calls.push('later ' + l),
     pickLine: a => a[0],
   };
+  const a = new Actions(g);
+  a.registerCommands(commands);
   return {
-    a: new Actions(g),
+    a,
     deps: g,
     commands,
     ran,
@@ -326,11 +328,19 @@ describe('enter and exit as commands', () => {
   it('a run is done or refused: execute says which, and a typed line shows no toast', () => {
     const c = parked({ owned: true }),
       t = actions({ cars: [c] });
-    expect(t.commands.execute('exit')).toEqual({ ok: false, text: 'You are not in a car.' });
+    expect(t.commands.execute('exit')).toEqual({
+      ok: false,
+      text: 'You are not in a car.',
+      code: ACTION_REFUSAL.NOT_DRIVING,
+    });
     expect(t.commands.execute('enter')).toEqual({ ok: true, text: 'You are in the Volvo.' });
-    expect(t.commands.execute('enter')).toEqual({ ok: false, text: 'You are already in the Volvo.' });
+    expect(t.commands.execute('enter').code).toBe(ACTION_REFUSAL.ALREADY_DRIVING);
     c.v = 20;
-    expect(t.commands.execute('exit')).toEqual({ ok: false, text: 'Slow down before you get out.' });
+    expect(t.commands.execute('exit')).toEqual({
+      ok: false,
+      text: 'Slow down before you get out.',
+      code: ACTION_REFUSAL.TOO_FAST,
+    });
     c.v = 0;
     expect(t.commands.execute('exit')).toEqual({ ok: true, text: 'You got out of the Volvo.' });
     expect(t.calls).toEqual([]); // the console shows the line; only E toasts a reason
@@ -386,6 +396,38 @@ describe('enter and exit as commands', () => {
     expect(t.calls).not.toContain('skroten');
   });
 
+  it('names each refusal, so code never has to match the sentence', () => {
+    const code = (o: Parameters<typeof actions>[0], line: string, before?: (t: ReturnType<typeof actions>) => void) => {
+      const t = actions(o);
+      before?.(t);
+      return t.commands.execute(line).code;
+    };
+    const safe: Place = { kind: 'safe', name: 'Storgatan', x: 0, z: 0 };
+    expect(code({}, 'enter')).toBe(ACTION_REFUSAL.NO_CAR_IN_REACH);
+    expect(code({ cars: [parked({ saleKr: 2000 })] }, 'enter')).toBe(ACTION_REFUSAL.CAR_FOR_SALE);
+    expect(code({ cars: [parked()], inside: safe }, 'enter')).toBe(ACTION_REFUSAL.INDOORS);
+    expect(code({ cars: [parked()], menuOpen: true }, 'enter')).toBe(ACTION_REFUSAL.MENU_OPEN);
+    expect(code({ menuOpen: true }, 'exit')).toBe(ACTION_REFUSAL.MENU_OPEN);
+    expect(
+      code({}, 'enter', t => {
+        t.game.started = false;
+      }),
+    ).toBe(ACTION_REFUSAL.NOT_STARTED);
+    expect(
+      code({}, 'exit', t => {
+        t.game.titleCardT = 1;
+      }),
+    ).toBe(ACTION_REFUSAL.TITLE_CARD);
+    expect(code({ cars: [parked()] }, 'enter')).toBeUndefined(); // done: no code
+  });
+
+  it('E with nothing to do runs no command and shows no toast', () => {
+    const t = actions();
+    t.a.action();
+    expect(t.ran).toEqual([]);
+    expect(t.calls).toEqual([]);
+  });
+
   it('both take no words, run outside dev mode and explain themselves', () => {
     const t = actions();
     expect(t.commands.run('enter now')).toBe('Too many words. Usage: enter');
@@ -393,7 +435,7 @@ describe('enter and exit as commands', () => {
       'exit: get out of the car you drive\nWhat E does in a car, once it is slow enough.\nExamples:\n  exit',
     );
     const players = new Commands({ allowed: access => access === 'player' });
-    new Actions({ ...t.deps, commands: players });
+    new Actions(t.deps).registerCommands(players);
     expect(players.names()).toEqual(['enter', 'exit', 'help']);
   });
 });
