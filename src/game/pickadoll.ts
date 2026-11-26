@@ -139,6 +139,7 @@ export interface PickadollDeps {
   hurtPlayer(n: number): void;
   /** ?lab=rapier's world once it has loaded, whose ray casts then find what a shot hits; null without it */
   readonly physics: Pick<PhysicsWorld, 'castSegment' | 'knockProp'> | null;
+  readonly god: boolean; // god mode: the car you drive takes no damage, as in a crash
 }
 
 /** The lab's weapons: built once, stepped every frame. */
@@ -694,7 +695,13 @@ export class Pickadoll {
     this.g.fx.splatOn(c.mesh, hit, flavour === 'gegga' ? splatM : splatM * 0.45, colour, turn);
   }
 
+  // the cars a crash spares (crashes.ts): Plåt-Pelle's for sale, which also stand still, and the one you drive in god mode
+  private spared(c: RenderedCar) {
+    return c.saleKr > 0 || (this.g.god && c === this.g.game.pcar);
+  }
+
   private shoveCar(c: RenderedCar, dx: number, dz: number, power: number) {
+    if (this.spared(c)) return;
     damageCar(c, power * PANG_CAR_DMG);
     if (c.mode !== 'parked') return; // a car that drives is where its driving puts it
     c.x += dx * power * PANG_CAR_SHOVE_M;
@@ -711,7 +718,7 @@ export class Pickadoll {
     spikeWorld.walker = !game.inCar && player.y <= 0 ? player : null;
     const step = stepSpikes(spikes, dt, spikeWorld, this.spikeStep);
     // a car that rolls over one has a puncture, the police's and your own too
-    for (const i of step.cars) damageCar(cars[i], PUNCTURE_DMG - cars[i].dmg);
+    for (const i of step.cars) if (!this.spared(cars[i])) damageCar(cars[i], PUNCTURE_DMG - cars[i].dmg);
     for (const i of step.people) {
       const n = crowd.npcs[i];
       if (limping.some(l => l.npc === n)) continue;
