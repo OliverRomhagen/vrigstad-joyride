@@ -2,8 +2,7 @@
 // say where.
 import * as THREE from 'three';
 import { DebugOverlay } from './presentation/debug-overlay';
-import { filmGrain } from './presentation/grain-entry';
-import { cameraMoved } from './presentation/iso800-grain';
+import { cameraMoved, FilmGrain, grainEnabled } from './presentation/iso800-grain';
 import { AdoptHearts } from './render/adopt-heart';
 import { Banknotes } from './render/banknotes';
 import { DriftFx } from './render/drift-fx';
@@ -123,6 +122,8 @@ const maxAnisotropy = renderer.capabilities.getMaxAnisotropy();
 // After the WebGL check, so none starts behind the fail screen; one that fails to load or start should only warn
 const lab = LabFlags.fromSearch(location.search);
 if (lab.on('hello')) console.info('Lab: hello is on.'); // the smallest gate, for trying the flags
+// ?lab=grain (or the older ?grain=on) lays the ISO 800 grain over the whole page; static, as it covers the intro too
+const filmGrain = new FilmGrain(document.body, lab.on('grain') || grainEnabled(location.search));
 
 // ---------- time of day: 05:00 to 19:00, then a short blend into the next morning (src/game/day-cycle.ts, src/game/render/daylight.ts) ----------
 // ?time=18.5 starts at that hour; ?cycle=off holds it there
@@ -361,7 +362,7 @@ places.registerCommands(commands, (x, z, name, h) => { leaveHouse(); const c = g
 fleet.registerCommands(commands, CIVILIAN_CAR_TYPES, () => view.camYaw, c => carName(c));   // car <model>
 debugOverlay?.registerCommands(commands);
 lab.registerCommands(commands, location);   // lab toon: switches an experiment on or off and reloads
-registerUrlCommand(commands, location);   // url lab=toon grain=on: sets the URL parameters and reloads
+registerUrlCommand(commands, location);   // url clouds=clear time=18: sets the URL parameters and reloads
 
 // ---------- input: keys, mouse look and the touch controls (src/game/input.ts) ----------
 // the dev console sees each key first, then the menus (src/game/menu.ts)

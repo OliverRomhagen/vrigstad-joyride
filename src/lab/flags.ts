@@ -24,6 +24,11 @@ export const LAB_EXPERIMENTS = [
     cost: "A small download; in the driver's seat (V in a car), a simple interior of a few dozen meshes",
   },
   {
+    id: 'grain',
+    name: 'ISO 800 film grain',
+    cost: 'A full-screen layer blended over the game and the HUD, its texture shifting 4 to 12 times a second',
+  },
+  {
     id: 'toon',
     name: 'Cel-shaded style',
     cost: 'Every lit material swapped each frame, and an extra line draw per inked mesh, the village shells included',
@@ -82,9 +87,10 @@ export class LabFlags {
         args: [optional(choice('experiment', ids)), optional(toggle('state'))],
         run: ({ experiment, state }) => {
           if (!experiment)
-            return LAB_EXPERIMENTS.map(e => `${this.on(e.id) ? 'on ' : 'off'}  ${e.id}: ${e.name}. ${e.cost}`).join(
-              '\n',
-            );
+            return [
+              ...LAB_EXPERIMENTS.map(e => `${this.on(e.id) ? 'on ' : 'off'}  ${e.id}: ${e.name}. ${e.cost}`),
+              'More settings, such as clouds and the time of day: type url.',
+            ].join('\n');
           const on = state ?? !this.on(experiment);
           if (on === this.on(experiment)) return `${experiment} is already ${on ? 'on' : 'off'}.`;
           const next = ids.filter(id => (id === experiment ? on : this.on(id)));

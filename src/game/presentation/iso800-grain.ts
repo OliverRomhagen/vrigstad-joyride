@@ -103,8 +103,9 @@ export class FilmGrain {
     }
   };
 
-  constructor(host: HTMLElement, search = location.search) {
-    if (!grainEnabled(search)) return;
+  /** `enabled` comes from main.ts: `?lab=grain`, or the older `?grain=on` (grainEnabled). */
+  constructor(host: HTMLElement, enabled: boolean) {
+    if (!enabled) return;
     const canvas = document.createElement('canvas');
     canvas.width = canvas.height = GRAIN_TILE_SIZE;
     const context = canvas.getContext('2d');

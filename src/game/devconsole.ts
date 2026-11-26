@@ -209,7 +209,7 @@ export class DevConsole {
 }
 
 /**
- * The query string with `key=value` words applied: a value replaces that parameter, an empty one (`grain=`) removes it,
+ * The query string with `key=value` words applied: a value replaces that parameter, an empty one (`clouds=`) removes it,
  * and the rest stay. Commas stay commas and flags stay bare, so the URL reads as typed in the address bar.
  */
 export function withParams(search: string, words: readonly string[]): string {
@@ -240,7 +240,6 @@ interface UrlParam {
 const URL_PARAMS: readonly UrlParam[] = [
   { key: 'dev', values: ['1'], help: 'dev mode: this console, fps, tune' },
   { key: 'lab', help: 'lab experiments, comma-separated: the lab command lists them' },
-  { key: 'grain', values: ['on', 'off'], help: 'ISO 800 film grain' },
   { key: 'clouds', values: [...CLOUD_COVERS, 'off'], help: 'cloud cover' },
   { key: 'cloudQuality', values: ['low', 'high'], help: 'cloud detail' },
   { key: 'cloudSeed', help: 'which clouds: a whole number' },
@@ -261,8 +260,8 @@ const URL_PARAMS: readonly UrlParam[] = [
 ];
 
 /**
- * `url lab=toon grain=on`: sets URL parameters and reloads, since the game reads them once, at page load. So the
- * console can switch what `?lab=`, `?grain=`, `?clouds=` and the rest switch, without editing the address bar.
+ * `url clouds=clear time=18`: sets URL parameters and reloads, since the game reads them once, at page load. So the
+ * console can switch what `?clouds=`, `?time=` and the rest switch, without editing the address bar.
  */
 export function registerUrlCommand(commands: Pick<Commands, 'register'>, loc: Pick<Location, 'search'>) {
   commands.register('url', {
@@ -270,7 +269,7 @@ export function registerUrlCommand(commands: Pick<Commands, 'register'>, loc: Pi
     help: 'set URL parameters and reload (key= removes one); alone, list what they can be',
     details:
       'Parameters not named stay, dev included. A value replaces the old one: lab=toon,cockpit sets the whole list.',
-    examples: ['url', 'url lab=toon,cockpit grain=on', 'url grain= clouds=clear'],
+    examples: ['url', 'url clouds=clear time=18', 'url clouds= time=6'],
     // key=value for a parameter with set values, key= for a free one: Tab leaves no space after the =
     complete: () => URL_PARAMS.flatMap(p => (p.values ? p.values.map(v => `${p.key}=${v}`) : [`${p.key}=`])),
     run: args => {

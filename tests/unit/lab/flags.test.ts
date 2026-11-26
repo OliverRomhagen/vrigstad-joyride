@@ -58,7 +58,7 @@ describe('lab command', () => {
 
   it('lists every experiment with whether it is on', () => {
     const lines = setUp('?lab=toon').commands.run('lab').split('\n');
-    expect(lines).toHaveLength(LAB_EXPERIMENTS.length);
+    expect(lines).toHaveLength(LAB_EXPERIMENTS.length + 1); // and a line pointing to url
     expect(lines.find(l => l.includes('toon:'))).toMatch(/^on /);
     expect(lines.find(l => l.includes('hello:'))).toMatch(/^off/);
   });
