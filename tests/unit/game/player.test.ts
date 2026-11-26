@@ -17,6 +17,15 @@ describe('player', () => {
     expect(carInReach(you(), [car(4.4, 0), car(0, 1, 'police')])).toBeNull(); // just out of reach
   });
 
+  it('reaches the closest of the cars that pass `only`, when given', () => {
+    const near = car(0.9, 0),
+      far = car(-2, 0),
+      notNear = (c: object) => c !== near;
+    expect(carInReach(you(), [near, car(0, -3), far], notNear)).toBe(far);
+    expect(carInReach(you(), [near], notNear)).toBeNull();
+    expect(carInReach(you(), [near, car(-4.5, 0)], notNear)).toBeNull(); // the one that passes is out of reach
+  });
+
   it('gets out at up to 3 m/s, either way', () => {
     expect(tooFastToGetOut({ v: 3 })).toBe(false);
     expect(tooFastToGetOut({ v: 3.1 })).toBe(true);
