@@ -293,10 +293,10 @@ const player = { x: HOME.x, z: HOME.z, y: 0, vy: 0, h: 0, speed: 0, phase: 0, em
 collide(player, 0.6); scene.add(player.mesh);
 const playerPose = new PlayerPose(player.mesh);   // walking, jumping and emotes (src/game/render/player-pose.ts)
 // why you can't start an emote now (src/game/emotes.ts), or null; moving, a jump or Gripen! stop one in the loop
-function cantEmote() { return game.inCar ? 'Get out of the car first.' : places.inside ? 'Come out of the house first.' : null; }
+function whyCantEmote() { return game.inCar ? 'Get out of the car first.' : places.inside ? 'Come out of the house first.' : null; }
 // G or the touch Emote button: the emotes on the menu plate, number keys or a tap; again closes it, and nothing while driving
-function openEmotes() { if (menuPlate.menuKind === 'emotes') return closeMenu(); if (cantEmote()) return;
-  openMenu('emotes', 'Emotes', [...EMOTES.map((e): MenuItem => [e.id, e.label]), ['no', 'Close']], k => { if (k !== 'no') startEmote(player, k as EmoteId); }, () => !cantEmote()); }
+function openEmotes() { if (menuPlate.menuKind === 'emotes') return closeMenu(); if (whyCantEmote()) return;
+  openMenu('emotes', 'Emotes', [...EMOTES.map((e): MenuItem => [e.id, e.label]), ['no', 'Close']], k => { if (k !== 'no') startEmote(player, k as EmoteId); }, () => !whyCantEmote()); }
 const jumpOk = () => !game.inCar && !places.inside && game.titleCardT <= 0;   // queue only where a jump can start, so a press inside a safehouse or under Gripen! can't fire as it ends
 const health = newHealth();
 const wallet = newWallet();
@@ -362,7 +362,7 @@ wanted.registerCommands(commands);
 registerHealthCommands(commands, health, drawHealth);
 registerCarDamageCommand(commands, () => (game.inCar ? game.pcar : null));
 registerTunableCommands(commands, tunables);
-registerEmoteCommands(commands, player, cantEmote);   // dance, kiss, finger, …
+registerEmoteCommands(commands, player, whyCantEmote);   // dance, kiss, finger, …
 // go <place>: you, or the car you drive, straight there, out of any safehouse first
 places.registerCommands(commands, (x, z, name, h) => { leaveHouse(); const c = game.inCar ? game.pcar : null;
   if (c) { c.x = x; c.z = z; if (h !== undefined) c.h = h; c.v = c.slip = c.drift = c.boost = 0; c.vh = c.h; placeCar(meshed(c)); } else { player.x = x; player.z = z; player.speed = 0; } return 'You are at ' + name + '.'; },
@@ -374,7 +374,7 @@ debugOverlay?.registerCommands(commands);
 // the dev console sees each key first, then the menus (src/game/menu.ts)
 const input = new Input({ win: window, doc: document, canvas, $, coarse, menuKey: e => devcon.takeKey(e) || menuKey(e),
   get started() { return game.started; }, get menuOpen() { return !kmenu.hidden; },
-  action: () => action(), respawn: () => respawn(), rain: () => cashRain.makeItRain(), toggleView: () => cockpit?.toggle(), emotes: openEmotes,
+  action: () => { player.emote = null; action(); }, respawn: () => respawn(), rain: () => cashRain.makeItRain(), toggleView: () => cockpit?.toggle(), openEmotes,   // E and the Use button stop an emote at once, whatever E does next (#296)
   jump: () => { if (jumpOk()) game.jumpQ = true; },   // queue only where a jump can start (see jumpOk)
   look: (dx, dy) => { if (game.inCar) { view.lookOff = wrap(view.lookOff + dx * 0.006); view.lookIdle = 0; } else view.camYaw = wrap(view.camYaw + dx * 0.006);
     view.camPitch = clamp(view.camPitch + dy * 0.004, 0.06, 1.25); },
@@ -384,7 +384,7 @@ const { keys, joy } = input;
 
 // ---------- HUD (src/game/hud.ts) ----------
 // the getters are read when the HUD uses them, so they can name things that change during play
-const hud = new Hud({ get canChangeView() { return !!cockpit && game.inCar; }, get canEmote() { return !game.inCar; }, $, ground: tex2d, P, K, paintBridgeRoads: ctx => ground.paintBridgeRoads(ctx), roads, labels: D.labels, cars, places: places.list,
+const hud = new Hud({ get canChangeView() { return !!cockpit && game.inCar; }, get canEmote() { return !whyCantEmote(); }, $, ground: tex2d, P, K, paintBridgeRoads: ctx => ground.paintBridgeRoads(ctx), roads, labels: D.labels, cars, places: places.list,
   get stars() { return wanted.stars; }, get pcar() { return game.pcar; }, get blink() { return loop.blink; }, get kr() { return wallet.kr; } });
 // a declaration, not a bound const, so the sections above can pass toast on before the HUD exists
 function toast(msg: string, secs?: number, cls?: string) { hud.toast(msg, secs, cls); }

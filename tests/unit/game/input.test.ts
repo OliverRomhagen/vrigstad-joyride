@@ -66,7 +66,7 @@ function input(opts: { coarse?: boolean; started?: boolean; menuKey?: (e: Keyboa
     toggleView: () => {
       calls.push('view');
     },
-    emotes: () => {
+    openEmotes: () => {
       calls.push('emotes');
     },
     jump: () => {

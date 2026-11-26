@@ -2,8 +2,8 @@
 // walk phase or the emote and its time, writes the limbs, and says how the loop should lift, lean and turn the body.
 // Angles are radians. An arm or leg turned +x swings forward; the right arm turned +z (the left −z) swings out to the side.
 import * as THREE from 'three';
-import type { EmoteId } from '../emotes';
-import { boxGeo, type Person, paintMat } from './models';
+import { type EmoteId, emoteSecs } from '../emotes';
+import { boxGeo, type Person, paintMat, SKIN } from './models';
 
 /** How the loop places the body: `lift` (m) on top of the jump, `lean` forward (−) or back (+), `twist` added to the heading. */
 interface BodyPlacement {
@@ -12,7 +12,6 @@ interface BodyPlacement {
   twist: number;
 }
 const _at: BodyPlacement = { lift: 0, lean: 0, twist: 0 }; // returned every frame: no allocation
-const SKIN = '#e2b796'; // personParts' skin colour
 const TAU = Math.PI * 2;
 
 export class PlayerPose {
@@ -70,7 +69,7 @@ export class PlayerPose {
         return this.body(0, 0, 0);
       }
       case 'shrug': {
-        const b = Math.sin((Math.PI * t) / 1.2); // up and down again over its 1.2 s
+        const b = Math.sin((Math.PI * t) / emoteSecs('shrug')); // up and down again over its length
         this.limbs(0, 0, 0.5 * b, -0.6 * b, 0.5 * b, 0.6 * b);
         return this.body(0.03 * b, 0, 0);
       }

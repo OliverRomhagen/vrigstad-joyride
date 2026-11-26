@@ -698,7 +698,7 @@ test.describe('game (index.html)', () => {
     expect(await state(page)).toMatchObject({ kr: 700 });
   });
 
-  test('with ?dev, the console plays an emote by its name, walking stops it, and G picks one from the menu (#296)', async ({
+  test('with ?dev, the console plays an emote by its name, walking or E stops it, and G picks one from the menu (#296)', async ({
     page,
   }) => {
     await page.setViewportSize({ width: 640, height: 360 });
@@ -720,6 +720,8 @@ test.describe('game (index.html)', () => {
     await page.keyboard.press('Digit4');
     await expect(page.locator('#kmenu')).toBeHidden();
     expect(await state(page)).toMatchObject({ emote: 'twerk' });
+    await page.keyboard.press('KeyE'); // E stops it at once, whatever else it does
+    expect(await state(page)).toMatchObject({ emote: null });
     expect(errors).toEqual([]);
   });
 

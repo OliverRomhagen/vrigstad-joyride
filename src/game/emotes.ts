@@ -21,6 +21,9 @@ export interface Emoting {
   emote: { id: EmoteId; t: number } | null;
 }
 
+/** How long an emote plays (s); 0 loops until you move. */
+export const emoteSecs = (id: EmoteId) => EMOTES.find(m => m.id === id)!.secs;
+
 export function startEmote(p: Emoting, id: EmoteId) {
   p.emote = { id, t: 0 };
 }
@@ -30,12 +33,13 @@ export function stepEmote(p: Emoting, dt: number, stop: boolean) {
   const e = p.emote;
   if (!e) return;
   e.t += dt;
-  const secs = EMOTES.find(m => m.id === e.id)!.secs;
+  const secs = emoteSecs(e.id);
   if (stop || (secs > 0 && e.t >= secs)) p.emote = null;
 }
 
-/** The console's `dance`, `kiss`, … : one command per emote, for players too. `whyNot` says why you can't emote now, or null. */
-export function registerEmoteCommands(commands: Pick<Commands, 'register'>, p: Emoting, whyNot: () => string | null) {
+/** The console's `dance`, `kiss`, … : one command per emote, with `player` access, so they stay open to everyone once the
+ *  console opens outside dev mode. `whyCant` says why you can't emote now, or null. */
+export function registerEmoteCommands(commands: Pick<Commands, 'register'>, p: Emoting, whyCant: () => string | null) {
   for (const { id, label } of EMOTES)
     commands.register(
       id,
@@ -44,7 +48,7 @@ export function registerEmoteCommands(commands: Pick<Commands, 'register'>, p: E
         access: 'player',
         args: [],
         run: () => {
-          const no = whyNot();
+          const no = whyCant();
           if (no) return no;
           startEmote(p, id);
           return `${label}.`;
