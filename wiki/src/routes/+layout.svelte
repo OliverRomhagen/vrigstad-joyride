@@ -57,6 +57,10 @@ function drawer(dialog: HTMLDialogElement) {
     .menu.menu.menu {
       display: none;
     }
+    /* and with no drawer to hold it, the way to the game stays in a phone's header */
+    .top.top.top .play.play.play {
+      display: inline-flex;
+    }
     /* and the header scrolls away with the page: nothing would give it its dark ground */
     .top.top.top {
       position: static;
@@ -137,13 +141,17 @@ function drawer(dialog: HTMLDialogElement) {
   }}
   onclick={e => e.target === e.currentTarget && closeMenu()}
 >
-  <!-- data-sveltekit-replacestate: a link in the drawer takes the drawer's place in the history, so going back from the
-       next page doesn't open the drawer again -->
+  <!-- data-sveltekit-replacestate: a link to a page of the wiki takes the drawer's place in the history, so going back
+       from that page doesn't open the drawer again. Play leaves the wiki, as any link out of it does. -->
   <nav class="drawer-panel" aria-label="Wiki" data-sveltekit-replacestate>
     <!-- the way to the game first, as the header has no room for it on a phone -->
     <div class="drawer-top">
       <a class="play" rel="external" href={GAME_URL}>Play the game <ArrowRight size="1em" strokeWidth={2.5} /></a>
-      <button type="button" class="drawer-close" onclick={closeMenu}><X size="1em" strokeWidth={2.5} /> Close</button>
+      <!-- the dialog's focus starts here, not on Play before it: opening the menu shouldn't land you on the way out -->
+      <!-- svelte-ignore a11y_autofocus -->
+      <button type="button" class="drawer-close" autofocus onclick={closeMenu}>
+        <X size="1em" strokeWidth={2.5} /> Close
+      </button>
     </div>
     {@render links()}
   </nav>
@@ -203,8 +211,8 @@ function drawer(dialog: HTMLDialogElement) {
 .top.scrolled {
   --ground-now: var(--road);
 }
-/* the tag stays as it is when the header goes dark under it: its white line keeps the dark "wiki" half apart from the dark
-   ground, so nothing in it needs to turn over */
+/* the tag stays as it is when the header goes dark under it: its white line and the faint edge round it keep the dark
+   "wiki" half apart from the dark ground, so nothing in it needs to turn over */
 @media (prefers-reduced-motion: no-preference) {
   .top {
     transition:
