@@ -24,6 +24,10 @@ Third-party components keep their own licenses:
 - Fonts: Barlow and Barlow Condensed © 2017 The Barlow Project Authors,
   under the SIL Open Font License 1.1 (full text below), served beside the
   pages from their npm packages (src/fonts/barlow.ts).
+- Rapier (@dimforge/rapier3d-compat) © Dimforge EURL, under the Apache
+  License 2.0: https://www.apache.org/licenses/LICENSE-2.0 . Served beside
+  the pages as vendor/rapier.mjs, and loaded only by the ?lab=rapier
+  experiment (src/game/rapier-lab.ts).
 - Icons in the wiki: Lucide (ISC License, full text below; some icons are
   from Feather, MIT License, as its text says), drawn from the npm package
   @lucide/svelte.

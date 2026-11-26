@@ -164,6 +164,52 @@ describe('StreetFurniture', () => {
     expect(c.getHex()).toBe(new THREE.Color(0x3fae5a).convertSRGBToLinear().getHex()); // OSM green
   });
 
+  it('takes one placement out of its batch as an object of its own, in the same place, glass and all', () => {
+    const f = new StreetFurniture(placements, { groundAt: (x, z) => 0.01 * x + 0.02 * z });
+    const lamps = f.meshes.find(m => m.name === 'furniture:lamp-arm')!,
+      glass = f.meshes.find(m => m.name === 'furniture:lamp-arm:glass')!,
+      before = new THREE.Matrix4();
+    lamps.getMatrixAt(0, before);
+    const lamp = f.detach(placements[0])!;
+    expect(lamp.children.map(c => (c as THREE.Mesh).geometry)).toEqual([lamps.geometry, glass.geometry]);
+    expect(lamp.position.toArray()).toEqual(new THREE.Vector3().setFromMatrixPosition(before).toArray());
+    // gone from both batches: its slots draw nothing; the other lamp stays
+    const m = new THREE.Matrix4(),
+      scale = new THREE.Vector3();
+    for (const batch of [lamps, glass]) {
+      batch.getMatrixAt(0, m);
+      expect(scale.setFromMatrixScale(m).length(), batch.name).toBe(0);
+      batch.getMatrixAt(1, m);
+      expect(scale.setFromMatrixScale(m).length(), batch.name).toBeGreaterThan(0);
+    }
+    expect(f.detach(placements[0])).toBeNull(); // once only
+    f.dispose();
+  });
+
+  it('puts a detached placement back in its batch where it stood, and takes its object out of the scene', () => {
+    const f = new StreetFurniture(placements, { groundAt: () => 0 }),
+      lamps = f.meshes.find(m => m.name === 'furniture:lamp-arm')!,
+      glass = f.meshes.find(m => m.name === 'furniture:lamp-arm:glass')!,
+      before = new THREE.Matrix4(),
+      glassBefore = new THREE.Matrix4(),
+      after = new THREE.Matrix4();
+    lamps.getMatrixAt(0, before);
+    glass.getMatrixAt(0, glassBefore);
+    const scene = new THREE.Scene(),
+      lamp = f.detach(placements[0])!;
+    scene.add(lamp);
+    lamp.position.x += 5; // knocked over and thrown
+    expect(f.reattach(placements[0])).toBe(true);
+    lamps.getMatrixAt(0, after);
+    expect(after.equals(before)).toBe(true);
+    glass.getMatrixAt(0, after);
+    expect(after.equals(glassBefore)).toBe(true);
+    expect(lamp.parent).toBeNull();
+    expect(f.reattach(placements[0])).toBe(false); // once only
+    expect(f.detach(placements[0])).not.toBeNull(); // and it can be knocked again
+    f.dispose();
+  });
+
   it('frees every geometry and material it made', () => {
     const f = new StreetFurniture(placements, { groundAt: () => 0 });
     const disposed = new Set<object>();

@@ -10,6 +10,7 @@ import type { WaterBodies } from '../world/water-shapes';
 import type { Car } from './cars';
 import type { Health } from './health';
 import type { PlayerState } from './player';
+import type { RapierLabState } from './rapier-lab';
 import type { Sky } from './render/sky';
 import type { SunStreaks } from './render/sun-streaks';
 import type { GameState, ViewState } from './state';
@@ -25,6 +26,7 @@ export interface TestHookDeps {
   readonly cockpit: boolean; // the camera is in the driver's seat (lab: cockpit, #473)
   readonly styled: boolean; // frames are drawn through a style (?lab=toon), which loads after the page
   readonly ragdolls: number; // people knocked over right now
+  readonly rapier: RapierLabState | null; // ?lab=rapier's world, once it has loaded (#54)
   readonly pickadoll: object | null; // ?lab=pickadoll once its code runs: shots fired, hits, hits that got a mark, splats, the weapon and the flavour
   readonly stars: number;
   readonly cats: number;
@@ -168,6 +170,19 @@ export function installTestHook(g: TestHookDeps) {
         cockpit: g.cockpit,
         styled: g.styled,
         ragdolls: g.ragdolls,
+        rapier: g.rapier && {
+          loadMs: Math.round(g.rapier.loadMs),
+          buildMs: Math.round(g.rapier.buildMs),
+          props: g.rapier.props,
+          joined: g.rapier.joined,
+          loose: g.rapier.loose,
+          awake: g.rapier.awake,
+          stepMs: g.rapier.stepMs,
+          steps: g.rapier.steps,
+          people: g.rapier.people,
+          targets: g.rapier.targets,
+          targetsDown: g.rapier.targetsDown,
+        },
         pickadoll: g.pickadoll,
         x: player.x,
         z: player.z,

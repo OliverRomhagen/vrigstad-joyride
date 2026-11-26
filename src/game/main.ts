@@ -17,6 +17,7 @@ import type { Cockpit } from './render/cockpit';
 import { ShoutingDrivers } from './render/shouting-drivers';
 import data from '../../data/vrigstad.json';
 import '../fonts/barlow';
+import type { RapierLabState } from './rapier-lab';
 import { LabFlags } from '../lab/flags';
 import { BridgeIndex } from '../world/bridges';
 import { BuildingIndex } from '../world/buildings';
@@ -73,6 +74,7 @@ import { addBridges, addBuildings, addRoadRibbons, addStreetscapeMeshes, addTerr
 import { type CarType, specFor } from './sim/vehicle-spec';
 import { Tunables } from './sim/tunables';
 import { registerCarTunables } from './sim/car-tunables';
+import { registerPhysicsTunables } from './sim/physics-tunables';   // statically, though it's ?lab=rapier's: it must register before ?tune= applies
 import { registerTunableCommands } from './sim/tunable-commands';
 import { newGameState, newViewState } from './state';
 import { Trisslott, trisslottSeed } from './trisslott';
@@ -216,6 +218,7 @@ const calmMotion = matchMedia('(prefers-reduced-motion: reduce)');
 // overrides them at load, and the console's tune set, get, list and reset change them while you play (#357)
 const tunables = new Tunables();
 registerCarTunables(tunables);
+if (lab.on('rapier')) registerPhysicsTunables(tunables);   // physics.*: gravity and the street furniture's join and respawn distances (#54)
 const tuneParam = new URLSearchParams(location.search).get('tune');
 if (tuneParam && !DEV) console.warn('?tune= works in dev mode only: add ?dev');
 else for (const err of tunables.override(tuneParam ?? '')) console.warn('?tune=', err);
@@ -414,16 +417,20 @@ installCaptureHook({ THREE, renderer, camera, game, view, player, cars, keys: in
   action, addCar, removeCar, placeCar, carGeo, sun, SUN_DIR, wanted, places, wallet, TRISS_KR, vehicleVisuals: { state: (c: Car) => vehicleVisuals.state(meshed(c)) } }, location.search);
 // ?lab=toon draws the world cel-shaded (#206). The frames before its code arrives draw the default look, behind the intro
 if (lab.on('toon')) import('./render/toon-style').then(m => loop.drawThrough(new m.ToonStyle(renderer))).catch(err => console.warn('Lab: toon failed', err));
+// ?lab=rapier runs a Rapier world beside the game's own collisions, where a car knocks mailboxes and bins over (#54, src/game/rapier-lab.ts)
+let rapierLab: RapierLabState | null = null;
+if (lab.on('rapier')) import('./rapier-lab').then(m => m.startRapierLab({ scene, data: D, heightfield, groundAt, placements: furniture.layout.placements, furniture: furniture.draw,
+  cars, people: lab.on('pickadoll') ? crowd.npcs : null, player, inCar: () => game.inCar, playerCar: () => game.pcar, addFrameUpdate: update => loop.addFrameUpdate(update) })).then(s => { rapierLab = s; }).catch(err => console.warn('Lab: rapier failed', err));
 // ?lab=pickadoll: weapons to try, and three answers to what a hit does (#17: src/game/pickadoll.ts). Stepped after the crowd, above
 let pickadoll: Pickadoll | null = null;
 if (lab.on('pickadoll')) Promise.all([import('./pickadoll'), import('./render/shot-fx')]).then(([m, fx]) => {
   pickadoll = new m.Pickadoll({ input, canvas, $, coarse, game, view, calmMotion, hurtPlayer, get god() { return health.god; }, player, world: { groundAt, collide }, crowd, cars, ragdolls, placeCar, rnd: makeRnd(1717), toast,
-    fx: new fx.ShotFx({ scene, camera, coarse, groundAt, rnd: makeRnd(1718) }), get menuOpen() { return !kmenu.hidden; }, get inside() { return !!places.inside; } });
+    fx: new fx.ShotFx({ scene, camera, coarse, groundAt, rnd: makeRnd(1718) }), get menuOpen() { return !kmenu.hidden; }, get inside() { return !!places.inside; }, get physics() { return rapierLab?.world ?? null; } });
 }).catch(err => console.warn('Lab: pickadoll failed', err));
 loop.start();
 
 // ---------- test hook: read-only state for the smoke tests (src/game/test-hook.ts) ----------
-installTestHook({ game, view, player, health, cars, labs: lab.list(), get styled() { return loop.styled; }, get cockpit() { return !!cockpit?.inside; }, get ragdolls() { return ragdolls.count; }, get pickadoll() { return pickadoll?.state ?? null; }, get stars() { return wanted.stars; }, get cats() { return cats.length; }, get ownCat() { return !!colony.owned; }, get displayCar() { return displayCar; }, lift: yard.workshop?.bay ?? null,
+installTestHook({ game, view, player, health, cars, labs: lab.list(), get styled() { return loop.styled; }, get cockpit() { return !!cockpit?.inside; }, get ragdolls() { return ragdolls.count; }, get rapier() { return rapierLab; }, get pickadoll() { return pickadoll?.state ?? null; }, get stars() { return wanted.stars; }, get cats() { return cats.length; }, get ownCat() { return !!colony.owned; }, get displayCar() { return displayCar; }, lift: yard.workshop?.bay ?? null,
   vehicleVisuals: { state: c => vehicleVisuals.state(meshed(c)) }, crackShown: c => carDamage.crackShown(meshed(c)), bodyMotion: { state: c => bodyMotion.state(meshed(c)) }, skyDome, street, debugStreetscape: DEBUG_STREETSCAPE, bridges: { index: bridges, draw: bridgeMeshes, groundAt }, furniture, water: { bodies: waterBodies, surface: waterLook.surface, props: waterLook.props, shore, terrainTriangles: terrainMesh.triangles, refinedCells: heightfield.refinedCells, buildMs: waterCutMs + waterMeshMs, inWater, hAt }, debugFurniture: DEBUG_FURNITURE, nearestCar,
   get kr() { return wallet.kr; }, get banknotes() { return banknotes.live; }, get confetti() { return confetti.live; }, get devcon() { return devcon.isOpen; }, build: __BUILD__, get fps() { return !!debugOverlay?.shown; }, day: { get hour() { return dayClock.hour; }, get night() { return dayClock.night; }, get sunLight() { return sky.sun; } }, sunStreaks });
 })();

@@ -221,6 +221,15 @@ export class StreetFurniture {
   /** the lamp glass, shared by every lamp, for the night (#99) to light */
   readonly materials: { body: THREE.MeshLambertMaterial; luminaire: THREE.MeshLambertMaterial };
   readonly triangles: number;
+  /** each cell's placements and the InstancedMeshes that draw them, in the same order */
+  private readonly batches: { list: readonly FurniturePlacement[]; meshes: THREE.InstancedMesh[] }[] = [];
+  /** where each placement is drawn, built by the first `detach`: only ?lab=rapier asks, so the game doesn't hold it */
+  private slots: Map<FurniturePlacement, [mesh: THREE.InstancedMesh, index: number][]> | null = null;
+  /** each detached placement's object, and the slots and matrices it had in its batch, for `reattach` */
+  private readonly detached = new Map<
+    FurniturePlacement,
+    { object: THREE.Object3D; slots: [mesh: THREE.InstancedMesh, index: number][]; matrices: THREE.Matrix4[] }
+  >();
 
   constructor(placements: readonly FurniturePlacement[], { groundAt, debugSources = false }: StreetFurnitureOptions) {
     this.materials = {
@@ -251,6 +260,8 @@ export class StreetFurniture {
         [model.body, this.materials.body, true],
       ];
       if (model.glass) parts.push([model.glass, this.materials.luminaire, false]);
+      const batch = { list, meshes: [] as THREE.InstancedMesh[] };
+      this.batches.push(batch);
       for (const [geometry, material, shadows] of parts) {
         const mesh = new THREE.InstancedMesh(geometry, material, list.length);
         mesh.name = `furniture:${id}${shadows ? '' : ':glass'}`;
@@ -265,9 +276,62 @@ export class StreetFurniture {
         mesh.computeBoundingSphere(); // over this cell's instances
         triangles += (geometry.getAttribute('position').count / 3) * list.length;
         this.meshes.push(mesh);
+        batch.meshes.push(mesh);
       }
     }
     this.triangles = triangles;
+  }
+
+  /**
+   * Takes one placement out of its InstancedMesh and returns it as an object of its own, in the same place, for
+   * something that moves it: a mailbox a car knocked over (#54). Adds nothing to a scene. Null if it isn't drawn here.
+   */
+  detach(p: FurniturePlacement): THREE.Object3D | null {
+    if (!this.slots) {
+      const map = new Map<FurniturePlacement, [mesh: THREE.InstancedMesh, index: number][]>();
+      for (const { list, meshes } of this.batches)
+        list.forEach((q, i) => {
+          for (const mesh of meshes) {
+            const slots = map.get(q);
+            if (slots) slots.push([mesh, i]);
+            else map.set(q, [[mesh, i]]);
+          }
+        });
+      this.slots = map;
+    }
+    const slots = this.slots.get(p);
+    if (!slots) return null;
+    this.slots.delete(p);
+    const group = new THREE.Group(),
+      matrices: THREE.Matrix4[] = [];
+    for (const [mesh, i] of slots) {
+      const m = new THREE.Matrix4();
+      mesh.getMatrixAt(i, m);
+      matrices.push(m.clone());
+      const part = new THREE.Mesh(mesh.geometry, mesh.material);
+      part.castShadow = mesh.castShadow;
+      part.receiveShadow = mesh.receiveShadow;
+      group.add(part);
+      if (group.children.length === 1) m.decompose(group.position, group.quaternion, group.scale);
+      mesh.setMatrixAt(i, m.makeScale(0, 0, 0)); // gone from the batch: a zero-size instance draws nothing
+      mesh.instanceMatrix.needsUpdate = true;
+    }
+    this.detached.set(p, { object: group, slots, matrices });
+    return group;
+  }
+
+  /** Puts a detached placement back in its batch, where it stood, and takes its object out of the scene. */
+  reattach(p: FurniturePlacement) {
+    const d = this.detached.get(p);
+    if (!d) return false;
+    this.detached.delete(p);
+    d.slots.forEach(([mesh, i], k) => {
+      mesh.setMatrixAt(i, d.matrices[k]);
+      mesh.instanceMatrix.needsUpdate = true;
+    });
+    this.slots?.set(p, d.slots);
+    d.object.removeFromParent();
+    return true;
   }
 
   dispose() {
