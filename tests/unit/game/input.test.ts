@@ -491,7 +491,23 @@ describe('Input.addControl', () => {
     expect(() => i.addControl({ codes: ['KeyZ'] })).not.toThrow();
   });
 
-  it('refuses ctrl, alt and ⌘ as keys: their own keydown says a modifier is held, so they would never press', () => {
+  it('keeps the touch from the browser before the press runs, so a press that throws leaves it kept', () => {
+    const t = input(),
+      button = stub();
+    let e: Event | undefined, keptAtPress: boolean | undefined;
+    t.i
+      .addControl({
+        press: () => {
+          keptAtPress = e?.defaultPrevented;
+        },
+      })
+      .hold(button);
+    e = new Event('pointerdown', { cancelable: true });
+    button.dispatchEvent(e);
+    expect(keptAtPress).toBe(true);
+  });
+
+  it('refuses ctrl, alt and ⌘ as keys: their own keydown says a modifier is held, so they can’t be relied on', () => {
     const { i } = fireControl();
     for (const code of ['ControlLeft', 'ControlRight', 'AltLeft', 'AltRight', 'MetaLeft', 'MetaRight', 'OSLeft'])
       expect(() => i.addControl({ codes: [code] })).toThrow(`${code} is a modifier`);

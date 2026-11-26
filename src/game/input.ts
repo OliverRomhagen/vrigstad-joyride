@@ -48,7 +48,8 @@ const GAME_KEYS: Record<string, 'action' | 'respawn' | 'rain' | 'toggleView'> = 
 const RESERVED_CODES = ['NumpadEnter', 'Escape', 'KeyP', 'Backquote', 'IntlBackslash'],
   MENU_NUMBER_KEYS = /^(?:Digit|Numpad)[1-9]$/;
 // Ctrl, Alt and ⌘ themselves (OS is ⌘ in older browsers): a key pressed with one of them held is the browser's, and
-// the modifier's own keydown already says it is held, so a control on one could never be pressed.
+// the modifier's own keydown already says it is held, so a control on one is never pressed in most browsers; where
+// it is (AltGr on Linux), it would work for some players only.
 const MODIFIER_KEYS = /^(?:Control|Alt|Meta|OS)(?:Left|Right)$/;
 const BUTTON_BITS = [1, 4, 2]; // PointerEvent.button (left, middle, right) as its bit in PointerEvent.buttons
 
