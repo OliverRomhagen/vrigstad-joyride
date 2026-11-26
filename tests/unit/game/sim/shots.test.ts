@@ -62,6 +62,9 @@ describe('aimShot', () => {
   it('fires north at yaw 0 and east at a quarter turn, at the muzzle speed', () => {
     const w = WEAPONS[PICKADOLL];
     expect(aimShot(w, 0, 0)).toEqual({ vx: 0, vy: 0, vz: -w.speedMs });
+    const kept = { ...shot(), vx: 1, vy: 2, vz: 3 }; // a shot passed as `out` gets the speed, and nothing new is made
+    expect(aimShot(w, 0, 0, 0, 0, kept)).toBe(kept);
+    expect(kept).toMatchObject({ vx: 0, vy: 0, vz: -w.speedMs });
     const east = aimShot(w, Math.PI / 2, 0);
     expect(east.vx).toBeCloseTo(w.speedMs);
     expect(east.vz).toBeCloseTo(0);
