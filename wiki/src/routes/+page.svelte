@@ -8,8 +8,9 @@ let { data } = $props();
 <Head description="The places and people of Vrigstad Joyride, a driving game set in a real village in Småland." />
 
 <section class="hero">
-  <!-- the page's heading is a village sign, as you drive in; the header above already says "wiki" -->
-  <h1><span class="road-sign" lang="sv">Vrigstad</span><span class="visually-hidden"> wiki</span></h1>
+  <!-- the header above is the page's name, the village's sign and "wiki": the heading says it again only to those who
+       don't see it -->
+  <h1 class="visually-hidden"><span lang="sv">Vrigstad</span> wiki</h1>
   <p class="summary">
     The places and people of Vrigstad Joyride, a driving game set in a real village in Småland, where nothing ever
     happens until you take a car.
@@ -48,26 +49,6 @@ let { data } = $props();
 <style>
 .hero {
   margin-bottom: 16px;
-}
-.hero h1 {
-  margin: 0 0 14px;
-  font-size: inherit;
-  text-transform: none;
-}
-/* the sign at the edge of the village: blue, a white border inside its edge, the name in white */
-.road-sign {
-  display: inline-block;
-  /* more room below than above: the g's tail hangs under the line, and the white border runs 5px inside the edge */
-  padding: 0.22em 0.6em 0.36em;
-  font: 700 clamp(1.75rem, 5vw, 2.375rem) / 1 var(--font);
-  letter-spacing: 0.03em;
-  color: #fff;
-  background: var(--sign-blue);
-  border-radius: 6px;
-  box-shadow:
-    inset 0 0 0 3px var(--sign-blue),
-    inset 0 0 0 5px #fff,
-    0 8px 24px #0005;
 }
 h2 {
   font-size: 1rem;

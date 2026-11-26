@@ -94,7 +94,7 @@ function drawer(dialog: HTMLDialogElement) {
 <div class="page">
   <div class="shell">
     <header class={['top', { scrolled }]}>
-      <a class="brand" href={resolve('/')}><span>Vrigstad</span> <b>wiki</b></a>
+      <a class="brand" href={resolve('/')}><span lang="sv">Vrigstad</span> <b>wiki</b></a>
       <button
         type="button"
         class="menu"
@@ -201,17 +201,13 @@ function drawer(dialog: HTMLDialogElement) {
 }
 @media (prefers-reduced-motion: no-preference) {
   .top,
-  .brand span,
   .brand b {
     transition:
       background-color 200ms ease-out,
       box-shadow 200ms ease-out,
       color 200ms ease-out;
   }
-  /* on the dark ground the brand's dark word turns light, and its little sign turns over */
-  .scrolled .brand span {
-    color: var(--cream);
-  }
+  /* on the dark ground the brand's "wiki" sign turns over; the village's sign reads on the sky and on the dark alike */
   .scrolled .brand b {
     color: var(--road);
     background: var(--cream);
@@ -237,8 +233,21 @@ function drawer(dialog: HTMLDialogElement) {
   text-decoration: none;
   white-space: nowrap;
 }
+/* the village's name as the sign at its edge, as you drive in: blue, a white border inside its edge, the name in white */
 .brand span {
-  color: var(--road);
+  display: inline-block;
+  /* more room below than above: the g's tail hangs under the line, and the white border runs inside the edge */
+  padding: 0.2em 0.44em 0.27em;
+  font-size: 0.9em; /* with its padding, as tall as the "wiki" sign beside it */
+  letter-spacing: 0.03em;
+  text-transform: none;
+  color: #fff;
+  background: var(--sign-blue);
+  border-radius: 4px;
+  box-shadow:
+    inset 0 0 0 2px var(--sign-blue),
+    inset 0 0 0 3.5px #fff;
+  vertical-align: 0.12em;
 }
 /* "wiki" as a small dark sign on the sky: cream straight on the orange reads at only 2.2:1 */
 .brand b {
