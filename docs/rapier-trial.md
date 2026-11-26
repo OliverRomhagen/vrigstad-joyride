@@ -63,6 +63,7 @@ And by eye: does a mailbox you drive into look and feel right? Screenshots or a 
   - Rapier's memory was 10 MB with the 2 m grid, 48 MB with the drawn mesh's triangles; the JS heap grows about 6 MB.
   - Traffic brings about 470 props into the world in a minute. A loose prop on screen costs about 1.3 draw calls (its mesh and its shadow).
   - The page with the flag off grows 3.8 to 4.5 KB compressed.
+- **Tunable while you play:** with `?dev&lab=rapier`, the console's `tune` changes `physics.gravity`, `physics.prop-join-distance`, `physics.prop-respawn-time` and `physics.prop-respawn-distance` at once (`src/game/sim/physics-tunables.ts`), and `?tune=physics.gravity:3` sets one at load. These are the first numbers a sandbox mode would hand to players.
 - **By eye:** a Volvo at 60 km/h throws a mailbox several metres, turning over. Traffic knocks over the odd mailbox too.
 
 ## Known limits of the trial
@@ -70,6 +71,7 @@ And by eye: does a mailbox you drive into look and feel right? Screenshots or a 
 - **Two grounds.** Rapier's ground is the terrain. The furniture is drawn on the game's ground, which adds curbs, road lifts and floors. So a knocked prop drops up to a curb's height and can rest partly in a sidewalk. The car and player shapes don't follow bridge decks either.
 - **Missing shapes.** Only the buildings' walls are in Rapier's world, not the fences at Skroten or the kiosk.
 - **Knocked props go back after 90 s.** Traffic knocks props over anywhere in the village, and each one down is a draw call of its own, two with its shadow. So a knocked prop goes back to its stand, anchored and back in its batch, 90 s after it was knocked, once the player is more than 100 m from both where it lies and where it stood. That is distance only, not what the camera sees: walls aren't asked. Props never leave the world once they have joined, though: a long session would show it in the numbers.
+- **A prop pressed by a car never sleeps.** A mailbox that ends up under or against a car that has stopped stays awake for as long as the car stands there: Rapier doesn't let a body sleep while something presses on it. Each costs a little every step.
 - **A hit costs the car nothing.** A 40 kg mailbox stand at 90 km/h doesn't slow the car or damage it: Rapier's cars are moved by the game and can't be pushed back.
 - **The file has no version in its name.** `vendor/rapier.mjs` can be cached for a few minutes past an upgrade.
 - **The time step is a stand-in for #49.** The trial keeps its own clock and spreads each frame's move over its steps only because the game's cars don't move on a fixed step yet. Once #49 gives the sim its steps, Rapier steps inside them and both go.

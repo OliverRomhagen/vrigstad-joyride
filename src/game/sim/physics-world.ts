@@ -7,6 +7,7 @@ import { type BuildingShape, forEachBuilding } from '../../world/buildings';
 import type { WorldData } from '../../world/data';
 import type { Heightfield } from '../../world/heightfield';
 import { type CarBody, PERSON_RADIUS_M } from './car-body';
+import { PHYSICS } from './physics-tunables';
 
 export type Rapier = typeof RAPIER;
 type Body = InstanceType<Rapier['RigidBody']>;
@@ -23,19 +24,10 @@ const WALL_FOOT_M = 1;
 const PLAYER_HALF_HEIGHT_M = 0.5;
 /** a car or the player that moves further than this in one frame was put there, not driven: it jumps, unswept (m) */
 const TELEPORT_M = 8;
-/**
- * A prop joins Rapier's world when a car comes this close, and stays (m). Until then it is only data, so the world
- * holds the props near the cars, not every one in the village.
- */
-const PROP_JOIN_M = 12;
-/**
- * A knocked prop goes back to its stand this long after it was knocked (s), once the player is further than
- * PROP_RESPAWN_M from where it lies and where it stood: traffic knocks props over all round the village, and each one
- * down is a draw call of its own. Far enough that a 6.5 m lamp popping back up on an open street isn't seen; walls and
- * the camera's view aren't asked.
- */
-const PROP_RESPAWN_S = 90,
-  PROP_RESPAWN_M = 100;
+// How near a car brings props into the world, how long and how far before a knocked one goes back, and gravity are in
+// PHYSICS (physics-tunables.ts), so the console can change them: a prop is only data until a car comes near, so the
+// world holds the props near the cars, not every one in the village; and traffic knocks props over all round the
+// village, where each one down is a draw call of its own.
 /** the knocked props are checked for respawning once every this many steps: a second */
 const RESPAWN_CHECK_STEPS = 60;
 /** props are found by a grid of cells this size (m) */
@@ -149,7 +141,7 @@ export class PhysicsWorld {
       if (cell) cell.push(i);
       else this.propCells.set(key, [i]);
     });
-    this.world = new R.World({ x: 0, y: -9.81, z: 0 });
+    this.world = new R.World({ x: 0, y: -PHYSICS.GRAVITY, z: 0 });
     this.world.timestep = PHYSICS_STEP_S;
     this.events = new R.EventQueue(true);
     this.ray = new R.Ray({ x: 0, y: 0, z: 0 }, { x: 0, y: -1, z: 0 });
@@ -224,6 +216,7 @@ export class PhysicsWorld {
     this.carry = Math.min(this.carry + dt, PHYSICS_STEP_S * MAX_STEPS_PER_FRAME);
     const steps = Math.floor(this.carry / PHYSICS_STEP_S + 1e-9);
     this.carry -= steps * PHYSICS_STEP_S;
+    if (this.world.gravity.y !== -PHYSICS.GRAVITY) this.world.gravity = { x: 0, y: -PHYSICS.GRAVITY, z: 0 }; // tuned
     // Each car and the player cover this frame's move evenly over its steps: Rapier gives a kinematic body the whole
     // move in the first step it's told of, so at 30 fps a car would hit a mailbox at twice its speed, then stand still.
     for (let k = 1; k <= steps; k++) {
@@ -354,19 +347,20 @@ export class PhysicsWorld {
     return t;
   }
 
-  /** Brings every prop within PROP_JOIN_M of (x, z) into the world. */
+  /** Brings every prop within PHYSICS.PROP_JOIN_M of (x, z) into the world. */
   private joinNear(x: number, z: number) {
-    const c0 = Math.floor((x - PROP_JOIN_M) / PROP_CELL_M),
-      c1 = Math.floor((x + PROP_JOIN_M) / PROP_CELL_M),
-      r0 = Math.floor((z - PROP_JOIN_M) / PROP_CELL_M),
-      r1 = Math.floor((z + PROP_JOIN_M) / PROP_CELL_M);
+    const join = PHYSICS.PROP_JOIN_M,
+      c0 = Math.floor((x - join) / PROP_CELL_M),
+      c1 = Math.floor((x + join) / PROP_CELL_M),
+      r0 = Math.floor((z - join) / PROP_CELL_M),
+      r1 = Math.floor((z + join) / PROP_CELL_M);
     for (let c = c0; c <= c1; c++)
       for (let r = r0; r <= r1; r++) {
         const cell = this.propCells.get(cellKey(c, r));
         if (!cell) continue;
         for (const i of cell) {
           const p = this.props[i];
-          if (!this.propBodies[i] && Math.hypot(p.x - x, p.z - z) < PROP_JOIN_M) this.join(i);
+          if (!this.propBodies[i] && Math.hypot(p.x - x, p.z - z) < join) this.join(i);
         }
       }
   }
@@ -442,18 +436,19 @@ export class PhysicsWorld {
     }
   };
 
-  /** Puts back on its stand, anchored, every prop knocked PROP_RESPAWN_S ago that the player is far from. */
+  /** Puts back on its stand, anchored, every prop knocked PHYSICS.PROP_RESPAWN_S ago that the player is far from. */
   private respawnFarAway() {
     const { R, loosened } = this,
-      due = this.stepCount - PROP_RESPAWN_S / PHYSICS_STEP_S;
+      due = this.stepCount - PHYSICS.PROP_RESPAWN_S / PHYSICS_STEP_S,
+      far = PHYSICS.PROP_RESPAWN_M;
     for (let k = loosened.length - 1; k >= 0; k--) {
       const i = loosened[k],
         body = this.propBodies[i];
       if (!body || this.looseAtStep[i] > due) continue;
       const t = body.translation(),
         p = this.props[i];
-      if (Math.hypot(t.x - this.viewerX, t.z - this.viewerZ) < PROP_RESPAWN_M) continue;
-      if (Math.hypot(p.x - this.viewerX, p.z - this.viewerZ) < PROP_RESPAWN_M) continue; // nor where it reappears
+      if (Math.hypot(t.x - this.viewerX, t.z - this.viewerZ) < far) continue;
+      if (Math.hypot(p.x - this.viewerX, p.z - this.viewerZ) < far) continue; // nor where it reappears
       body.setBodyType(R.RigidBodyType.Fixed, false);
       _v.x = p.x;
       _v.y = p.baseY + p.heightM / 2;

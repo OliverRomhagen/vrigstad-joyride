@@ -73,6 +73,7 @@ import { addBridges, addBuildings, addRoadRibbons, addStreetscapeMeshes, addTerr
 import { type CarType, specFor } from './sim/vehicle-spec';
 import { Tunables } from './sim/tunables';
 import { registerCarTunables } from './sim/car-tunables';
+import { registerPhysicsTunables } from './sim/physics-tunables';
 import { registerTunableCommands } from './sim/tunable-commands';
 import { newGameState, newViewState } from './state';
 import { Trisslott, trisslottSeed } from './trisslott';
@@ -216,6 +217,7 @@ const calmMotion = matchMedia('(prefers-reduced-motion: reduce)');
 // overrides them at load, and the console's tune set, get, list and reset change them while you play (#357)
 const tunables = new Tunables();
 registerCarTunables(tunables);
+if (lab.on('rapier')) registerPhysicsTunables(tunables);   // physics.*: gravity and the street furniture's join and respawn distances (#54)
 const tuneParam = new URLSearchParams(location.search).get('tune');
 if (tuneParam && !DEV) console.warn('?tune= works in dev mode only: add ?dev');
 else for (const err of tunables.override(tuneParam ?? '')) console.warn('?tune=', err);
