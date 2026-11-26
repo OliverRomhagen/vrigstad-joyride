@@ -81,7 +81,7 @@ test('a respray in the driver’s view recolours its clipped material where it i
   expect(body.material.color.equals(new THREE.Color('#992233').convertSRGBToLinear())).toBe(true);
 });
 
-test('a metallic special paint shines, and a respray in another paint gives the model its own finish back', async () => {
+test('a metallic special paint shines and sparkles, and a respray in another paint gives the model its own finish back', async () => {
   const assets = new VehicleVisuals(false),
     c = car();
   assets.attach(c, 'volvo240', c.fallback, '#abcdef');
@@ -97,9 +97,12 @@ test('a metallic special paint shines, and a respray in another paint gives the 
   expect(shiny.metalness).toBeGreaterThan(own.metalness);
   expect(shiny.metalness).toBeLessThanOrEqual(0.35); // more draws black: there is no environment map to reflect
   expect(shiny.roughness).toBeLessThan(own.roughness);
+  expect(shiny.onBeforeCompile).not.toBe(THREE.Material.prototype.onBeforeCompile); // the flakes' shader patch
+  expect(shiny.customProgramCacheKey()).toBe('paint-flakes');
   assets.paint(c, '#992233');
   expect(mesh(c.mesh, 'body').material.metalness).toBe(own.metalness);
   expect(mesh(c.mesh, 'body').material.roughness).toBe(own.roughness);
+  expect(mesh(c.mesh, 'body').material.onBeforeCompile).toBe(THREE.Material.prototype.onBeforeCompile);
 });
 
 test('wheel travel, reverse steering and teleport reset use rendered motion', async () => {

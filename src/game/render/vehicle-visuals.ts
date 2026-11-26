@@ -3,6 +3,7 @@ import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { type Decal, isMetallicPaint } from '../sim/paint-jobs';
 import { decalMeshes, disposeDecal, type Panel } from './paint-decals';
+import { setFlakes } from './paint-flakes';
 import {
   BEACON_PARTS,
   BODY_NODE,
@@ -173,6 +174,7 @@ export class VehicleVisuals {
       const base = m.userData.paintFinish as Finish;
       m.metalness = metallic ? METALLIC.metalness : base.metalness;
       m.roughness = metallic ? METALLIC.roughness : base.roughness;
+      setFlakes(m, metallic);
       if (!clipped) view.materials.add(m);
       return m;
     };
