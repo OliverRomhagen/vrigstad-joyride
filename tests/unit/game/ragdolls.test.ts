@@ -70,6 +70,33 @@ describe('Ragdolls', () => {
     }
   });
 
+  it('throws someone a shot pushes the way the push goes, with no car and no star', () => {
+    const { ragdolls, npcs, stars } = setUp();
+    const n = person();
+    npcs.push(n);
+    expect(ragdolls.push(n, 1, 0, 10)).toBe(true); // east, at 10 m/s
+    expect(n.down).toBe(true);
+    expect(stars()).toBe(0);
+    for (let t = 0; t < 30 && ragdolls.count; t += 1 / 60) ragdolls.update(1 / 60);
+    expect(n.down).toBe(false);
+    expect(n.x).toBeGreaterThan(1); // landed east of where they stood
+    expect(Math.abs(n.z)).toBeLessThan(n.x); // and more east than north or south
+  });
+
+  it('refuses a push on someone already down, and one past the most that can be down', () => {
+    const { ragdolls, npcs } = setUp();
+    const n = person();
+    npcs.push(n);
+    expect(ragdolls.push(n, 0, -1, 10)).toBe(true);
+    expect(ragdolls.push(n, 0, -1, 10)).toBe(false); // already down
+    expect(ragdolls.count).toBe(1);
+    for (let i = 1; i < 6; i++) expect(ragdolls.push(person(i), 0, -1, 10)).toBe(true);
+    const seventh = person(7);
+    expect(ragdolls.push(seventh, 0, -1, 10)).toBe(false);
+    expect(seventh.down).toBeFalsy(); // left standing
+    expect(ragdolls.count).toBe(6);
+  });
+
   it('hands them back to the crowd once they are up, running back to their path', () => {
     const { ragdolls, hit } = setUp();
     const n = person();
