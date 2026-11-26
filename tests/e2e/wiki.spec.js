@@ -14,7 +14,7 @@ test.skip(
   'the wiki is not built for /wiki: BASE_PATH=/wiki npm run build --prefix wiki',
 );
 
-test('wiki: the menu leads to a place with its map and to a character in 3D, with no console errors', async ({
+test('wiki: the menu leads to a place with its map, a character in 3D and the garage, with no console errors', async ({
   page,
 }, info) => {
   const errors = watchErrors(page);
@@ -66,6 +66,21 @@ test('wiki: the menu leads to a place with its map and to a character in 3D, wit
   await expect(scene.locator('canvas')).toBeVisible();
   await expect(page.locator('figure [role=status]')).toHaveCount(0); // the model stands in the scene
   await page.screenshot({ path: info.outputPath('wiki-character.png') });
+
+  // the garage: the yard with a car's model on the ring, loaded from the game next door, and the next car after it
+  await menu.click();
+  await drawer.locator('a[href$="garage"]').click();
+  await expect(page.locator('h1')).toHaveText('Skroten');
+  const gate = page.getByText('Opening the gate…');
+  await expect(gate).toContainClass('gone', { timeout: 30_000 }); // the yard is up, with a car or word that it failed
+  await expect(page.getByRole('alert')).toHaveCount(0); // "can't find the keys" (a model) or "the gate is stuck" (the scene)
+  const onRing = page.getByRole('region', { name: 'The car on the ring' }).getByRole('status');
+  await expect(onRing).toContainText('car 1 of');
+  await page.getByRole('button', { name: 'Next car' }).click();
+  await expect(onRing).toContainText('car 2 of');
+  await expect(gate).toContainClass('gone', { timeout: 30_000 });
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  await page.screenshot({ path: info.outputPath('wiki-garage.png') });
 
   expect(errors).toEqual([]);
 });
