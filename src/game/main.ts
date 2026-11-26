@@ -52,7 +52,7 @@ import { Pets } from './pets';
 import { Commands } from './commands';
 import { CashRain } from './cash-rain';
 import { Confetti } from './confetti';
-import { DevConsole } from './devconsole';
+import { DevConsole, registerUrlCommand } from './devconsole';
 import { newWallet, registerWalletCommands, TRISS_KR } from './economy';
 import { carsForSale, Skroten } from './skroten';
 import { SKROT_CARPORT, SKROT_HALL, yardFloorAt, yardLayout } from './skroten-yard';
@@ -360,6 +360,7 @@ places.registerCommands(commands, (x, z, name, h) => { leaveHouse(); const c = g
   yard.workshop ? { verkstan: { x: yard.workshop.bay.x, z: yard.workshop.bay.z, name: "Plåt-Pelle's lift", h: Math.atan2(yard.workshop.bay.inX, -yard.workshop.bay.inZ) } } : {});   // go verkstan: onto the lift, nose in from the door, so the body fits between the posts
 fleet.registerCommands(commands, CIVILIAN_CAR_TYPES, () => view.camYaw, c => carName(c));   // car <model>
 debugOverlay?.registerCommands(commands);
+registerUrlCommand(commands, location);   // url lab=toon grain=on: sets the URL parameters and reloads
 
 // ---------- input: keys, mouse look and the touch controls (src/game/input.ts) ----------
 // the dev console sees each key first, then the menus (src/game/menu.ts)

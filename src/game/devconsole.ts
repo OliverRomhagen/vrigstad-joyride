@@ -2,7 +2,7 @@
 // each module registers its own. Keys typed into it stop here, so they never reach the game's keydown handler and never
 // drive the player.
 import { clamp } from '../world/math';
-import type { Commands } from './commands';
+import { type Commands, UsageError } from './commands';
 import { tabComplete } from './console-complete';
 import type { Input } from './input';
 
@@ -203,4 +203,45 @@ export class DevConsole {
       this.showUsage();
     }
   }
+}
+
+/**
+ * The query string with `key=value` words applied: a value replaces that parameter, an empty one (`grain=`) removes it,
+ * and the rest stay. Commas stay commas and flags stay bare, so the URL reads as typed in the address bar.
+ */
+export function withParams(search: string, words: readonly string[]): string {
+  const params = new URLSearchParams(search);
+  for (const word of words) {
+    const eq = word.indexOf('=');
+    if (eq < 1) throw new UsageError('not key=value: ' + word);
+    const key = word.slice(0, eq),
+      value = word.slice(eq + 1);
+    if (value) params.set(key, value);
+    else params.delete(key);
+  }
+  const query = params
+    .toString()
+    .replace(/%2C/gi, ',')
+    .replace(/=(?=&|$)/g, ''); // ?dev stays ?dev, not ?dev=
+  return query ? '?' + query : '';
+}
+
+/**
+ * `url lab=toon grain=on`: sets URL parameters and reloads, since the game reads them once, at page load. So the
+ * console can switch what `?lab=`, `?grain=`, `?clouds=` and the rest switch, without editing the address bar.
+ */
+export function registerUrlCommand(commands: Pick<Commands, 'register'>, loc: Pick<Location, 'search'>) {
+  commands.register('url', {
+    usage: '[key=value …]',
+    help: 'set URL parameters and reload (key= removes one); alone, list them',
+    details:
+      'Parameters not named stay, dev included. A value replaces the old one: lab=toon,cockpit sets the whole list.',
+    examples: ['url', 'url lab=toon,cockpit grain=on', 'url grain= clouds=clear'],
+    run: args => {
+      if (!args.length) return loc.search ? decodeURIComponent(loc.search) : 'No URL parameters.';
+      const next = withParams(loc.search, args);
+      loc.search = next; // navigates: the page reloads with the new parameters
+      return 'Reloading with ' + (next || 'no parameters') + ' …';
+    },
+  });
 }
