@@ -5,11 +5,9 @@ https://creativecommons.org/licenses/by/4.0/
 Original authored geometry; no manufacturer endorsement is implied.
 No reference photographs or third-party meshes are included.
 The distributed GLBs are meshopt-compressed derivatives of the following original
-exports, made with gltfpack 1.3.0 (-c -kn -km). Named nodes and materials are retained.
-Five models use -noq without simplification or quantization. The XC70 delivery
-derivatives additionally use -si 0.5 -se 0.0005 -slb -vp 16 -vn 10 -vpf; their
-editable masters remain unchanged. The XC70 masters are also simplified in Blender
-(see experiments/xc70p2/redraw/README.md). See docs/vehicle-fleet.md for
+exports, made with gltfpack 1.3.0 (-c -kn -km -noq). Geometry is not simplified or
+quantized; named nodes and materials are retained. (The XC70s' masters are themselves
+simplified in Blender, see experiments/xc70p2/redraw/README.md.) See docs/vehicle-fleet.md for
 reproduction and the original-to-delivery size comparison.
 
 Volvo 240
