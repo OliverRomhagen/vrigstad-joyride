@@ -698,7 +698,9 @@ test.describe('game (index.html)', () => {
     expect(await state(page)).toMatchObject({ kr: 700 });
   });
 
-  test('with ?dev, the console plays an emote by its name, and walking stops it (#296)', async ({ page }) => {
+  test('with ?dev, the console plays an emote by its name, walking stops it, and G picks one from the menu (#296)', async ({
+    page,
+  }) => {
     await page.setViewportSize({ width: 640, height: 360 });
     const errors = watchErrors(page);
     await page.goto('/index.html?dev');
@@ -713,6 +715,11 @@ test.describe('game (index.html)', () => {
     await page.keyboard.down('KeyW');
     await expect.poll(async () => (await state(page)).emote).toBeNull();
     await page.keyboard.up('KeyW');
+    await page.keyboard.press('KeyG');
+    await expect(page.locator('#kmenu')).toContainText('Twerk');
+    await page.keyboard.press('Digit4');
+    await expect(page.locator('#kmenu')).toBeHidden();
+    expect(await state(page)).toMatchObject({ emote: 'twerk' });
     expect(errors).toEqual([]);
   });
 

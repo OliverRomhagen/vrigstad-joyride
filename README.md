@@ -28,6 +28,7 @@ Play it at https://oliverromhagen.github.io/vrigstad-joyride/, or run `npm insta
 | Jump on foot / brake in a car | Space | Jump button, which becomes Brake in a car |
 | Look around | Move the mouse (click the game to lock it, Esc frees the cursor) | Drag the view |
 | Back to Torget | R | |
+| Emote on foot: dance, blow a kiss, the finger, … | G, then a number | Emote button |
 | Go inside a safehouse / scratch a trisslott | E | Use button |
 
 Taking an occupied car always earns a wanted star; a parked one sometimes does. So does knocking someone over: hit a pedestrian at more than 15 km/h and they fly, tumble, and get back up a few seconds later. Each star (up to three) sends a police car. Stay about 170 m clear of them for 18 seconds and they give up. Get boxed in at low speed and you are *gripen* and sent back to Torget.
