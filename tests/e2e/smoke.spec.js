@@ -880,4 +880,25 @@ test.describe('map (map.html)', () => {
     await page.screenshot({ path: testInfo.outputPath('map.png') });
     expect(errors).toEqual([]);
   });
+
+  // the wiki's place pages embed the map this way: a small frame over Slättsjön, with only the map and its credit
+  test('embeds focused on a place, without its tools', async ({ page }, testInfo) => {
+    await page.setViewportSize({ width: 640, height: 360 });
+    const errors = watchErrors(page);
+    await page.goto('/map.html?focus=-433,-835&embed');
+    await expectWebGL(page);
+    // the label gets its translate once a frame is drawn; focused on the lake, the label sits near the frame's middle,
+    // where the overview would put it off to the upper left
+    const lake = page.locator('#labels .lbl', { hasText: /^Slättsjön$/ });
+    await expect(lake).toHaveAttribute('style', /translate/);
+    // a label that collides with another keeps its old translate but is hidden, and would have no box
+    await expect(lake).toBeVisible();
+    const box = await lake.boundingBox();
+    expect(Math.abs(box.x + box.width / 2 - 320)).toBeLessThan(120);
+    expect(Math.abs(box.y + box.height / 2 - 180)).toBeLessThan(90);
+    for (const id of ['#title', '#tools .btns', '#legend']) await expect(page.locator(id)).toBeHidden();
+    for (const id of ['#north', '#credit']) await expect(page.locator(id)).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath('map-embed.png') });
+    expect(errors).toEqual([]);
+  });
 });
