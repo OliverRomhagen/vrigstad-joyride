@@ -10,8 +10,8 @@ import { type CarBody, PERSON_RADIUS_M } from './car-body';
 
 export type Rapier = typeof RAPIER;
 type Body = InstanceType<Rapier['RigidBody']>;
-/** the terrain as its mesh is built (src/world/mesh/terrain.ts), so Rapier's ground is the drawn ground */
-type Ground = Pick<Heightfield, 'samples' | 'sampleCoord' | 'sampleHeight' | 'cellDetail' | 'fineHeight' | 'heightAt'>;
+/** the terrain's elevation grid, which its drawn mesh is built from (src/world/mesh/terrain.ts) */
+type Ground = Pick<Heightfield, 'samples' | 'sampleCoord' | 'sampleHeight' | 'heightAt'>;
 
 /** Rapier steps at this fixed time step, whatever the frame rate, catching up when a frame is long (s) */
 export const PHYSICS_STEP_S = 1 / 60;
@@ -468,37 +468,26 @@ function yaw(angle: number) {
 }
 
 /**
- * The terrain as one triangle mesh, built exactly as its drawn mesh is (src/world/mesh/terrain.ts): the elevation grid's
- * cells, and the refined cells by the water with their own finer grids, split along the same diagonal.
+ * The terrain as one triangle mesh, from the elevation grid alone, split along the same diagonal as its drawn mesh
+ * (src/world/mesh/terrain.ts): about 15,000 triangles. The drawn mesh also refines the cells by the water, which would
+ * take it to 230,000 triangles and Rapier's memory from 10 MB to 48 MB, so by the water Rapier's ground is the coarser one.
  */
 function groundTriangles(field: Ground) {
   const n = field.samples,
-    at = (i: number) => field.sampleCoord(i),
-    vertices: number[] = [],
-    indices: number[] = [];
-  for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) vertices.push(at(i), field.sampleHeight(i, j), at(j));
-  for (let j = 0; j < n - 1; j++)
-    for (let i = 0; i < n - 1; i++) {
-      const m = field.cellDetail(i, j);
-      if (m < 2) {
-        const k = j * n + i;
-        indices.push(k, k + n, k + 1, k + 1, k + n, k + n + 1);
-        continue;
-      }
-      const first = vertices.length / 3,
-        x0 = at(i),
-        z0 = at(j),
-        side = at(i + 1) - x0;
-      for (let b = 0; b <= m; b++)
-        for (let a = 0; a <= m; a++)
-          vertices.push(x0 + (side * a) / m, field.fineHeight(i, j, a, b), z0 + (side * b) / m);
-      for (let b = 0; b < m; b++)
-        for (let a = 0; a < m; a++) {
-          const k = first + b * (m + 1) + a;
-          indices.push(k, k + m + 1, k + 1, k + 1, k + m + 1, k + m + 2);
-        }
+    vertices = new Float32Array(n * n * 3),
+    indices = new Uint32Array((n - 1) * (n - 1) * 6);
+  for (let j = 0, v = 0; j < n; j++)
+    for (let i = 0; i < n; i++, v += 3) {
+      vertices[v] = field.sampleCoord(i);
+      vertices[v + 1] = field.sampleHeight(i, j);
+      vertices[v + 2] = field.sampleCoord(j);
     }
-  return { vertices: new Float32Array(vertices), indices: new Uint32Array(indices) };
+  for (let j = 0, t = 0; j < n - 1; j++)
+    for (let i = 0; i < n - 1; i++, t += 6) {
+      const k = j * n + i;
+      indices.set([k, k + n, k + 1, k + 1, k + n, k + n + 1], t);
+    }
+  return { vertices, indices };
 }
 
 /** Every building's walls as one triangle mesh, from below its lowest corner up to its roof's edge. */

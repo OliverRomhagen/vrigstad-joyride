@@ -50,17 +50,19 @@ And by eye: does a mailbox you drive into look and feel right? Screenshots or a 
 
 ## Found so far (steps 1 to 3)
 
-- **Loading:** Rapier is served as its own file, `vendor/rapier.mjs` (`vite.config.ts`), and imported by its address only with the flag on. The game's page grows by 2.5 KB compressed with the flag off: only the trial's own code, none of Rapier. The ready-made package carries its WebAssembly inside its JavaScript, 1.65 MB compressed; the plain package's `.wasm` is 1.2 MB and compiles while it downloads. So the download and load times measured here are higher than they need to be.
-- **Rapier's ground is the drawn terrain**, triangle for triangle (src/world/mesh/terrain.ts): about 15,000 triangles. A first version sampled the ground every 2 m, 1.2 million heights, which was most of the time to build the world.
+- **Loading:** Rapier is served as its own file, `vendor/rapier.mjs` (`vite.config.ts`), and imported by its address only with the flag on. The game's page grows by about 4 KB compressed with the flag off: only the trial's own code, none of Rapier. The ready-made package carries its WebAssembly inside its JavaScript, 1.65 MB compressed; the plain package's `.wasm` is 1.2 MB and compiles while it downloads. So the download and load times measured here are higher than they need to be.
+- **Rapier's ground is the terrain's elevation grid**, split into triangles as the drawn terrain is: about 15,000 triangles. A first version sampled the ground every 2 m, 1.2 million heights, most of the time to build the world; a second used the drawn mesh's own triangles, whose finer cells by the water came to 230,000 and took Rapier's memory to 48 MB. By the water Rapier's ground is now the coarser one.
 - **Props join the world only near a moving car.** Rapier pairs every body with any shape whose bounds overlap its own, and on uneven ground the ground's bounds overlap everything, so 1,660 mailboxes and bins sleeping in the world all woke on the first step. Instead a prop joins when a moving car comes within 12 m, and stays.
 - **A prop is anchored until a car reaches it.** A tall, narrow box on a slope tips over by itself once it can move. So a prop joins as a fixed body, exactly where it is drawn, as a mailbox on its post. It comes loose one physics step before a car's capsule reaches it, so the car pushes it. Loosened only once the car touched it, a fast or glancing hit found the car already inside the box, and Rapier pushed it out sideways: at 90 km/h, 0.6 m off the car's middle, the mailbox didn't move. Untouched props never move and stay in their batch of street furniture, so they cost no extra draw calls.
 - **The player knocks nothing loose.** A person is a kinematic body to Rapier, so it can't be pushed back: walking into a mailbox laid it flat and shoved it 3 m. Walking past one now leaves it standing; one already down still gets pushed.
 - **A frame's move is spread over its steps.** Below 60 fps the world runs two or three steps a frame (the loop caps a frame at 0.05 s), and Rapier gives a car the whole frame's move in the first of them. A car going 15 m/s at 15 fps threw a mailbox 50 m instead of 15 m. Each car and the player now cover their move evenly over the frame's steps, and one that is put far away (a respawn, *Gripen!*, getting out of a car) jumps there instead of sweeping across the village.
-- **First numbers,** from a local build in headless Chrome, which renders in software and is much slower than a real device:
-  - the world (ground, walls and anchoring) is built in about 70 ms;
-  - about 100 of 1,660 props had joined after a short drive round Torget;
-  - the physics took about 0.4 ms a frame; in Node, about 0.1 ms with the village's 80 cars, 58 of them parked;
-  - loading and starting Rapier took 7 to 9 s here. A real device is needed to judge that one.
+- **Measured** (`performance-analyst`, headless Chromium; "slowed" is the CPU slowed 4× as a rough stand-in for a phone, which leaves out a phone's GPU and network):
+  - Rapier's file is 1.65 MB compressed and takes about 26 ms to load and start on its own (57 ms slowed). In the game it is ready about 2.5 s after the page's `load` event, behind the game's own start-up; the flag doesn't delay the first frame or Start.
+  - Building the world took 66 ms (309 ms slowed) with the 2 m grid. With the grid ground the walls, 12,318 triangles, are most of what is left.
+  - The physics step took 0.3 to 0.5 ms a frame (1.1 to 1.9 ms slowed) at Torget and on a drive, running three steps a frame in headless Chrome's slow frames.
+  - Rapier's memory was 10 MB with the 2 m grid, 48 MB with the drawn mesh's triangles; the JS heap grows about 6 MB.
+  - Traffic brings about 470 props into the world in a minute. A loose prop on screen costs about 1.3 draw calls (its mesh and its shadow).
+  - The page with the flag off grows 3.8 to 4.5 KB compressed.
 - **By eye:** a Volvo at 60 km/h throws a mailbox several metres, turning over. Traffic knocks over the odd mailbox too.
 
 ## Known limits of the trial

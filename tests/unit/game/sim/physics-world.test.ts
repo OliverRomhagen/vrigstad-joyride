@@ -23,8 +23,6 @@ function field(heightAt: (x: number, z: number) => number): PhysicsWorldOptions[
     samples: (half * 2) / step + 1,
     sampleCoord: coord,
     sampleHeight: (i, j) => heightAt(coord(i), coord(j)),
-    cellDetail: () => 1,
-    fineHeight: () => 0,
     heightAt,
   };
 }
