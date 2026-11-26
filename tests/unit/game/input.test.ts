@@ -77,9 +77,6 @@ function input(
     toggleView: () => {
       calls.push('view');
     },
-    flipLimiter: () => {
-      calls.push('limiter');
-    },
     jump: () => {
       calls.push('jump');
     },
@@ -116,7 +113,7 @@ describe('Input', () => {
     expect(calls).toEqual([]);
   });
 
-  it('jumps on a fresh Space press only, E, F or Enter act once per press, and T flips the limiter once', () => {
+  it('jumps on a fresh Space press only, and E, F or Enter act once per press', () => {
     const { win, calls } = input();
     const e = fire(win, 'keydown', { code: 'Space' });
     fire(win, 'keydown', { code: 'Space', repeat: true });
@@ -128,9 +125,7 @@ describe('Input', () => {
     fire(win, 'keydown', { code: 'KeyL', repeat: true });
     fire(win, 'keydown', { code: 'KeyV' });
     fire(win, 'keydown', { code: 'KeyV', repeat: true });
-    fire(win, 'keydown', { code: 'KeyT' });
-    fire(win, 'keydown', { code: 'KeyT', repeat: true });
-    expect(calls).toEqual(['jump', 'action', 'action', 'respawn', 'rain', 'view', 'limiter']);
+    expect(calls).toEqual(['jump', 'action', 'action', 'respawn', 'rain', 'view']);
     expect(e.defaultPrevented).toBe(true); // Space doesn't scroll the page
   });
 

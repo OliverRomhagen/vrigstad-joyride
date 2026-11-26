@@ -366,7 +366,7 @@ debugOverlay?.registerCommands(commands);
 // the dev console sees each key first, then the menus (src/game/menu.ts)
 const input = new Input({ win: window, doc: document, canvas, $, coarse, menuKey: e => devcon.takeKey(e) || menuKey(e), keyTaken: code => consoleOwnsKey(code) || menuOwnsKey(code),
   get started() { return game.started; }, get menuOpen() { return !kmenu.hidden; }, get consoleOpen() { return devcon.isOpen; },
-  action: () => action(), respawn: () => respawn(), rain: () => cashRain.makeItRain(), toggleView: () => cockpit?.toggle(), flipLimiter: flipLimiterSwitch,
+  action: () => action(), respawn: () => respawn(), rain: () => cashRain.makeItRain(), toggleView: () => cockpit?.toggle(),
   jump: () => { if (jumpOk()) game.jumpQ = true; },   // queue only where a jump can start (see jumpOk)
   look: (dx, dy) => { if (game.inCar) { view.lookOff = wrap(view.lookOff + dx * 0.006); view.lookIdle = 0; } else view.camYaw = wrap(view.camYaw + dx * 0.006);
     view.camPitch = clamp(view.camPitch + dy * 0.004, 0.06, 1.25); },
@@ -395,6 +395,7 @@ const actions = new Actions({ game, view, player, cars, places, wanted, health, 
 const { nearestCar, action, respawn, busted, knockedOut } = actions;
 // T: a tuned EPA-traktor's switch under the wheel (src/game/sim/upgrades.ts)
 function flipLimiterSwitch() { const said = flipLimiter(game.inCar ? game.pcar : null); if (said) toast(said, 2.5); }
+input.addControl({ codes: ['KeyT'], press: flipLimiterSwitch }).hold($('p-limiter'));   // a control: no flip with a menu or the console open
 function hurtPlayer(n: number) { if (!canHurt(health, n)) return; const was = health.hp;
   hud.flashHurt(n); hurt(health, n); drawHealth();
   if (was >= LOW_HP && health.hp < LOW_HP && health.hp > 0) loop.sayLater('”Ja behöver nog en korv me brö.”'); }   // a hint at the kiosk
