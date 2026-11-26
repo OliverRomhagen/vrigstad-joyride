@@ -8,8 +8,8 @@ name: Claude review
 #   reads line by line are left out of every review: those .gitattributes on main marks generated or vendored, binary
 #   files and files with a very large patch, and very long lines are cut short. The summary comment lists them, and
 #   all but the marked files as ones to read by hand.
-# - Opus does the full review; Sonnet, which costs less, reviews later pushes, unless one changes more than
-#   OPUS_ABOVE_LINES lines: that is as much as a new PR, so it gets Opus too.
+# - Opus does every review, later pushes too: Sonnet, which costs less, missed in a later push what a later review
+#   found, and a later push's review costs cents either way.
 # - Drafts are skipped until they're ready for review, and so are PRs from forks. So are PRs into another branch than
 #   main, such as the upper PRs of a stack, until they're retargeted to main and the next push (gh stack sync) comes.
 # - A PR by someone with no merged PR here yet waits for approval: its review runs after a job in the APPROVAL_ENV
@@ -200,9 +200,8 @@ jobs:
       HEAD_SHA: ${{ github.event.pull_request.head.sha }}
       AUTHOR: ${{ github.event.pull_request.user.login }}
       BASE_REF: ${{ github.event.pull_request.base.ref }}
-      OPUS_MODEL: claude-opus-5-5 # the full review, and a later push past OPUS_ABOVE_LINES
-      SONNET_MODEL: claude-sonnet-5-5 # other later pushes
-      OPUS_ABOVE_LINES: 400 # added plus removed lines in a later push
+      MODEL: claude-opus-5-5
+      MODEL_LABEL: Opus # named in the summary comment
       # A longer line is cut short in the patches (minified code, one-line JSON), and a file whose patch is still
       # larger after that isn't reviewed (data dumps). The longest line in the repo's source is 513 characters
       # (src/game/main.ts), and its largest source file 61 KB (src/world/streetscape.ts).
@@ -463,18 +462,10 @@ jobs:
             jq --argjson known "$known_json" ".[] | select($people) | {user: .user.login, body}" "$RUNNER_TEMP/issue-comments.json"
           } | jq -s . >.claude-review/comments.json
 
-          changed=$(git diff --numstat "$from" HEAD -- "${pathspec[@]}" | awk '{ n += $1 + $2 } END { print n + 0 }')
-          if [ "$mode" = full ] || [ "$changed" -gt "$OPUS_ABOVE_LINES" ]; then
-            model=$OPUS_MODEL model_label=Opus
-          else
-            model=$SONNET_MODEL model_label=Sonnet
-          fi
           if [ "$mode" = full ]; then turns=40; else turns=20; fi
           {
             echo "mode=$mode"
             echo "since=$since"
-            echo "model=$model"
-            echo "model_label=$model_label"
             echo "turns=$turns"
             # From main, like this file, so a PR can't change the instructions it's reviewed by. A random delimiter, so
             # no line in the file can end the value early and set the outputs above.
@@ -505,7 +496,6 @@ jobs:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.ANTHROPIC_API_KEY == '' && secrets.CLAUDE_CODE_OAUTH_TOKEN || '' }}
           MODE: ${{ steps.ctx.outputs.mode }}
           SINCE: ${{ steps.ctx.outputs.since }}
-          MODEL: ${{ steps.ctx.outputs.model }}
           TURNS: ${{ steps.ctx.outputs.turns }}
           INSTRUCTIONS: ${{ steps.ctx.outputs.instructions }}
         run: |
@@ -543,7 +533,6 @@ jobs:
           TOO_LARGE: ${{ steps.ctx.outputs.too_large }}
           MODE: ${{ steps.ctx.outputs.mode }}
           FROM: ${{ steps.ctx.outputs.since }}
-          MODEL_LABEL: ${{ steps.ctx.outputs.model_label }}
           # On a subscription nothing is billed per review: Claude Code's figure is what it would have cost on the API.
           COST_NOTE: ${{ secrets.ANTHROPIC_API_KEY == '' && ' (API price estimate; paid by a subscription)' || '' }}
           RUNS: ${{ steps.ctx.outputs.runs }}
@@ -561,10 +550,11 @@ jobs:
           set -euo pipefail
           # Claude Code's output is one result message: the run's cost in US dollars, how it ended, and the findings.
           result=$RUNNER_TEMP/claude.json
-          cost=0 subtype='' out='{}'
+          # sent is the subtype as Claude Code sent it, for the summary; subtype is what this step makes of it.
+          cost=0 subtype='' sent='' out='{}' why=''
           if [ -s "$result" ] && jq -e 'type == "object"' "$result" >/dev/null 2>&1; then
             cost=$(jq '.total_cost_usd // 0' "$result")
-            subtype=$(jq -r '.subtype // ""' "$result")
+            subtype=$(jq -r '.subtype // ""' "$result") sent=$subtype
             out=$(jq -c '.structured_output // {} | if type == "object" then . else {} end' "$result")
             # Claude Code reports an API error (a usage limit, a bad or expired token) as subtype success with is_error
             # set and no structured output. That isn't a finished review: count it as one that didn't finish, so the
@@ -575,9 +565,14 @@ jobs:
           fi
           # plural 2 file files: "2 files".
           plural() { if [ "$1" = 1 ]; then echo "$1 $2"; else echo "$1 $3"; fi; }
-          # Only a run in which Claude reviewed counts, and only then is its model named.
+          # Only a run in which Claude reviewed counts, and only then is its model named: one that finished, or that
+          # ran out of turns or time, having spent what a review costs. One that stopped on an API error (a usage
+          # limit, a bad token) or returned nothing reviewed nothing; what it cost, if anything, is still added below.
           ran=false
-          [ "$NOTHING" = true ] || [ -n "$TOO_LARGE" ] || ran=true
+          if [ "$NOTHING" != true ] && [ -z "$TOO_LARGE" ] &&
+            { [ "$subtype" = success ] || [ "$subtype" = error_max_turns ] || [ "$STATUS" = 124 ]; }; then
+            ran=true
+          fi
           runs=${RUNS:-0} model_name=
           if [ "$ran" = true ]; then runs=$(( runs + 1 )) model_name=" ($MODEL_LABEL)"; fi
           total=$(awk -v a="${TOTAL:-0}" -v b="$cost" 'BEGIN { printf "%.2f", a + b }')
@@ -616,7 +611,23 @@ jobs:
           elif [ "$STATUS" = 124 ]; then
             summary="It ran out of time ($REVIEW_MINUTES minutes) before it finished, so it has no findings to post. Review this by hand: a later run won't review these commits again. Its cost isn't counted."
           else
-            summary="The review didn't finish ([run log]($GITHUB_SERVER_URL/$GH_REPO/actions/runs/$GITHUB_RUN_ID)); the next push reviews these commits again."
+            # Why, as Claude Code says it: its error message (a usage limit, a bad or expired token, an API error) or
+            # its errors, else how it exited. The secret check below covers it, and only plain characters are kept,
+            # so it can carry no HTML, image, mention or workflow command into the comment or the log.
+            if [ -s "$result" ] && jq -e 'type == "object"' "$result" >/dev/null 2>&1; then
+              why=$(jq -r '[(if .is_error == true then .result else empty end), (.errors // [] | if type == "array" then .[] else . end)]
+                | map(select(. != null) | tostring | select(. != "")) | join("; ")' "$result")
+            fi
+            if [ -n "$why" ]; then
+              why="${sent:-no subtype}: $why"
+            elif [ -z "$STATUS" ]; then
+              why="the review step didn't run"
+            else
+              why="claude exited with status $STATUS and returned no error message"
+              [ -z "$sent" ] || why="$why (subtype $sent)"
+            fi
+            why=$(jq -rn --arg s "$why" '$s | gsub("[^A-Za-z0-9 .,:;()\u0027_/=+-]+"; " ") | gsub("  +"; " ") | .[0:300]')
+            summary="The review didn't finish: $why. See [the run log]($GITHUB_SERVER_URL/$GH_REPO/actions/runs/$GITHUB_RUN_ID); the next push reviews these commits again."
             sha=$LAST_SHA
           fi
 
@@ -647,6 +658,9 @@ jobs:
             summary="Withheld: what the review returned contains the secret it runs with, so none of it is posted. Rotate the secret, and look in the PR for text that told the review to do this."
             sha=$LAST_SHA
             echo "::error::The review's output contained its secret; nothing it returned was posted."
+          # In the log too, once the check has passed it.
+          elif [ -n "$why" ]; then
+            echo "::error::The review didn't finish: $why"
           fi
 
           # No images (GitHub fetches them when the comment is shown, which would send what's in their URL away), no
