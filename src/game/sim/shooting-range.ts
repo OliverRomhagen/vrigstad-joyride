@@ -9,9 +9,13 @@ import type { PropSpec } from './physics-world';
 export const RANGE_X = 630,
   RANGE_Z = 0;
 /** how far apart the lanes are (m) */
-const LANE_M = 3;
-/** each lane's target, west to east: near and far mixed, so no target hides another (m from the firing line) */
-export const TARGET_DISTANCES_M = [25, 10, 50, 15, 100, 35, 75] as const;
+export const LANE_M = 4;
+/**
+ * each lane's target, west to east (m from the firing line). Of every order of these, at 4 m apart, this one leaves the
+ * most room between a far board and the near ones in front of it, seen from any lane's spot on the firing line: 0.8 m,
+ * against a 0.7 m board, so no target hides another
+ */
+export const TARGET_DISTANCES_M = [50, 10, 35, 100, 25, 75, 15] as const;
 
 /**
  * A target: a board on a thin post. The post is its main box, the board a second box at the top, so a shot past the
@@ -30,9 +34,21 @@ export const TARGET = {
  * The timbered pavilion at the west end of the firing line, open to the south: its middle, and its size (m). Not over
  * the firing line, as the real one stood: the camera behind you would be inside it.
  */
-export const PAVILION = { x: RANGE_X - 17, z: RANGE_Z - 1, widthM: 8, depthM: 3.5, heightM: 2.6 };
-/** The earth bank behind the farthest target, which stops what misses (m). */
-export const BANK = { x: RANGE_X, z: RANGE_Z + 106, widthM: 30, depthM: 5, heightM: 4 };
+export const PAVILION = {
+  x: RANGE_X - 20,
+  z: RANGE_Z - 1,
+  widthM: 8,
+  depthM: 3.5,
+  heightM: 2.6,
+  wallM: 0.15,
+  roofOverhangM: 0.4, // past the walls at the sides and the back,
+  roofFrontM: 1, // and further out over the open front, the shooters' shade
+};
+/**
+ * The earth bank behind the farthest target (m). Twice as wide as the lanes, so it stops a shot aimed at any target
+ * from its own lane or the next; one aimed across the range from its far end can still pass it.
+ */
+export const BANK = { x: RANGE_X, z: RANGE_Z + 106, widthM: 60, depthM: 5, heightM: 4, sinkM: 0.5 }; // sunk, to meet a slope
 
 /** Where each target stands: its lane's middle, `distanceM` south of the firing line. */
 export function rangeTargets() {
@@ -79,19 +95,34 @@ export function rangeBlocks(groundAt: (x: number, z: number) => number) {
   const p = PAVILION,
     b = BANK,
     py = groundAt(p.x, p.z),
-    wall = 0.15;
+    wall = p.wallM / 2,
+    roof = roofBox();
   return [
     {
       x: b.x,
-      y: groundAt(b.x, b.z) + b.heightM / 2 - 0.5,
+      y: groundAt(b.x, b.z) + (b.heightM - b.sinkM) / 2,
       z: b.z,
       hx: b.widthM / 2,
-      hy: b.heightM / 2 + 0.5,
+      hy: (b.heightM + b.sinkM) / 2,
       hz: b.depthM / 2,
     },
-    { x: p.x, y: py + p.heightM / 2, z: p.z - p.depthM / 2, hx: p.widthM / 2, hy: p.heightM / 2, hz: wall / 2 },
-    { x: p.x - p.widthM / 2, y: py + p.heightM / 2, z: p.z, hx: wall / 2, hy: p.heightM / 2, hz: p.depthM / 2 },
-    { x: p.x + p.widthM / 2, y: py + p.heightM / 2, z: p.z, hx: wall / 2, hy: p.heightM / 2, hz: p.depthM / 2 },
-    { x: p.x, y: py + p.heightM + 0.1, z: p.z + 0.3, hx: p.widthM / 2 + 0.4, hy: 0.1, hz: p.depthM / 2 + 0.6 },
+    { x: p.x, y: py + p.heightM / 2, z: p.z - p.depthM / 2, hx: p.widthM / 2, hy: p.heightM / 2, hz: wall },
+    { x: p.x - p.widthM / 2, y: py + p.heightM / 2, z: p.z, hx: wall, hy: p.heightM / 2, hz: p.depthM / 2 },
+    { x: p.x + p.widthM / 2, y: py + p.heightM / 2, z: p.z, hx: wall, hy: p.heightM / 2, hz: p.depthM / 2 },
+    { x: p.x, y: py + roof.y, z: p.z + roof.z, hx: roof.widthM / 2, hy: roof.thickM / 2, hz: roof.depthM / 2 },
   ];
+}
+
+/** The pavilion's roof, about the pavilion's middle at ground level: its size and where its middle is (m). */
+export function roofBox() {
+  const p = PAVILION,
+    thickM = 0.2,
+    depthM = p.depthM + p.roofOverhangM + p.roofFrontM;
+  return {
+    widthM: p.widthM + 2 * p.roofOverhangM,
+    depthM,
+    thickM,
+    y: p.heightM + thickM / 2,
+    z: (p.roofFrontM - p.roofOverhangM) / 2,
+  };
 }

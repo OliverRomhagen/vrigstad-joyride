@@ -73,7 +73,7 @@ export interface RapierLabState {
   /** the people near the player that the world holds */
   readonly people: number;
   /** the shooting range's targets (#545), and how many are down right now */
-  targets: number;
+  readonly targets: number;
   readonly targetsDown: number;
   /** the world itself, for the weapons' ray casts (?lab=pickadoll); not for the test hook */
   world: PhysicsWorld;
@@ -193,7 +193,9 @@ export async function startRapierLab(g: RapierLabDeps): Promise<RapierLabState> 
     },
     targets: targets.length,
     get targetsDown() {
-      return targets.filter(i => world.isLoose(i)).length;
+      let n = 0;
+      for (const i of targets) if (world.isLoose(i)) n++;
+      return n;
     },
     world,
   };

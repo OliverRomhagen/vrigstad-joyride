@@ -35,6 +35,13 @@ const PROP_SHOT_JOIN_M = 40;
 /** and they are looked for again once the player has gone this far (m) */
 const PROP_SHOT_JOIN_EVERY_M = 5;
 // gravity, and how near and how far for the props, are in PHYSICS (physics-tunables.ts), so the console can change them
+/**
+ * a knocked target stands up only once nothing is this near its stand: a car's capsule reaches 2.4 m from its middle,
+ * and one put back inside something is thrown out of it (m)
+ */
+const TARGET_CLEAR_M = 3;
+/** nor while another loose prop lies this near (m) */
+const TARGET_CLEAR_PROP_M = 1;
 /** the knocked props are checked for respawning once every this many steps: a second */
 const RESPAWN_CHECK_STEPS = 60;
 /** props are found by a grid of cells this size (m) */
@@ -641,7 +648,9 @@ export class PhysicsWorld {
         body = this.propBodies[i],
         p = this.props[i];
       if (!body || this.looseAtStep[i] > (p.isTarget ? targetDue : due)) continue;
-      if (!p.isTarget) {
+      if (p.isTarget) {
+        if (!this.standClear(i)) continue; // tried again a second later
+      } else {
         const t = body.translation();
         if (Math.hypot(t.x - this.viewerX, t.z - this.viewerZ) < far) continue;
         if (Math.hypot(p.x - this.viewerX, p.z - this.viewerZ) < far) continue; // nor where it reappears
@@ -655,6 +664,19 @@ export class PhysicsWorld {
       this.loose[i] = 0;
       loosened.splice(k, 1);
     }
+  }
+
+  /** Whether prop i's stand is free of the cars, the player, the people and the other loose props. */
+  private standClear(i: number) {
+    const p = this.props[i];
+    for (const t of this.targets.values()) if (Math.hypot(t.x - p.x, t.z - p.z) < TARGET_CLEAR_M) return false;
+    for (const j of this.loosened) {
+      const body = this.propBodies[j];
+      if (j === i || !body) continue;
+      const at = body.translation();
+      if (Math.hypot(at.x - p.x, at.z - p.z) < TARGET_CLEAR_PROP_M) return false;
+    }
+    return true;
   }
 
   private setLoose(i: number) {

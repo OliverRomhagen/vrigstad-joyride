@@ -4,6 +4,7 @@ import { registerPhysicsTunables } from '../../../../src/game/sim/physics-tunabl
 import { PHYSICS_STEP_S, PhysicsWorld, type PropPose } from '../../../../src/game/sim/physics-world';
 import {
   BANK,
+  PAVILION,
   RANGE_X,
   RANGE_Z,
   rangeBlocks,
@@ -52,10 +53,22 @@ describe('the shooting range', () => {
     const targets = rangeTargets();
     expect(targets.map(r => r.z - RANGE_Z)).toEqual([...TARGET_DISTANCES_M]);
     const xs = targets.map(r => r.x);
-    expect(xs[xs.length - 1] - xs[0]).toBeCloseTo(18, 6); // seven lanes, 3 m apart, about the firing line's middle
+    expect(xs[xs.length - 1] - xs[0]).toBeCloseTo(24, 6); // seven lanes, 4 m apart, about the firing line's middle
     expect((xs[0] + xs[xs.length - 1]) / 2).toBeCloseTo(RANGE_X, 6);
     expect(BANK.z - BANK.depthM / 2).toBeGreaterThan(RANGE_Z + Math.max(...TARGET_DISTANCES_M));
     expect(BANK.widthM / 2).toBeGreaterThan(xs[xs.length - 1] - RANGE_X);
+  });
+
+  it('leaves every board in sight of every lane’s spot on the firing line, past the boards in front of it', () => {
+    const targets = rangeTargets();
+    for (const from of targets) // standing in a lane, on the firing line
+      for (const far of targets)
+        for (const near of targets) {
+          if (near.distanceM >= far.distanceM || near === from) continue;
+          // where the line from the shooter to the far board crosses the near board's distance, beside the near board
+          const x = from.x + ((far.x - from.x) * near.distanceM) / far.distanceM;
+          expect(Math.abs(x - near.x)).toBeGreaterThan(TARGET.boardM);
+        }
   });
 
   it('builds each target as a thin post with the board at its top, standing on the ground', () => {
@@ -80,7 +93,7 @@ describe('the shooting range', () => {
       i = 1, // the 10 m target
       { x, z } = rangeTargets()[i],
       p = pose();
-    w.follow([], { x, z: z - 1 }, { x, z: z - 1 });
+    w.follow([], { x, z: z - 5 }, { x, z: z - 5 }); // in front of it
     w.knockProp(i, x, ground + TARGET.heightM - 0.3, z, 0, 0, 20);
     for (let k = 0; k < 60; k++) w.step(PHYSICS_STEP_S);
     expect(w.isLoose(i)).toBe(true);
@@ -92,17 +105,33 @@ describe('the shooting range', () => {
     w.dispose();
   });
 
+  it('keeps a knocked target down while the player stands on its stand, and stands it up once they leave', () => {
+    t.set('physics.target-reset-time', 1);
+    const w = rangeWorld(),
+      i = 1,
+      { x, z } = rangeTargets()[i];
+    w.follow([], { x, z }, { x, z }); // right where it stands
+    w.knockProp(i, x, ground + TARGET.heightM - 0.3, z, 0, 0, 20);
+    for (let k = 0; k < 180; k++) w.step(PHYSICS_STEP_S);
+    expect(w.isLoose(i)).toBe(true);
+    w.follow([], { x: x + 10, z }, { x: x + 10, z });
+    for (let k = 0; k < 90; k++) w.step(PHYSICS_STEP_S);
+    expect(w.isLoose(i)).toBe(false);
+    w.dispose();
+  });
+
   it('lets a shot from the firing line knock a target, and stops one that misses at the bank', () => {
     const w = rangeWorld();
     const world: ShotWorld = { groundAt, collide: () => false, people: [], cars: [] };
     world.cast = physicsCast(w, world, () => null);
     const weapon = WEAPONS.findIndex(x => x.id === 'pickadoll');
-    const fire = (x: number, pitch: number) => {
+    const fire = (x: number, pitch: number) => fireFrom(x, RANGE_Z, pitch, Math.PI); // south
+    const fireFrom = (x: number, z: number, pitch: number, yaw: number) => {
       const s: Shot = {
         x,
         y: ground + MUZZLE_M,
-        z: RANGE_Z,
-        ...aimShot(WEAPONS[weapon], Math.PI, pitch), // south
+        z,
+        ...aimShot(WEAPONS[weapon], yaw, pitch),
         ageS: 0,
         weapon,
         bounced: 0,
@@ -125,6 +154,10 @@ describe('the shooting range', () => {
     const pastAll = fire(RANGE_X + 1.5, 0.1); // it drops about 11 m over the 100 m
     expect(pastAll.kind).toBe('wall');
     expect(pastAll.z).toBeCloseTo(BANK.z - BANK.depthM / 2, 1);
+    // from behind the pavilion, at its back wall
+    const shed = fireFrom(PAVILION.x, PAVILION.z - 6, 0, Math.PI);
+    expect(shed.kind).toBe('wall');
+    expect(shed.z).toBeCloseTo(PAVILION.z - PAVILION.depthM / 2 - PAVILION.wallM / 2, 1);
     w.dispose();
   });
 });

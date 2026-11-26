@@ -76,9 +76,9 @@ And by eye: does a mailbox you drive into look and feel right? Screenshots or a 
 
 ## The shooting range
 
-A place to try the weapons on targets that fall (#545), with `?lab=rapier,pickadoll`: adding `&at=624,-1,3.1416` starts you on its firing line, in the 10 m lane, looking down the range. It stands south of Stockarydsvägen, east of the village, after the range Vrigstads skytteförening built opposite Hoåsen in 1949 (`src/game/sim/shooting-range.ts`, drawn by `src/game/render/shooting-range.ts`).
+A place to try the weapons on targets that fall (#545), with `?lab=rapier,pickadoll`: adding `&at=622,-1,3.1416` starts you on its firing line, in the 10 m lane, looking down the range. It stands south of Stockarydsvägen, east of the village, after the range Vrigstads skytteförening built opposite Hoåsen in 1949 (`src/game/sim/shooting-range.ts`, drawn by `src/game/render/shooting-range.ts`).
 
-- **Seven lanes, 3 m apart, one target each**, at 25, 10, 50, 15, 100, 35 and 75 m from west to east. A target is a thin post with a 0.7 m board on top, a body in Rapier's world from the start: a hit knocks it over, and it stands up again 4 s later, however near you are (`tune set physics.target-reset-time 10`).
+- **Seven lanes, 4 m apart, one target each**, at 50, 10, 35, 100, 25, 75 and 15 m from west to east: from any lane, no board hides another. A target is a thin post with a 0.7 m board on top, a body in Rapier's world from the start: a hit knocks it over, and it stands up again 4 s later, once nothing stands on its spot (`tune set physics.target-reset-time 10`).
 - **The earth bank** behind the targets and **the pavilion** at the west end of the firing line are fixed boxes in Rapier's world, so a shot stops at them. The game's own collisions don't know them: you walk through the pavilion.
 - **Not yet:** the timed programs, a score, and the bank and the pavilion as things you bump into.
 

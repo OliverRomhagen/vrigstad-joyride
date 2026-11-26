@@ -4,7 +4,7 @@
 import * as THREE from 'three';
 import type { BoxPart } from '../box-part';
 import type { PhysicsWorld, PropPose } from '../sim/physics-world';
-import { BANK, PAVILION, RANGE_X, RANGE_Z, TARGET } from '../sim/shooting-range';
+import { BANK, LANE_M, PAVILION, RANGE_X, RANGE_Z, roofBox, TARGET, TARGET_DISTANCES_M } from '../sim/shooting-range';
 
 const FALU = '#8b2a1e', // the red of a Swedish timbered house
   TRIM = '#ece5d3',
@@ -23,7 +23,7 @@ export interface ShootingRangeMeshDeps {
   groundAt(x: number, z: number): number;
   boxGeo(parts: BoxPart[]): THREE.BufferGeometry;
   paintMat: THREE.Material;
-  world: Pick<PhysicsWorld, 'propPose' | 'isLoose'>;
+  world: Pick<PhysicsWorld, 'propPose' | 'isLoose' | 'isAwake'>;
   /** the targets' indices in the physics world's props, in the order of rangeTargets() */
   targets: readonly number[];
 }
@@ -31,8 +31,8 @@ export interface ShootingRangeMeshDeps {
 export class ShootingRangeMeshes {
   private readonly g: ShootingRangeMeshDeps;
   private readonly targetMeshes: THREE.Mesh[] = [];
-  /** whether each target was lying or in the air last frame: one standing still needs no update */
-  private readonly moving: boolean[] = [];
+  /** whether each target was loose when it was last drawn, null before the first time */
+  private readonly drawnLoose: (boolean | null)[] = [];
 
   constructor(g: ShootingRangeMeshDeps) {
     this.g = g;
@@ -45,28 +45,36 @@ export class ShootingRangeMeshes {
       scene.add(m);
     };
     place(pavilion(), PAVILION.x, PAVILION.z, true);
-    // the bank, sunk half a metre so it meets the ground on a slope
-    place([[BANK.widthM, BANK.heightM + 0.5, BANK.depthM, 0, BANK.heightM / 2 - 0.25, 0, EARTH]], BANK.x, BANK.z, true);
-    // the firing line, in pieces that follow the ground: one strip across 22 m would sink into a slope at one end
-    for (let x = RANGE_X - 10; x <= RANGE_X + 10; x += 2)
-      place([[2, 0.04, 0.12, 0, 0.02, 0, WHITE]], x, RANGE_Z, false);
+    const b = BANK;
+    place([[b.widthM, b.heightM + b.sinkM, b.depthM, 0, (b.heightM - b.sinkM) / 2, 0, EARTH]], b.x, b.z, true);
+    // the firing line, as one mesh in 2 m pieces that follow the ground: one strip across the lanes would sink into a
+    // slope at one end
+    const lineY = groundAt(RANGE_X, RANGE_Z),
+      lineHalf = ((TARGET_DISTANCES_M.length - 1) / 2) * LANE_M + 1,
+      line: BoxPart[] = [];
+    for (let dx = -lineHalf + 1; dx < lineHalf; dx += 2)
+      line.push([2, 0.04, 0.12, dx, groundAt(RANGE_X + dx, RANGE_Z) - lineY + 0.02, 0, WHITE]);
+    place(line, RANGE_X, RANGE_Z, false);
     const geo = boxGeo(target());
     for (const _ of g.targets) {
       const m = new THREE.Mesh(geo, paintMat);
       m.castShadow = m.receiveShadow = true;
       scene.add(m);
       this.targetMeshes.push(m);
-      this.moving.push(true); // placed on the first update
+      this.drawnLoose.push(null);
     }
   }
 
-  /** Puts each target's model where its body is: standing, falling, lying or back on its stand. */
+  /**
+   * Puts each target's model where its body is, while it falls or settles, and once when it's knocked or back on its
+   * stand. One that stands, or lies still, keeps its place.
+   */
   update() {
     const { world, targets } = this.g;
     for (let k = 0; k < targets.length; k++) {
       const loose = world.isLoose(targets[k]);
-      if (!loose && !this.moving[k]) continue;
-      this.moving[k] = loose; // once back on its stand, one more update puts it there
+      if (loose === this.drawnLoose[k] && !world.isAwake(targets[k])) continue;
+      this.drawnLoose[k] = loose;
       const p = world.propPose(targets[k], _pose),
         m = this.targetMeshes[k];
       m.position.set(p.x, p.y, p.z);
@@ -106,7 +114,8 @@ function pavilion(): BoxPart[] {
     w = p.widthM,
     d = p.depthM,
     h = p.heightM,
-    wall = 0.15;
+    wall = p.wallM,
+    roof = roofBox();
   return [
     [w, 0.15, d, 0, 0.075, 0, BOARDS],
     [w, h, wall, 0, h / 2, -d / 2, FALU],
@@ -117,7 +126,7 @@ function pavilion(): BoxPart[] {
     [0.2, h, 0.2, w / 2, h / 2, d / 2, TRIM],
     [0.2, h, 0.2, -w / 2, h / 2, -d / 2, TRIM],
     [0.2, h, 0.2, w / 2, h / 2, -d / 2, TRIM],
-    [w + 0.8, 0.2, d + 1.2, 0, h + 0.1, 0.3, ROOF],
+    [roof.widthM, roof.thickM, roof.depthM, 0, roof.y, roof.z, ROOF],
     // the shooting bench along the open side, on two legs
     [w - 1, 0.08, 0.6, 0, 0.85, d / 2 - 0.4, BOARDS],
     [0.1, 0.8, 0.5, -w / 2 + 1, 0.4, d / 2 - 0.4, BOARDS],
