@@ -61,7 +61,7 @@ Immutable sources in `https://github.com/AxelTidehorn/vrigstad-joyride/tree/<SHA
 | --- | --- | --- | --- |
 | Volvo 240 | 79779a5f4b9a17d29ede88df67d2205d7b8366b2 | experiments/volvo240/refinement/model.blend | experiments/volvo240/model.py, refine_forms.py, round2.py, round3.py |
 | Saab 900 | 6f8cbaf874a2c60823047cd7ded66e877aa07c7d | experiments/saab900/build/model.blend | experiments/saab900/model.py, round2.py, round3.py |
-| Both XC70s | same Round 2 revision | experiments/xc70p2/build/model.blend | experiments/xc70p2/model.py, round2.py, variants.py |
+| Both XC70s | ff6a0f187add7bd9b7ba052f28bd0d67e534c33a | experiments/xc70p2/build/model.blend | experiments/xc70p2/model.py, round2.py, variants.py |
 | Impala | 46fa31e9094ab6e1e30f2b542de83383f85fb7c7 | experiments/impala1970/build/model.blend | experiments/impala1970/model.py |
 | Micra | 5c84a173f3bbd8206f067ec18594cecdaf5476b5 | experiments/micra1995/build/model.blend | experiments/micra1995/model.py |
 | Duett | 2be04e605ad20f9ffc5dbe097a493bd6a3991e6f | experiments/duettp210/build/model.blend | experiments/duettp210/model.py |
@@ -106,7 +106,7 @@ they are: the body (painted), `glass_*` (cracked), `body_*` (painted with the bo
 the police beacons `lamp_blue_module*` and `lamp_police_grille*` (flashing), the
 wheels and everything under them (spinning), and any part with attributes other than
 position and normal. Merged parts are named `parts_<material>`. A model with nothing
-left to merge, such as the Volvo 240 (merged in its master), passes through
+left to merge, such as the Volvo 240 and Saab 900 (merged in their masters), passes through
 unchanged. A Vitest asset test fails if a delivered model's body carries two static
 parts of one material.
 
@@ -129,7 +129,11 @@ Normal startup keeps the procedural fallback if decoding fails.
 Total: 3,316,012 to 1,606,048 bytes (51.6% smaller). Draw calls per model are
 its meshes as three.js draws them, wheels included. Before the merge they were
 31 (the 240's round 2), 39 (the Saab's round 2), 57, 65, 27, 24 and 25, in the
-table's order: 128 fewer for all seven.
+table's order: 128 fewer for all seven. The Saab source README counts 13 unique
+meshes as draw calls; the wheel nodes reuse meshes, so three.js draws 21. Its
+4.688 m delivery length includes the satin-alloy trim at z ±2.344 m; the source
+README's 4.66 m nose measurement uses a different extent. The registry uses the
+full delivered length for the body hitbox.
 
 Local original-vs-decoded comparisons verified all named model nodes, triangle
 positions to 0.01 mm, material colours/emissive/roughness/metalness/opacity within
@@ -169,9 +173,11 @@ The controller is a class, following the current lifecycle-owner convention.
 Visible model attribution and `media/vehicles/NOTICE.txt` accompany the production
 and preview assets.
 
-Geometric parsing is not reference approval. Round 2 retains the existing Saab
-silhouette comparison against an uncertain brochure proxy (recorded IoU ~0.9154),
-protected Volvo arch checks and shared XC70 export/pose checks. Impala and Micra
+Geometric parsing is not reference approval. The Saab round 3 was checked against
+the brochure side drawing scaled to its 2.517 m wheelbase and the photographs listed
+in the pinned source, as recorded in `experiments/saab900/round3/README.md`. The
+round-2 silhouette IoU does not verify the replacement geometry. Protected Volvo
+arch checks and shared XC70 export/pose checks remain in their pinned sources. Impala and Micra
 sources retain their source-specific reference/refinement evidence but explicitly
 say human approval is pending. Duett final-pass measurements use wheel-anchored
 photographs and perspective estimates, not a completed full silhouette IoU or
@@ -180,6 +186,6 @@ available in the pinned trees. This integration makes no new real-world visual
 approval claim. Physical mobile/Safari performance, final silhouette/livery
 approval and traffic placement decisions remain for human review.
 
-Collision envelopes remain those of existing archetypes, not model-specific
-body geometry. Large models can therefore visually overhang their collision
-shape. Physics/collision calibration is a separate gameplay decision.
+The body hitbox reads the delivered length and specification width from the
+vehicle registry; it is a box rather than an exact match to the body surface.
+Physics/collision calibration remains a separate gameplay decision.
