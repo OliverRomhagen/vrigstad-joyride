@@ -17,17 +17,22 @@ const counterClockwise = <T>(points: T[], winding: number) => (winding > 0 ? [..
 
 /**
  * Emits the shell's triangles, three vertices each: walls, then the roof, then the spire. Front faces point out of the
- * building, whichever way round the footprint is listed: an inverted-hull outline needs that (#206).
+ * building, whichever way round the footprint is listed: an inverted-hull outline needs that (#206). The walls stop
+ * `wallDrop` m below the roof's edge.
  */
-function eachShellVertex(shape: BuildingShape, emit: (x: number, y: number, z: number, surface: Surface) => void) {
+function eachShellVertex(
+  shape: BuildingShape,
+  emit: (x: number, y: number, z: number, surface: Surface) => void,
+  wallDrop = 0,
+) {
   const { ring, yAt, sides, outline, base, top, winding } = shape;
   const corners = counterClockwise(ring, winding);
   const m = corners.length;
   for (let i = 0; i < m; i++) {
     const start = corners[i];
     const end = corners[(i + 1) % m];
-    const startTop = yAt(start);
-    const endTop = yAt(end);
+    const startTop = yAt(start) - wallDrop;
+    const endTop = yAt(end) - wallDrop;
     emit(start.x, base, start.z, 'wallFoot');
     emit(end.x, base, end.z, 'wallFoot');
     emit(end.x, endTop, end.z, 'wallTop');
@@ -96,6 +101,11 @@ export interface PaintedShellOptions {
   colours: (shape: BuildingShape) => ShellColours | null;
   /** called after each building's shell, to add triangles to the same mesh (a chimney) or build details of its own */
   extra?: (shape: BuildingShape, emit: EmitVertex) => void;
+  /**
+   * how far below the roof's edge a building's walls stop (m), for a caller whose `extra` closes the gap with eaves of its
+   * own: the roof then meets only the eave along its edge, not the wall too, so no crease is left under the eave's top
+   */
+  wallDrop?: (shape: BuildingShape) => number;
 }
 
 /**
@@ -108,7 +118,7 @@ export class PaintedBuildingShells {
   constructor(
     data: WorldData,
     heightfield: Pick<Heightfield, 'heightAt'>,
-    { material, colours, extra }: PaintedShellOptions,
+    { material, colours, extra, wallDrop }: PaintedShellOptions,
   ) {
     const positions: number[] = [];
     const vertexColours: number[] = [];
@@ -119,9 +129,13 @@ export class PaintedBuildingShells {
     forEachBuilding(data, heightfield, shape => {
       const paint = colours(shape);
       if (!paint) return;
-      eachShellVertex(shape, (x, y, z, surface) => {
-        emit(x, y, z, surface === 'roof' ? paint.roof : surface === 'wallTop' ? paint.wall : paint.wallFoot);
-      });
+      eachShellVertex(
+        shape,
+        (x, y, z, surface) => {
+          emit(x, y, z, surface === 'roof' ? paint.roof : surface === 'wallTop' ? paint.wall : paint.wallFoot);
+        },
+        wallDrop?.(shape),
+      );
       extra?.(shape, emit);
     });
     this.mesh = shellMesh(positions, material, vertexColours);

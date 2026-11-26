@@ -34,12 +34,13 @@ const PAGE_ZOOM_CHARS = /^[-+=]$/,
 
 // The game's own keys besides KEYMAP's, and what each one calls in InputDeps. A held key doesn't press again, but R
 // does: holding it respawns again and again. A module's control can't take these.
-const GAME_KEYS: Record<string, 'action' | 'respawn' | 'rain'> = {
+const GAME_KEYS: Record<string, 'action' | 'respawn' | 'rain' | 'toggleView'> = {
   KeyE: 'action',
   KeyF: 'action',
   Enter: 'action',
   KeyR: 'respawn',
   KeyL: 'rain',
+  KeyV: 'toggleView',
 };
 // Other keys a module's control can't take: the menus' (menu.ts) and the dev console's (devconsole.ts), which opens on
 // the character § or `, so on another layout it can be another key too.
@@ -97,6 +98,7 @@ export interface InputDeps {
   action(): void; // E, F, Enter or the touch action button
   respawn(): void; // R
   rain(): void; // L: låt det regna
+  toggleView(): void; // V, or the touch View button: the driver's view in a car, where the lab has it (#473)
   jump(): void; // a fresh Space / touch Brake press; main.ts decides whether a jump can start
   look(dx: number, dy: number): void; // turns the camera by this many pixels: a drag's own, or a locked mouse's scaled by LOCK_K
   zoom(factor: number): void; // multiplies the camera distance: above 1 is further out
@@ -369,6 +371,7 @@ export class Input {
     );
     $('p-brake').addEventListener('pointerdown', () => this.g.jump());
     $('p-act').addEventListener('click', () => this.g.action());
+    $('p-view').addEventListener('click', () => this.g.toggleView());
     const showTouch = () => {
       $('joy').hidden = false;
       $('pad').hidden = false;
