@@ -211,10 +211,16 @@ function drawer(dialog: HTMLDialogElement) {
   .scrolled .brand b {
     color: var(--road);
     background: var(--cream);
-    /* its line turns over with it: dark on the cream */
-    box-shadow:
-      inset 0 0 0 2px var(--cream),
-      inset 0 0 0 3.5px var(--road);
+  }
+  /* its line turns over with it, dark on the cream, and so does the one between the halves, which white would lose there */
+  .scrolled .brand b::after {
+    border-color: var(--road);
+  }
+  .scrolled .brand span::after {
+    border-right-color: var(--road);
+  }
+  .brand :is(span, b)::after {
+    transition: border-color 200ms ease-out;
   }
 }
 /* the phone's menu button; the sidebar is always there on a wider screen */
@@ -255,9 +261,28 @@ function drawer(dialog: HTMLDialogElement) {
   color: #fff;
   background: var(--sign-blue);
   border-radius: var(--round) 0 0 var(--round);
-  box-shadow:
-    inset 0 0 0 2px var(--sign-blue),
-    inset 0 0 0 3.5px #fff;
+}
+/* The tag's white line, a little inside its edge. The sign's runs all the way round it, down the side where the halves
+   meet too; the "wiki" half's has no side there and joins onto it, so one line stands between them, not two. */
+.brand :is(span, b) {
+  position: relative;
+}
+.brand :is(span, b)::after {
+  content: "";
+  position: absolute;
+  inset: 2px;
+  border: 1.5px solid #fff;
+  border-radius: 3px;
+  pointer-events: none;
+}
+.brand span::after {
+  right: 0;
+  border-radius: 3px 0 0 3px;
+}
+.brand b::after {
+  left: 0;
+  border-left: 0;
+  border-radius: 0 3px 3px 0;
 }
 /* "wiki" on the road's dark: cream straight on the orange sky reads at only 2.2:1 */
 .brand b {
@@ -266,10 +291,6 @@ function drawer(dialog: HTMLDialogElement) {
   background: var(--road);
   padding: 2px 10px 1px;
   border-radius: 0 var(--round) var(--round) 0;
-  /* the sign's white line runs on round this half too, so the tag has one outline */
-  box-shadow:
-    inset 0 0 0 2px var(--road),
-    inset 0 0 0 3.5px #fff;
 }
 /* a control with an icon beside its words: the two on one line, their middles level */
 .menu,
