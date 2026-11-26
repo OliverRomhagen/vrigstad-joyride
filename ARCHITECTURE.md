@@ -80,6 +80,15 @@ data/vrigstad.json ──► water-shapes.ts: WaterBodies (levels, widths, banks
 - **Over the channels:** each end rests on an abutment (`groundAt`, the cut ground) from the deck's underside down into the bank; the deck's underside is darkened. Both pages leave bridge roads out of their ground paint, so the channel bed shows under the deck. The water stays at least 0.45 m under every structure on today's data (`bridge-channels-real.test.ts`).
 - Dimensions, materials, heights and railings are inferred (OSM maps none of them here); `state().bridges` lists each bridge's archetype, width and evidence.
 
+### The wiki (`wiki/`)
+
+- A SvelteKit app, with its own `package.json`, built after the game into `dist/wiki/`, so one deploy serves both. Its pages are the Markdown files in `docs/lore/` (mdsvex), each checked against its kind by `wiki/src/lib/lore-index.ts` when the index is built. Some of what it shows is the game's own code: a character or an animal in 3D is built by the game's builders (`platPelle()` in `render/skroten.ts`, `catMesh()` in `cats.ts`), and the map page embeds `map.html?focus=x,z&embed`.
+- **Prerendered in full, not only server-rendered.** Every route is written to static HTML at build time (`prerender = true` in the root layout, `adapter-static`), and nothing runs on a server: GitHub Pages serves files. A page's text, links and frame are in its HTML before any script runs, so it reads without JavaScript and search engines see it. The 3D scenes start in the browser, from attachments. The marketing site, which will be another part of the same site, follows the same rule. So a route that needs a server, or a layout that renders differently in the browser than in the prerender, is a bug: decide what to draw from the route (`page.route.id`), not by comparing `page.url.pathname` with `resolve()`, which gives relative paths (`./map`) while prerendering, so the two never match there.
+- **A scene is a class in a `.ts` file, not code in a component.** `wiki/src/lib/game-look.ts` has the `Stage` every 3D scene stands on (the game's renderer settings and lights, a camera you drag, the size, one loop, and `dispose`); `startPreview` sets one up for an infobox's model, and its component, `NpcPreview.svelte`, only starts it from an attachment. A scene honours `prefers-reduced-motion` through `Stage.still`: nothing turns by itself then. A scene inside a page's text lets a finger scroll the page past it.
+- **Styles live with their component**, in its `<style>`, which Svelte keeps to that component. `wiki/src/lib/wiki.css` holds only what every page shares: the colour and font tokens, the page's ground, headings, prose and tables, and a few classes more than one component uses. Text sizes are in `rem`. A kind of page (`place`, `character`, …) is defined once, in `KINDS` in `lore-index.ts`, with a branch for its infobox in `kinds/Infobox.svelte`.
+- Without scripts a page still reads, and a phone shows the sidebar in the page in place of the Menu button; the 3D scenes and the map need scripts.
+- It reads the game's code through aliases (`#game/`, `#world/`, `#data/`, `#fonts/` in `wiki/vite.config.ts` and `wiki/tsconfig.json`), and Fallow's `wiki` zone lets it import the world, the rules, the rendering and the fonts, never the game's page code. The world, rule, rendering and font code can't import the wiki; page code in `src/` has no rule, so it isn't checked there, and doesn't import it either.
+
 This was the right shape for a prototype. It stops scaling once several people add features at the same time, which is happening now.
 
 ## Target
@@ -163,6 +172,7 @@ This is a direction, not a rewrite: code moves when it is touched for another re
 | Unit tests | Vitest | #52 |
 | Smoke tests | Playwright | #43 |
 | Lint/format | Biome | #46 |
+| Wiki | SvelteKit, mdsvex, fully prerendered | `wiki/`; #375 |
 | Deploy | GitHub Actions ──► Pages | #45 |
 | Data pipeline | Python stdlib | unchanged; #60 for later options |
 
