@@ -322,7 +322,12 @@ export function addBuildings(
           forwards = (k: number) => len + mitre(prev, 1, k) + mitre(next, -1, k) > 0;
         const nwin = Math.round(len / WIN_W); // whole windows only: the tile stretches a little to fit the wall
         if (len >= 1.6 && nwin > 0) {
-          quad(wp, ...o(0.04, false), yb, yt, yb, yt);
+          // from d to a where the outline runs the other way, so its front faces out, as the shell's walls do: the shadow's
+          // normalBias moves the lookup along the normal, into the wall's own shadow when it points in. The tile is
+          // symmetric, so it needs no mirroring
+          const [s1x, s1z, s2x, s2z] = o(0.04, false);
+          if (wind > 0) quad(wp, s2x, s2z, s1x, s1z, yb, yt, yb, yt);
+          else quad(wp, s1x, s1z, s2x, s2z, yb, yt, yb, yt);
           wu.push(0, 0, nwin, 0, nwin, rows, 0, 0, nwin, rows, 0, rows);
         }
         const ya = yAt(a),

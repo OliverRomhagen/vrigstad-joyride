@@ -134,4 +134,30 @@ describe('house trim', () => {
     }
     expect(closed).toBeGreaterThan(0);
   });
+
+  it('faces the windows out of the house, whichever way the outline runs', () => {
+    // the window skin: the mesh with a texture, 4 cm out from the walls of a 10 m square around (5, 5)
+    for (const b of [pitched, reversed(pitched)]) {
+      const world = makeWorld({ b: [b] }),
+        scene = new THREE.Scene();
+      addBuildings(scene, world, new Heightfield(world), { rnd: () => 0.5, pick: a => a[0], maxAnisotropy: 1 });
+      const skin = scene.children.find(
+          o => o instanceof THREE.Mesh && (o.material as THREE.MeshLambertMaterial).map,
+        ) as THREE.Mesh,
+        pos = skin.geometry.getAttribute('position'),
+        [p, q, r, n] = [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()];
+      expect(pos.count).toBeGreaterThan(0);
+      for (let i = 0; i < pos.count; i += 3) {
+        THREE.Triangle.getNormal(
+          p.fromBufferAttribute(pos, i),
+          q.fromBufferAttribute(pos, i + 1),
+          r.fromBufferAttribute(pos, i + 2),
+          n,
+        );
+        const cx = (p.x + q.x + r.x) / 3 - 5,
+          cz = (p.z + q.z + r.z) / 3 - 5;
+        expect(n.x * cx + n.z * cz, `triangle ${i / 3}`).toBeGreaterThan(0);
+      }
+    }
+  });
 });
