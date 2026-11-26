@@ -313,7 +313,8 @@ export interface ShotWorld {
   cars: readonly CarBody[];
 }
 
-export type HitKind = 'ground' | 'wall' | 'person' | 'car';
+export const HitKind = { GROUND: 'ground', WALL: 'wall', PERSON: 'person', CAR: 'car' } as const;
+export type HitKind = (typeof HitKind)[keyof typeof HitKind];
 
 /** Where a shot landed, on what, and how it was flying. `n` is the surface's normal; `d` the way the shot flew along the ground. */
 export interface ShotHit {
@@ -369,20 +370,21 @@ export function pangCar(
 }
 
 /** What a step did to a shot (stepShot). */
-export type ShotStep = 'flying' | 'hit' | 'gone';
+export const ShotStep = { FLYING: 'flying', HIT: 'hit', GONE: 'gone' } as const;
+export type ShotStep = (typeof ShotStep)[keyof typeof ShotStep];
 
 /**
- * Moves a shot on by dt seconds: 'hit' when it hit something or went off, which `out` then describes, 'gone' when it
- * ran out of range, and 'flying' while it still flies, or lies until its fuse runs out.
+ * Moves a shot on by dt seconds: HIT when it hit something or went off, which `out` then describes, GONE when it
+ * ran out of range, and FLYING while it still flies, or lies until its fuse runs out.
  */
 export function stepShot(s: Shot, dt: number, world: ShotWorld, out: ShotHit): ShotStep {
   const fuseS = WEAPONS[s.weapon].fuseS;
   out.burst = false;
   if (s.lying) {
     s.lifeS += dt;
-    if (s.lifeS < fuseS) return 'flying';
+    if (s.lifeS < fuseS) return ShotStep.FLYING;
     burst(s, world, out);
-    return 'hit';
+    return ShotStep.HIT;
   }
   const speed = Math.hypot(s.vx, s.vy, s.vz),
     steps = Math.max(1, Math.ceil((speed * dt) / STEP_M)),
@@ -391,7 +393,7 @@ export function stepShot(s: Shot, dt: number, world: ShotWorld, out: ShotHit): S
     s.lifeS += h;
     if (fuseS && s.lifeS >= fuseS) {
       burst(s, world, out);
-      return 'hit';
+      return ShotStep.HIT;
     }
     s.vy -= GRAVITY_MS2 * h;
     s.x += s.vx * h;
@@ -402,7 +404,7 @@ export function stepShot(s: Shot, dt: number, world: ShotWorld, out: ShotHit): S
     if (hit) {
       hit.bounced = bounce(s, hit);
       // a shot with a fuse that is out of bounces or speed lies where it stopped until the fuse runs out
-      if (!hit.bounced && fuseS && hit.kind !== 'person') {
+      if (!hit.bounced && fuseS && hit.kind !== HitKind.PERSON) {
         s.x = hit.x + hit.nx * BOUNCE_CLEAR_M;
         s.z = hit.z + hit.nz * BOUNCE_CLEAR_M;
         s.y = world.groundAt(s.x, s.z);
@@ -410,16 +412,16 @@ export function stepShot(s: Shot, dt: number, world: ShotWorld, out: ShotHit): S
         s.lying = true;
         hit.bounced = true;
       }
-      return 'hit';
+      return ShotStep.HIT;
     }
-    if (s.ageS > RANGE_S) return 'gone';
+    if (s.ageS > RANGE_S) return ShotStep.GONE;
   }
-  return 'flying';
+  return ShotStep.FLYING;
 }
 
 // the fuse ran out: it goes off where it is, and what it leaves lands on the ground below
 function burst(s: Shot, world: ShotWorld, out: ShotHit) {
-  surface(out, 'ground', -1, 0, 1, 0);
+  surface(out, HitKind.GROUND, -1, 0, 1, 0);
   out.x = s.x;
   out.y = world.groundAt(s.x, s.z);
   out.z = s.z;
@@ -432,7 +434,7 @@ function burst(s: Shot, world: ShotWorld, out: ShotHit) {
 // off the ground, a wall or a car, if its weapon's shots bounce and it has bounces and speed left: the shot is turned
 // back from the surface and flies on from it. People stop a shot.
 function bounce(s: Shot, hit: ShotHit): boolean {
-  if (hit.kind === 'person' || s.bounced >= WEAPONS[s.weapon].bounces) return false;
+  if (hit.kind === HitKind.PERSON || s.bounced >= WEAPONS[s.weapon].bounces) return false;
   const into = s.vx * hit.nx + s.vy * hit.ny + s.vz * hit.nz;
   if (into >= 0) return false; // already leaving the surface
   const keep = WEAPONS[s.weapon].thrown ? THROWN_BOUNCE_KEEP : BOUNCE_KEEP;
@@ -470,7 +472,7 @@ function hitAt(
       p = world.people[i];
     if (p.down || up > PERSON_TALL_M * p.scale) continue;
     if (Math.hypot(p.x - s.x, p.z - s.z) > PERSON_RADIUS_M * p.scale) continue;
-    return surface(out, 'person', i, -out.dx, 0, -out.dz);
+    return surface(out, HitKind.PERSON, i, -out.dx, 0, -out.dz);
   }
   if (up < CAR_TALL_M)
     for (let k = 0, n = cars ? cars.length : world.cars.length; k < n; k++) {
@@ -487,7 +489,7 @@ function hitAt(
         nz = d > 0.01 ? ez / d : -out.dz;
       out.x = _onCar.x + nx * bodyRadius(c);
       out.z = _onCar.z + nz * bodyRadius(c);
-      return surface(out, 'car', i, nx, 0, nz);
+      return surface(out, HitKind.CAR, i, nx, 0, nz);
     }
   if (up <= 0) {
     // back along its path to where it met the ground
@@ -500,7 +502,7 @@ function hitAt(
       sx = world.groundAt(out.x - d, out.z) - world.groundAt(out.x + d, out.z),
       sz = world.groundAt(out.x, out.z - d) - world.groundAt(out.x, out.z + d),
       len = Math.hypot(sx, 2 * d, sz);
-    return surface(out, 'ground', -1, sx / len, (2 * d) / len, sz / len);
+    return surface(out, HitKind.GROUND, -1, sx / len, (2 * d) / len, sz / len);
   }
   if (up < WALL_MAX_M) {
     _probe.x = s.x;
@@ -515,7 +517,7 @@ function hitAt(
       // on the wall's face: the probe ends its own radius outside it
       out.x = _probe.x - nx * WALL_PROBE_M;
       out.z = _probe.z - nz * WALL_PROBE_M;
-      return surface(out, 'wall', -1, nx, 0, nz);
+      return surface(out, HitKind.WALL, -1, nx, 0, nz);
     }
   }
   return null;
@@ -531,7 +533,7 @@ function surface(out: ShotHit, kind: HitKind, target: number, nx: number, ny: nu
 }
 
 export const newHit = (): ShotHit => ({
-  kind: 'ground',
+  kind: HitKind.GROUND,
   x: 0,
   y: 0,
   z: 0,
@@ -561,7 +563,7 @@ export function flightPath(s: Shot, world: ShotWorld, stepS: number, max: number
   while (n < max - 1) {
     put(s.x, s.y, s.z);
     const step = stepShot(s, stepS, world, end);
-    if (step === 'gone') return n;
+    if (step === ShotStep.GONE) return n;
     if (s.lying) {
       // where a shot with a fuse comes to rest is where it will go off
       end.x = s.x;
@@ -569,7 +571,7 @@ export function flightPath(s: Shot, world: ShotWorld, stepS: number, max: number
       end.z = s.z;
       break;
     }
-    if (step === 'hit' && !end.bounced) break;
+    if (step === ShotStep.HIT && !end.bounced) break;
   }
   put(end.x, end.y, end.z);
   return n;
@@ -652,7 +654,7 @@ export function sight(
     s.z = z + dz * d;
     if (hitAt(s, world, out, _nearPeople, _nearCars)) return true;
   }
-  surface(out, 'ground', -1, 0, 1, 0);
+  surface(out, HitKind.GROUND, -1, 0, 1, 0);
   out.x = x + dx * toM;
   out.y = y + dy * toM;
   out.z = z + dz * toM;

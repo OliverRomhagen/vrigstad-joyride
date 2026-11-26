@@ -20,12 +20,14 @@ import {
   flightPath,
   HIT_FLAVOURS,
   type HitFlavour,
+  HitKind,
   MUZZLE_M,
   newHit,
   pangCar,
   SHOTS_MAX,
   type Shot,
   type ShotHit,
+  ShotStep,
   type ShotWorld,
   sight,
   stepShot,
@@ -377,7 +379,7 @@ export class Pickadoll {
     let tx = this.aimHit.x,
       ty = this.aimHit.y,
       tz = this.aimHit.z,
-      onTarget = seen && (this.aimHit.kind === 'person' || this.aimHit.kind === 'car');
+      onTarget = seen && (this.aimHit.kind === HitKind.PERSON || this.aimHit.kind === HitKind.CAR);
     // not through a scope: its view is far narrower than the cone, and the shot would go to someone you can't see
     if (coarse && !onTarget && !this.isScoped) {
       const t = assistTarget(
@@ -456,8 +458,8 @@ export class Pickadoll {
       const s = this.shots[i],
         { x, y, z } = s, // where it was when the frame began
         step = stepShot(s, dt, this.world, this.hit);
-      if (step === 'flying') continue;
-      if (step === 'hit') {
+      if (step === ShotStep.FLYING) continue;
+      if (step === ShotStep.HIT) {
         const hit = this.hit;
         this.land(s, hit);
         if (hit.bounced) continue; // it flies on
@@ -605,8 +607,8 @@ export class Pickadoll {
       fx.drawSpikes(this.spikes);
       return;
     }
-    const person = hit.kind === 'person' ? crowd.npcs[hit.target] : null,
-      car = hit.kind === 'car' ? this.world.cars[hit.target] : null;
+    const person = hit.kind === HitKind.PERSON ? crowd.npcs[hit.target] : null,
+      car = hit.kind === HitKind.CAR ? this.world.cars[hit.target] : null;
     if (person) this.hitPerson(person, s.flavour, hit.dx, hit.dz, hit.y, weapon.power, weapon.splatM, colour, s.seed);
     else if (car) {
       if (s.flavour === 'pang') this.shoveCar(car, hit.dx, hit.dz, weapon.power);
@@ -631,7 +633,7 @@ export class Pickadoll {
           x = hit.x + Math.cos(a) * reach,
           z = hit.z + Math.sin(a) * reach;
         fx.splat(
-          { kind: 'ground', x, y: this.g.world.groundAt(x, z), z, nx: 0, ny: 1, nz: 0 },
+          { kind: HitKind.GROUND, x, y: this.g.world.groundAt(x, z), z, nx: 0, ny: 1, nz: 0 },
           weapon.splatM * (0.2 + rnd() * 0.3),
           colour,
           rnd(),
