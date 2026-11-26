@@ -349,9 +349,8 @@ if (query.has('embed') && !/^(0|false)$/i.test(query.get('embed'))) {
   for (const el of [document.getElementById('title'), document.getElementById('legend'), document.querySelector('#tools .btns')]) el.hidden = true;
   canvas.setAttribute('aria-label', '3D terrain model of Vrigstad. Drag or turn two fingers to rotate; open it full screen to zoom.');
   controls.enableZoom = false; controls.enablePan = false;
-  // with zoom off, OrbitControls leaves the wheel alone; a trackpad pinch comes as ctrl+wheel, and would zoom the host page
-  canvas.addEventListener('wheel', e => { if (e.ctrlKey) e.preventDefault(); }, { passive: false });
-  canvas.addEventListener('gesturestart', e => e.preventDefault());   // Safari's pinch, which comes as gestures instead
+  // with zoom off, OrbitControls leaves the wheel alone, ctrl+wheel and a trackpad pinch too: they zoom the page, as over
+  // any picture on it, since ctrl+wheel is also how people enlarge a page's text. On a touch screen two fingers turn the map
   controls.touches = { ONE: null, TWO: THREE.TOUCH.DOLLY_ROTATE };
   canvas.style.touchAction = 'pan-y';
 }
