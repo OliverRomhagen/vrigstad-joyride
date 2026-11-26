@@ -23,7 +23,7 @@ export interface ShootingRangeMeshDeps {
   groundAt(x: number, z: number): number;
   boxGeo(parts: BoxPart[]): THREE.BufferGeometry;
   paintMat: THREE.Material;
-  world: Pick<PhysicsWorld, 'propPose' | 'isLoose' | 'isAwake'>;
+  world: Pick<PhysicsWorld, 'drawnPose' | 'isLoose' | 'isAwake'>;
   /** the targets' indices in the physics world's props, in the order of rangeTargets() */
   targets: readonly number[];
 }
@@ -75,7 +75,7 @@ export class ShootingRangeMeshes {
       const loose = world.isLoose(targets[k]);
       if (loose === this.drawnLoose[k] && !world.isAwake(targets[k])) continue;
       this.drawnLoose[k] = loose;
-      const p = world.propPose(targets[k], _pose),
+      const p = world.drawnPose(targets[k], _pose),
         m = this.targetMeshes[k];
       m.position.set(p.x, p.y, p.z);
       m.quaternion.set(p.qx, p.qy, p.qz, p.qw);

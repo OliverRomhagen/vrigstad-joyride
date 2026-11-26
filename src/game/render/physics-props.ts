@@ -12,7 +12,7 @@ const _pose: PropPose = { x: 0, y: 0, z: 0, qx: 0, qy: 0, qz: 0, qw: 1 };
 export interface PhysicsPropsDeps {
   scene: THREE.Scene;
   furniture: Pick<StreetFurniture, 'detach' | 'reattach'>;
-  world: Pick<PhysicsWorld, 'loosened' | 'isLoose' | 'isAwake' | 'propPose'>;
+  world: Pick<PhysicsWorld, 'loosened' | 'isLoose' | 'isAwake' | 'drawnPose'>;
   /** the placement behind each of the world's props, in the same order */
   placements: readonly FurniturePlacement[];
   /** each prop's height (m): the body's middle is this far above the model's foot */
@@ -51,7 +51,7 @@ export class PhysicsProps {
         this.drawn[i] = model;
         this.detached.push(i);
       } else if (!world.isAwake(i)) continue;
-      const p = world.propPose(i, _pose);
+      const p = world.drawnPose(i, _pose);
       model.quaternion.set(p.qx, p.qy, p.qz, p.qw);
       _v.set(0, -heights[i] / 2, 0).applyQuaternion(model.quaternion);
       model.position.set(p.x + _v.x, p.y + _v.y, p.z + _v.z);

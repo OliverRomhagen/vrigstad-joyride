@@ -44,6 +44,12 @@ const TARGET_CLEAR_M = 3;
 const TARGET_CLEAR_PROP_M = 1;
 /** the knocked props are checked for respawning once every this many steps: a second */
 const RESPAWN_CHECK_STEPS = 60;
+/**
+ * an anchored prop leaves the world again once nothing has been within its join distance and this much more of it:
+ * traffic otherwise brings hundreds into the world over a session, and the step grows with them. The margin keeps one
+ * at the edge from leaving and joining over and over (m)
+ */
+const PROP_LEAVE_MARGIN_M = 20;
 /** props are found by a grid of cells this size (m) */
 const PROP_CELL_M = 16;
 /** cell keys are numbers: (column + offset) * stride + row + offset, for any column and row within ±offset */
@@ -172,6 +178,9 @@ export class PhysicsWorld {
   private readonly loose: Uint8Array;
   /** the step each loose prop was knocked at */
   private readonly looseAtStep: Uint32Array;
+  /** each loose prop's pose before the last step, 7 numbers a prop (x, y, z, qx, qy, qz, qw), for drawnPose */
+  private readonly prevPose: Float64Array;
+  private readonly hasPrev: Uint8Array;
   /** where the player is, on foot or in a car: a prop in sight of it isn't put back */
   private viewerX = 0;
   private viewerZ = 0;
@@ -195,6 +204,8 @@ export class PhysicsWorld {
     c.handle !== this.skipCollider && !this.personByCollider.get(c.handle)?.down;
   /** where the props near the player were last looked for */
   private joinedAtX = Number.NaN;
+  /** the player is in a car, their body parked under the origin: not near anything there */
+  private playerAway = false;
   private joinedAtZ = Number.NaN;
   private readonly targets = new Map<Body, Target>();
   private carry = 0;
@@ -208,6 +219,8 @@ export class PhysicsWorld {
     this.propReach = Float64Array.from(props, p => Math.hypot(p.widthM, p.depthM) / 2);
     this.propBodies = props.map(() => null);
     this.loose = new Uint8Array(props.length);
+    this.prevPose = new Float64Array(props.length * 7);
+    this.hasPrev = new Uint8Array(props.length);
     this.looseAtStep = new Uint32Array(props.length);
     props.forEach((p, i) => {
       const key = cellKey(Math.floor(p.x / PROP_CELL_M), Math.floor(p.z / PROP_CELL_M)),
@@ -292,6 +305,7 @@ export class PhysicsWorld {
       const y = this.heightAt(player.x, player.z) + PERSON_RADIUS_M + PLAYER_HALF_HEIGHT_M;
       this.aim(this.playerBody, player.x, y, player.z, Number.NaN);
     } else this.aim(this.playerBody, 0, -1000, 0, Number.NaN); // in a car: out of the way
+    this.playerAway = !player;
   }
 
   /**
@@ -367,9 +381,13 @@ export class PhysicsWorld {
         // anchored box it is already inside of, which Rapier pushes out sideways: at speed, or a glancing hit, it passed through
         this.loosenAhead(_v.x, _v.z, angle, t, Math.hypot(t.x - t.fromX, t.z - t.fromZ) / steps);
       }
+      for (const i of this.loosened) this.keepPrev(i);
       this.world.step(this.events);
       this.events.drainCollisionEvents(this.loosenTouched);
-      if (++this.stepCount % RESPAWN_CHECK_STEPS === 0) this.respawnFarAway();
+      if (++this.stepCount % RESPAWN_CHECK_STEPS === 0) {
+        this.respawnFarAway();
+        this.leaveFar();
+      }
     }
     if (steps > 0)
       for (const t of this.targets.values())
@@ -426,6 +444,39 @@ export class PhysicsWorld {
     out.qy = q.y;
     out.qz = q.z;
     out.qw = q.w;
+    return out;
+  }
+
+  /**
+   * Where to draw prop i this frame: for a loose one, between its pose before the last step and its pose now, as far
+   * as this frame is into the next step. Physics steps at 60 Hz; on a 120 Hz screen a falling prop would otherwise move
+   * every other frame. It is drawn up to one step behind Rapier.
+   */
+  drawnPose(i: number, out: PropPose) {
+    this.propPose(i, out);
+    if (!this.loose[i] || !this.hasPrev[i]) return out;
+    const a = this.carry / PHYSICS_STEP_S,
+      b = 1 - a,
+      p = this.prevPose,
+      k = i * 7;
+    out.x = p[k] * b + out.x * a;
+    out.y = p[k + 1] * b + out.y * a;
+    out.z = p[k + 2] * b + out.z * a;
+    // the short way round: q and -q are the same turn
+    const s = p[k + 3] * out.qx + p[k + 4] * out.qy + p[k + 5] * out.qz + p[k + 6] * out.qw < 0 ? -1 : 1;
+    let qx = p[k + 3] * b + out.qx * a * s,
+      qy = p[k + 4] * b + out.qy * a * s,
+      qz = p[k + 5] * b + out.qz * a * s,
+      qw = p[k + 6] * b + out.qw * a * s;
+    const n = Math.hypot(qx, qy, qz, qw) || 1;
+    qx /= n;
+    qy /= n;
+    qz /= n;
+    qw /= n;
+    out.qx = qx;
+    out.qy = qy;
+    out.qz = qz;
+    out.qw = qw;
     return out;
   }
 
@@ -665,6 +716,7 @@ export class PhysicsWorld {
       body.setTranslation(_v, false);
       body.setRotation(yaw(p.rotationY), false);
       this.loose[i] = 0;
+      this.hasPrev[i] = 0;
       loosened.splice(k, 1);
     }
   }
@@ -672,7 +724,10 @@ export class PhysicsWorld {
   /** Whether prop i's stand is free of the cars, the player, the people and the other loose props. */
   private standClear(i: number) {
     const p = this.props[i];
-    for (const t of this.targets.values()) if (Math.hypot(t.x - p.x, t.z - p.z) < TARGET_CLEAR_M) return false;
+    for (const [body, t] of this.targets) {
+      if (body === this.playerBody && this.playerAway) continue;
+      if (Math.hypot(t.x - p.x, t.z - p.z) < TARGET_CLEAR_M) return false;
+    }
     for (const j of this.loosened) {
       const body = this.propBodies[j];
       if (j === i || !body) continue;
@@ -682,9 +737,59 @@ export class PhysicsWorld {
     return true;
   }
 
+  /** Keeps prop i's pose before the step about to run, for drawnPose. */
+  private keepPrev(i: number) {
+    const body = this.propBodies[i];
+    if (!body) return;
+    const t = body.translation(),
+      q = body.rotation(),
+      k = i * 7,
+      p = this.prevPose;
+    p[k] = t.x;
+    p[k + 1] = t.y;
+    p[k + 2] = t.z;
+    p[k + 3] = q.x;
+    p[k + 4] = q.y;
+    p[k + 5] = q.z;
+    p[k + 6] = q.w;
+    this.hasPrev[i] = 1;
+  }
+
+  /**
+   * Takes out of the world every anchored prop that nothing is near any more: back to data, standing where it is drawn,
+   * until a car comes near again. Knocked ones stay until they're back on their stand, and the targets always.
+   */
+  private leaveFar() {
+    const { joined, props } = this,
+      keepM = PHYSICS.PROP_JOIN_M + PROP_LEAVE_MARGIN_M,
+      shotKeepM = PROP_SHOT_JOIN_M + PROP_LEAVE_MARGIN_M,
+      forShots = !Number.isNaN(this.joinedAtX); // the weapons lab keeps the props near the player in the world
+    for (let k = joined.length - 1; k >= 0; k--) {
+      const i = joined[k],
+        p = props[i],
+        body = this.propBodies[i];
+      if (!body || p.isTarget || this.loose[i]) continue;
+      if (forShots && Math.hypot(p.x - this.viewerX, p.z - this.viewerZ) < shotKeepM) continue;
+      let near = false;
+      for (const [b, t] of this.targets)
+        if (!(b === this.playerBody && this.playerAway) && Math.hypot(t.x - p.x, t.z - p.z) < keepM) {
+          near = true;
+          break;
+        }
+      if (near) continue;
+      for (let c = 0; c < body.numColliders(); c++) this.propByCollider.delete(body.collider(c).handle);
+      this.world.removeRigidBody(body);
+      this.propBodies[i] = null;
+      this.hasPrev[i] = 0;
+      joined[k] = joined[joined.length - 1];
+      joined.pop();
+    }
+  }
+
   private setLoose(i: number) {
     if (this.loose[i]) return;
     this.loose[i] = 1;
+    this.hasPrev[i] = 0; // its first step starts from where it stood
     this.looseAtStep[i] = this.stepCount;
     this.loosened.push(i);
     const body = this.propBodies[i];
