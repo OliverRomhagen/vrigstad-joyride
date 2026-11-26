@@ -360,6 +360,7 @@ places.registerCommands(commands, (x, z, name, h) => { leaveHouse(); const c = g
   yard.workshop ? { verkstan: { x: yard.workshop.bay.x, z: yard.workshop.bay.z, name: "Plåt-Pelle's lift", h: Math.atan2(yard.workshop.bay.inX, -yard.workshop.bay.inZ) } } : {});   // go verkstan: onto the lift, nose in from the door, so the body fits between the posts
 fleet.registerCommands(commands, CIVILIAN_CAR_TYPES, () => view.camYaw, c => carName(c));   // car <model>
 debugOverlay?.registerCommands(commands);
+lab.registerCommands(commands, location);   // lab toon: switches an experiment on or off and reloads
 registerUrlCommand(commands, location);   // url lab=toon grain=on: sets the URL parameters and reloads
 
 // ---------- input: keys, mouse look and the touch controls (src/game/input.ts) ----------

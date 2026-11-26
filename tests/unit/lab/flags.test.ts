@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { Commands } from '../../../src/game/commands';
 import { LAB_EXPERIMENTS, LabFlags, parseLabFlags } from '../../../src/lab/flags';
 
 describe('parseLabFlags', () => {
@@ -44,5 +45,37 @@ describe('LAB_EXPERIMENTS', () => {
       expect(e.name).not.toBe('');
       expect(e.cost).not.toBe('');
     }
+  });
+});
+
+describe('lab command', () => {
+  const setUp = (search: string) => {
+    const commands = new Commands();
+    const loc = { search };
+    LabFlags.fromSearch(search).registerCommands(commands, loc);
+    return { commands, loc };
+  };
+
+  it('lists every experiment with whether it is on', () => {
+    const lines = setUp('?lab=toon').commands.run('lab').split('\n');
+    expect(lines).toHaveLength(LAB_EXPERIMENTS.length);
+    expect(lines.find(l => l.includes('toon:'))).toMatch(/^on /);
+    expect(lines.find(l => l.includes('hello:'))).toMatch(/^off/);
+  });
+
+  it('switches one experiment, keeping the others and the other parameters, and turns the last one off', () => {
+    const { commands, loc } = setUp('?dev&lab=toon');
+    expect(commands.run('lab hello')).toBe('Reloading with hello on …');
+    expect(loc.search).toBe('?dev&lab=hello,toon');
+    expect(setUp('?dev&lab=toon').commands.run('lab toon')).toBe('Reloading with toon off …');
+    const off = setUp('?dev&lab=toon');
+    off.commands.run('lab TOON off');
+    expect(off.loc.search).toBe('?dev');
+  });
+
+  it('leaves the page alone when the experiment is already as asked', () => {
+    const { commands, loc } = setUp('?lab=toon');
+    expect(commands.run('lab toon on')).toBe('toon is already on.');
+    expect(loc.search).toBe('?lab=toon');
   });
 });
