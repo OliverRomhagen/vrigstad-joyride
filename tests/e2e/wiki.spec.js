@@ -69,3 +69,29 @@ test('wiki: the menu leads to a place with its map and to a character in 3D, wit
 
   expect(errors).toEqual([]);
 });
+
+test('wiki: the marketing page starts a getaway and W drives the Volvo, with no console errors', async ({
+  page,
+}, info) => {
+  const errors = watchErrors(page);
+  // the teaser and the poster come from the live site (only the deploy copies media/ next to the pages): serve the
+  // checkout's copy, so the test needs no network
+  await page.route('**/media/**', route =>
+    route.fulfill({ path: `media/${new URL(route.request().url()).pathname.split('/media/')[1]}` }),
+  );
+  // about.html: the test server doesn't map /wiki/about to it, as GitHub Pages does
+  await page.goto('/wiki/about.html');
+  await expect(page.getByRole('heading', { level: 1 })).toContainText('Joyride');
+  await expect(page.getByRole('link', { name: 'Play free in your browser' })).toHaveAttribute('href', '/');
+  await page.screenshot({ path: info.outputPath('about-hero.png') });
+
+  // Drive is enabled once the page has hydrated and the map's data has loaded
+  await page.getByRole('button', { name: 'Drive' }).click();
+  await expect(page.getByRole('img', { name: 'Wanted level, 1 of 3 stars' })).toBeVisible(); // it starts at one star
+  await page.keyboard.down('KeyW');
+  await expect(page.getByTestId('kmh')).not.toHaveText('0');
+  await page.keyboard.up('KeyW');
+  await page.locator('#getaway').screenshot({ path: info.outputPath('about-getaway.png') });
+
+  expect(errors).toEqual([]);
+});

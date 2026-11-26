@@ -88,62 +88,68 @@ function drawer(dialog: HTMLDialogElement) {
   </ul>
 {/snippet}
 
-<a class="skip" href="#main">Skip to the page</a>
-<!-- the page is at least as tall as the window: the shell takes what room there is, so the village at nightfall stands at
+<!-- a page that brings its own header and footer (the marketing page, #170) keeps only the fonts and colours of this layout.
+     By its data, not its route: at about.html, which GitHub Pages serves too, the router would take it for a wiki page -->
+{#if page.data.ownShell}
+  {@render children()}
+{:else}
+  <a class="skip" href="#main">Skip to the page</a>
+  <!-- the page is at least as tall as the window: the shell takes what room there is, so the village at nightfall stands at
        the window's bottom on a short page too -->
-<div class="page">
-  <div class="shell">
-    <header class={['top', { scrolled }]}>
-      <a class="brand" href={resolve('/')}><span>Vrigstad</span> <b>wiki</b></a>
-      <button
-        type="button"
-        class="menu"
-        aria-haspopup="dialog"
-        aria-expanded={menuOpen}
-        aria-controls="wiki-drawer"
-        onclick={openMenu}
-      >
-        <Menu size="1em" strokeWidth={2.5} />
-        Menu
-      </button>
-      <a class="play" rel="external" href={GAME_URL}
-        ><span>Play <span class="play-long">the game</span></span> <ArrowRight size="1em" strokeWidth={2.5} /></a
-      >
-    </header>
-    <nav class="side" aria-label="Wiki">{@render links()}</nav>
-    <!-- tabindex: so the skip link can move the keyboard's focus here -->
-    <main id="main" tabindex="-1">{@render children()}</main>
+  <div class="page">
+    <div class="shell">
+      <header class={['top', { scrolled }]}>
+        <a class="brand" href={resolve('/')}><span>Vrigstad</span> <b>wiki</b></a>
+        <button
+          type="button"
+          class="menu"
+          aria-haspopup="dialog"
+          aria-expanded={menuOpen}
+          aria-controls="wiki-drawer"
+          onclick={openMenu}
+        >
+          <Menu size="1em" strokeWidth={2.5} />
+          Menu
+        </button>
+        <a class="play" rel="external" href={GAME_URL}
+          ><span>Play <span class="play-long">the game</span></span> <ArrowRight size="1em" strokeWidth={2.5} /></a
+        >
+      </header>
+      <nav class="side" aria-label="Wiki">{@render links()}</nav>
+      <!-- tabindex: so the skip link can move the keyboard's focus here -->
+      <main id="main" tabindex="-1">{@render children()}</main>
+    </div>
+    <!-- the credit is written on the dark ground the village stands on -->
+    <footer>
+      <Nightfall />
+      <p>
+        Map data © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>. Vrigstad is a real
+        village in Småland; the game and this wiki are made with affection for it.
+      </p>
+    </footer>
   </div>
-  <!-- the credit is written on the dark ground the village stands on -->
-  <footer>
-    <Nightfall />
-    <p>
-      Map data © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>. Vrigstad is a real
-      village in Småland; the game and this wiki are made with affection for it.
-    </p>
-  </footer>
-</div>
 
-<!-- a click on the backdrop lands on the dialog itself, outside the panel inside it -->
-<!-- biome-ignore lint/a11y/useKeyWithClickEvents: the keyboard closes the dialog with Escape (oncancel) and its Close button -->
-<dialog
-  id="wiki-drawer"
-  class="drawer"
-  aria-label="Wiki"
-  {@attach drawer}
-  oncancel={e => {
-    e.preventDefault();
-    closeMenu();
-  }}
-  onclick={e => e.target === e.currentTarget && closeMenu()}
->
-  <!-- data-sveltekit-replacestate: a link in the drawer takes the drawer's place in the history, so going back from the
+  <!-- a click on the backdrop lands on the dialog itself, outside the panel inside it -->
+  <!-- biome-ignore lint/a11y/useKeyWithClickEvents: the keyboard closes the dialog with Escape (oncancel) and its Close button -->
+  <dialog
+    id="wiki-drawer"
+    class="drawer"
+    aria-label="Wiki"
+    {@attach drawer}
+    oncancel={e => {
+      e.preventDefault();
+      closeMenu();
+    }}
+    onclick={e => e.target === e.currentTarget && closeMenu()}
+  >
+    <!-- data-sveltekit-replacestate: a link in the drawer takes the drawer's place in the history, so going back from the
        next page doesn't open the drawer again -->
-  <nav class="drawer-panel" aria-label="Wiki" data-sveltekit-replacestate>
-    <button type="button" class="drawer-close" onclick={closeMenu}><X size="1em" strokeWidth={2.5} /> Close</button>
-    {@render links()}
-  </nav>
-</dialog>
+    <nav class="drawer-panel" aria-label="Wiki" data-sveltekit-replacestate>
+      <button type="button" class="drawer-close" onclick={closeMenu}><X size="1em" strokeWidth={2.5} /> Close</button>
+      {@render links()}
+    </nav>
+  </dialog>
+{/if}
 
 <style>
 /* the first thing the Tab key reaches: past the header and the sidebar to the page, shown only while it has the focus */

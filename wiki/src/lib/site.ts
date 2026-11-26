@@ -5,3 +5,5 @@ import { resolve } from '$app/paths';
 // game is its own dev server (the root's `npm run dev`).
 export const GAME_URL = import.meta.env.DEV ? 'http://localhost:5173/' : resolve('/').replace(/wiki\/$/, '');
 export const MAP_URL = `${GAME_URL}map.html`;
+export const SOURCE_URL = 'https://github.com/OliverRomhagen/vrigstad-joyride';
+export const DISCORD_URL = 'https://discord.gg/HcGzsUqY9h';
