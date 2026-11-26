@@ -4,6 +4,7 @@ import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { type GLTF, GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { VehicleVisuals } from '../../../src/game/render/vehicle-visuals';
+import { WORKSHOP_PAINTS } from '../../../src/game/sim/paint-jobs';
 import '../../../src/world/three-legacy';
 
 const parser = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
@@ -78,6 +79,27 @@ test('a respray in the driver’s view recolours its clipped material where it i
   expect(body.material).toBe(clipped);
   expect(body.material.clippingPlanes).toBe(planes);
   expect(body.material.color.equals(new THREE.Color('#992233').convertSRGBToLinear())).toBe(true);
+});
+
+test('a metallic special paint shines, and a respray in another paint gives the model its own finish back', async () => {
+  const assets = new VehicleVisuals(false),
+    c = car();
+  assets.attach(c, 'volvo240', c.fallback, '#abcdef');
+  assets.update(focus, 0.01);
+  await settle(assets, [c]);
+  const own = {
+      metalness: mesh(c.mesh, 'body').material.metalness,
+      roughness: mesh(c.mesh, 'body').material.roughness,
+    },
+    gold = WORKSHOP_PAINTS.find(p => p.metallic)!.paint;
+  assets.paint(c, gold);
+  const shiny = mesh(c.mesh, 'body').material;
+  expect(shiny.metalness).toBeGreaterThan(own.metalness);
+  expect(shiny.metalness).toBeLessThanOrEqual(0.35); // more draws black: there is no environment map to reflect
+  expect(shiny.roughness).toBeLessThan(own.roughness);
+  assets.paint(c, '#992233');
+  expect(mesh(c.mesh, 'body').material.metalness).toBe(own.metalness);
+  expect(mesh(c.mesh, 'body').material.roughness).toBe(own.roughness);
 });
 
 test('wheel travel, reverse steering and teleport reset use rendered motion', async () => {

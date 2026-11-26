@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import type { Decal } from '../sim/paint-jobs';
+import { type Decal, isMetallicPaint } from '../sim/paint-jobs';
 import { decalMeshes, disposeDecal, type Panel } from './paint-decals';
 import {
   BEACON_PARTS,
@@ -16,6 +16,10 @@ import {
 type Car = { mesh: THREE.Object3D; x: number; z: number; h: number; saleKr?: number };
 type Definition = NonNullable<ReturnType<typeof vehicleDefinition>>;
 type Wheel = { pivot: THREE.Group; spin: THREE.Group; front: boolean };
+type Finish = { metalness: number; roughness: number };
+// a metallic paint's finish: the scene has no environment map, so a real metal has nothing to reflect and draws black; a
+// little metalness and a low roughness give the sheen, from the sun's highlight (as #450 found)
+const METALLIC: Finish = { metalness: 0.35, roughness: 0.32 };
 type View = {
   car: Car;
   definition: Definition;
@@ -158,12 +162,17 @@ export class VehicleVisuals {
     view.color = color;
     if (!view.root) return;
     const body = view.root.getObjectByName(BODY_NODE);
+    const metallic = isMetallicPaint(color);
     const recolor = (material: THREE.MeshStandardMaterial) => {
       // the driver's view's clipped clone is the cockpit's own (cockpit.ts): recoloured where it is, as a clone would keep a
       // copy of its clip planes, frozen where the cut was, and the cockpit disposes it and repaints these when you leave
       const clipped = !!material.clippingPlanes?.length,
         m = clipped || view.materials.has(material) ? material : material.clone();
       m.color.set(color).convertSRGBToLinear();
+      m.userData.paintFinish ??= { metalness: m.metalness, roughness: m.roughness }; // the model's own, for any other paint
+      const base = m.userData.paintFinish as Finish;
+      m.metalness = metallic ? METALLIC.metalness : base.metalness;
+      m.roughness = metallic ? METALLIC.roughness : base.roughness;
       if (!clipped) view.materials.add(m);
       return m;
     };
