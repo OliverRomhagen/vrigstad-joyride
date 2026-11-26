@@ -221,6 +221,8 @@ export class StreetFurniture {
   /** the lamp glass, shared by every lamp, for the night (#99) to light */
   readonly materials: { body: THREE.MeshLambertMaterial; luminaire: THREE.MeshLambertMaterial };
   readonly triangles: number;
+  /** where each placement is drawn: its slot in its cell's InstancedMesh, and in the glass's */
+  private readonly slots = new Map<FurniturePlacement, [mesh: THREE.InstancedMesh, index: number][]>();
 
   constructor(placements: readonly FurniturePlacement[], { groundAt, debugSources = false }: StreetFurnitureOptions) {
     this.materials = {
@@ -258,6 +260,9 @@ export class StreetFurniture {
           q.setFromAxisAngle(up, p.rotationY);
           mesh.setMatrixAt(i, m.compose(v.set(p.x, groundAt(p.x, p.z), p.z), q, s.setScalar(p.scale)));
           if (debugSources) mesh.setColorAt(i, tint.set(SOURCE_TINTS[SOURCE_INDEX[p.source]]).convertSRGBToLinear());
+          const slots = this.slots.get(p);
+          if (slots) slots.push([mesh, i]);
+          else this.slots.set(p, [[mesh, i]]);
         });
         mesh.castShadow = shadows;
         mesh.receiveShadow = shadows;
@@ -268,6 +273,29 @@ export class StreetFurniture {
       }
     }
     this.triangles = triangles;
+  }
+
+  /**
+   * Takes one placement out of its InstancedMesh and returns it as an object of its own, in the same place, for
+   * something that moves it: a mailbox a car knocked over (#54). Adds nothing to a scene. Null if it isn't drawn here.
+   */
+  detach(p: FurniturePlacement): THREE.Object3D | null {
+    const slots = this.slots.get(p);
+    if (!slots) return null;
+    this.slots.delete(p);
+    const group = new THREE.Group(),
+      m = new THREE.Matrix4();
+    for (const [mesh, i] of slots) {
+      mesh.getMatrixAt(i, m);
+      const part = new THREE.Mesh(mesh.geometry, mesh.material);
+      part.castShadow = mesh.castShadow;
+      part.receiveShadow = mesh.receiveShadow;
+      group.add(part);
+      if (group.children.length === 1) m.decompose(group.position, group.quaternion, group.scale);
+      mesh.setMatrixAt(i, m.makeScale(0, 0, 0)); // gone from the batch: a zero-size instance draws nothing
+      mesh.instanceMatrix.needsUpdate = true;
+    }
+    return group;
   }
 
   dispose() {

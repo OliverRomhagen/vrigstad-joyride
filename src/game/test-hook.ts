@@ -24,6 +24,14 @@ export interface TestHookDeps {
   labs: readonly string[]; // the lab experiments switched on
   readonly styled: boolean; // frames are drawn through a style (?lab=toon), which loads after the page
   readonly ragdolls: number; // people knocked over right now
+  readonly rapier: {
+    loadMs: number;
+    buildMs: number;
+    props: number;
+    joined: number;
+    awake: number;
+    stepMs: number;
+  } | null; // ?lab=rapier's world, once it has loaded (#54)
   readonly pickadoll: object | null; // ?lab=pickadoll once its code runs: shots fired, hits, hits that got a mark, splats, the weapon and the flavour
   readonly stars: number;
   readonly cats: number;
@@ -166,6 +174,14 @@ export function installTestHook(g: TestHookDeps) {
         lab: g.labs,
         styled: g.styled,
         ragdolls: g.ragdolls,
+        rapier: g.rapier && {
+          loadMs: Math.round(g.rapier.loadMs),
+          buildMs: Math.round(g.rapier.buildMs),
+          props: g.rapier.props,
+          joined: g.rapier.joined,
+          awake: g.rapier.awake,
+          stepMs: g.rapier.stepMs,
+        },
         pickadoll: g.pickadoll,
         x: player.x,
         z: player.z,

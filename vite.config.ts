@@ -1,4 +1,6 @@
 import { execSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { defineConfig, type Plugin } from 'vite';
 import { viteSingleFile } from 'vite-plugin-singlefile';
 
@@ -28,12 +30,32 @@ function fontsAsFiles(): Plugin {
   };
 }
 
+// ?lab=rapier's physics engine (src/game/rapier-lab.ts) is a file of its own beside the pages, vendor/rapier.mjs, which
+// the page imports by its address only when the flag is on. Imported the ordinary way it would be inlined into every
+// page, flag or no flag: Rapier's ready-made build carries its WebAssembly inside it, 4.3 MB (1.65 MB compressed).
+const RAPIER_FILE = 'vendor/rapier.mjs';
+function rapierAsFile(): Plugin {
+  const source = () => readFileSync(fileURLToPath(import.meta.resolve('@dimforge/rapier3d-compat')));
+  return {
+    name: 'rapier-as-file',
+    configureServer(server) {
+      server.middlewares.use(`/${RAPIER_FILE}`, (_req, res) => {
+        res.setHeader('Content-Type', 'text/javascript');
+        res.end(source());
+      });
+    },
+    generateBundle() {
+      this.emitFile({ type: 'asset', fileName: RAPIER_FILE, source: source() });
+    },
+  };
+}
+
 // The pages live in src/ (index.html is the game, map.html the map). Each page builds to one file in dist/, with
-// everything but the fonts inlined, which CI deploys to GitHub Pages (.github/workflows/pages.yml).
+// everything but the fonts and Rapier inlined, which CI deploys to GitHub Pages (.github/workflows/pages.yml).
 export default defineConfig({
   root: 'src',
   define: { __BUILD__: JSON.stringify(buildStamp()) },
   // keep @license comments, so the bundled three.js keeps the MIT notice its licence asks for
   build: { outDir: '../dist', rolldownOptions: { output: { comments: { legal: true } } } },
-  plugins: [viteSingleFile(), fontsAsFiles()],
+  plugins: [viteSingleFile(), fontsAsFiles(), rapierAsFile()],
 });

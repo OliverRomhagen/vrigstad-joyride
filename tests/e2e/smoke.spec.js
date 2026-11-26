@@ -230,6 +230,21 @@ test.describe('game (index.html)', () => {
     expect(errors).toEqual([]);
   });
 
+  test('?lab=rapier loads Rapier as a file of its own and builds its world without errors', async ({ page }) => {
+    const errors = watchErrors(page);
+    await page.setViewportSize({ width: 640, height: 360 });
+    const fetched = [];
+    page.on('request', r => fetched.push(new URL(r.url()).pathname));
+    await page.goto('/index.html?lab=rapier');
+    await page.locator('#go').click();
+    // a failed load only warns, so wait for the world itself: without this, the default game would pass
+    await expect.poll(async () => (await state(page)).rapier?.props ?? 0, { timeout: 60_000 }).toBeGreaterThan(0);
+    expect(fetched).toContain('/vendor/rapier.mjs');
+    await frames(page, 10);
+    expect((await state(page)).rapier.stepMs).toBeGreaterThanOrEqual(0);
+    expect(errors).toEqual([]);
+  });
+
   test('?lab=pickadoll fires a shot that lands, switches weapon and hit, and aims through a scope', async ({
     page,
   }) => {
