@@ -124,5 +124,14 @@ describe('house trim', () => {
       if (corners.some(j => at(j, 5, 6)) && corners.some(j => at(j, 5.17, 6.35))) crossed.push(i);
     }
     expect(crossed).toEqual([]);
+    // and the wall, which stops FASCIA_M short of the roof for a soffit to close, is closed up to the roof without one:
+    // from FASCIA_M under the roof's edge at the ridge, (5, 8.35, 6), up to the roof's edge at the corner, (4.82, 8.374, 6)
+    const at3 = (i: number, x: number, y: number, z: number) => at(i, x, z) && Math.abs(pos.getY(i) - y) < 0.01;
+    let closed = 0;
+    for (let i = 0; i < pos.count; i += 3) {
+      const corners = [i, i + 1, i + 2];
+      if (corners.some(j => at3(j, 5, 8.35, 6)) && corners.some(j => at3(j, 4.82, 8.374, 6))) closed++;
+    }
+    expect(closed).toBeGreaterThan(0);
   });
 });

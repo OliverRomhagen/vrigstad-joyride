@@ -359,7 +359,10 @@ export function addBuildings(
             [dx2, yd2 - FASCIA_M, dz2],
             [ax2, ya2 - FASCIA_M, az2],
           );
-        } else if (!b.g) {
+        } else if (b.g) {
+          // the wall stops FASCIA_M short of the roof (wallDrop) for the soffit to close; with no soffit, close it here
+          face(emit, c, OUT, [a.x, ya - FASCIA_M, a.z], [d.x, yd - FASCIA_M, d.z], [d.x, yd, d.z], [a.x, ya, a.z]);
+        } else {
           const [f1x, f1z, f2x, f2z] = o(FLAT_BOARD_OUT_M),
             lo = -0.22;
           face(
