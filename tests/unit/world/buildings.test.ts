@@ -102,6 +102,21 @@ describe('roofParts', () => {
     expect(yAt({ x: 0, z: 0 })).toBeCloseTo(4);
   });
 
+  it('adds no second point on a corner that lies on the ridge, which rounding puts a hair off it', () => {
+    // this ridge puts (4.359, 1.447), a point on its line, 2e-16 m off it
+    const ridge: [number, number, number, number, number] = [0.4, 0.3, 11.1, 3.4, 3];
+    const l = Math.hypot(10.7, 3.1),
+      [ux, uz, nx, nz] = [10.7 / l, 3.1 / l, -3.1 / l, 10.7 / l],
+      at = (u: number, n: number) => ({ x: 4.359 + ux * u + nx * n, z: 1.447 + uz * u + nz * n });
+    const { ring, sides } = roofParts([at(-3, -2), at(0, 0), at(0, 2), at(-3, 2)], ridge, 4);
+    for (let i = 0; i < ring.length; i++) {
+      const a = ring[i],
+        d = ring[(i + 1) % ring.length];
+      expect(Math.hypot(d.x - a.x, d.z - a.z)).toBeGreaterThan(1e-3);
+    }
+    for (const side of sides) expect(side).toContainEqual({ x: 4.359, z: 1.447 });
+  });
+
   it('caps how high a wide roof rises', () => {
     const wide = outline.map(v => ({ x: v.x * 4, z: v.z * 4 }));
     expect(roofParts(wide, [0, 12, 40, 12, 12], 0).yAt({ x: 20, z: 12 })).toBeCloseTo(5);

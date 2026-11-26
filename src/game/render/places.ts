@@ -5,6 +5,7 @@ import * as THREE from 'three';
 import type { BoxPart } from '../box-part';
 import { type Door, KIOSK, type Places } from '../places';
 import { INK_FLAG } from './ink-flag';
+import { PLINTH_OUT_M } from './world-meshes';
 
 const SAFE_COLOUR = 0x4fd27a,
   KIOSK_COLOUR = 0xf2c230;
@@ -67,11 +68,14 @@ export class PlaceMeshes {
 }
 
 function door(d: Door, heightAt: PlaceMeshDeps['heightAt'], boxGeo: PlaceMeshDeps['boxGeo'], paintMat: THREE.Material) {
+  // centred on the wall line, so each box stands out half its depth: the frame 3 cm and the panel 6 cm past the house's
+  // plinth, which they'd otherwise z-fight with, and the handle 4 cm past the panel
+  const out = (cm: number) => 2 * (PLINTH_OUT_M + cm / 100);
   const m = new THREE.Mesh(
     boxGeo([
-      [1.4, 2.35, 0.1, 0, 1.17, 0, YELLOW],
-      [1.05, 2.1, 0.16, 0, 1.05, 0, '#2f5a41'],
-      [0.1, 0.1, 0.24, 0.36, 1.05, 0, YELLOW],
+      [1.4, 2.35, out(3), 0, 1.17, 0, YELLOW],
+      [1.05, 2.1, out(6), 0, 1.05, 0, '#2f5a41'],
+      [0.1, 0.1, out(10), 0.36, 1.05, 0, YELLOW],
     ]),
     paintMat,
   );

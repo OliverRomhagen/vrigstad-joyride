@@ -34,16 +34,23 @@ const PAGE_ZOOM_CHARS = /^[-+=]$/,
 
 // The game's own keys besides KEYMAP's, and what each one calls in InputDeps. A held key doesn't press again, but R
 // does: holding it respawns again and again. A module's control can't take these.
-const GAME_KEYS: Record<string, 'action' | 'respawn' | 'rain'> = {
+const GAME_KEYS: Record<string, 'action' | 'respawn' | 'rain' | 'toggleView'> = {
   KeyE: 'action',
   KeyF: 'action',
   Enter: 'action',
   KeyR: 'respawn',
   KeyL: 'rain',
+  KeyV: 'toggleView',
 };
 // Other keys a module's control can't take: the menus' (menu.ts) and the dev console's (devconsole.ts), which opens on
-// the character § or `, so on another layout it can be another key too.
-const RESERVED_CODES = ['NumpadEnter', 'Escape', 'KeyP', 'Backquote', 'IntlBackslash'];
+// the character § or `, so on another layout it can be another key too. The menus' number keys count as well: the
+// key that picks an option closes the menu, and its next repeat would press a control on it.
+const RESERVED_CODES = ['NumpadEnter', 'Escape', 'KeyP', 'Backquote', 'IntlBackslash'],
+  MENU_NUMBER_KEYS = /^(?:Digit|Numpad)[1-9]$/;
+// Ctrl, Alt and ⌘ themselves (OS is ⌘ in older browsers): a key pressed with one of them held is the browser's, and
+// the modifier's own keydown already says it is held, so a control on one is never pressed in most browsers; where
+// it is (AltGr on Linux), it would work for some players only.
+const MODIFIER_KEYS = /^(?:Control|Alt|Meta|OS)(?:Left|Right)$/;
 const BUTTON_BITS = [1, 4, 2]; // PointerEvent.button (left, middle, right) as its bit in PointerEvent.buttons
 
 export type Key = 'up' | 'down' | 'left' | 'right' | 'brake' | 'run';
@@ -97,6 +104,7 @@ export interface InputDeps {
   action(): void; // E, F, Enter or the touch action button
   respawn(): void; // R
   rain(): void; // L: låt det regna
+  toggleView(): void; // V, or the touch View button: the driver's view in a car, where the lab has it (#473)
   jump(): void; // a fresh Space / touch Brake press; main.ts decides whether a jump can start
   look(dx: number, dy: number): void; // turns the camera by this many pixels: a drag's own, or a locked mouse's scaled by LOCK_K
   zoom(factor: number): void; // multiplies the camera distance: above 1 is further out
@@ -106,8 +114,8 @@ export interface InputDeps {
 // A touch button, the game's own or a control's: down with the finger, up when it lifts or leaves the button
 function bindHold(el: Pick<InputElement, 'addEventListener'>, down: () => void, up: () => void) {
   el.addEventListener('pointerdown', e => {
+    e.preventDefault(); // first: a module's press that throws must not hand the touch back to the browser
     down();
-    e.preventDefault();
   });
   for (const t of ['pointerup', 'pointercancel', 'pointerleave']) el.addEventListener(t, up);
 }
@@ -369,6 +377,7 @@ export class Input {
     );
     $('p-brake').addEventListener('pointerdown', () => this.g.jump());
     $('p-act').addEventListener('click', () => this.g.action());
+    $('p-view').addEventListener('click', () => this.g.toggleView());
     const showTouch = () => {
       $('joy').hidden = false;
       $('pad').hidden = false;
@@ -408,13 +417,22 @@ export class Input {
   /**
    * Adds a control for a module: held while one of its keys, its mouse button or a touch button of its own is down.
    * The dev console and the menus see each key first, as they do the game's own. Throws when a key or the mouse
-   * button is already taken, by the game, a menu, the console or another control, and adds nothing then.
+   * button is already taken, by the game, a menu, the console or another control, or when a key is Ctrl, Alt or ⌘,
+   * and adds nothing then.
    */
   addControl(spec: ControlSpec): Control {
     const bound = new HeldControl(spec, () => this.g.started && !this.g.menuOpen && !this.g.consoleOpen);
-    for (const code of bound.codes)
-      if (KEYMAP[code] || GAME_KEYS[code] || RESERVED_CODES.includes(code) || this.byCode.has(code))
+    for (const code of bound.codes) {
+      if (MODIFIER_KEYS.test(code)) throw new Error(`Input: ${code} is a modifier, which can't hold a control`);
+      if (
+        KEYMAP[code] ||
+        GAME_KEYS[code] ||
+        RESERVED_CODES.includes(code) ||
+        MENU_NUMBER_KEYS.test(code) ||
+        this.byCode.has(code)
+      )
         throw new Error(`Input: ${code} is already taken`);
+    }
     if (this.mouseMask & bound.mouseButton)
       throw new Error(`Input: mouse button ${bound.mouseButton} is already taken`);
     this.controls.push(bound);
