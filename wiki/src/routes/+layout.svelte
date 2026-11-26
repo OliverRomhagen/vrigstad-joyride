@@ -452,9 +452,10 @@ footer p {
   padding: 16px 20px 32px;
   font-size: 1rem;
 }
+/* Play and Close side by side, stretched to one height whatever each one's own padding and border come to */
 .drawer-top {
   display: flex;
-  align-items: center;
+  align-items: stretch;
   justify-content: space-between;
   gap: 12px;
   margin-bottom: 8px;
@@ -474,7 +475,7 @@ footer p {
 .drawer .play {
   display: inline-flex;
   margin: 0;
-  padding: 7px 11px 7px 14px; /* as tall as Close beside it */
+  padding: 7px 11px 7px 14px;
   color: var(--road);
 }
 </style>
