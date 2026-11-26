@@ -22,6 +22,9 @@ name: Claude review
 #   That is safe only because no step runs the PR's code: the checkout is read by git, jq and Claude's file tools,
 #   and nothing in it is executed, installed or sourced. Keep it that way. The cost: a change to this file can't be
 #   tried out in its own PR; it runs once it's on main.
+# - GitHub only runs pull_request_target here because the repo's Actions policy allow-pull-request-targe (Settings →
+#   Actions → Policies, #525) allows it for this file and pr-triage.yml. A trigger added to this file has to be added
+#   to that policy too.
 # - The secret is meant to live in the claude-review environment, which only main may deploy to, rather than in the
 #   repo's secrets, which a workflow pushed on any branch can read. Until it is moved there, the repo's are used.
 # - Claude runs with --restricted: Read, Grep and Glob only, inside the checkout (symlinks out of it included), and

@@ -722,19 +722,19 @@ test.describe('game (index.html)', () => {
     expect(errors).toEqual([]);
   });
 
-  test('Plåt-Pelle mends a damaged car on the lift in his workshop', async ({ page }, testInfo) => {
+  test('Plåt-Pelle mends, tunes and resprays a car on the lift in his workshop', async ({ page }, testInfo) => {
     const errors = watchErrors(page);
     await page.setViewportSize({ width: 640, height: 360 });
     await page.goto('/index.html?dev');
     await page.locator('#go').click();
     await page.keyboard.press('Backquote');
-    for (const line of ['kr 500', 'car volvo240']) {
+    for (const line of ['kr 1500', 'car volvo240']) {
       await page.keyboard.type(line);
       await page.keyboard.press('Enter');
     }
     await page.keyboard.press('Escape');
     await page.keyboard.press('KeyE');
-    expect(await state(page)).toMatchObject({ inCar: true, kr: 700 });
+    expect(await state(page)).toMatchObject({ inCar: true, kr: 1700 });
     await page.keyboard.press('Backquote');
     for (const line of ['go verkstan', 'damage 60']) {
       await page.keyboard.type(line); // in the car, onto the lift, then damaged there
@@ -751,10 +751,24 @@ test.describe('game (index.html)', () => {
     await expect(page.locator('#kmenu')).toContainText('som ny');
     await page.screenshot({ path: testInfo.outputPath('game-skroten-repair.png') });
     await page.keyboard.press('Digit1');
-    await expect(page.locator('#kr')).toHaveText('460 riksdaler');
+    await expect(page.locator('#kr')).toHaveText('1 460 riksdaler');
     expect(await state(page)).toMatchObject({ inCar: true, carDmg: 0 });
     await expect.poll(async () => (await state(page)).carCrack).toBe(0); // whole glass again
     await page.screenshot({ path: testInfo.outputPath('game-skroten-repaired.png') });
+    // the menu comes back with the upgrades: the engine tune first, then a respray in the first other colour
+    await expect(page.locator('#kmenu')).toContainText('Trimma motorn');
+    await page.keyboard.press('Digit1');
+    await expect(page.locator('#kr')).toHaveText('860 riksdaler');
+    const { carMods, carColor } = await state(page);
+    expect(carMods).toEqual({ engine: true, springs: false, body: false });
+    await page.locator('#kmenu button', { hasText: 'Lacka om' }).click();
+    await expect(page.locator('#kmenu')).toContainText('Vicken färg');
+    await page.keyboard.press('Digit1');
+    await expect(page.locator('#kr')).toHaveText('710 riksdaler');
+    expect((await state(page)).carColor).not.toBe(carColor);
+    await page.screenshot({ path: testInfo.outputPath('game-skroten-resprayed.png') });
+    await page.locator('#kmenu button', { hasText: 'Kliv ur' }).click(); // E on the lift opens the menu, so getting out is on it
+    await expect.poll(async () => (await state(page)).inCar).toBe(false);
     expect(errors).toEqual([]);
   });
 

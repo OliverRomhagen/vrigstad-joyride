@@ -60,6 +60,13 @@ const _e = new THREE.Euler(0, 0, 0, 'YXZ');
 const _m = new THREE.Matrix4();
 const _box = new THREE.Box3();
 
+// whether `now` wears another colour than `was`; a material without one (the simple car's paint is in its geometry) never does
+const recoloured = (now: THREE.Material, was: THREE.Material | undefined) => {
+  const a = (now as { color?: THREE.Color }).color,
+    b = (was as { color?: THREE.Color } | undefined)?.color;
+  return !!a && !!b && !a.equals(b);
+};
+
 /** What the driver's view reads from the rest of the game. */
 export interface CockpitDeps {
   camera: THREE.PerspectiveCamera;
@@ -69,6 +76,7 @@ export interface CockpitDeps {
   renderer: Pick<THREE.WebGLRenderer, 'localClippingEnabled'>; // clips your own car's body at the belt line
   doc: Pick<Document, 'createElement'>; // the dials' canvas
   readonly hour: number; // the clock on the dashboard: the day cycle's hour (DayClock.hour)
+  repaint(car: RenderedCar): void; // gives the model its car's paint again (VehicleVisuals.paint), after a respray inside
 }
 
 /** The part of a simple car's side profile the cabin is read from: its glass, as (z, y) points, and the glass's width (m). */
@@ -341,11 +349,17 @@ export class Cockpit {
     if (!this.car) return;
     for (const o of this.hiddenGlass) o.visible = true;
     this.hiddenGlass.length = 0;
+    let resprayed = false; // inside, a respray goes onto the clipped clones: the materials put back still wear the old paint
     for (const { mesh, material } of this.clipped) {
-      for (const m of [mesh.material].flat()) m.dispose();
+      const was = [material].flat();
+      [mesh.material].flat().forEach((m, i) => {
+        resprayed ||= recoloured(m, was[i]);
+        m.dispose();
+      });
       mesh.material = material;
     }
     this.clipped.length = 0;
+    if (resprayed) this.g.repaint(this.car);
     if (this.interior) {
       this.interior.group.removeFromParent();
       this.interior.group.traverse(o => {
