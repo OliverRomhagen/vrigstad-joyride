@@ -187,7 +187,7 @@ export class GameLoop {
         view.camYaw,
         {
           run: !!keys.run || joy.on,
-          wet: g.inWater(player.x, player.z),
+          wet: player.floor === 0 && g.inWater(player.x, player.z), // on a car's roof in the lake, you're dry
           still: game.titleCardT > 0 || !!places.inside,
         },
         g.half,
@@ -195,7 +195,7 @@ export class GameLoop {
       g.collide(player, 0.5);
       let on: Car | null = null; // the car you stand on, or pull yourself up onto: it neither pushes you off nor runs you over
       if (places.inside) player.floor = 0;
-      else on = standOn(player, cars, dt, this.left);
+      else on = standOn(player, cars, dt, this.left, this.stood);
       if (!places.inside)
         for (const c of cars) {
           if (c === on || player.y >= carTopAt(c, player.x, player.z) - 0.05) continue; // above its body: stepping off it, say
@@ -220,7 +220,7 @@ export class GameLoop {
             }
           }
         }
-      const wetNow = g.inWater(player.x, player.z); // after this frame's move: take-off and wading depth follow where the player stands now
+      const wetNow = player.floor === 0 && g.inWater(player.x, player.z); // after this frame's move: take-off and wading depth follow where the player stands now
       hop(player, dt, jump && !wetNow && !places.inside && game.titleCardT <= 0); // on foot, Space and the touch Brake button jump
       const standing = player.y === player.floor;
       if (this.stood && on !== this.stood) this.left = this.stood; // stepped off it

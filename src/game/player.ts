@@ -153,14 +153,16 @@ const _spine = { x: 0, z: 0 };
 /**
  * What you stand on this frame, written to `p.floor`: the top of a car you're over and up on, or, in the air, a car whose
  * top is within reach, which you pull yourself up onto and in over, over the climb. 0 for the ground. `left` is the car you
- * last stepped off: you don't climb straight back onto it before you've landed. Walking from a bonnet into the roof stops
- * you at the windscreen. Returns the car you stand on or climb, so the push out of cars leaves it alone.
+ * last stepped off: you don't climb straight back onto it before you've landed. Walking from a bonnet into the roof of
+ * `stood`, the car you stood on last frame, stops you at the windscreen; another car's cab pushes you out of its side, as
+ * loop.ts does. Returns the car you stand on or climb, so the push out of cars leaves it alone.
  */
 export function standOn<C extends CarToStandOn>(
   p: PlayerState,
   cars: readonly C[],
   dt: number,
   left: C | null = null,
+  stood: C | null = null,
 ): C | null {
   const airborne = p.y !== p.floor || p.vy > 0; // jumping, falling, or already pulling yourself up
   let on: C | null = null,
@@ -175,7 +177,7 @@ export function standOn<C extends CarToStandOn>(
       r = bodyRadius(c);
     if (d >= r + PERSON_RADIUS_M + TOUCH_M) continue; // not touching it
     let top = carTopAt(c, p.x, p.z);
-    if (d <= r && p.y < top - LAND_M && p.y >= c.T.deckM - LAND_M && !airborne) {
+    if (c === stood && d <= r && p.y < top - LAND_M && p.y >= c.T.deckM - LAND_M && !airborne) {
       // on its bonnet or boot, walking into the roof: the windscreen stops you, and you stay on the deck
       const s = ahead(c, p.x, p.z),
         edge = s - c.T.roofRearM < c.T.roofFrontM - s ? c.T.roofRearM - 0.01 : c.T.roofFrontM + 0.01,

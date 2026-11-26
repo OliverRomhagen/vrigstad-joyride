@@ -120,10 +120,11 @@ function frame(
   jump: boolean,
   step = { x: 0, z: 0 },
   left: CarToStandOn | null = null,
+  stood: CarToStandOn | null = null,
 ) {
   p.x += step.x;
   p.z += step.z;
-  const on = standOn(p, cars, DT, left);
+  const on = standOn(p, cars, DT, left, stood);
   hop(p, DT, jump);
   return on;
 }
@@ -227,9 +228,18 @@ describe('standing on cars (#451)', () => {
     const c = volvo(),
       p = you(0, -1.2);
     p.y = p.floor = 0.98;
-    frame(p, [c], false, { x: 0, z: 1 }); // into the cabin, under the roof
+    frame(p, [c], false, { x: 0, z: 1 }, null, c); // into the cabin, under the roof
     expect(p.z).toBeCloseTo(-0.36, 2); // back at the windscreen
     expect(p.y).toBe(0.98);
+  });
+
+  it("doesn't slide you along a car beside the one you stand on when you walk into its cab", () => {
+    const c = volvo(),
+      next = { ...volvo(), x: 2, z: -1.5 }, // parked alongside, 2 m east and 1.5 m ahead: its cab is level with c's bonnet
+      p = you(0.6, -1.2); // on c's bonnet
+    p.y = p.floor = 0.98;
+    frame(p, [c, next], false, { x: 0.6, z: 0 }, null, c); // sideways into next's cab, under its roof
+    expect(p.z).toBe(-1.2); // not moved along next to its windscreen
   });
 
   it('takes the roof height from the model a car wears, and keeps its roof in place on a longer one', () => {
