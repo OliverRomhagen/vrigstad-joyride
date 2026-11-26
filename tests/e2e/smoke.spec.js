@@ -704,7 +704,7 @@ test.describe('game (index.html)', () => {
     await page.goto('/index.html?dev');
     await page.locator('#go').click();
     await page.keyboard.press('Backquote');
-    await page.keyboard.type('dance');
+    await page.keyboard.type('emote dance');
     await page.keyboard.press('Enter');
     await expect(page.locator('#devcon li').last()).toHaveText('Dance.');
     await page.keyboard.press('Escape');
@@ -714,7 +714,7 @@ test.describe('game (index.html)', () => {
     await expect.poll(async () => (await state(page)).emote).toBeNull();
     await page.keyboard.up('KeyW');
     await page.keyboard.press('Backquote');
-    await page.keyboard.type('twerk');
+    await page.keyboard.type('emote twerk');
     await page.keyboard.press('Enter');
     await page.keyboard.press('Escape');
     expect(await state(page)).toMatchObject({ emote: 'twerk' });

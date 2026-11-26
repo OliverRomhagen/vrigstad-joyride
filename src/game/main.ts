@@ -61,7 +61,7 @@ import { PriceTags } from './render/price-tags';
 import { KIOSK, type Place, Places } from './places';
 import { CAT_SCRATCH_HP, canHurt, LOW_HP, hurt, newHealth, registerCarDamageCommand, registerHealthCommands } from './health';
 import { HOME } from './player';
-import { type Emoting, registerEmoteCommands } from './emotes';
+import { type Emoting, registerEmoteCommand } from './emotes';
 import { PlayerPose } from './render/player-pose';
 import { Wanted } from './police';
 import { Ragdolls } from './ragdolls';
@@ -359,7 +359,7 @@ wanted.registerCommands(commands);
 registerHealthCommands(commands, health, drawHealth);
 registerCarDamageCommand(commands, () => (game.inCar ? game.pcar : null));
 registerTunableCommands(commands, tunables);
-registerEmoteCommands(commands, player, whyCantEmote);   // dance, kiss, finger, …
+registerEmoteCommand(commands, player, whyCantEmote);   // emote dance, emote kiss, …
 // go <place>: you, or the car you drive, straight there, out of any safehouse first
 places.registerCommands(commands, (x, z, name, h) => { leaveHouse(); const c = game.inCar ? game.pcar : null;
   if (c) { c.x = x; c.z = z; if (h !== undefined) c.h = h; c.v = c.slip = c.drift = c.boost = 0; c.vh = c.h; placeCar(meshed(c)); } else { player.x = x; player.z = z; player.speed = 0; } return 'You are at ' + name + '.'; },

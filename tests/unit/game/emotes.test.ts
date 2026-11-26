@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Commands } from '../../../src/game/commands';
-import { EMOTES, type Emoting, registerEmoteCommands, startEmote, stepEmote } from '../../../src/game/emotes';
+import { EMOTES, type Emoting, registerEmoteCommand, startEmote, stepEmote } from '../../../src/game/emotes';
 
 const onFoot = (): Emoting => ({ emote: null });
 
@@ -35,17 +35,19 @@ describe('emotes', () => {
     expect(new Set(EMOTES.map(e => e.id)).size).toBe(EMOTES.length);
   });
 
-  it('the console plays each emote by its name, for players too, and says why when you cannot', () => {
+  it('the console plays an emote by its name under emote, for players too, and says why when you cannot', () => {
     const p = onFoot();
     let why: string | null = 'Get out of the car first.';
     const commands = new Commands({ allowed: access => access === 'player' });
-    registerEmoteCommands(commands, p, () => why);
-    expect(commands.run('twerk')).toBe('Get out of the car first.');
+    registerEmoteCommand(commands, p, () => why);
+    expect(commands.run('emote twerk')).toBe('Get out of the car first.');
     expect(p.emote).toBeNull();
     why = null;
-    expect(commands.run('twerk')).toBe('Twerk.');
+    expect(commands.run('emote twerk')).toBe('Twerk.');
     expect(p.emote).toEqual({ id: 'twerk', t: 0 });
-    commands.run('grodorna');
+    commands.run('emote Grodorna');
     expect(p.emote?.id).toBe('grodorna');
+    expect(commands.run('emote moonwalk')).toMatch(/^No emote called moonwalk\./);
+    expect(commands.complete('emote tw')).toEqual(['twerk']);
   });
 });

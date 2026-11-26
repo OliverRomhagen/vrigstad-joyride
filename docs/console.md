@@ -295,8 +295,8 @@ Each step is a PR of its own, in this order; the first two are what #218 asks fo
    (`health.ts`), `stars <0-3>` (`police.ts`), `go <place>` (also `tp`, `places.ts`), `car <model>` (`cars.ts`), and
    `fps [on]` and `errors clear` (the dev overlay, `presentation/debug-overlay.ts`) are built. Each one's rule gets a
    unit test in its module.
-   The emotes (#296) are the first `player` commands: `dance`, `kiss`, `finger`, `twerk`, `wave`, `shrug`, `grodorna` and
-   `sit`, one per emote, in `emotes.ts`.
+   `emote <name>` (#296, `emotes.ts`) is the first `player` command: `emote dance`, `kiss`, `finger`, `twerk`, `wave`,
+   `shrug`, `grodorna` or `sit`. The emotes sit under one name, as the tunables do under `tune`.
 3. **Tunables** (#217, built in #357). `src/game/sim/tunable-commands.ts` turns the registry's entries into
    `tune set <tunable> <value>`, `tune get <tunable>`, `tune list [prefix]` and `tune reset [tunable]`, with the key as
    a `choice` and the value as a `num` that the registry checks against the entry's range. They sit under `tune`, so

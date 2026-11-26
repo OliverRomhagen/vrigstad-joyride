@@ -1,6 +1,6 @@
 // Emotes (#296): short animations the player plays on foot. A fixed list, so multiplayer can later send just the id.
 // No three.js or DOM here; how each one looks is src/game/render/player-pose.ts.
-import { command } from './command-args';
+import { choice, command } from './command-args';
 import type { Commands } from './commands';
 
 /** Every emote. `secs` is how long it plays; 0 loops until you move. */
@@ -37,22 +37,28 @@ export function stepEmote(p: Emoting, dt: number, stop: boolean) {
   if (stop || (secs > 0 && e.t >= secs)) p.emote = null;
 }
 
-/** The console's `dance`, `kiss`, … : one command per emote, with `player` access, so they stay open to everyone once the
- *  console opens outside dev mode. `whyCant` says why you can't emote now, or null. */
-export function registerEmoteCommands(commands: Pick<Commands, 'register'>, p: Emoting, whyCant: () => string | null) {
-  for (const { id, label } of EMOTES)
-    commands.register(
-      id,
-      command({
-        help: `emote: ${label.toLowerCase()}, on foot; moving stops it`,
-        access: 'player',
-        args: [],
-        run: () => {
-          const no = whyCant();
-          if (no) return no;
-          startEmote(p, id);
-          return `${label}.`;
-        },
-      }),
-    );
+/** The console's `emote <name>`: `emote dance`, `emote kiss`, … Tab completes the name. `player` access, so it stays open to
+ *  everyone once the console opens outside dev mode. `whyCant` says why you can't emote now, or null. */
+export function registerEmoteCommand(commands: Pick<Commands, 'register'>, p: Emoting, whyCant: () => string | null) {
+  commands.register(
+    'emote',
+    command({
+      help: 'play an emote on foot; moving or E stops it',
+      details: EMOTES.map(e => `${e.id}: ${e.label}`).join('\n'),
+      examples: ['emote dance', 'emote grodorna'],
+      access: 'player',
+      args: [
+        choice(
+          'emote',
+          EMOTES.map(e => e.id),
+        ),
+      ],
+      run: ({ emote }) => {
+        const no = whyCant();
+        if (no) return no;
+        startEmote(p, emote);
+        return `${EMOTES.find(e => e.id === emote)!.label}.`;
+      },
+    }),
+  );
 }
