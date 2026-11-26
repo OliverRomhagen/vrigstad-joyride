@@ -19,10 +19,17 @@ const HORIZON = '#d9a27a'; // the fog: sRGB, as the game's (three applies fog af
 // half the width round the ring that the camera keeps in frame. No more: a narrow window backs the camera off to fit
 // it, and much further back it would stand outside the gate, looking through the fence
 const CAR_R_M = 3;
-// across, the frame also holds Plåt-Pelle beside the ring (PELLE_FROM_RING, 3.2 m out, and half of him), so a window taller
-// than it is wide still shows him whole with the car in its middle
-const FRAME_R_M = 3.6;
-const CAR_HALF_H_M = 1.5; // half the height it keeps in frame: the car and the ground just around it
+// across, the frame is a little wider, so a window taller than it is wide still shows Plåt-Pelle whole beside the ring
+// (PELLE_FROM_RING), with the image moved left for him (LEFT_SHARE). At 3.6 a phone's camera stands so far back that a
+// roof over it comes into the sky
+const FRAME_R_M = 3.3;
+const CAR_HALF_H_M = 1.5;
+// A window taller than it is wide fits the car across, and has room to spare above and below it. Drawn in the middle of
+// that room the car looks high, with the sky over it and bare ground under it down to the card, and Plåt-Pelle beside it
+// pulls the pair to the right. So the image is let down by this share of the spare room, and moved left by this share
+// of the window's width when all the room is spare; a wide window, with none to spare, stays as it is.
+const DROP_SHARE = 0.35;
+const LEFT_SHARE = 0.09; // half the height it keeps in frame: the car and the ground just around it
 const MAX_DIST_M = 26; // how far you can zoom out, unless the window needs more to fit the car
 const ZOOM_OUT = 1.4; // and then this much past the fitted distance
 const VIEW_MIN = 0.35; // the share of the window's height the scene keeps however tall the header and card are
@@ -309,21 +316,31 @@ export class GarageScene {
     return { top, bottom, height: height - top - bottom };
   }
 
-  private offsetView(width: number, height: number) {
+  // how far back the camera stands to fit the car across the window, and up and down in the clear part
+  private fit(width: number, height: number) {
     const view = this.clear(height);
-    this.stage.camera.setViewOffset(width, height, 0, (view.bottom - view.top) / 2, width, height);
+    const tanHalf = Math.tan(THREE.MathUtils.degToRad(this.stage.camera.fov / 2));
+    const across = Math.max(CAR_R_M, FRAME_R_M) / (tanHalf * (width / height));
+    const upDown = CAR_HALF_H_M / ((tanHalf * view.height) / height);
+    const dist = Math.max(across, upDown);
+    // the room over and under the car in the clear part (px, each way), when it is fitted across: none when up and down
+    const spare = Math.max(0, view.height / 2 - (CAR_HALF_H_M / (tanHalf * dist)) * (height / 2));
+    return { view, dist, spare };
+  }
+
+  private offsetView(width: number, height: number) {
+    const { view, spare } = this.fit(width, height);
+    const left = width * LEFT_SHARE * (spare / (view.height / 2));
+    const down = spare * DROP_SHARE;
+    // the offset is where the window lies on the image: right and up of its middle moves what you see left and down
+    this.stage.camera.setViewOffset(width, height, left, (view.bottom - view.top) / 2 - down, width, height);
   }
 
   // fits what to show in the clear part, keeping the angle you look from: on each resize, so a window of any shape shows it
   // all. With `backOffOnly`, it only moves the camera back, and only when it is too close
   private fitCamera(width: number, height: number, backOffOnly = false) {
     const { camera, controls } = this.stage;
-    const view = this.clear(height);
-    const tanHalf = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
-    // far enough to fit it across the window, and up and down in the clear part
-    const across = Math.max(CAR_R_M, FRAME_R_M) / (tanHalf * (width / height));
-    const upDown = CAR_HALF_H_M / ((tanHalf * view.height) / height);
-    const dist = Math.max(controls.minDistance, across, upDown);
+    const dist = Math.max(controls.minDistance, this.fit(width, height).dist);
     controls.maxDistance = Math.max(MAX_DIST_M, dist * ZOOM_OUT);
     const offset = camera.position.clone().sub(controls.target);
     if (backOffOnly && offset.length() >= dist) return;
