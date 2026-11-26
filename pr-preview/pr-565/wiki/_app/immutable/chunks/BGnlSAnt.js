@@ -1,0 +1,1 @@
+import{L as e,U as t,W as n,bt as r,et as i}from"./dA3_jHwK.js";function a(a,o){var s=n(),c=i(s);e(c,()=>o.children??r),t(a,s)}export{a as t};
