@@ -75,6 +75,11 @@ jobs:
       # data/vrigstad.json is committed: fail if it is not what tools/process.py makes from data/raw/.
       - run: npm run data && git diff --exit-code -- data/vrigstad.json
       - run: npm run build
+      # The wiki goes into dist/wiki/, next to the game it links to and whose map it embeds, for its smoke test
+      # (tests/e2e/wiki.spec.js). After the game's build, which empties dist/.
+      - run: npm ci --prefix wiki && npm run build --prefix wiki
+        env:
+          BASE_PATH: /wiki
       # The built pages are not committed (#45): fail if a merge brought one back.
       - run: test -z "$(git ls-files index.html map.html)"
       - run: npm run test:e2e -- --shard=${{ matrix.shard }}/3
