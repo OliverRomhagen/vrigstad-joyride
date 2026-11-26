@@ -13,6 +13,11 @@ interface BodyPlacement {
 }
 const _at: BodyPlacement = { lift: 0, lean: 0, twist: 0 }; // returned every frame: no allocation
 const TAU = Math.PI * 2;
+/** 0 before `a` s, 1 after `b` s, eased in and out between them (smoothstep). */
+const ramp = (t: number, a: number, b: number) => {
+  const u = Math.min(1, Math.max(0, (t - a) / (b - a)));
+  return u * u * (3 - 2 * u);
+};
 
 export class PlayerPose {
   private readonly m: Person;
@@ -50,9 +55,21 @@ export class PlayerPose {
         return this.body(0.06 * Math.abs(s), 0, 0.35 * Math.cos(TAU * t));
       }
       case 'kiss': {
-        const out = Math.min(1, Math.max(0, (t - 0.5) / 0.3)); // the hand at the mouth, then thrown forward
-        this.limbs(0, 0, 0, 0, ease * (2.6 - out), -0.5 + 0.7 * out);
-        return this.body(0, -0.1 * out, 0);
+        // the hand to the mouth, a beat, then flung up, forward and out as the body turns into it, and lowered again by the
+        // end of its 1.6 s. The arm has no elbow, so it shortens to reach the lips (0.36 m from the shoulder): a bent arm, seen end on
+        const mouth = ramp(t, 0, 0.4),
+          fling = ramp(t, 0.6, 0.85),
+          held = 1 - ramp(t, 1, 1.6);
+        this.limbs(
+          0,
+          0,
+          0,
+          0,
+          (2.36 * mouth - 0.16 * fling) * held,
+          (-0.89 * mouth + 1.44 * fling) * held,
+          1 - 0.4 * mouth * (1 - fling),
+        );
+        return this.body(0.03 * fling * held, (-0.07 * mouth + 0.15 * fling) * held, 0.15 * fling * held);
       }
       case 'finger': {
         this.limbs(0, 0, -0.2, -0.4 * ease, ease * (2.5 + 0.1 * Math.sin(8 * t)), 0); // up and forward, so the finger points up
@@ -92,8 +109,9 @@ export class PlayerPose {
     }
   }
 
-  private limbs(legL: number, legR: number, armLX: number, armLZ: number, armRX: number, armRZ: number) {
+  private limbs(legL: number, legR: number, armLX: number, armLZ: number, armRX: number, armRZ: number, reachR = 1) {
     const { legs, arms } = this.m;
+    arms![1].scale.y = reachR; // the right arm's length, as a share of its own
     legs[0].rotation.set(legL, 0, 0);
     legs[1].rotation.set(legR, 0, 0);
     arms![0].rotation.set(armLX, 0, armLZ);
