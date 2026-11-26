@@ -3,11 +3,15 @@
 // worked out in the paint's shader: a patch on the model's material, which VehicleVisuals.paint puts on and takes off.
 import * as THREE from 'three';
 
+/** A metallic paint's finish: the scene has no environment map, so a real metal has nothing to reflect and draws black; a
+ * little metalness and a low roughness give the sheen, from the sun's highlight (as #450 found). */
+export const METALLIC_FINISH = { metalness: 0.35, roughness: 0.32 } as const;
+
 const FLAKE_CELLS_PER_M = 90; // flakes about 1 cm across: under a pixel or two at the chase camera, so they glint rather than tile
 const FLAKE_TILT = 0.6; // how far a flake turns from the panel's own normal: enough that some face the sun from any view
-const GLINT_SHARPNESS = 400.0; // a flake is a tiny mirror: only one turned almost exactly between sun and eye lights up
-const GLINT_STRENGTH = 2.5; // how bright a glint is, times the sun's colour
-const GLINT_TINT = 0.5; // how far a glint takes the paint's hue: 0 is white, 1 the paint's own colour at full brightness
+const GLINT_SHARPNESS = 600.0; // a flake is a tiny mirror: only one turned almost exactly between sun and eye lights up
+const GLINT_STRENGTH = 0.2; // how bright a glint is, times the sun's colour
+const GLINT_TINT = 0.9; // how far a glint takes the paint's hue: 0 is white, 1 the paint's own colour at full brightness
 const SUNLIT_FADE = 0.15; // cos of the sun's angle over a panel below which its flakes fade out: none glint on the side away from it
 
 const VERTEX_HEAD = '\nvarying vec3 vFlakeAt;';

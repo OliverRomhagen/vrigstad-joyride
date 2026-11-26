@@ -141,6 +141,21 @@ describe('Cockpit (the driver’s view, lab: cockpit)', () => {
     expect(decal.material).toBe(own);
   });
 
+  it('keeps a material the simple car was given while inside, as a respray swaps it for the new paint', () => {
+    const { car } = volvo();
+    car.mesh.children[1]!.visible = false; // the model hidden: you sit in the simple car
+    car.body.visible = true;
+    const { k } = cockpit(car);
+    k.toggle();
+    k.update();
+    expect((car.body.material as THREE.Material).clippingPlanes).toHaveLength(3); // a clipped clone is on it
+    const fresh = new THREE.MeshPhongMaterial();
+    car.body.material = fresh; // as CarMeshes.repaint does
+    k.toggle();
+    k.update();
+    expect(car.body.material).toBe(fresh);
+  });
+
   it('paints the model again when you leave after a respray inside, and only then', () => {
     // a respray inside recolours the clipped clones, which leaving throws away for the body's materials in the old paint
     const { car, body } = volvo();

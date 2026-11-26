@@ -3,7 +3,7 @@ import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { type Decal, isMetallicPaint } from '../sim/paint-jobs';
 import { decalMeshes, disposeDecal, type Panel } from './paint-decals';
-import { setFlakes } from './paint-flakes';
+import { METALLIC_FINISH, setFlakes } from './paint-flakes';
 import {
   BEACON_PARTS,
   BODY_NODE,
@@ -18,9 +18,6 @@ type Car = { mesh: THREE.Object3D; x: number; z: number; h: number; saleKr?: num
 type Definition = NonNullable<ReturnType<typeof vehicleDefinition>>;
 type Wheel = { pivot: THREE.Group; spin: THREE.Group; front: boolean };
 type Finish = { metalness: number; roughness: number };
-// a metallic paint's finish: the scene has no environment map, so a real metal has nothing to reflect and draws black; a
-// little metalness and a low roughness give the sheen, from the sun's highlight (as #450 found)
-const METALLIC: Finish = { metalness: 0.35, roughness: 0.32 };
 type View = {
   car: Car;
   definition: Definition;
@@ -172,8 +169,8 @@ export class VehicleVisuals {
       m.color.set(color).convertSRGBToLinear();
       m.userData.paintFinish ??= { metalness: m.metalness, roughness: m.roughness }; // the model's own, for any other paint
       const base = m.userData.paintFinish as Finish;
-      m.metalness = metallic ? METALLIC.metalness : base.metalness;
-      m.roughness = metallic ? METALLIC.roughness : base.roughness;
+      m.metalness = metallic ? METALLIC_FINISH.metalness : base.metalness;
+      m.roughness = metallic ? METALLIC_FINISH.roughness : base.roughness;
       setFlakes(m, metallic);
       if (!clipped) view.materials.add(m);
       return m;

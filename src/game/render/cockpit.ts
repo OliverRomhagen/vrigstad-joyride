@@ -266,7 +266,12 @@ export class Cockpit {
   private interior: ReturnType<typeof buildInterior> | null = null;
   private readonly eye = new THREE.Vector3();
   private readonly hiddenGlass: THREE.Object3D[] = [];
-  private readonly clipped: { mesh: THREE.Mesh; material: THREE.Material | THREE.Material[] }[] = []; // and their own materials
+  // the painted meshes, their own materials and the clipped clones put on them in their place
+  private readonly clipped: {
+    mesh: THREE.Mesh;
+    material: THREE.Material | THREE.Material[];
+    clones: THREE.Material | THREE.Material[];
+  }[] = [];
   // in the body's frame, what of the body is cut away: what is over the belt line, behind the windscreen's foot and ahead of
   // the rear window, all three, so the bonnet and the boot lid stay where they rise over the belt line (most cars' do)
   private readonly cabinPlanes = [new THREE.Plane(), new THREE.Plane(), new THREE.Plane()];
@@ -334,10 +339,11 @@ export class Cockpit {
     const painted = (o: THREE.Object3D) => o === car.body || isPaintedPanel(o.name) || o.name === DECAL_NODE;
     body.traverse(o => {
       if (!(o instanceof THREE.Mesh) || !painted(o)) return;
-      this.clipped.push({ mesh: o, material: o.material });
       const own = (m: THREE.Material) =>
         Object.assign(m.clone(), { clippingPlanes: this.clips, clipIntersection: true }); // cut only where all three agree
-      o.material = Array.isArray(o.material) ? o.material.map(own) : own(o.material);
+      const clones = Array.isArray(o.material) ? o.material.map(own) : own(o.material);
+      this.clipped.push({ mesh: o, material: o.material, clones });
+      o.material = clones;
     });
     const { camera } = this.g;
     this.normalNear = camera.near;
@@ -352,13 +358,14 @@ export class Cockpit {
     for (const o of this.hiddenGlass) o.visible = true;
     this.hiddenGlass.length = 0;
     let resprayed = false; // inside, a respray goes onto the clipped clones: the materials put back still wear the old paint
-    for (const { mesh, material } of this.clipped) {
-      const was = [material].flat();
-      [mesh.material].flat().forEach((m, i) => {
-        resprayed ||= recoloured(m, was[i]);
+    for (const { mesh, material, clones } of this.clipped) {
+      const was = [material].flat(),
+        swapped = mesh.material !== clones; // a respray of the simple car swaps in its new paint's material (CarMeshes.repaint): it stays
+      [clones].flat().forEach((m, i) => {
+        resprayed ||= !swapped && recoloured(m, was[i]);
         m.dispose();
       });
-      mesh.material = material;
+      if (!swapped) mesh.material = material;
     }
     this.clipped.length = 0;
     if (resprayed) this.g.repaint(this.car);

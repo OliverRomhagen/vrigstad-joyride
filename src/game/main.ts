@@ -67,7 +67,7 @@ import { Ragdolls } from './ragdolls';
 import { RagdollMeshes } from './render/ragdoll-meshes';
 import { PlaceMeshes } from './render/places';
 import { GroundTexture } from './render/ground-texture';
-import { BAR_BLUE, BAR_RED, barGeo, barMat, blob, blobTex, boxGeo, carGeo, carMat, GLASS, geoCache, PROFILES, paintMat, personParts, TRACTOR_CAB } from './render/models';
+import { BAR_BLUE, BAR_RED, barGeo, barMat, blob, blobTex, boxGeo, carGeo, carMatFor, GLASS, geoCache, PROFILES, paintMat, personParts, TRACTOR_CAB } from './render/models';
 import { buildStage, SUN_DIR, setUpRenderer } from './render/stage';
 import { addBridges, addBuildings, addRoadRibbons, addStreetscapeMeshes, addTerrain, addTrees, addWater } from './render/world-meshes';
 import { type CarType, specFor } from './sim/vehicle-spec';
@@ -190,7 +190,7 @@ ground.bakeTreeShadows(allTreeSpots, blobTex);
 // the getters are read when they are used, so they can name things declared further down
 const bodyMotion = new BodyMotion();
 const vehicleVisuals = new VehicleVisuals(coarse, (c, body) => bodyMotion.addNode(c as RenderedCar, body));
-const carMeshes = new CarMeshes({ scene, groundAt, normalAt, carGeo, carMat, blob, barGeo, barMat, vehicleVisuals, bodyMotion });
+const carMeshes = new CarMeshes({ scene, groundAt, normalAt, carGeo, carMat: carMatFor, blob, barGeo, barMat, vehicleVisuals, bodyMotion });
 const placeCar = carMeshes.placeCar.bind(carMeshes);
 // every car has its meshes: addCar attaches them before the Fleet holds it, so the sim's Car is a RenderedCar here
 const meshed = (c: Car) => c as RenderedCar;

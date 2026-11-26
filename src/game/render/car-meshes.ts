@@ -33,7 +33,7 @@ export interface CarMeshesDeps {
   groundAt: (x: number, z: number) => number;
   normalAt: (x: number, z: number) => THREE.Vector3;
   carGeo: (type: CarType, color: string) => THREE.BufferGeometry; // the procedural body, cached by type and colour
-  carMat: THREE.Material;
+  carMat(paint: string): THREE.Material | THREE.Material[]; // the procedural body's, by its paint: a metallic one shines (models.ts carMatFor)
   blob: (parent: THREE.Object3D, w: number, l: number) => THREE.Mesh; // the soft shadow under it
   barGeo: THREE.BufferGeometry; // the police light bar; loop.ts blinks barMat
   barMat: THREE.Material;
@@ -73,6 +73,7 @@ export class CarMeshes {
       redecal = look.decal !== c.decal || (recolour && c.decal === 'stripes');
     if (recolour) {
       c.body.geometry = carGeo(c.type, c.color);
+      c.body.material = this.g.carMat(c.color);
       vehicleVisuals.paint(c, c.color);
     }
     if (redecal) {
@@ -93,7 +94,7 @@ export class CarMeshes {
   attach(car: Car, assetId: VehicleId | undefined): RenderedCar {
     const { scene, carGeo, carMat, blob, barGeo, barMat, vehicleVisuals, bodyMotion } = this.g;
     const { type, T, color } = car,
-      fallback = new THREE.Mesh(carGeo(type, color), carMat),
+      fallback = new THREE.Mesh(carGeo(type, color), carMat(color)),
       mesh = new THREE.Group();
     fallback.castShadow = true;
     mesh.add(fallback);
