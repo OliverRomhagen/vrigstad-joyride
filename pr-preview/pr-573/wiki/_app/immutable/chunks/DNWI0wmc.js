@@ -1,0 +1,1 @@
+import{L as e,U as t,W as n,et as r,yt as i}from"./VB8bjvnm.js";function a(a,o){var s=n(),c=r(s);e(c,()=>o.children??i),t(a,s)}export{a as t};
