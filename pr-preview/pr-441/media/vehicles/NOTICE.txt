@@ -10,7 +10,7 @@ quantized; named nodes and materials are retained. See docs/vehicle-fleet.md for
 reproduction and the original-to-delivery size comparison.
 
 Volvo 240
-https://github.com/AxelTidehorn/vrigstad-joyride/tree/ff6a0f187add7bd9b7ba052f28bd0d67e534c33a/experiments/volvo240/refinement/model.blend
+https://github.com/AxelTidehorn/vrigstad-joyride/tree/79779a5f4b9a17d29ede88df67d2205d7b8366b2/experiments/volvo240/refinement/model.blend
 
 Saab 900 Classic
 https://github.com/AxelTidehorn/vrigstad-joyride/tree/ff6a0f187add7bd9b7ba052f28bd0d67e534c33a/experiments/saab900/build/model.blend
