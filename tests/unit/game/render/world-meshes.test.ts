@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { describe, expect, it, vi } from 'vitest';
+import { finishOf } from '../../../../src/game/render/toon-style';
 import { addBuildings } from '../../../../src/game/render/world-meshes';
 import { BuildingKind, type WorldData } from '../../../../src/world/data';
 import { Heightfield } from '../../../../src/world/heightfield';
@@ -13,10 +14,10 @@ vi.hoisted(() => {
 
 type Building = WorldData['b'][number];
 // the house shells' mesh (walls, roof and trim) of a world with this building alone
-function shellsOf(b: Building) {
+function shellsOf(b: Building, flatWalls?: boolean) {
   const world = makeWorld({ b: [b] }),
     scene = new THREE.Scene();
-  addBuildings(scene, world, new Heightfield(world), { rnd: () => 0.5, pick: a => a[0], maxAnisotropy: 1 });
+  addBuildings(scene, world, new Heightfield(world), { rnd: () => 0.5, pick: a => a[0], maxAnisotropy: 1, flatWalls });
   return scene.children.find(
     o => o instanceof THREE.Mesh && (o.material as THREE.Material & { vertexColors: boolean }).vertexColors,
   ) as THREE.Mesh;
@@ -43,6 +44,44 @@ const reversed = (b: Building): Building => {
   for (let i = b.p.length - 2; i >= 0; i -= 2) p.push(b.p[i], b.p[i + 1]);
   return { ...b, p };
 };
+
+describe('house colours and materials', () => {
+  // the church: white ('#efece3'), and it gets no trim, so its lowest vertices are all a wall's foot
+  const church = { p: square(0, 0, 10), h: 5, k: BuildingKind.CHURCH };
+  // the red of each of the shell's lowest vertices
+  const footReds = (flatWalls?: boolean) => {
+    const geometry = shellsOf(church, flatWalls).geometry,
+      pos = geometry.getAttribute('position'),
+      colour = geometry.getAttribute('color'),
+      reds: number[] = [];
+    let foot = Infinity;
+    for (let i = 0; i < pos.count; i++) foot = Math.min(foot, pos.getY(i));
+    for (let i = 0; i < pos.count; i++) if (pos.getY(i) - foot < 0.001) reds.push(colour.getX(i));
+    return reds;
+  };
+  const white = new THREE.Color('#efece3').convertSRGBToLinear().r;
+
+  it('darkens the walls to 62% at the ground in the default look', () => {
+    const reds = footReds();
+    expect(reds.length).toBeGreaterThan(0);
+    for (const red of reds) expect(red).toBeCloseTo(white * 0.62, 5);
+  });
+
+  it('keeps the walls one colour down to the ground with flatWalls, for the toon style', () => {
+    const reds = footReds(true);
+    expect(reds.length).toBeGreaterThan(0);
+    for (const red of reds) expect(red).toBeCloseTo(white, 5);
+  });
+
+  it("names the shells' material so that the toon style gives it its house ramp, and leaves the windows on the paint ramp", () => {
+    const world = makeWorld({ b: [{ p: square(0, 0, 10), h: 5, k: BuildingKind.OTHER }] }),
+      scene = new THREE.Scene();
+    addBuildings(scene, world, new Heightfield(world), { rnd: () => 0.5, pick: a => a[0], maxAnisotropy: 1 });
+    const materials = scene.children.filter(o => o instanceof THREE.Mesh).map(o => o.material as THREE.Material);
+    expect(materials).toHaveLength(2); // the shells and the window skin
+    expect(materials.map(finishOf)).toEqual(['house', 'paint']);
+  });
+});
 
 describe('house trim', () => {
   const flat = { p: square(0, 0, 10), h: 5, k: BuildingKind.OTHER };
