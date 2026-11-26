@@ -74,6 +74,14 @@ And by eye: does a mailbox you drive into look and feel right? Screenshots or a 
 - **Props near the player join too**, within 40 m, anchored as before, so a shot meets one that no car has been near.
 - **Measured** in Node, against the real village with 42 people and 20 cars, 500 shots kept in the air: 0.55 to 0.6 ms a frame through Rapier, against 0.9 to 1.2 ms for the weapons' own checks. Not yet measured in a browser or on a phone.
 
+## The shooting range
+
+A place to try the weapons on targets that fall (#545), with `?lab=rapier,pickadoll`: adding `&at=624,-1,3.1416` starts you on its firing line, in the 10 m lane, looking down the range. It stands south of Stockarydsvägen, east of the village, after the range Vrigstads skytteförening built opposite Hoåsen in 1949 (`src/game/sim/shooting-range.ts`, drawn by `src/game/render/shooting-range.ts`).
+
+- **Seven lanes, 3 m apart, one target each**, at 25, 10, 50, 15, 100, 35 and 75 m from west to east. A target is a thin post with a 0.7 m board on top, a body in Rapier's world from the start: a hit knocks it over, and it stands up again 4 s later, however near you are (`tune set physics.target-reset-time 10`).
+- **The earth bank** behind the targets and **the pavilion** at the west end of the firing line are fixed boxes in Rapier's world, so a shot stops at them. The game's own collisions don't know them: you walk through the pavilion.
+- **Not yet:** the timed programs, a score, and the bank and the pavilion as things you bump into.
+
 ## Known limits of the trial
 
 - **Two grounds.** Rapier's ground is the terrain. The furniture is drawn on the game's ground, which adds curbs, road lifts and floors. So a knocked prop drops up to a curb's height and can rest partly in a sidewalk. The car and player shapes don't follow bridge decks either.

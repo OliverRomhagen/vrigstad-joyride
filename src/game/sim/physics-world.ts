@@ -59,6 +59,11 @@ export interface PropSpec {
    * in the prop's own frame (z its front, as the model's), half `hx` by `hy` by `hz` across, and weighs `massKg`.
    */
   parts?: readonly { x: number; y: number; z: number; hx: number; hy: number; hz: number; massKg: number }[];
+  /**
+   * A target at the shooting range (shooting-range.ts): in the world from the start, wherever the cars are, and back on
+   * its stand PHYSICS.TARGET_RESET_S after it's knocked, however near the player is.
+   */
+  isTarget?: boolean;
 }
 
 /** A person the world holds while they're near the player, standing: `scale` is their size, 1 the standard person. */
@@ -113,6 +118,8 @@ export interface PhysicsWorldOptions {
   data: WorldData;
   heightfield: Ground;
   props: readonly PropSpec[];
+  /** more fixed boxes, such as the shooting range's bank: each its middle and half its size (m) */
+  blocks?: readonly { x: number; y: number; z: number; hx: number; hy: number; hz: number }[];
 }
 
 /** Where a car or the player is to be at the end of this frame's steps, and where it was at the end of the last. */
@@ -184,7 +191,7 @@ export class PhysicsWorld {
   private stepCount = 0;
   private lastStepMs = 0;
 
-  constructor(R: Rapier, { data, heightfield, props }: PhysicsWorldOptions) {
+  constructor(R: Rapier, { data, heightfield, props, blocks = [] }: PhysicsWorldOptions) {
     this.R = R;
     this.heightAt = (x, z) => heightfield.heightAt(x, z);
     this.props = props;
@@ -214,6 +221,11 @@ export class PhysicsWorld {
       R.RigidBodyDesc.kinematicPositionBased().setTranslation(0, -1000, 0), // out of the way until `follow` places it
     );
     this.world.createCollider(R.ColliderDesc.capsule(PLAYER_HALF_HEIGHT_M, PERSON_RADIUS_M), this.playerBody);
+    for (const b of blocks)
+      this.world.createCollider(R.ColliderDesc.cuboid(b.hx, b.hy, b.hz).setTranslation(b.x, b.y, b.z), fixed);
+    props.forEach((p, i) => {
+      if (p.isTarget) this.join(i);
+    });
     this.world.step(); // ray casts read the broad phase, which a step builds: one now, so they work before the first frame
   }
 
@@ -615,19 +627,25 @@ export class PhysicsWorld {
     }
   };
 
-  /** Puts back on its stand, anchored, every prop knocked PHYSICS.PROP_RESPAWN_S ago that the player is far from. */
+  /**
+   * Puts back on its stand, anchored, every prop knocked PHYSICS.PROP_RESPAWN_S ago that the player is far from, and
+   * every target knocked PHYSICS.TARGET_RESET_S ago.
+   */
   private respawnFarAway() {
     const { R, loosened } = this,
       due = this.stepCount - PHYSICS.PROP_RESPAWN_S / PHYSICS_STEP_S,
+      targetDue = this.stepCount - PHYSICS.TARGET_RESET_S / PHYSICS_STEP_S,
       far = PHYSICS.PROP_RESPAWN_M;
     for (let k = loosened.length - 1; k >= 0; k--) {
       const i = loosened[k],
-        body = this.propBodies[i];
-      if (!body || this.looseAtStep[i] > due) continue;
-      const t = body.translation(),
+        body = this.propBodies[i],
         p = this.props[i];
-      if (Math.hypot(t.x - this.viewerX, t.z - this.viewerZ) < far) continue;
-      if (Math.hypot(p.x - this.viewerX, p.z - this.viewerZ) < far) continue; // nor where it reappears
+      if (!body || this.looseAtStep[i] > (p.isTarget ? targetDue : due)) continue;
+      if (!p.isTarget) {
+        const t = body.translation();
+        if (Math.hypot(t.x - this.viewerX, t.z - this.viewerZ) < far) continue;
+        if (Math.hypot(p.x - this.viewerX, p.z - this.viewerZ) < far) continue; // nor where it reappears
+      }
       body.setBodyType(R.RigidBodyType.Fixed, false);
       _v.x = p.x;
       _v.y = p.baseY + p.heightM / 2;

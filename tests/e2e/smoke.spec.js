@@ -295,6 +295,7 @@ test.describe('game (index.html)', () => {
     await expect
       .poll(async () => (await state(page)).pickadoll?.throughPhysics ?? false, { timeout: 60_000 })
       .toBe(true);
+    expect((await state(page)).rapier).toMatchObject({ targets: 7, targetsDown: 0 }); // the range's, standing (#545)
     await frames(page, 3);
     await page.keyboard.down('KeyX');
     await expect.poll(async () => (await state(page)).pickadoll.fired).toBeGreaterThan(0);

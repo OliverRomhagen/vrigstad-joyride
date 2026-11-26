@@ -13,6 +13,8 @@ export const PHYSICS = {
   PROP_RESPAWN_S: 90,
   // a 6.5 m lamp popping back up on an open street isn't seen; walls and the camera's view aren't asked
   PROP_RESPAWN_M: 100,
+  // long enough to see it lie, short enough to shoot it again (the shooting range's, #545)
+  TARGET_RESET_S: 4,
 };
 
 /** Adds the physics numbers to the registry, as `physics.*`. */
@@ -39,6 +41,13 @@ export function registerPhysicsTunables(t: Tunables): void {
       min: 5, // nearer, a prop could come back inside the player or a parked car, and be thrown out of it
       max: 2200,
       help: 'how far you must be from a knocked prop before it goes back on its stand',
+    },
+    TARGET_RESET_S: {
+      name: 'target-reset-time',
+      unit: 's',
+      min: 1,
+      max: 600,
+      help: 'how long a target at the shooting range lies before it stands up again',
     },
   });
 }

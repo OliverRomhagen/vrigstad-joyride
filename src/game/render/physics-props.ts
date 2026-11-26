@@ -42,6 +42,7 @@ export class PhysicsProps {
       this.detached.splice(k, 1);
     }
     for (const i of world.loosened) {
+      if (i >= placements.length) continue; // not street furniture: the shooting range's targets, drawn by their own
       let model = this.drawn[i];
       if (!model) {
         model = furniture.detach(placements[i]);

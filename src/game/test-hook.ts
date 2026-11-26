@@ -178,6 +178,8 @@ export function installTestHook(g: TestHookDeps) {
           stepMs: g.rapier.stepMs,
           steps: g.rapier.steps,
           people: g.rapier.people,
+          targets: g.rapier.targets,
+          targetsDown: g.rapier.targetsDown,
         },
         pickadoll: g.pickadoll,
         x: player.x,
