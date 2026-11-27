@@ -8,7 +8,7 @@ import { type Emoting, stepEmote } from './emotes';
 import { CRASH_COOL_S, type Health, impactSpeed, regen, runOverHurt } from './health';
 import type { Input } from './input';
 import type { Places } from './places';
-import { hop, type PlayerState, ride, walk } from './player';
+import { type CarHold, carry, carTopAt, holdCar, hop, type PlayerState, ride, standOn, walk } from './player';
 import type { Wanted } from './police';
 import type { CameraRig } from './render/camera-rig';
 import type { Person } from './render/models';
@@ -82,10 +82,15 @@ export interface GameLoopDeps {
 }
 
 /** Runs the game: `start` begins the frames, `startGame` is the Start button. */
+const AIR_PUSH_MS = 4; // how fast a car pushes you off its side while you're in the air (m/s), rather than all at once
+
 export class GameLoop {
   private readonly g: GameLoopDeps;
   private last = performance.now();
   private runOverAt = -9; // the player's own cooldown for being run over, apart from the cars' crash cooldowns
+  private stood: Car | null = null; // the car you stood on last frame
+  private readonly hold: CarHold<Car> = { car: null, x: 0, z: 0, h: 0 }; // the car you were on last frame, standing or not, and where it was
+  private left: Car | null = null; // the car you last stepped off: you don't climb back onto it before you've landed
   private signT = 0;
   private blinkT = 0;
   private laterLine: string | null = null;
@@ -175,7 +180,9 @@ export class GameLoop {
       g.drive(game.pcar, my, mx, !!keys.brake, dt, true);
       ride(player, game.pcar);
       player.emote = null;
+      this.hold.car = this.stood = this.left = null;
     } else {
+      carry(player, this.hold); // the car you're on moved since last frame, and turned (#451)
       walk(
         player,
         dt,
@@ -184,14 +191,18 @@ export class GameLoop {
         view.camYaw,
         {
           run: !!keys.run || joy.on,
-          wet: g.inWater(player.x, player.z),
+          wet: player.floor === 0 && g.inWater(player.x, player.z), // on a car's roof in the lake, you're dry
           still: game.titleCardT > 0 || !!places.inside,
         },
         g.half,
       );
       g.collide(player, 0.5);
+      let on: Car | null = null; // the car you stand on, or pull yourself up onto: it neither pushes you off nor runs you over
+      if (places.inside) player.floor = 0;
+      else on = standOn(player, cars, dt, this.left, this.stood);
       if (!places.inside)
         for (const c of cars) {
+          if (c === on || player.y >= carTopAt(c, player.x, player.z) - 0.05) continue; // above its body: stepping off it, say
           if (Math.abs(player.x - c.x) > c.T.lengthM || Math.abs(player.z - c.z) > c.T.lengthM) continue;
           nearestOnSpine(c, player.x, player.z, _onCar);
           const dx = player.x - _onCar.x,
@@ -199,8 +210,10 @@ export class GameLoop {
             d = Math.hypot(dx, dz),
             apart = bodyRadius(c) + PERSON_RADIUS_M;
           if (d < apart && d > 0.01) {
-            player.x += (dx / d) * (apart - d);
-            player.z += (dz / d) * (apart - d);
+            // in the air (just off a car, or a jump that fell short), you slide off its side rather than being thrown clear
+            const out = player.y > player.floor ? Math.min(apart - d, AIR_PUSH_MS * dt) : apart - d;
+            player.x += (dx / d) * out;
+            player.z += (dz / d) * out;
             const a = c.mode === 'ai' ? c.h : c.vh,
               n = runOverHurt(impactSpeed(Math.sin(a) * c.v, -Math.cos(a) * c.v, -dx / d, -dz / d)); // the car's speed towards you
             if (n > 0 && game.clockS - this.runOverAt >= CRASH_COOL_S) {
@@ -211,12 +224,19 @@ export class GameLoop {
             }
           }
         }
-      const wetNow = g.inWater(player.x, player.z); // after this frame's move: take-off and wading depth follow where the player stands now
+      const wetNow = player.floor === 0 && g.inWater(player.x, player.z); // after this frame's move: take-off and wading depth follow where the player stands now
       hop(player, dt, jump && !wetNow && !places.inside && game.titleCardT <= 0); // on foot, Space and the touch Brake button jump
-      // moving, jumping, Gripen! or Däckad! and a safehouse end an emote at once (#296)
-      stepEmote(player, dt, player.speed > 0 || player.y > 0 || game.titleCardT > 0 || !!places.inside);
+      const standing = player.y === player.floor;
+      if (this.stood && on !== this.stood) this.left = this.stood; // stepped off it
+      if (standing && on !== this.left) this.left = null; // landed: on the ground, or on another car
+      this.stood = on && standing ? on : null;
+      holdCar(this.hold, on); // in the air above it or climbing onto it too, so a moving car doesn't drive out from under you
+      // in the air over the ground or over the car you stand on (#451); moving, jumping, Gripen! or Däckad! and a
+      // safehouse end an emote at once (#296)
+      const air = player.y > player.floor;
+      stepEmote(player, dt, player.speed > 0 || air || game.titleCardT > 0 || !!places.inside);
       const e = player.emote,
-        at = e ? g.pose.emote(e.id, e.t) : g.pose.walk(player.phase, player.y > 0),
+        at = e ? g.pose.emote(e.id, e.t) : g.pose.walk(player.phase, air),
         lift = player.y + at.lift,
         m = player.mesh;
       m.blob.position.y = 0.06 - lift; // the blob shadow stays flat on the ground

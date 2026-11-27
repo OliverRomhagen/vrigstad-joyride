@@ -4,6 +4,15 @@
 import type { Input } from './input';
 import type { MenuItem, Pet } from './pets';
 
+// The plate's keys, as KeyboardEvent.code: a number picks an option, Enter saves, Esc closes, and P opens your pets
+const NUMBER_KEY = /^(?:Digit|Numpad)([1-9])$/,
+  OK_KEYS = ['Enter', 'NumpadEnter'],
+  CLOSE_KEY = 'Escape',
+  PETS_KEY = 'KeyP';
+/** Whether the menus use this key, with a menu open or not: Input then refuses it to a module's control. */
+export const menuOwnsKey = (code: string) =>
+  NUMBER_KEY.test(code) || OK_KEYS.includes(code) || code === CLOSE_KEY || code === PETS_KEY;
+
 /** What the menu plate reads from the rest of the game. The getters are read when used, so main.ts can declare those later. */
 export interface MenuPlateDeps {
   kmenu: HTMLElement; // the plate
@@ -134,32 +143,28 @@ export class MenuPlate {
       { nameIn } = this;
     if (nameIn && e.target === nameIn) {
       if (e.isComposing) return true;
-      if (e.code === 'Enter' || e.code === 'NumpadEnter' || e.code === 'Escape') {
+      if (OK_KEYS.includes(e.code) || e.code === CLOSE_KEY) {
         e.preventDefault();
-        this.menuChoose(e.code === 'Escape' ? 'no' : 'ok');
+        this.menuChoose(e.code === CLOSE_KEY ? 'no' : 'ok');
         canvas.focus();
       }
       return true;
     } // typing a name
     if (!kmenu.hidden) {
-      const n = /^(?:Digit|Numpad)([1-9])$/.exec(e.code),
+      const n = NUMBER_KEY.exec(e.code),
         b = n && kmenu.querySelectorAll('button')[+n[1] - 1];
-      if (e.code === 'Escape' || (b && b.dataset.k !== 'no')) {
+      if (e.code === CLOSE_KEY || (b && b.dataset.k !== 'no')) {
         e.preventDefault();
-        this.menuChoose(e.code === 'Escape' ? 'no' : b!.dataset.k!);
+        this.menuChoose(e.code === CLOSE_KEY ? 'no' : b!.dataset.k!);
         return true;
       }
-      if (
-        (e.code === 'Enter' || e.code === 'NumpadEnter') &&
-        !kmenu.contains(e.target as Node) &&
-        kmenu.querySelector('[data-k="ok"]')
-      ) {
+      if (OK_KEYS.includes(e.code) && !kmenu.contains(e.target as Node) && kmenu.querySelector('[data-k="ok"]')) {
         e.preventDefault();
         this.menuChoose('ok');
         return true;
       }
     } // Enter is labelled on Spara, so it saves wherever focus is
-    if (e.code === 'KeyP' && !e.repeat && hasPets) {
+    if (e.code === PETS_KEY && !e.repeat && hasPets) {
       if (this.kind === 'pets') this.closeMenu();
       else openPets();
       return true;

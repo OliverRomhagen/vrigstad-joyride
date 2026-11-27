@@ -438,7 +438,7 @@ function liftRing(ws: Workshop) {
 }
 
 /** Plåt-Pelle: blue overalls, a red cap with a peak, and a grey beard. Standing at the origin, facing −z. */
-function platPelle(): Person {
+export function platPelle(): Person {
   // a real shadow, unlike the pedestrians: he stands still, close up, among things that all cast one, and it's 3 draw calls
   const owner = personParts('#2f4f7f', '#2f4f7f', '#b8322a', false, true);
   owner.add(

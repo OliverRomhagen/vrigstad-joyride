@@ -1,7 +1,9 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
-    "types": ["vite/client", "node"]
+    "types": ["vite/client", "node"],
+    // the wiki's alias for the game's code (wiki/vite.config.ts), for tests of wiki code that reads them
+    "paths": { "#game/*": ["./src/game/*"] }
   },
   "include": [
     "tests/unit",
