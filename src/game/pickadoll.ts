@@ -5,7 +5,7 @@
 // firing and holding the aim are held input. The rules are in ./sim/shots.ts and ./sim/ammo.ts and the drawing in
 // ./render/shot-fx.ts; this file reads the controls, shows the two HUD buttons and carries out each hit's effects on
 // the world. A page module: it uses the DOM.
-import { createElement, Egg, type IconNode, Music, Triangle, Zap } from 'lucide';
+import { createElement, Egg, Hand, type IconNode, Music, Triangle, Zap } from 'lucide';
 import { clamp, wrap } from '../world/math';
 import type { Rnd } from '../world/random';
 import { NO_FLAT } from './cars';
@@ -21,6 +21,16 @@ import type { Person } from './render/models';
 import type { ShotFx } from './render/shot-fx';
 import { AMMOS, type Ammo, AmmoId, accepts, ammoFor, EffectKind, effectOf, nextAmmo } from './sim/ammo';
 import { pushBodyOut } from './sim/car-body';
+import {
+  changeTo,
+  DEFAULT_SLOTS,
+  heldSlot,
+  type Loadout,
+  type LoadoutHistory,
+  movePointer,
+  ownedSlots,
+  pointedSlot,
+} from './sim/loadout';
 import type { PhysicsWorld } from './sim/physics-world';
 import { physicsCast } from './sim/shot-physics';
 import {
@@ -46,6 +56,7 @@ import {
 } from './sim/shots';
 import { dropSpike, newSpikeStep, type Spike, type SpikeWorld, stepSpikes } from './sim/spikes';
 import type { GameState, ViewState } from './state';
+import { WeaponWheel } from './weapon-wheel';
 
 // aiming: a crosshair fixed on screen, a little above your head, and shots go to what is under it, as in any shooter.
 // The shot still leaves from you, not from the camera, so something close beside you can be in its way
@@ -89,7 +100,7 @@ const AMMO_ICONS: Record<AmmoId, IconNode> = {
   [AmmoId.FOTANGLAR]: Triangle,
 };
 // the lab's commands, by the name typed in the console: what its keys and buttons run
-const LAB_COMMANDS = { AIM: 'aim', WEAPON: 'weapon', AMMO: 'ammo', HOLSTER: 'holster' } as const;
+const LAB_COMMANDS = { AIM: 'aim', WEAPON: 'weapon', AMMO: 'ammo', HOLSTER: 'holster', SLOT: 'slot' } as const;
 type LabCommand = (typeof LAB_COMMANDS)[keyof typeof LAB_COMMANDS];
 // the soft lock on a touch screen, where there is no fine aim: the shot goes to the nearest person or car near where you look
 const ASSIST_CONE_RAD = 0.3,
@@ -99,6 +110,14 @@ const PULL_KEEP_S = 0.12; // a click this long before the weapon is ready still 
 // the first slot, with nothing in your hand: by the id the `weapon` command and the test hook use, and the name it shows
 const HANDS = 'hands',
   HANDS_NAME = 'Hands';
+// the weapon wheel (#526): Q or the weapon button held this long (wall-clock, as a slow frame mustn't turn a tap into a
+// hold) opens it, and a shorter tap steps on to the next
+// weapon as before. The look then moves its pointer instead of the camera, up to the ring; letting go in the middle
+// picks nothing
+const WHEEL_HOLD_S = 0.22,
+  WHEEL_REACH_PX = 90,
+  WHEEL_DEAD_PX = 30,
+  SLOT_LAST = 'last'; // the `slot` command's word for the loadout held before this one
 const INTRO_AFTER_S = 5.5; // the lab's own line comes this long after Start, once the start line is gone
 // with ?lab=rapier, a shot knocks street furniture over with the weapon's push (knockbackOf): the pickadoll's 40 N·s sends a
 // 12 kg mailbox off at about 3 m/s
@@ -239,6 +258,14 @@ export class Pickadoll {
   // shots fired and hits landed so far, for the test hook (state)
   private fired = 0;
   private hits = 0;
+  // the wheel: its slots (every weapon is yours in the lab), what you held before, how long Q or the weapon button
+  // went down, and where its pointer is
+  private readonly wheel: WeaponWheel;
+  private readonly slots = ownedSlots(DEFAULT_SLOTS, () => true);
+  private readonly history: LoadoutHistory = { now: DEFAULT_SLOTS[0], last: null };
+  private wheelDownMs = -1; // performance.now() when Q or the weapon button went down, -1 while neither is held
+  private readonly wheelPointer = { x: 0, y: 0 };
+  private wheelFinger = { id: -1, x: 0, y: 0 }; // the touch or click on the weapon button that holds it
 
   constructor(g: PickadollDeps) {
     this.g = g;
@@ -256,7 +283,11 @@ export class Pickadoll {
     });
     this.aimHold = g.input.addControl({ mouseButton: MouseButton.RIGHT });
     g.input.addControl({ codes: [LAB_KEYS.AIM.code], press: () => this.runFromInput(LAB_COMMANDS.AIM) });
-    g.input.addControl({ codes: [LAB_KEYS.WEAPON.code], press: () => this.runFromInput(LAB_COMMANDS.WEAPON) });
+    g.input.addControl({
+      codes: [LAB_KEYS.WEAPON.code],
+      press: () => this.holdWheel(),
+      release: () => this.letGoWheel(),
+    });
     g.input.addControl({ codes: [LAB_KEYS.AMMO.code], press: () => this.runFromInput(LAB_COMMANDS.AMMO) });
     g.input.addControl({ codes: [LAB_KEYS.HOLSTER.code], press: () => this.runFromInput(LAB_COMMANDS.HOLSTER) });
     const fire = document.createElement('button');
@@ -284,10 +315,101 @@ export class Pickadoll {
     g.$('stage').append(this.crosshair);
     if (g.player.mesh.arms) g.fx.giveGun(g.player.mesh.arms[1]);
     g.fx.holsterGun(true);
-    this.weaponButton = this.hudButton(LAB_KEYS.WEAPON.label, LAB_COMMANDS.WEAPON);
+    this.wheel = new WeaponWheel(g.$('stage'));
+    this.weaponButton = this.wheelButton();
     this.ammoButton = this.hudButton(LAB_KEYS.AMMO.label, LAB_COMMANDS.AMMO);
     this.drawHud();
     this.registerCommands(); // last: a command never reaches a lab that failed half-built
+  }
+
+  // the weapon button: a tap steps on to the next weapon, and a hold opens the wheel, which a drag then points into.
+  // A click from the keyboard (Enter or Space on the focused button) has no pointer, and steps on
+  private wheelButton() {
+    const { $, canvas } = this.g,
+      button = document.createElement('button'),
+      finger = this.wheelFinger;
+    button.type = 'button';
+    button.className = 'plate lab-weapon';
+    button.setAttribute('aria-keyshortcuts', LAB_KEYS.WEAPON.label);
+    button.addEventListener('pointerdown', e => {
+      e.preventDefault();
+      if (finger.id !== -1) return;
+      Object.assign(finger, { id: e.pointerId, x: e.clientX, y: e.clientY });
+      button.setPointerCapture(e.pointerId);
+      this.holdWheel();
+    });
+    button.addEventListener('pointermove', e => {
+      if (e.pointerId !== finger.id) return;
+      this.pointWheel(e.clientX - finger.x, e.clientY - finger.y);
+      finger.x = e.clientX;
+      finger.y = e.clientY;
+    });
+    for (const t of ['pointerup', 'pointercancel'])
+      button.addEventListener(t, e => {
+        if ((e as PointerEvent).pointerId !== finger.id) return;
+        finger.id = -1;
+        this.letGoWheel();
+        canvas.focus();
+      });
+    button.addEventListener('click', e => {
+      if (e.detail === 0) this.runFromInput(LAB_COMMANDS.WEAPON);
+    });
+    $('tr').append(button);
+    return button;
+  }
+
+  // Q or the weapon button went down: the wheel opens if it stays down (update)
+  private holdWheel() {
+    if (this.wheelDownMs < 0) this.wheelDownMs = performance.now();
+  }
+
+  private openWheel() {
+    this.wheelPointer.x = this.wheelPointer.y = 0;
+    const views = this.slots.map(s => {
+      const ammo = s.ammo ? AMMOS.find(a => a.id === s.ammo) : undefined;
+      return {
+        name: s.weapon ? (WEAPONS.find(w => w.id === s.weapon)?.name ?? s.weapon) : HANDS_NAME,
+        ammo: ammo?.anyWeapon ? ammo.name : null, // fotanglar fire only their own: the name says it once
+        icon: ammo ? AMMO_ICONS[ammo.id] : Hand,
+      };
+    });
+    this.wheel.show(views, heldSlot(this.slots, this.loadout));
+    this.pulledS = -1; // a pull while it opens doesn't fire once it closes
+  }
+
+  // the look or a drag on the weapon button, while the wheel is open, moves its pointer
+  private pointWheel(dx: number, dy: number) {
+    if (!this.wheel.open) return;
+    movePointer(this.wheelPointer, dx, dy, WHEEL_REACH_PX);
+    this.wheel.point(pointedSlot(this.wheelPointer.x, this.wheelPointer.y, this.slots.length, WHEEL_DEAD_PX));
+  }
+
+  // Q or the weapon button let go: from the open wheel, the slot pointed at; after a tap, the next weapon
+  private letGoWheel() {
+    const downMs = this.wheelDownMs;
+    this.wheelDownMs = -1;
+    if (downMs < 0) return;
+    if (this.wheel.open) {
+      const { x, y } = this.wheelPointer,
+        index = pointedSlot(x, y, this.slots.length, WHEEL_DEAD_PX);
+      this.wheel.hide();
+      if (index >= 0) this.runFromInput(LAB_COMMANDS.SLOT, String(index + 1));
+    } else if (!this.g.menuOpen) this.runFromInput(LAB_COMMANDS.WEAPON);
+  }
+
+  // what is in your hand, as a slot would hold it
+  private get loadout(): Loadout {
+    return this.holstered
+      ? { weapon: null, ammo: null }
+      : { weapon: WEAPONS[this.weapon].id, ammo: AMMOS[this.ammo].id };
+  }
+
+  // a slot's weapon and ammo at once: the ammo first, so the HUD and the history see only the loadout you end up with
+  private pickLoadout(l: Loadout) {
+    if (l.weapon === null) return this.holster(true);
+    const ammo = AMMOS.findIndex(a => a.id === l.ammo);
+    if (ammo >= 0 && AMMOS[ammo].anyWeapon) this.chosenAmmo = ammo;
+    this.pickWeapon(WEAPONS.findIndex(w => w.id === l.weapon));
   }
 
   private hudButton(key: string, command: LabCommand) {
@@ -317,6 +439,7 @@ export class Pickadoll {
     const [lengthM, thickM] = GUN_M[WEAPONS[this.weapon].id];
     this.g.fx.sizeGun(lengthM, thickM);
     label(this.ammoButton, LAB_KEYS.AMMO.label, AMMOS[this.ammo].name, AMMO_ICONS[AMMOS[this.ammo].id]);
+    changeTo(this.history, this.loadout); // every change of weapon or ammo passes here
   }
 
   // C and the Aim button switch aiming on until they switch it off
@@ -427,6 +550,21 @@ export class Pickadoll {
       }),
     );
     commands.register(
+      LAB_COMMANDS.SLOT,
+      command({
+        help: "take a weapon wheel slot's weapon and ammo, or with last what you held before",
+        examples: ['slot 2', 'slot ' + SLOT_LAST],
+        access: 'player',
+        args: [choice('slot', [...this.slots.map((_s, i) => String(i + 1)), SLOT_LAST])],
+        run: ({ slot }) => {
+          const l = slot === SLOT_LAST ? this.history.last : this.slots[Number(slot) - 1];
+          if (!l) throw new UsageError('Nothing held before this yet.');
+          this.pickLoadout(l);
+          return 'Weapon: ' + this.weaponName + (this.holstered ? '' : ', ammo: ' + AMMOS[this.ammo].name) + '.';
+        },
+      }),
+    );
+    commands.register(
       LAB_COMMANDS.HOLSTER,
       command({
         help: 'go to Hands, or back to your last weapon with off; switches with neither',
@@ -459,6 +597,7 @@ export class Pickadoll {
       aiming: this.aimK > 0.5,
       scoped: this.isScoped,
       holstered: this.holstered,
+      wheel: this.wheel.open,
       spikes: this.spikes.length,
       limping: this.limping.length,
       throughPhysics: !!this.world.cast, // ?lab=rapier's ray casts find the hits
@@ -478,8 +617,8 @@ export class Pickadoll {
       if (this.introS <= 0)
         this.g.toast(
           coarse
-            ? 'Lab: pickadoll. Tap Hands at the top for a weapon, Fire fires, Aim aims; tap the weapon and the ammo to change them.'
-            : 'Lab: pickadoll. Q or H takes a weapon out, click or X fires, right button or C aims, G changes the ammo, H puts it away.',
+            ? 'Lab: pickadoll. Tap Hands at the top for a weapon, or hold it for the wheel; Fire fires, Aim aims, tap the ammo to change it.'
+            : 'Lab: pickadoll. Q or H takes a weapon out, hold Q for the wheel; click or X fires, right button or C aims, G changes the ammo.',
           6,
         );
     }
@@ -500,7 +639,18 @@ export class Pickadoll {
     this.startedFrames = game.started ? Math.min(2, this.startedFrames + 1) : 0;
     const ready = this.startedFrames > 1 && !this.g.menuOpen && !this.g.inside && game.titleCardT <= 0;
     this.ready = ready;
-    const armed = ready && !this.holstered, // the weapon is out and can be used
+    if (
+      this.wheelDownMs >= 0 &&
+      !this.wheel.open &&
+      ready &&
+      performance.now() - this.wheelDownMs >= WHEEL_HOLD_S * 1000
+    )
+      this.openWheel();
+    if (this.wheel.open && !ready) {
+      this.wheel.hide(); // a menu or the pause took over: nothing is picked
+      this.wheelDownMs = -1;
+    }
+    const armed = ready && !this.holstered && !this.wheel.open, // the weapon is out and can be used
       aiming = this.aiming;
     const pulling = this.trigger.held;
     // going over to the shoulder: the crosshair moves to the middle of the screen with the camera
@@ -649,8 +799,12 @@ export class Pickadoll {
     return this.ready && !this.holstered && !this.g.game.inCar && (this.aimHold.held || this.aimKept);
   }
 
-  /** The look while aiming: true when it took the mouse or the drag, so the game's camera doesn't. */
+  /** The look while aiming or with the wheel open: true when it took the mouse or the drag, so the game's camera doesn't. */
   aimLook(dx: number, dy: number): boolean {
+    if (this.wheel.open) {
+      this.pointWheel(dx, dy);
+      return true;
+    }
     if (!this.aiming) return false;
     const { view, fx } = this.g,
       scope = WEAPONS[this.weapon].scope,

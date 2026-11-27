@@ -65,7 +65,8 @@
         "!src/game/devconsole.ts",
         "!src/game/confetti.ts",
         "!src/game/rapier-lab.ts",
-        "!src/game/pickadoll.ts"
+        "!src/game/pickadoll.ts",
+        "!src/game/weapon-wheel.ts"
       ],
       "plugins": [
         // Rule 2: a listener on any object, such as an element passed in, which noRestrictedGlobals can't see.
