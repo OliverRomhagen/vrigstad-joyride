@@ -161,7 +161,7 @@ describe('Skroten', () => {
 
 describe('Plåt-Pelle mends the car on the lift', () => {
   it('names his price for the damage, and mends the car once you pay', () => {
-    const t = skroten({ model: 'volvo240', car: { dmg: 50 }, kr: 500 });
+    const t = skroten({ model: 'volvo240', car: { dmg: 50, flat: 2 }, kr: 500 });
     t.driveOntoLift();
     expect(t.s.repairKr()).toBe(200);
     expect(t.s.open()).toBe(true);
@@ -169,6 +169,7 @@ describe('Plåt-Pelle mends the car on the lift', () => {
     expect(t.menu()!.title).toContain(fmtKr(200));
     t.choose('fix');
     expect(t.g.game.pcar!.dmg).toBe(0);
+    expect(t.g.game.pcar!.flat).toBe(-1);
     expect(t.wallet.kr).toBe(300);
     expect(t.game.inCar).toBe(true);
   });

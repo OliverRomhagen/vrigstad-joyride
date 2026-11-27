@@ -159,6 +159,7 @@ export class Skroten {
     else if (!pay(wallet, kr)) toast(SHORT(kr), 3.5);
     else {
       c.dmg = 0;
+      c.flat = -1; // a burst tyre too: a mended car drives straight
       toast(OWNER_SAYS + '”Så där! Som ny. Nästan.” −' + fmtKr(kr) + '.', 4);
     }
   }
