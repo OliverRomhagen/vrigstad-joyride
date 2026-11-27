@@ -181,6 +181,34 @@ test('only a mesh that asks for it loses the line along its open feet', () => {
   expect(segments(shells)).toBe(3);
 });
 
+test("a mesh not flagged gets three's EdgesGeometry lines, even where inkEdges would draw others", () => {
+  // a roof and its overhang in one plane, the overhang wound the other way: EdgesGeometry draws the edge between them,
+  // inkEdges flips the normal and draws none; a car part like this keeps its line
+  const roofAndOverhang = [
+    [0, 3, 0, 4, 3, 0, 4, 4, -2, 0, 3, 0, 4, 4, -2, 0, 4, -2],
+    [0, 3, 0, 4, 3, 0, 4, 2.8, 0.4, 0, 3, 0, 4, 2.8, 0.4, 0, 2.8, 0.4],
+  ].flat();
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(roofAndOverhang, 3));
+  const scene = new THREE.Scene(),
+    prop = new THREE.Mesh(g, new THREE.MeshLambertMaterial()),
+    shells = new THREE.Mesh(g, new THREE.MeshLambertMaterial());
+  for (const o of [prop, shells]) o.userData[INK_FLAG] = true;
+  shells.userData[INK_NO_FEET_FLAG] = true;
+  scene.add(prop, shells);
+  new ToonStyle({ render: () => {} }).render(scene, camera);
+  const lines = (mesh: THREE.Mesh) => (mesh.children[0] as THREE.LineSegments).geometry.getAttribute('position');
+  const alongTheJoin = (mesh: THREE.Mesh) => {
+    const p = lines(mesh);
+    let n = 0;
+    for (let i = 0; i < p.count; i += 2) if (p.getY(i) === 3 && p.getY(i + 1) === 3) n++;
+    return n;
+  };
+  expect(lines(prop).array).toEqual(new THREE.EdgesGeometry(g, 34).getAttribute('position').array);
+  expect(alongTheJoin(prop)).toBe(1);
+  expect(alongTheJoin(shells)).toBe(0);
+});
+
 test('two meshes that share a geometry each get their own lines, with and without feet, and the flag is not inherited', () => {
   const g = new THREE.BufferGeometry();
   g.setAttribute(
