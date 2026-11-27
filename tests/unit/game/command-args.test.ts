@@ -335,10 +335,7 @@ describe('a group that runs by itself', () => {
   it("builds with a first argument whose list isn't ready yet, and lets the subcommand win a word added later", () => {
     const levels: string[] = [];
     let ready = false;
-    const level = choice('level', () => {
-      if (!ready) throw new Error('not loaded');
-      return levels;
-    });
+    const level = choice('level', () => (ready ? levels : []));
     const c = new Commands();
     const fill = command({ help: 'fill the tank', args: [], run: () => 'Full.' });
     c.register(

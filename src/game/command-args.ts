@@ -9,6 +9,7 @@ export interface Arg<N extends string, T> {
   /** takes every word left, joined by spaces */
   readonly rest: boolean;
   parse(word: string): T;
+  /** the words Tab offers; never throws: a list that isn't ready yet gives none */
   choices?(): readonly string[];
   /** what it is, for `help <command>`: `km/h`, `a place on the map` */
   readonly help?: string;
@@ -154,12 +155,9 @@ export function either<N extends string, const A extends readonly [AnyArg, AnyAr
 
 // an argument's words when there are few enough to list and they are known now; else undefined
 function listedWords(a: AnyArg): readonly string[] | undefined {
-  try {
-    const all = a.choices?.() ?? [];
-    return all.length > 0 && all.length <= CHOICES_LISTED ? all : undefined;
-  } catch {
-    return undefined; // a list that isn't ready yet: the name stands in for it
-  }
+  // a list that isn't ready yet is empty, and the name stands in for it
+  const all = a.choices?.() ?? [];
+  return all.length > 0 && all.length <= CHOICES_LISTED ? all : undefined;
 }
 
 /** The rest of the line, as one string: `say <words>`. Only the last argument can be one. */
@@ -293,12 +291,7 @@ export function group<const A extends readonly AnyArg[] = readonly []>(spec: Gro
     };
   // Catches the mistake in a list that is known now. One that isn't ready yet, or grows later, isn't checked: the
   // subcommand wins then too, which is the rule.
-  let known: readonly string[] = [];
-  try {
-    known = spec.args[0]?.choices?.() ?? [];
-  } catch {
-    // a list that isn't ready yet: the subcommand wins when it is, as above
-  }
+  const known = spec.args[0]?.choices?.() ?? [];
   const hidden = known.find(c => names.includes(c.toLowerCase()));
   if (hidden !== undefined) throw new Error(`${hidden} names a subcommand, so the group's own argument never gets it`);
   const own = command({ help: spec.help, args: spec.args, run: spec.run });

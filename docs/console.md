@@ -159,7 +159,8 @@ commands.register('go', command({
   choice is its own union of words. A choice of up to 8 words lists them in its error (`Pick one of: kiosk, skroten,
   torget.`), since the console on a phone has no Tab; a longer one, such as the tunables' keys, keeps the short line.
 - A `choice` given a function reads it on every use, so a list that grows while the game runs (car models, unlocked
-  places) completes and parses without registering again.
+  places) completes and parses without registering again. Until its list is ready it returns `[]`, never throws: the
+  console reads it when the command is built, and a throw there would stop the page.
 - The plain shape still works: `register(name, { usage, help, run(words) })`, throwing `UsageError` for bad
   arguments. The existing commands (`kr`, `mynt`, `adopt`, `clear`) use it, and move over when someone touches them.
 - **A group** holds commands under one name: `group({ help, subcommands: { set, get } })` registers `tune`, and
