@@ -155,9 +155,9 @@ commands.register('go', command({
 - `command()` (`src/game/command-args.ts`) builds a `Command` from typed arguments: `int`, `num` (a Swedish comma
   works), `word`, `toggle` (on/off, ja/nej), `choice` and `rest`, each `optional()` at the end. From that one list come
   the parsing, the usage line (`<place> [speed]`), the error lines (`No place called gnosjö. Usage: go <place>
-  [speed]`, and `place is missing.` for a word left out) and Tab completion. `run` gets the values by name, typed: a choice is its own union of words. A choice of
-  up to 8 words lists them in its error (`Pick one of: kiosk, skroten, torget.`), since the console on a phone has no
-  Tab; a longer one, such as the tunables' keys, keeps the short line.
+  [speed]`, and `place is missing.` for a word left out) and Tab completion. `run` gets the values by name, typed: a
+  choice is its own union of words. A choice of up to 8 words lists them in its error (`Pick one of: kiosk, skroten,
+  torget.`), since the console on a phone has no Tab; a longer one, such as the tunables' keys, keeps the short line.
 - A `choice` given a function reads it on every use, so a list that grows while the game runs (car models, unlocked
   places) completes and parses without registering again.
 - The plain shape still works: `register(name, { usage, help, run(words) })`, throwing `UsageError` for bad
@@ -179,8 +179,9 @@ commands.register('go', command({
   that parses the word wins, so the stricter one goes first. A word none takes gets the first one's error, then each
   later one's: its words in one list when they are few, else its error (`hour is from 5 to 19. Or one of: dawn, dusk,
   night, noon.`). In the usage line it lists a kind's words when they are few, and names the others
-  (`[hour|dawn|noon|dusk|night]`), since the console on a phone has no Tab. `optional()` and `rest()` go round the
-  whole `either`, not one of its kinds.
+  (`[hour|dawn|noon|dusk|night]`), since the console on a phone has no Tab. That line is made when the command is
+  built, so a list read from a function shows as it was then, or by its name if it wasn't ready. `optional()` and
+  `rest()` go round the whole `either`, not one of its kinds.
 - **`arg(name, parse, choices?)`** builds an argument of a type of your own, beside the code that owns the value: the
   clock time `16:30` lives in `day-cycle.ts`, not in the console. `parse` throws a `UsageError` that starts with the
   name; everything else (usage, Tab, `optional()`, `described()`) works as for the built-in ones.
