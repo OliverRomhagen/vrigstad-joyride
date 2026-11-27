@@ -21,34 +21,90 @@ const BOUNDARY_COLOURS: BoundaryColours = {
 
 /** side of a batching chunk (m), the same chunking as the streetscape's */
 const CHUNK_M = 250;
-/** each kind's run is cut into pieces at most this long (m): a hedge's and a wall's each get their own height and shade */
-const PIECE_M: Record<BoundaryKind, number> = { 0: 1.6, 1: 2.4, 2: 2.4, 3: 1 };
-/** how thick each kind is across its line (m) */
-const WIDTH_M: Record<BoundaryKind, number> = { 0: 0.7, 1: 0.04, 2: 0.06, 3: 0.5 };
+/**
+ * each kind's run is cut into pieces at most this long (m): a hedge's and a wall's each get their own height and shade,
+ * and a picket fence has a post at each end of its pieces; a board fence's posts are behind its boards, so it shows
+ * only the run's end posts
+ */
+const PIECE_M: Record<BoundaryKind, number> = { 0: 2.4, 1: 2.4, 2: 2.4, 3: 1 };
+/** how thick each kind is across its line (m); a fence's panel is a plane, its posts are this thick */
+const WIDTH_M: Record<BoundaryKind, number> = { 0: 0.7, 1: 0.09, 2: 0.1, 3: 0.5 };
 /** a hedge's or wall's pieces vary their height by up to this either way (m), and their shade by this share */
 const HEIGHT_JITTER_M: Record<BoundaryKind, number> = { 0: 0.08, 1: 0, 2: 0, 3: 0.1 };
 const SHADE_JITTER = 0.06;
 /** a hedge's top is this much lighter, as if lit from above */
 const HEDGE_TOP_LIGHTER = 0.12;
-/** pickets stand this far apart (m), each this wide (m); the rail runs this high (m) and is this tall (m) */
-const PICKET_EVERY_M = 0.55;
-const PICKET_WIDE_M = 0.08;
-const RAIL_AT_M = 0.55;
-const RAIL_TALL_M = 0.09;
+/** one repeat of the fence texture along a picket fence (m): a picket and its gap; along a board fence: four boards */
+const REPEAT_M: Record<BoundaryKind, number> = { 0: 1, 1: 0.15, 2: 0.5, 3: 1 };
+/** a fence's posts stand this far above its panel (m), and are this much darker */
+const POST_ABOVE_M = 0.06;
+const POST_DARKER = 0.85;
+/**
+ * the fence texture (FENCE_TEXTURE_PX wide, FENCE_ROWS tall): its lower half is a picket and its gap, with two rails,
+ * pointed at the top and see-through between; its upper half four boards in slightly different shades, with dark joins
+ */
+const FENCE_TEXTURE_PX = 32;
+const FENCE_ROWS = 128;
+/** the picket half's rows, from the bottom: the picket starts above the ground (the panel is sunk SINK_M), rails, point */
+const PICKET_FROM_ROW = 11;
+const RAILS: readonly (readonly [number, number])[] = [
+  [20, 25],
+  [46, 51],
+];
+const POINT_FROM_ROW = 56;
+/** the picket fills this share of its repeat; each board's shade, and its join's */
+const PICKET_SHARE = 0.6;
+const BOARD_SHADES = [235, 216, 228, 208];
+const JOIN_SHADE = 140;
 /** everything starts this far below the ground (m), so sloping ground doesn't show a gap under it */
 const SINK_M = 0.15;
 
-/** Non-indexed triangles under construction: positions, normals and linear colours, in buffers that grow. */
+/** The fence texture: white, see-through between the pickets, grey at the boards' joins (the vertex colour paints it). */
+function fenceTexture() {
+  const [w, h] = [FENCE_TEXTURE_PX, FENCE_ROWS];
+  const px = new Uint8Array(w * h * 4);
+  for (let row = 0; row < h; row++)
+    for (let col = 0; col < w; col++) {
+      const u = (col + 0.5) / w; // across one repeat
+      let shade = 255;
+      let opaque: boolean;
+      if (row < h / 2) {
+        // a picket in the middle of its repeat, narrowing to a point at the top, and the rails right across
+        const tip = row < POINT_FROM_ROW ? 1 : (h / 2 - row) / (h / 2 - POINT_FROM_ROW);
+        const picket = row >= PICKET_FROM_ROW && Math.abs(u - 0.5) < (PICKET_SHARE / 2) * tip;
+        opaque = picket || RAILS.some(([a, b]) => row >= a && row < b);
+      } else {
+        const board = Math.floor(u * BOARD_SHADES.length);
+        const join = (u * BOARD_SHADES.length) % 1 < 1 / 8; // a texel's width of each board
+        shade = join ? JOIN_SHADE : BOARD_SHADES[board];
+        opaque = true;
+      }
+      px.set([shade, shade, shade, opaque ? 255 : 0], (row * w + col) * 4);
+    }
+  const texture = new THREE.DataTexture(px, w, h);
+  texture.wrapS = THREE.RepeatWrapping;
+  texture.magFilter = THREE.LinearFilter;
+  texture.minFilter = THREE.LinearMipmapLinearFilter;
+  texture.generateMipmaps = true;
+  texture.needsUpdate = true;
+  return texture;
+}
+
+/** Non-indexed triangles under construction: positions, normals, linear colours and texture coordinates, in buffers that grow. */
 class Soup {
   position = new Float32Array(3 * 4096);
   normal = new Float32Array(3 * 4096);
   color = new Float32Array(3 * 4096);
+  uv = new Float32Array(2 * 4096);
   vertices = 0;
 
-  /** Adds the quad 0 1 2 3 (in order round it, x y z each), facing (nx, ny, nz), in colour c. */
-  quad(q: readonly number[], nx: number, ny: number, nz: number, c: THREE.Color) {
+  /**
+   * Adds the quad 0 1 2 3 (in order round it, x y z each), facing (nx, ny, nz), in colour c, with the texture
+   * coordinates `uv` (u v at each corner) or none.
+   */
+  quad(q: readonly number[], nx: number, ny: number, nz: number, c: THREE.Color, uv?: readonly number[]) {
     if ((this.vertices + 6) * 3 > this.position.length) {
-      for (const name of ['position', 'normal', 'color'] as const) {
+      for (const name of ['position', 'normal', 'color', 'uv'] as const) {
         const bigger = new Float32Array(this[name].length * 2);
         bigger.set(this[name]);
         this[name] = bigger;
@@ -74,6 +130,10 @@ class Soup {
       this.color[i] = c.r;
       this.color[i + 1] = c.g;
       this.color[i + 2] = c.b;
+      if (uv) {
+        this.uv[(i / 3) * 2] = uv[k * 2];
+        this.uv[(i / 3) * 2 + 1] = uv[k * 2 + 1];
+      }
     }
   }
 }
@@ -178,23 +238,35 @@ export interface PlotBoundariesOptions {
 }
 
 /**
- * The hedges, fences and walls on the plots' edges: one vertex-coloured mesh per CHUNK_M chunk, which casts and takes
- * shadows. Nothing collides with them yet. Adds nothing to a scene; dispose() frees every geometry and the material.
+ * The hedges, fences and walls on the plots' edges. In each CHUNK_M chunk, one vertex-coloured mesh holds the boxes
+ * (hedges, walls, fence posts) and one the fences' panels, a textured plane each piece, see-through between the pickets.
+ * They cast and take shadows. Nothing collides with them yet. Adds nothing to a scene; dispose() frees every geometry,
+ * the materials and the texture.
  */
 export class PlotBoundaries {
   readonly meshes: THREE.Mesh[] = [];
-  readonly material = new THREE.MeshLambertMaterial({ vertexColors: true });
+  readonly materials = {
+    boxes: new THREE.MeshLambertMaterial({ vertexColors: true }),
+    panels: new THREE.MeshLambertMaterial({
+      vertexColors: true,
+      map: fenceTexture(),
+      alphaTest: 0.5,
+      side: THREE.DoubleSide,
+    }),
+  };
   readonly triangles: number;
 
   constructor(runs: readonly BoundaryRun[], { groundAt, colours = BOUNDARY_COLOURS }: PlotBoundariesOptions) {
-    const chunks = new Map<string, Soup>();
+    const chunks = new Map<string, { boxes: Soup; panels: Soup }>();
     const base = new THREE.Color();
     const shade = new THREE.Color();
     const top = new THREE.Color();
+    const uv = new Array<number>(8);
     for (const run of runs) {
       const key = `${Math.floor(run.p[0] / CHUNK_M)},${Math.floor(run.p[1] / CHUNK_M)}`;
-      const soup = chunks.get(key) ?? new Soup();
-      chunks.set(key, soup);
+      const chunk = chunks.get(key) ?? { boxes: new Soup(), panels: new Soup() };
+      chunks.set(key, chunk);
+      const fence = run.kind === BoundaryKind.PICKET || run.kind === BoundaryKind.BOARD;
       const srgb =
         run.kind === BoundaryKind.HEDGE
           ? colours.hedge
@@ -206,6 +278,7 @@ export class PlotBoundaries {
       base.set(srgb).convertSRGBToLinear();
       const runPieces = pieces(run.p, PIECE_M[run.kind]);
       let groundBefore = 0; // the ground at the end of the piece before, where this one starts
+      let alongM = 0; // along the run, so the fence texture carries on from piece to piece
       // each piece stands just inside the plot, its outer face on the line
       const insetM = (run.inward * WIDTH_M[run.kind]) / 2;
       runPieces.forEach(([px, pz, qx, qz], i) => {
@@ -219,54 +292,66 @@ export class PlotBoundaries {
         const ground = (ga + gb) / 2;
         const roll = hashInts(Math.round(ax * 10), Math.round(az * 10));
         const height = run.heightM + (roll * 2 - 1) * HEIGHT_JITTER_M[run.kind];
-        shade
-          .copy(base)
-          .multiplyScalar(1 + (hashInts(Math.round(az * 10), Math.round(ax * 10)) * 2 - 1) * SHADE_JITTER);
-        if (run.kind === BoundaryKind.PICKET) {
-          const length = Math.hypot(bx - ax, bz - az);
-          const count = Math.max(1, Math.round(length / PICKET_EVERY_M));
-          for (let k = 0; k < count; k++) {
-            const t = (k + 0.5) / count;
-            const half = PICKET_WIDE_M / 2 / (length || 1);
-            const [t0, t1] = [t - half, t + half];
-            const [x0, z0, x1, z1] = [
-              ax + (bx - ax) * t0,
-              az + (bz - az) * t0,
-              ax + (bx - ax) * t1,
-              az + (bz - az) * t1,
-            ];
-            // a picket's top and ends are a few centimetres across: only its faces are drawn
-            box(soup, x0, z0, x1, z1, WIDTH_M[run.kind], y0, ground + height, shade, false, null);
-          }
-          const railY = ground + RAIL_AT_M;
-          box(soup, ax, az, bx, bz, WIDTH_M[run.kind] * 1.5, railY, railY + RAIL_TALL_M, shade, false, null);
+        const jitter = fence ? 0 : (hashInts(Math.round(az * 10), Math.round(ax * 10)) * 2 - 1) * SHADE_JITTER;
+        shade.copy(base).multiplyScalar(1 + jitter);
+        if (fence) {
+          // the panel, from the ground to the fence's top, and a post at its start (and the run's end)
+          const y1 = ground + height;
+          const [tx, tz] = [(bx - ax) / length, (bz - az) / length];
+          const [u0, u1] = [alongM / REPEAT_M[run.kind], (alongM + length) / REPEAT_M[run.kind]];
+          const [v0, v1] = run.kind === BoundaryKind.PICKET ? [0, 0.5] : [0.5, 1];
+          [uv[0], uv[1], uv[2], uv[3], uv[4], uv[5], uv[6], uv[7]] = [u0, v0, u1, v0, u1, v1, u0, v1];
+          chunk.panels.quad(corners(ax, y0, az, bx, y0, bz, bx, y1, bz, ax, y1, az), -tz, 0, tx, shade, uv);
+          alongM += length;
+          top.copy(shade).multiplyScalar(POST_DARKER);
+          const post = (x: number, z: number) =>
+            box(
+              chunk.boxes,
+              x - tx * 0.05,
+              z - tz * 0.05,
+              x + tx * 0.05,
+              z + tz * 0.05,
+              WIDTH_M[run.kind],
+              y0,
+              y1 + POST_ABOVE_M,
+              top,
+            );
+          if (i === 0 || run.kind === BoundaryKind.PICKET) post(ax, az);
+          if (i === runPieces.length - 1) post(bx, bz);
           return;
         }
         top.copy(shade).multiplyScalar(run.kind === BoundaryKind.HEDGE ? 1 + HEDGE_TOP_LIGHTER : 1);
-        // a board fence's pieces are all one height, so only the run's own ends show; a hedge's and a wall's step
-        const ends = run.kind !== BoundaryKind.BOARD || i === 0 || i === runPieces.length - 1;
-        box(soup, ax, az, bx, bz, WIDTH_M[run.kind], y0, ground + height, shade, ends, top);
+        box(chunk.boxes, ax, az, bx, bz, WIDTH_M[run.kind], y0, ground + height, shade, true, top);
       });
     }
     let triangles = 0;
-    for (const soup of chunks.values()) {
-      const geometry = new THREE.BufferGeometry();
-      const n = soup.vertices * 3;
-      geometry.setAttribute('position', new THREE.BufferAttribute(soup.position.slice(0, n), 3));
-      geometry.setAttribute('normal', new THREE.BufferAttribute(soup.normal.slice(0, n), 3));
-      geometry.setAttribute('color', new THREE.BufferAttribute(soup.color.slice(0, n), 3));
-      geometry.computeBoundingSphere();
-      const mesh = new THREE.Mesh(geometry, this.material);
-      mesh.castShadow = true;
-      mesh.receiveShadow = true;
-      this.meshes.push(mesh);
-      triangles += soup.vertices / 3;
-    }
+    for (const chunk of chunks.values())
+      for (const [soup, material] of [
+        [chunk.boxes, this.materials.boxes],
+        [chunk.panels, this.materials.panels],
+      ] as const) {
+        if (!soup.vertices) continue;
+        const geometry = new THREE.BufferGeometry();
+        const n = soup.vertices * 3;
+        geometry.setAttribute('position', new THREE.BufferAttribute(soup.position.slice(0, n), 3));
+        geometry.setAttribute('normal', new THREE.BufferAttribute(soup.normal.slice(0, n), 3));
+        geometry.setAttribute('color', new THREE.BufferAttribute(soup.color.slice(0, n), 3));
+        if (material === this.materials.panels)
+          geometry.setAttribute('uv', new THREE.BufferAttribute(soup.uv.slice(0, soup.vertices * 2), 2));
+        geometry.computeBoundingSphere();
+        const mesh = new THREE.Mesh(geometry, material);
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+        this.meshes.push(mesh);
+        triangles += soup.vertices / 3;
+      }
     this.triangles = triangles;
   }
 
   dispose() {
     for (const mesh of this.meshes) mesh.geometry.dispose();
-    this.material.dispose();
+    this.materials.boxes.dispose();
+    this.materials.panels.map?.dispose();
+    this.materials.panels.dispose();
   }
 }

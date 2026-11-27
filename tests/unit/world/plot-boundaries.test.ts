@@ -25,16 +25,17 @@ const zs = (r: BoundaryRun) => r.p.filter((_, i) => i % 2 === 1);
 const onFront = (r: BoundaryRun) => zs(r).every(z => z === 5);
 
 describe('layoutBoundaries', () => {
-  it('closes about as many street edges as its profile says, and sides and backs less often', () => {
+  it('closes most street edges, sides and backs, with a mix of kinds on every edge', () => {
     const plots = row(400);
     const runs = layoutBoundaries(plots, centre);
     const closed = (test: (r: BoundaryRun) => boolean) =>
       new Set(runs.filter(test).map(r => r.key)).size / plots.length;
-    expect(closed(onFront)).toBeGreaterThan(0.7); // the centre closes 80 %
-    expect(closed(onFront)).toBeLessThan(0.9);
-    expect(closed(r => zs(r).every(z => z === 40))).toBeLessThan(0.35);
-    const kinds = new Set(runs.map(r => r.kind));
-    expect([...kinds].sort()).toEqual([BoundaryKind.HEDGE, BoundaryKind.PICKET, BoundaryKind.WALL]);
+    expect(closed(onFront)).toBeGreaterThan(0.75); // the centre closes 85 %
+    expect(closed(onFront)).toBeLessThan(0.95);
+    expect(closed(r => zs(r).every(z => z === 40))).toBeGreaterThan(0.7); // and 80 % of backs
+    const kindsOn = (test: (r: BoundaryRun) => boolean) => [...new Set(runs.filter(test).map(r => r.kind))].sort();
+    expect(kindsOn(onFront)).toEqual([BoundaryKind.HEDGE, BoundaryKind.PICKET, BoundaryKind.BOARD, BoundaryKind.WALL]);
+    expect(kindsOn(r => !onFront(r))).toEqual([BoundaryKind.HEDGE, BoundaryKind.PICKET, BoundaryKind.BOARD]);
   });
 
   it('leaves gaps at the driveway and at a gate opposite the house', () => {
@@ -46,21 +47,23 @@ describe('layoutBoundaries', () => {
     }
   });
 
-  it('draws a side two neighbours share once, and none along a wall', () => {
+  it('lets two neighbours each have a boundary on the line between them, each on its own side, and none on a wall', () => {
     const runs = layoutBoundaries(row(200), centre);
-    const bySideLine = new Map<number, Set<string>>();
-    for (const r of runs)
-      if (xs(r).every(x => x === xs(r)[0]) && xs(r)[0] % 20 === 0) {
-        const keys = bySideLine.get(xs(r)[0]) ?? new Set();
-        keys.add(r.key);
-        bySideLine.set(xs(r)[0], keys);
-      }
-    expect(bySideLine.size).toBeGreaterThan(0);
-    for (const keys of bySideLine.values()) expect(keys.size).toBe(1);
-    // each house against its plot's west side, which is its western neighbour's east side: no side but the row's
-    // east end, which has no neighbour
+    const sideRuns = runs.filter(r => xs(r).every(x => x === xs(r)[0]) && xs(r)[0] % 20 === 0);
+    const byLine = new Map<number, BoundaryRun[]>();
+    for (const r of sideRuns) byLine.set(xs(r)[0], [...(byLine.get(xs(r)[0]) ?? []), r]);
+    const both = [...byLine.values()].filter(rs => new Set(rs.map(r => r.key)).size === 2);
+    expect(both.length).toBeGreaterThan(50);
+    // the way each stands off the line along x: right of a line heading +z (south) is -x
+    const towardsX = (r: BoundaryRun) => -Math.sign(r.p[3] - r.p[1]) * r.inward;
+    for (const rs of both) expect(new Set(rs.map(towardsX)).size).toBe(2); // back to back, each on its own side
+    // each house against its plot's west side: nothing on that side of the line, but its neighbour still can
     const againstWalls = layoutBoundaries(row(200, 0), centre);
-    expect(againstWalls.filter(r => xs(r).every(x => x === xs(r)[0] && x < 4000))).toEqual([]);
+    for (const r of againstWalls) {
+      const x0 = 20 * Number(r.key.slice(1));
+      expect(xs(r).every(x => x === x0)).toBe(false);
+    }
+    expect(againstWalls.some(r => xs(r).every(x => x === xs(r)[0] && x > 0 && x % 20 === 0))).toBe(true);
   });
 
   it('stands each boundary on the side of the line its plot is on', () => {
