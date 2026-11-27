@@ -35,7 +35,7 @@ import { treeSpots } from '../world/trees';
 import { layoutShore } from '../world/shore';
 import { Water } from '../world/water';
 import { WaterBodies } from '../world/water-shapes';
-import { type Car, type CarMode, Fleet, newCar, TURBO_AT } from './cars';
+import { type Car, type CarMode, Fleet, newCar, registerFlatTyreCommand, TURBO_AT } from './cars';
 import { CatColony } from './cats';
 import { Hud } from './hud';
 import { Input } from './input';
@@ -354,6 +354,7 @@ pets.registerCommands(commands);
 wanted.registerCommands(commands);
 registerHealthCommands(commands, health, drawHealth);
 registerCarDamageCommand(commands, () => (game.inCar ? game.pcar : null));
+registerFlatTyreCommand(commands, () => (game.inCar ? game.pcar : null));
 registerTunableCommands(commands, tunables);
 // go <place>: you, or the car you drive, straight there, out of any safehouse first
 places.registerCommands(commands, (x, z, name, h) => { leaveHouse(); const c = game.inCar ? game.pcar : null;

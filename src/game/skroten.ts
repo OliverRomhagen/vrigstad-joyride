@@ -1,7 +1,7 @@
 // Skroten buys the car you drive in (#76): drive onto its ring, press E, and Plåt-Pelle makes an offer by the car's model and damage.
 // He mends the car you drive onto the workshop's lift, and sells the cars on his lot: press E by one for his price. Neither with the police after you, and he never buys a police car.
 // On foot you can talk to him. main.ts passes in the menu plate, the wallet and what happens to the car. No three.js or DOM here.
-import type { Car, CarForSale } from './cars';
+import { type Car, type CarForSale, NO_FLAT } from './cars';
 import { carPrice, earn, fmtKr, pay, repairPrice, salePrice, type Wallet } from './economy';
 import type { MenuItem } from './pets';
 import { tooFastToGetOut } from './player';
@@ -60,14 +60,15 @@ export class Skroten {
   // what Skroten pays for c, or the reason it won't buy it
   private offer(c: Car): number | string {
     if (this.g.stars) return CHASED;
-    return carPrice(c.type, this.g.modelId(c), c.dmg) ?? NO_POLICE;
+    return carPrice(c.type, this.g.modelId(c), c.dmg, c.flat !== NO_FLAT) ?? NO_POLICE;
   }
 
-  // what Plåt-Pelle asks to mend c, or the reason he won't; 0 for a car with no damage, before any reason, so a whole car on the lift gets no word
+  // what Plåt-Pelle asks to mend c, or the reason he won't; 0 for a car with no damage and no flat, before any reason, so a whole car on the lift gets no word
   private repairQuote(c: Car): number | string {
-    if (c.dmg <= 0) return 0;
+    const flat = c.flat !== NO_FLAT;
+    if (c.dmg <= 0 && !flat) return 0;
     if (this.g.stars) return CHASED;
-    return repairPrice(c.type, this.g.modelId(c), c.dmg) ?? NO_POLICE;
+    return repairPrice(c.type, this.g.modelId(c), c.dmg, flat) ?? NO_POLICE;
   }
 
   // the car you drive stands on the lift
@@ -135,7 +136,16 @@ export class Skroten {
     }
     openMenu(
       'skrot-fix',
-      OWNER_SAYS + '”Den där ' + carName(c) + ' ä allt tilltufsad. ' + fmtKr(kr) + ', så blir den som ny.”',
+      OWNER_SAYS +
+        (c.dmg <= 0
+          ? '”Punka, va? ' + fmtKr(kr) + ' för ett nytt däck, så rullar den rakt igen.”'
+          : '”Den där ' +
+            carName(c) +
+            ' ä allt tilltufsad' +
+            (c.flat === NO_FLAT ? '' : ', å punka på köpet') +
+            '. ' +
+            fmtKr(kr) +
+            ', så blir den som ny.”'),
       [
         ['fix', 'Laga <small>' + fmtKr(kr) + '</small>'],
         ['no', 'Nä, dä får va'],
@@ -159,11 +169,12 @@ export class Skroten {
     else if (!pay(wallet, kr)) toast(SHORT(kr), 3.5);
     else {
       c.dmg = 0;
+      c.flat = NO_FLAT; // a burst tyre too: a mended car drives straight
       toast(OWNER_SAYS + '”Så där! Som ny. Nästan.” −' + fmtKr(kr) + '.', 4);
     }
   }
 
-  /** The car you drive stands on the lift and has damage Plåt-Pelle would mend: his price, else null. */
+  /** The car you drive stands on the lift and has damage or a flat tyre Plåt-Pelle would mend: his price, else null. */
   repairKr(): number | null {
     const c = this.g.game.pcar;
     if (!this.onLift(c)) return null;
