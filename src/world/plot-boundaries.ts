@@ -1,7 +1,8 @@
 // What stands on the plots' edges (#401): a clipped hedge, a picket fence, a board fence, a low stone wall or nothing.
-// Pure: no three.js. Artistic rules, not a survey of Vrigstad. Towards the street, half the plots take their street's
-// style and half choose their own, so a street has a character without being uniform. Between neighbours and at the
-// back, hedges and board fences give shelter, chosen on their own. Each plot has its own boundaries on its own side of
+// Pure: no three.js. Artistic rules, not a survey of Vrigstad. A plot is fenced in on every edge or on none. Half the
+// plots take their street's style (whether they are fenced in, and their street edge's kind) and half choose their
+// own, so a street has a character without being uniform. Between neighbours and at the back, hedges and board fences
+// give shelter, each edge chosen on its own. Each plot has its own boundaries on its own side of
 // the line, so a hedge and a fence can stand side by side between two houses. A boundary leaves a gap at the driveway
 // and a garden gate opposite the house, and keeps off its house's walls. Every choice hashes the street or the plot's
 // key, never data order.
@@ -19,47 +20,54 @@ export type BoundaryKind = (typeof BoundaryKind)[keyof typeof BoundaryKind];
 type Shares = readonly (readonly [BoundaryKind, number])[];
 
 /**
- * the share of street edges that each kind closes, by the street's profile; what is left is open. The centre's older
- * villas have hedges, picket fences and the odd stone wall, the suburbs a bit of everything, farms stone walls.
+ * the share of plots that are fenced in, by the street's profile; a plot that is has something on every edge, one that
+ * isn't on none. The centre's older villas mostly are, farms often not.
  */
-const FRONT_SHARES: Record<Profile, Shares> = {
+const ENCLOSED_SHARE: Record<Profile, number> = { centre: 0.85, residential: 0.8, outskirts: 0.5 };
+/**
+ * how a fenced-in plot's street edge is closed, as shares of each kind, by the street's profile: the centre's hedges,
+ * picket fences and the odd stone wall, the suburbs a bit of everything, farms stone walls
+ */
+const FRONT_MIX: Record<Profile, Shares> = {
   centre: [
-    [BoundaryKind.HEDGE, 0.35],
-    [BoundaryKind.PICKET, 0.3],
-    [BoundaryKind.WALL, 0.15],
-    [BoundaryKind.BOARD, 0.05],
-  ],
-  residential: [
-    [BoundaryKind.HEDGE, 0.35],
-    [BoundaryKind.PICKET, 0.25],
-    [BoundaryKind.BOARD, 0.15],
-    [BoundaryKind.WALL, 0.05],
-  ],
-  outskirts: [
-    [BoundaryKind.WALL, 0.35],
-    [BoundaryKind.PICKET, 0.15],
-    [BoundaryKind.HEDGE, 0.15],
-    [BoundaryKind.BOARD, 0.05],
-  ],
-};
-/** the share of sides and backs each kind closes: shelter from the neighbours; farms mostly leave theirs open */
-const SIDE_SHARES: Record<Profile, Shares> = {
-  centre: [
-    [BoundaryKind.HEDGE, 0.5],
-    [BoundaryKind.BOARD, 0.2],
-    [BoundaryKind.PICKET, 0.1],
+    [BoundaryKind.HEDGE, 0.4],
+    [BoundaryKind.PICKET, 0.35],
+    [BoundaryKind.WALL, 0.18],
+    [BoundaryKind.BOARD, 0.07],
   ],
   residential: [
     [BoundaryKind.HEDGE, 0.45],
-    [BoundaryKind.BOARD, 0.25],
-    [BoundaryKind.PICKET, 0.1],
+    [BoundaryKind.PICKET, 0.3],
+    [BoundaryKind.BOARD, 0.18],
+    [BoundaryKind.WALL, 0.07],
   ],
   outskirts: [
-    [BoundaryKind.HEDGE, 0.15],
-    [BoundaryKind.WALL, 0.1],
+    [BoundaryKind.WALL, 0.55],
+    [BoundaryKind.PICKET, 0.2],
+    [BoundaryKind.HEDGE, 0.2],
+    [BoundaryKind.BOARD, 0.05],
   ],
 };
-/** a plot's street edge takes its street's style with this chance, else one of its own */
+/** ... and its sides and back, each chosen on its own: shelter from the neighbours */
+const SIDE_MIX: Record<Profile, Shares> = {
+  centre: [
+    [BoundaryKind.HEDGE, 0.6],
+    [BoundaryKind.BOARD, 0.25],
+    [BoundaryKind.PICKET, 0.15],
+  ],
+  residential: [
+    [BoundaryKind.HEDGE, 0.55],
+    [BoundaryKind.BOARD, 0.3],
+    [BoundaryKind.PICKET, 0.15],
+  ],
+  outskirts: [
+    [BoundaryKind.HEDGE, 0.6],
+    [BoundaryKind.WALL, 0.4],
+  ],
+};
+/** the share of generated driveways that are asphalt rather than gravel, by the street's profile */
+const ASPHALT_SHARE: Record<Profile, number> = { centre: 0.6, residential: 0.5, outskirts: 0.15 };
+/** a plot takes its street's style (whether it is fenced in, and its street edge's kind) with this chance, else its own */
 const STREET_STYLE_SHARE = 0.5;
 /** a hedge is between these heights (m), by edge; the other kinds have one height each (m) */
 const HEDGE_MIN_M = 0.9;
@@ -86,6 +94,10 @@ const MAILBOX_NEAR_M = 0.8;
 /** an industrial fence is cut into pieces this long (m) to test, and leaves out a piece this close to a road's edge (m) */
 const INDUSTRIAL_PIECE_M = 2.5;
 const INDUSTRIAL_ROAD_CLEAR_M = 1;
+/** where the edge runs along a road, the fence stands back from it by the first of these that clears it (m) */
+const INDUSTRIAL_INSETS_M = [1, 2, 3, 4, 6, 8];
+/** a road within reach of a piece runs along it when their directions' cosine is at least this; else it crosses */
+const INDUSTRIAL_ALONG_COS = 0.85;
 /** ... or to a place with a fence of its own (m): Skroten's yard, whose fence and gate stand back from the road */
 const INDUSTRIAL_KEEP_OUT_M = 15;
 
@@ -104,13 +116,13 @@ export interface BoundaryRun {
   slim?: true;
 }
 
-/** The kind `roll` (in [0, 1)) picks from `shares`, or null for open. */
-function pick(shares: Shares, roll: number): BoundaryKind | null {
+/** The kind `roll` (in [0, 1)) picks from `shares`, which add up to 1. */
+function pick(shares: Shares, roll: number): BoundaryKind {
   for (const [kind, share] of shares) {
     if (roll < share) return kind;
     roll -= share;
   }
-  return null;
+  return shares[shares.length - 1][0];
 }
 
 /** Shortest distance from any point of polyline `p` to polygon outline `q` (m), both flat [x, z, ...]. */
@@ -259,29 +271,28 @@ export function layoutBoundaries(
     const o = plot.outline;
     const n = o.length / 4;
 
-    // the street edge, with gaps at the driveway and the gate
+    // fenced in on every edge, or on none
     const ownStyle = hash01(plot.key, 'own') >= STREET_STYLE_SHARE;
-    const front = pick(
-      FRONT_SHARES[profile],
-      ownStyle ? hash01(plot.key, 'front') : hash01(plot.ri, plot.side, 'style'),
-    );
-    if (front !== null) {
-      const line = o.slice(0, 2 * n);
-      const gaps: [number, number][] = [];
-      const d = plot.driveway;
-      if (d)
-        for (let i = 2; i < d.p.length; i += 2) {
-          const at = crossingAlong(line, d.p[i - 2], d.p[i - 1], d.p[i], d.p[i + 1]);
-          if (at === null) continue;
-          const half = d.widthM / 2 + DRIVEWAY_SPARE_M;
-          gaps.push([at - half, at + half]);
-          break;
-        }
-      const gate = nearestAlong(line, hx, hz);
-      if (gaps.every(([g0, g1]) => gate < g0 - GATE_DRIVEWAY_M || gate > g1 + GATE_DRIVEWAY_M))
-        gaps.push([gate - GATE_M / 2, gate + GATE_M / 2]);
-      for (const piece of cut(line, gaps)) add(piece, front, 'front');
-    }
+    const roll = (what: string) => (ownStyle ? hash01(plot.key, what) : hash01(plot.ri, plot.side, what));
+    if (roll('enclosed') >= ENCLOSED_SHARE[profile]) continue;
+
+    // the street edge, with gaps at the driveway and the gate
+    const front = pick(FRONT_MIX[profile], roll('front'));
+    const frontLine = o.slice(0, 2 * n);
+    const gaps: [number, number][] = [];
+    const d = plot.driveway;
+    if (d)
+      for (let i = 2; i < d.p.length; i += 2) {
+        const at = crossingAlong(frontLine, d.p[i - 2], d.p[i - 1], d.p[i], d.p[i + 1]);
+        if (at === null) continue;
+        const half = d.widthM / 2 + DRIVEWAY_SPARE_M;
+        gaps.push([at - half, at + half]);
+        break;
+      }
+    const gate = nearestAlong(frontLine, hx, hz);
+    if (gaps.every(([g0, g1]) => gate < g0 - GATE_DRIVEWAY_M || gate > g1 + GATE_DRIVEWAY_M))
+      gaps.push([gate - GATE_M / 2, gate + GATE_M / 2]);
+    for (const piece of cut(frontLine, gaps)) add(piece, front, 'front');
 
     // the sides and the back, each on its own; a neighbour's boundary on the same line stands on its own side of it
     const edges: [string, number[]][] = [
@@ -289,10 +300,7 @@ export function layoutBoundaries(
       ['back', o.slice(2 * n)],
       ['left', [o[4 * n - 2], o[4 * n - 1], o[0], o[1]]],
     ];
-    for (const [edge, line] of edges) {
-      const kind = pick(SIDE_SHARES[profile], hash01(plot.key, edge));
-      if (kind !== null) add(line, kind, edge);
-    }
+    for (const [edge, line] of edges) add(line, pick(SIDE_MIX[profile], hash01(plot.key, edge)), edge);
   }
   return runs;
 }
@@ -329,7 +337,8 @@ export function industrialFences({
     const reach = 10;
     const near = (b: Bounds) =>
       b.x0 < box.x1 + reach && b.x1 > box.x0 - reach && b.z0 < box.z1 + reach && b.z1 > box.z0 - reach;
-    const footprints = buildings.footprints.filter(near);
+    // each nearby building's outline closed (its first corner again at the end), for distanceToLine
+    const footprints = buildings.footprints.filter(near).map(f => ({ ...f, ring: [...f.p, f.p[0], f.p[1]] }));
     const keepOutBox = keepOut.length
       ? keepOut.reduce((b, q) => polygonBounds(q, b), { x0: Infinity, x1: -Infinity, z0: Infinity, z1: -Infinity })
       : null;
@@ -347,8 +356,13 @@ export function industrialFences({
       }
     const free = (ax: number, az: number, bx: number, bz: number) => {
       const [mx, mz] = [(ax + bx) / 2, (az + bz) / 2];
+      const [x0, x1, z0, z1] = [Math.min(ax, bx), Math.max(ax, bx), Math.min(az, bz), Math.max(az, bz)];
       for (let i = 0; i < segments.length; i += 5) {
         const k = segments[i + 4];
+        if (Math.min(segments[i], segments[i + 2]) > x1 + k || Math.max(segments[i], segments[i + 2]) < x0 - k)
+          continue;
+        if (Math.min(segments[i + 1], segments[i + 3]) > z1 + k || Math.max(segments[i + 1], segments[i + 3]) < z0 - k)
+          continue;
         for (const [x, z] of [
           [ax, az],
           [mx, mz],
@@ -356,12 +370,11 @@ export function industrialFences({
         ])
           if (segmentDistance(x, z, segments[i], segments[i + 1], segments[i + 2], segments[i + 3]) < k) return false;
       }
-      for (const f of footprints)
-        if (
-          pointInPolygon(f.p, mx, mz) ||
-          distanceToLine([...f.p, f.p[0], f.p[1]], mx, mz) < WALL_CLEAR_M[BoundaryKind.MESH]
-        )
-          return false;
+      const clearM = WALL_CLEAR_M[BoundaryKind.MESH];
+      for (const f of footprints) {
+        if (mx < f.x0 - clearM || mx > f.x1 + clearM || mz < f.z0 - clearM || mz > f.z1 + clearM) continue;
+        if (pointInPolygon(f.p, mx, mz) || distanceToLine(f.ring, mx, mz) < clearM) return false;
+      }
       const k = INDUSTRIAL_KEEP_OUT_M;
       if (
         keepOutBox &&
@@ -394,21 +407,69 @@ export function industrialFences({
       }
       run = [];
     };
+    // a road that crosses a piece, rather than running along it, is an entrance: the fence leaves a gap there
+    const crossedByRoad = (ax: number, az: number, bx: number, bz: number) => {
+      const length = Math.hypot(bx - ax, bz - az) || 1;
+      for (let i = 0; i < segments.length; i += 5) {
+        const [cx, cz, dx, dz] = [segments[i], segments[i + 1], segments[i + 2], segments[i + 3]];
+        const near = Math.min(
+          segmentDistance(ax, az, cx, cz, dx, dz),
+          segmentDistance((ax + bx) / 2, (az + bz) / 2, cx, cz, dx, dz),
+          segmentDistance(bx, bz, cx, cz, dx, dz),
+        );
+        if (near >= segments[i + 4]) continue;
+        const cos =
+          Math.abs((bx - ax) * (dx - cx) + (bz - az) * (dz - cz)) / (length * (Math.hypot(dx - cx, dz - cz) || 1));
+        if (cos < INDUSTRIAL_ALONG_COS) return true;
+      }
+      return false;
+    };
     for (let i = 2; i < ring.length; i += 2) {
       const [ax, az, bx, bz] = [ring[i - 2], ring[i - 1], ring[i], ring[i + 1]];
-      const n = Math.max(1, Math.ceil(Math.hypot(bx - ax, bz - az) / INDUSTRIAL_PIECE_M));
+      const length = Math.hypot(bx - ax, bz - az) || 1;
+      // into the area from this edge: right of its direction, or left
+      const [rx, rz] = [-(bz - az) / length, (bx - ax) / length];
+      const inward = pointInPolygon(area.p, (ax + bx) / 2 + rx * 0.5, (az + bz) / 2 + rz * 0.5) ? 1 : -1;
+      const n = Math.max(1, Math.ceil(length / INDUSTRIAL_PIECE_M));
       for (let k = 0; k < n; k++) {
-        const [x0, z0] = [ax + ((bx - ax) * k) / n, az + ((bz - az) * k) / n];
-        const [x1, z1] = [ax + ((bx - ax) * (k + 1)) / n, az + ((bz - az) * (k + 1)) / n];
+        let [x0, z0] = [ax + ((bx - ax) * k) / n, az + ((bz - az) * k) / n];
+        let [x1, z1] = [ax + ((bx - ax) * (k + 1)) / n, az + ((bz - az) * (k + 1)) / n];
         if (!free(x0, z0, x1, z1)) {
-          flush();
-          continue;
+          // the edge runs along a road: the fence stands back from it, inside the area, as far as it must
+          const inset = crossedByRoad(x0, z0, x1, z1)
+            ? undefined
+            : INDUSTRIAL_INSETS_M.find(m =>
+                free(x0 + rx * inward * m, z0 + rz * inward * m, x1 + rx * inward * m, z1 + rz * inward * m),
+              );
+          if (inset === undefined) {
+            flush();
+            continue;
+          }
+          [x0, z0, x1, z1] = [
+            x0 + rx * inward * inset,
+            z0 + rz * inward * inset,
+            x1 + rx * inward * inset,
+            z1 + rz * inward * inset,
+          ];
         }
-        if (!run.length) run.push(x0, z0);
+        // a step in or out from the piece before joins on with a short piece of its own
+        if (!run.length || run[run.length - 2] !== x0 || run[run.length - 1] !== z0) {
+          if (
+            run.length &&
+            Math.hypot(run[run.length - 2] - x0, run[run.length - 1] - z0) > INDUSTRIAL_INSETS_M.at(-1)! + 1
+          )
+            flush();
+          run.push(x0, z0);
+        }
         run.push(x1, z1);
       }
     }
     flush();
   });
   return runs;
+}
+
+/** What a plot's driveway is laid with: asphalt or gravel, more often asphalt in the centre and gravel on farms. */
+export function drivewaySurface(plot: Pick<Plot, 'key'>, profile: Profile): 'asphalt' | 'gravel' {
+  return hash01(plot.key, 'driveway-surface') < ASPHALT_SHARE[profile] ? 'asphalt' : 'gravel';
 }
