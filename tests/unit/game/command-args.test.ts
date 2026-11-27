@@ -418,9 +418,20 @@ describe('either', () => {
   });
 
   it('refuses a kind that is optional or takes the rest: those go round the whole either', () => {
-    expect(() => either('x', int('n'), optional(word('w')))).toThrow('w: wrap the either in optional()');
-    expect(() => either('x', rest('words'), int('n'))).toThrow('words: wrap the either in optional()');
+    expect(() => either('x', int('n'), optional(word('w')))).toThrow("w: an either's kinds can't be optional");
+    expect(() => either('x', rest('words'), int('n'))).toThrow(
+      "words: an either's kinds can't be optional or take the rest",
+    );
     expect(optional(either('x', int('n'), word('w'))).optional).toBe(true);
+  });
+
+  it('names no either by a word its usage line never shows when it is left out', () => {
+    const c = new Commands();
+    c.register(
+      't',
+      command({ help: 'h', args: [either('when', int('n'), choice('moment', ['dusk'] as const))], run: () => 'ok' }),
+    );
+    expect(c.run('t')).toBe('An argument is missing. Usage: t <n|dusk>');
   });
 });
 

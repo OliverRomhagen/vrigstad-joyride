@@ -118,9 +118,12 @@ export function either<N extends string, const A extends readonly [AnyArg, AnyAr
   name: N,
   ...kinds: A
 ): Arg<N, ReturnType<A[number]['parse']>> {
-  // optional() and rest() go round the whole either, where command() reads them
+  // optional() goes round the whole either, where command() reads it; a rest argument can't be one of its kinds
   const flagged = kinds.find(a => a.optional || a.rest);
-  if (flagged) throw new Error(`${flagged.name}: wrap the either in optional() or rest(), not one of its kinds`);
+  if (flagged)
+    throw new Error(
+      `${flagged.name}: an either's kinds can't be optional or take the rest; wrap the whole either in optional()`,
+    );
   const lists = kinds.flatMap(a => (a.choices ? [a.choices.bind(a)] : []));
   // the usage line names each kind, or lists its words when they are few: the console on a phone has no Tab
   const usage = kinds.map(a => a.usage ?? listedWords(a)?.join('|') ?? a.name).join('|');
@@ -234,7 +237,8 @@ export function command<const A extends readonly AnyArg[]>(spec: TypedCommand<A>
         const a = args[i];
         const w = a.rest ? words.slice(i).join(' ') : words[i];
         if (w === undefined || w === '') {
-          if (!a.optional) throw new UsageError(`${a.name} is missing.`);
+          // an either's usage line lists its kinds, not its name, so its name would be a word the line never shows
+          if (!a.optional) throw new UsageError(a.usage ? 'An argument is missing.' : `${a.name} is missing.`);
           values[a.name] = undefined;
         } else values[a.name] = a.parse(w);
       }
@@ -290,7 +294,9 @@ export function group<const A extends readonly AnyArg[] = readonly []>(spec: Gro
   let known: readonly string[] = [];
   try {
     known = spec.args[0]?.choices?.() ?? [];
-  } catch {}
+  } catch {
+    // a list that isn't ready yet: the subcommand wins when it is, as above
+  }
   const hidden = known.find(c => names.includes(c.toLowerCase()));
   if (hidden !== undefined) throw new Error(`${hidden} names a subcommand, so the group's own argument never gets it`);
   const own = command({ help: spec.help, args: spec.args, run: spec.run });
