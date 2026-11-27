@@ -419,7 +419,7 @@ $('go').addEventListener('click', loop.startGame);
 installCaptureHook({ THREE, renderer, camera, game, view, player, cars, keys: input.keys, joy: input.joy, D, R, nodes: roads.junctions, nodeKey, driveable: roads.driveable, hAt,
   action, addCar, removeCar, placeCar, carGeo, sun, SUN_DIR, wanted, places, wallet, TRISS_KR, vehicleVisuals: { state: (c: Car) => vehicleVisuals.state(meshed(c)) },
   followCamera: () => windowFrames?.update(camera.position.x, camera.position.z) }, location.search);
-loop.drawThrough(new ToonStyle(renderer));   // the world is drawn cel-shaded (#206), from the first frame
+loop.drawThrough(new ToonStyle(renderer, { coarse }));   // the world is drawn cel-shaded (#206), from the first frame
 loop.start();
 
 // ---------- test hook: read-only state for the smoke tests (src/game/test-hook.ts) ----------

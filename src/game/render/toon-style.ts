@@ -38,6 +38,54 @@ const INK_OPACITY = 0.67;
 // Scaling the lines about the mesh's origin instead moved them off meshes whose origin is far away, such as the
 // village's shells (one mesh at Torget).
 export const INK_PULL = 0.001;
+// What the lines cost is drawing them: they were nearly all of what the style adds to a frame (#413). So the lines of
+// a small thing (a car, a person, a sign: a bounding sphere under INK_SMALL_M) are drawn only this near the camera (m),
+// where they are more than a pixel or two; and the lines of a mesh as wide as the village (its house shells) are cut
+// into squares INK_CELL_M across, each its own object, so the ones behind the camera or off screen are culled.
+/** How near the camera a small thing's ink is drawn (m): on desktop, and on a touch screen. */
+export const INK_NEAR_M = 60,
+  INK_NEAR_COARSE_M = 40;
+const INK_SMALL_M = 20;
+/** The size of the squares a wide mesh's ink is cut into (m). */
+export const INK_CELL_M = 150;
+const INK_SMALL_FLAG = 'inkSmall'; // on a line object's userData: its distance from the camera decides whether it's drawn
+
+const _v = new THREE.Vector3();
+
+// whether a mesh is inked: it or an object above it carries INK_FLAG
+const underInkFlag = (object: THREE.Object3D) => {
+  for (let o: THREE.Object3D | null = object; o; o = o.parent) if (o.userData[INK_FLAG]) return true;
+  return false;
+};
+
+/**
+ * A mesh's ink lines as one geometry, or, for one wider than INK_CELL_M, cut into squares of that size by where each
+ * segment's middle falls, so each square is culled on its own. Each piece has its bounding sphere.
+ */
+export function inkPieces(edges: THREE.BufferGeometry): THREE.BufferGeometry[] {
+  edges.computeBoundingSphere();
+  if ((edges.boundingSphere?.radius ?? 0) <= INK_CELL_M) return [edges];
+  const pos = edges.getAttribute('position'),
+    cells = new Map<string, number[]>();
+  for (let i = 0; i + 1 < pos.count; i += 2) {
+    const mx = (pos.getX(i) + pos.getX(i + 1)) / 2,
+      mz = (pos.getZ(i) + pos.getZ(i + 1)) / 2,
+      k = `${Math.floor(mx / INK_CELL_M)},${Math.floor(mz / INK_CELL_M)}`;
+    let out = cells.get(k);
+    if (!out) {
+      out = [];
+      cells.set(k, out);
+    }
+    out.push(pos.getX(i), pos.getY(i), pos.getZ(i), pos.getX(i + 1), pos.getY(i + 1), pos.getZ(i + 1));
+  }
+  edges.dispose();
+  return [...cells.values()].map(out => {
+    const piece = new THREE.BufferGeometry();
+    piece.setAttribute('position', new THREE.Float32BufferAttribute(out, 3));
+    piece.computeBoundingSphere();
+    return piece;
+  });
+}
 
 type LitMaterial = THREE.MeshLambertMaterial | THREE.MeshPhongMaterial | THREE.MeshStandardMaterial;
 type MeshMaterial = THREE.Material | THREE.Material[];
@@ -85,10 +133,14 @@ export class ToonStyle {
   private readonly gradients = new Map<Finish, THREE.DataTexture>();
   private readonly toons = new WeakMap<THREE.Material, THREE.MeshToonMaterial>();
   private readonly toonArrays = new WeakMap<THREE.Material[], THREE.Material[]>();
-  private readonly inkGeometries = new WeakMap<THREE.BufferGeometry, THREE.BufferGeometry>();
+  private readonly inkGeometries = new WeakMap<THREE.BufferGeometry, THREE.BufferGeometry[]>();
   // apart, so a geometry two meshes share gets each its own lines, whichever is inked first
-  private readonly footlessInkGeometries = new WeakMap<THREE.BufferGeometry, THREE.BufferGeometry>();
-  private readonly inked = new WeakSet<THREE.Mesh>();
+  private readonly footlessInkGeometries = new WeakMap<THREE.BufferGeometry, THREE.BufferGeometry[]>();
+  // every mesh the style has looked at for ink, once: a mesh added later (a car's model, once it loads) is looked at
+  // when it first turns up, and nothing is walked twice a frame
+  private readonly inkChecked = new WeakSet<THREE.Mesh>();
+  private readonly inkNearM: number;
+  private readonly eye = new THREE.Vector3(); // the camera, this frame
   private readonly inkMaterial = new THREE.LineBasicMaterial({
     color: INK_COLOR,
     transparent: true,
@@ -105,28 +157,37 @@ export class ToonStyle {
   private readonly originals: MeshMaterial[] = [];
   private readonly lights: THREE.Light[] = [];
   private readonly intensities: number[] = [];
-  private readonly addInk = (object: THREE.Object3D) => {
-    if (!(object instanceof THREE.Mesh) || this.inked.has(object)) return;
-    this.inked.add(object);
+  private addInk(object: THREE.Mesh) {
     if (!isOpaque(object.material)) return; // no lines across glass
     // read on the mesh itself, not inherited as INK_FLAG is: it says how this mesh is built
     const footless = !!object.userData[INK_NO_FEET_FLAG],
       cache = footless ? this.footlessInkGeometries : this.inkGeometries;
-    let edges = cache.get(object.geometry);
-    if (!edges) {
-      edges = footless
-        ? inkEdges(object.geometry, INK_CREASE_DEG)
-        : new THREE.EdgesGeometry(object.geometry, INK_CREASE_DEG);
-      cache.set(object.geometry, edges);
-      this.disposeWith(cache, object.geometry, edges);
+    let pieces = cache.get(object.geometry);
+    if (!pieces) {
+      pieces = inkPieces(
+        footless ? inkEdges(object.geometry, INK_CREASE_DEG) : new THREE.EdgesGeometry(object.geometry, INK_CREASE_DEG),
+      );
+      cache.set(object.geometry, pieces);
+      this.disposeWith(cache, object.geometry, pieces);
     }
-    const lines = new THREE.LineSegments(edges, this.inkMaterial);
-    lines.renderOrder = 10;
-    lines.raycast = () => {};
-    object.add(lines);
-  };
+    for (const piece of pieces) {
+      const lines = new THREE.LineSegments(piece, this.inkMaterial);
+      lines.renderOrder = 10;
+      lines.raycast = () => {};
+      if ((piece.boundingSphere?.radius ?? 0) < INK_SMALL_M) lines.userData[INK_SMALL_FLAG] = true;
+      object.add(lines);
+    }
+  }
   private readonly swapIn = (object: THREE.Object3D) => {
-    if (object.userData[INK_FLAG]) object.traverse(this.addInk);
+    if (object.userData[INK_SMALL_FLAG]) {
+      _v.setFromMatrixPosition(object.matrixWorld);
+      object.visible = _v.distanceTo(this.eye) < this.inkNearM;
+      return;
+    }
+    if (object instanceof THREE.Mesh && !this.inkChecked.has(object)) {
+      this.inkChecked.add(object);
+      if (underInkFlag(object)) this.addInk(object);
+    }
     if (object instanceof THREE.HemisphereLight) this.scaleLight(object, TOON_FILL_SCALE);
     else if (object instanceof THREE.DirectionalLight) this.scaleLight(object, TOON_SUN_SCALE);
     if (!(object instanceof THREE.Mesh)) return;
@@ -138,11 +199,17 @@ export class ToonStyle {
     object.material = toon;
   };
 
-  constructor(private readonly renderer: Renderer) {
+  /** `coarse`: a touch screen, where a small thing's ink is drawn less far (INK_NEAR_COARSE_M). */
+  constructor(
+    private readonly renderer: Renderer,
+    { coarse = false }: { coarse?: boolean } = {},
+  ) {
     this.inkMaterial.onBeforeCompile = this.pullInk;
+    this.inkNearM = coarse ? INK_NEAR_COARSE_M : INK_NEAR_M;
   }
 
   render(scene: THREE.Scene, camera: THREE.Camera) {
+    this.eye.setFromMatrixPosition(camera.matrixWorld);
     try {
       scene.traverse(this.swapIn); // inside the try: a throw halfway through the swap is put back too
       this.renderer.render(scene, camera);
@@ -158,14 +225,14 @@ export class ToonStyle {
 
   /** Frees a geometry's ink lines with it, so line buffers don't build up as meshes come and go. */
   private disposeWith(
-    cache: WeakMap<THREE.BufferGeometry, THREE.BufferGeometry>,
+    cache: WeakMap<THREE.BufferGeometry, THREE.BufferGeometry[]>,
     source: THREE.BufferGeometry,
-    edges: THREE.BufferGeometry,
+    pieces: THREE.BufferGeometry[],
   ) {
     const dispose = () => {
       source.removeEventListener('dispose', dispose);
       cache.delete(source);
-      edges.dispose();
+      for (const piece of pieces) piece.dispose();
     };
     source.addEventListener('dispose', dispose);
   }

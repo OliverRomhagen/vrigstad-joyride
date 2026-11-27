@@ -5,7 +5,11 @@ import { INK_FLAG, INK_NO_FEET_FLAG } from '../../../../src/game/render/ink-flag
 import {
   FINISH_LEVELS,
   finishOf,
+  INK_CELL_M,
+  INK_NEAR_COARSE_M,
+  INK_NEAR_M,
   INK_PULL,
+  inkPieces,
   TOON_FILL_SCALE,
   TOON_LEVELS,
   TOON_SUN_SCALE,
@@ -384,4 +388,57 @@ test('cockpit clipping stays on the toon material used for the draw', () => {
   expect(drawn.clipIntersection).toBe(true);
   expect(drawn.clipShadows).toBe(true);
   expect(body.material).toBe(paint);
+});
+
+test("a small thing's ink is drawn only near the camera, less far on a touch screen", () => {
+  const scene = new THREE.Scene(),
+    crate = new THREE.Mesh(box, new THREE.MeshLambertMaterial()),
+    eye = new THREE.PerspectiveCamera();
+  crate.userData[INK_FLAG] = true;
+  scene.add(crate);
+  const lines = () => crate.children[0] as THREE.LineSegments;
+  for (const [style, near] of [
+    [new ToonStyle({ render: () => {} }), INK_NEAR_M],
+    [new ToonStyle({ render: () => {} }, { coarse: true }), INK_NEAR_COARSE_M],
+  ] as const) {
+    crate.clear();
+    style.render(scene, eye); // builds the lines
+    scene.updateMatrixWorld();
+    for (const [z, drawn] of [
+      [near - 5, true],
+      [near + 5, false],
+    ] as const) {
+      eye.position.set(0, 0, z);
+      eye.updateMatrixWorld();
+      style.render(scene, eye);
+      expect(lines().visible).toBe(drawn);
+    }
+  }
+});
+
+test('the lines of a mesh as wide as the village are cut into squares, so the ones out of view are culled', () => {
+  const segments: number[] = [];
+  for (let x = -600; x < 600; x += 10) segments.push(x, 0, 0, x + 5, 0, 0); // a 1.2 km row of short lines
+  const wide = new THREE.BufferGeometry();
+  wide.setAttribute('position', new THREE.Float32BufferAttribute(segments, 3));
+  const pieces = inkPieces(wide);
+  expect(pieces.length).toBe(1200 / INK_CELL_M);
+  expect(pieces.reduce((n, g) => n + g.getAttribute('position').count, 0)).toBe(segments.length / 3); // none lost
+  for (const g of pieces) expect(g.boundingSphere?.radius).toBeLessThanOrEqual(INK_CELL_M);
+  const small = new THREE.EdgesGeometry(box);
+  expect(inkPieces(small)).toEqual([small]); // a car's or a crate's stays one piece
+});
+
+test('a mesh that joins an inked group later, as a car model does once it loads, gets its ink then', () => {
+  const scene = new THREE.Scene(),
+    car = new THREE.Group(),
+    style = new ToonStyle({ render: () => {} });
+  car.userData[INK_FLAG] = true;
+  scene.add(car);
+  style.render(scene, camera);
+  const model = new THREE.Mesh(box, new THREE.MeshStandardMaterial());
+  car.add(model);
+  style.render(scene, camera);
+  style.render(scene, camera);
+  expect(model.children.filter(o => o instanceof THREE.LineSegments)).toHaveLength(1);
 });
