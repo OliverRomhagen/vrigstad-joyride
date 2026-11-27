@@ -126,6 +126,21 @@ describe('Cockpit (the driver’s view, lab: cockpit)', () => {
     expect(camera.near).toBe(0.8);
   });
 
+  it('keeps a shader patch on the clipped paint, so a metallic paint still sparkles from inside', () => {
+    const { car, body } = volvo();
+    const paint = (body as THREE.Mesh).material as THREE.Material,
+      patch = () => {},
+      key = () => 'paint-flakes';
+    Object.assign(paint, { onBeforeCompile: patch, customProgramCacheKey: key });
+    const { k } = cockpit(car);
+    k.toggle();
+    k.update();
+    const own = (body as THREE.Mesh).material as THREE.Material;
+    expect(own).not.toBe(paint);
+    expect(own.onBeforeCompile).toBe(patch); // Material.copy alone would drop it
+    expect(own.customProgramCacheKey).toBe(key);
+  });
+
   it('clips a decal with the body it is painted on, and puts its material back when you leave', () => {
     const { car, body } = volvo();
     const own = new THREE.MeshBasicMaterial(),
