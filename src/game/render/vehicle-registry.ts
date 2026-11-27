@@ -64,7 +64,7 @@ export const VEHICLES = [
     width: 1.86,
     height: 1.56,
     roofRear: -2.2,
-    roofFront: 0.2,
+    roofFront: 0.3, // the redrawn body's roof reaches further forward (#471)
     // a tall, heavy estate on the Saab's type: slower to answer, softer and leaning more
     handling: { steerResponseS: 0.14, throttleResponseS: 0.25 },
     suspension: {
@@ -91,7 +91,7 @@ export const VEHICLES = [
     width: 1.86,
     height: 1.56,
     roofRear: -2.2,
-    roofFront: 0.2,
+    roofFront: 0.3, // the redrawn body's roof reaches further forward (#471)
     police: true,
   },
   {
