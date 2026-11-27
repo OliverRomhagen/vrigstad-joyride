@@ -5,21 +5,24 @@ https://creativecommons.org/licenses/by/4.0/
 Original authored geometry; no manufacturer endorsement is implied.
 No reference photographs or third-party meshes are included.
 The distributed GLBs are meshopt-compressed derivatives of the following original
-exports, made with gltfpack 1.3.0 (-c -kn -km -noq). Geometry is not simplified or
-quantized; named nodes and materials are retained. See docs/vehicle-fleet.md for
+exports, made with gltfpack 1.3.0 (-c -kn -km). Named nodes and materials are retained.
+Five models use -noq without simplification or quantization. The XC70 delivery
+derivatives additionally use -si 0.5 -se 0.0005 -slb -vp 16 -vn 10 -vpf; their
+editable masters remain unchanged. The XC70 masters are also simplified in Blender
+(see experiments/xc70p2/redraw/README.md). See docs/vehicle-fleet.md for
 reproduction and the original-to-delivery size comparison.
 
 Volvo 240
 https://github.com/AxelTidehorn/vrigstad-joyride/tree/79779a5f4b9a17d29ede88df67d2205d7b8366b2/experiments/volvo240/refinement/model.blend
 
 Saab 900 Classic
-https://github.com/AxelTidehorn/vrigstad-joyride/tree/ff6a0f187add7bd9b7ba052f28bd0d67e534c33a/experiments/saab900/build/model.blend
+https://github.com/AxelTidehorn/vrigstad-joyride/tree/6f8cbaf874a2c60823047cd7ded66e877aa07c7d/experiments/saab900/build/model.blend
 
 Volvo XC70 P2
-https://github.com/AxelTidehorn/vrigstad-joyride/tree/ff6a0f187add7bd9b7ba052f28bd0d67e534c33a/experiments/xc70p2/build/model.blend
+https://github.com/AxelTidehorn/vrigstad-joyride/tree/5fe819de4e4d0500eb7f7fdac7c1fc000b12d193/experiments/xc70p2/redraw/model.blend
 
 Police XC70 P2
-https://github.com/AxelTidehorn/vrigstad-joyride/tree/ff6a0f187add7bd9b7ba052f28bd0d67e534c33a/experiments/xc70p2/build/model.blend
+https://github.com/AxelTidehorn/vrigstad-joyride/tree/5fe819de4e4d0500eb7f7fdac7c1fc000b12d193/experiments/xc70p2/redraw/model.blend
 
 Chevrolet Impala 1970 hardtop
 https://github.com/AxelTidehorn/vrigstad-joyride/tree/46fa31e9094ab6e1e30f2b542de83383f85fb7c7/experiments/impala1970/build/model.blend

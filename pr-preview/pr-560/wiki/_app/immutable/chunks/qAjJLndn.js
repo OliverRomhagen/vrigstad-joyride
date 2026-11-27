@@ -1,0 +1,1 @@
+import{gt as e}from"./BCjtx-DK.js";e();
