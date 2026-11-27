@@ -424,9 +424,18 @@ describe('aimAt', () => {
     }
   });
 
-  it('fires straight at a point out of reach, not in a lob', () => {
-    expect(aimAt(10, 0, 0, 0, 0, 0, -500, { yaw: 0, pitch: 0 }).pitch).toBeCloseTo(0);
-    expect(aimAt(10, 0, 0, 0, 0, 50, -500, { yaw: 0, pitch: 0 }).pitch).toBeCloseTo(Math.atan2(50, 500));
+  it('fires no higher than it must at a point out of reach, not in a 45° lob', () => {
+    // 10 m/s reaches about 10 m on level ground: at 500 m, the arc that would reach that far is nearly flat
+    expect(aimAt(10, 0, 0, 0, 0, 0, -500, { yaw: 0, pitch: 0 }).pitch).toBeCloseTo(Math.atan(100 / (9.8 * 500)));
+    // high above, out of reach too: along the line to it
+    expect(aimAt(10, 0, 0, 0, 0, 400, -500, { yaw: 0, pitch: 0 }).pitch).toBeCloseTo(Math.atan2(400, 500));
+  });
+
+  it("doesn't jump as the point crosses the edge of reach", () => {
+    // 26 m/s (the potatiskanon) reaches about 69 m on level ground; the pitch changes little either side of it
+    const pitchAt = (m: number) => aimAt(26, 0, 0, 0, 0, 0, -m, { yaw: 0, pitch: 0 }).pitch,
+      edgeM = (26 * 26) / 9.8;
+    expect(Math.abs(pitchAt(edgeM + 0.5) - pitchAt(edgeM - 0.5))).toBeLessThan(0.1);
   });
 });
 
