@@ -10,14 +10,14 @@ would become are drafted at the end.
   pitch move over time, how it is filtered, and which values from the game drive it while it plays.
 - **One player** turns a patch into Web Audio nodes when the sound starts. A synthesized sound has no audio file, so
   nothing to license or download, and it can follow the game live: the engine's pitch follows the car's speed.
-- **Recordings stay possible.** Swedish voice lines (#132) can't be synthesized. A recording would be one more kind of
-  module, one that plays a file, so it goes through the same mix; it brings a loader and a `LICENSE` entry per file,
-  and isn't part of the first ticket.
-- **Generated voices fit the same slot.** The design doc proposal (PR #214, still open) plans two things no ticket
-  covers yet: scripted Swedish lines generated from text when the game is built, and talking to people in the game
-  through a model that runs in the browser on WebGPU. To the player, the first is a recording. The second would be a
-  kind of module whose signal arrives live from the model, mixed, placed in the world and ducked like any other
-  voice. Neither is designed here; the point is that the voice bus is where both would plug in.
+- **Voices are a made-up language** that sounds Swedish without being it, synthesized like everything else (see
+  "Voices"). The text on screen carries the meaning.
+- **Recordings stay possible.** A recording would be one more kind of module, one that plays a file, so it goes
+  through the same mix; it brings a loader and a `LICENSE` entry per file, and isn't part of the first ticket. The
+  same slot would take a voice generated when the game is built, or one arriving live from a model in the browser,
+  both of which the design doc proposal (PR #214, still open) mentions. Neither is designed here.
+- **Everything is reachable from the console**, as the tunables and the time of day are: playing a sound, changing a
+  knob, building a patch, saying a line. The studio's panel only runs those commands.
 - **A studio in the console** edits the same patches the game plays. You build a board from modules and wires, a
   change is heard at once, in the game, and Copy gives the patch as code to paste into the repo.
 
@@ -183,6 +183,26 @@ a stylized game and costs no assets. **Its cost on a phone is not known**: Googl
 2013 and shipped recorded loops instead, because phones of the time couldn't afford it. Measuring it on a phone is part
 of the first ticket, and three recorded loops are the fallback.
 
+## Voices: a made-up language
+
+People in the game speak a jabber that reminds you of Swedish, the way the Minions, the Sims and the villagers of
+Animal Crossing speak theirs. The voice carries mood and character; the Swedish line on screen carries the meaning,
+which #132 asks for anyway. It settles how voice lines are made: no recordings, no licences, no real person's voice,
+and it works for any line, also one written later.
+
+- **The sound.** A buzzy tone through filters that jump between vowel shapes, one per syllable, with short bursts of
+  noise as consonants. That needs one new kind of module, a vowel filter.
+- **Why it sounds Swedish.** Mostly the melody: the two-peak word accent that makes Swedish sing, long and short
+  syllables, and the vowel shapes of å, ä and ö.
+- **Driven by the real line.** The syllables and rhythm are taken from the written Swedish text, so a long line
+  sounds long and a shout sounds like one. The same text always gives the same jabber.
+- **A voice per character.** One patch, with a pitch, a speed and a roughness per person, as the cars share an engine.
+- **A small sequencer** turns a line into timed syllables that play the patch. It is the piece music would need too.
+- **From the console:** `sound say <voice> <line>` speaks any line in any voice, and a voice's numbers are tunables.
+
+The risk is that it grates. It needs tuning by ear, short lines, a cooldown per speaker, and its own volume setting.
+None of it is built or heard yet. It would be a ticket of its own, under #132, after the first one.
+
 ## Where the code goes
 
 | Piece | Where | Why |
@@ -279,7 +299,7 @@ Type Task, `scope:audio`, `prio:mid`. Blocks #130, #131 and #512.
     back to recorded loops (which would bring the recording kind into this ticket);
   - muting works, and with sound off nothing is created;
   - `npm run check` passes with the player where the open question puts it.
-- **Not in it:** crash and siren (they wait for #367), recordings, the panel, music.
+- **Not in it:** crash and siren (they wait for #367), voices, recordings, the panel, music.
 
 ### 2. Crashes and sirens are heard, as listeners on game events
 
