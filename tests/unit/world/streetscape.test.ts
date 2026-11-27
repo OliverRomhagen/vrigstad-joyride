@@ -27,6 +27,7 @@ import {
   Part,
   type Soup,
   StreetscapeIndex,
+  type StreetscapeInputs,
 } from '../../../src/world/streetscape';
 import { CURB_RESIDENTIAL_M, classifyStreetscape, SIDEWALK_RESIDENTIAL_M } from '../../../src/world/streetscape-rules';
 import { makeWorld, square } from './fixture';
@@ -43,13 +44,22 @@ const street = (p: number[], extra: Partial<Road> = {}): Road => ({
   ...extra,
 });
 
-function build(world: Partial<WorldData>, avoidTrees?: number[]) {
+function build(world: Partial<WorldData>, avoidTrees?: number[], driveways?: StreetscapeInputs['driveways']) {
   const data = makeWorld({ size: 400, n: 5, elev: BUMPY, ...world });
   const heightfield = new Heightfield(data);
   const roads = new RoadNetwork(data, heightfield);
   const buildings = new BuildingIndex(data);
   const sides = classifyStreetscape(data, roads, buildings);
-  const layout = buildStreetscape({ data, roads, heightfield, buildings, sides, avoidTrees, treeRoadClearanceM: 2.5 });
+  const layout = buildStreetscape({
+    data,
+    roads,
+    heightfield,
+    buildings,
+    sides,
+    avoidTrees,
+    treeRoadClearanceM: 2.5,
+    driveways,
+  });
   return { data, heightfield, roads, buildings, layout };
 }
 
@@ -283,6 +293,26 @@ describe('buildStreetscape: junctions', () => {
       const [x, , z] = centroid(v);
       expect(carriagewayDistance(data, x, z)).toBeGreaterThan(0);
     }
+  });
+
+  it('lowers the curb at a generated driveway too, once where a mapped one is already', () => {
+    // a 3.2 m driveway meeting the street's south edge at x = 20, and one on top of the mapped driveway at x = 0
+    const drive: Road = { c: RoadClass.SERVICE, n: '', p: [0, 0, 0, 30], s: RoadUse.DRIVEWAY, i: 5 };
+    const generated = [
+      { ri: 0, x: 20, z: ROAD_WIDTH_M[RoadClass.STREET] / 2, widthM: 3.2 },
+      { ri: 0, x: 0.5, z: ROAD_WIDTH_M[RoadClass.STREET] / 2, widthM: 3.2 },
+    ];
+    const { layout } = build({ r: [street([-150, 0, 0, 0, 150, 0]), drive] }, undefined, generated);
+    const driveways = layout.openings.filter(o => o.kind === 'driveway');
+    expect(driveways).toHaveLength(2);
+    expect(driveways[1]).toMatchObject({ ri: 0, side: 1, half: (3.2 + 1) / 2 });
+    expect(driveways[1].s).toBeCloseTo(170, 6);
+    const heights = curbHeights(layout.surface);
+    const south = heights.filter(c => c.z > 0 && Math.abs(c.x - 20) <= 2.1 + 1e-9); // across the 2.1 m half opening
+    expect(south.length).toBeGreaterThan(0);
+    for (const c of south) expect(c.h).toBeCloseTo(LOWERED_CURB_M, 9);
+    for (const c of heights.filter(c => c.z < 0 && Math.abs(c.x - 20) <= 2.1))
+      expect(c.h).toBeCloseTo(CURB_RESIDENTIAL_M, 9);
   });
 
   it('lowers the curb across a driveway and runs the sidewalk on, on that side only', () => {
