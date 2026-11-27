@@ -183,6 +183,21 @@ function streetCabinet(): FurnitureModel {
   };
 }
 
+// #305: along the country roads
+const POST_WHITE = 0xeeeeea,
+  POST_BAND = 0x1d1e1f,
+  REFLECTOR = 0xd8d4c8;
+/** A white roadside post, about 1.05 m, with a black band near the top and a reflector on the band facing the road. */
+function roadsidePost(): FurnitureModel {
+  return {
+    body: merge([
+      [box(0.1, 1.05, 0.1, 0, 0.525, 0), POST_WHITE],
+      [box(0.105, 0.2, 0.105, 0, 0.82, 0), POST_BAND],
+      [box(0.05, 0.1, 0.01, 0, 0.82, 0.057), REFLECTOR],
+    ]),
+  };
+}
+
 /** Every model by id; the registry is the seam where a GLB-backed model could later stand in (#59). */
 export const FURNITURE_MODELS: Readonly<Record<FurnitureModelId, () => FurnitureModel>> = {
   'lamp-arm': () => lamp(6.5, 1.25, 1),
@@ -199,6 +214,7 @@ export const FURNITURE_MODELS: Readonly<Record<FurnitureModelId, () => Furniture
   'mailbox-stand-5': () => mailboxStand(5),
   'mailbox-stand-6': () => mailboxStand(6),
   'street-cabinet': streetCabinet,
+  'roadside-post': roadsidePost,
 };
 
 export interface StreetFurnitureOptions {
