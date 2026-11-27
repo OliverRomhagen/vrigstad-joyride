@@ -187,13 +187,15 @@ function streetCabinet(): FurnitureModel {
 const POST_WHITE = 0xeeeeea,
   POST_BAND = 0x1d1e1f,
   REFLECTOR = 0xd8d4c8;
-/** A white roadside post, about 1.05 m, with a black band near the top and a reflector on the band facing the road. */
+/** A white roadside post, about 1.05 m, with a black band near the top and a reflector on each side of it, facing along the
+ * road, into the traffic either way (the post's +z faces the road). */
 function roadsidePost(): FurnitureModel {
   return {
     body: merge([
       [box(0.1, 1.05, 0.1, 0, 0.525, 0), POST_WHITE],
       [box(0.105, 0.2, 0.105, 0, 0.82, 0), POST_BAND],
-      [box(0.05, 0.1, 0.01, 0, 0.82, 0.057), REFLECTOR],
+      [box(0.01, 0.1, 0.05, -0.057, 0.82, 0), REFLECTOR],
+      [box(0.01, 0.1, 0.05, 0.057, 0.82, 0), REFLECTOR],
     ]),
   };
 }
