@@ -55,8 +55,9 @@ function cockpit(car: RenderedCar, inCar = true) {
   // a canvas whose 2D context draws nothing: the dials' drawing is looked at in the game, not here
   const ctx = new Proxy({}, { get: () => () => {} });
   const doc = { createElement: () => ({ width: 0, height: 0, getContext: () => ctx }) } as never;
-  const k = new Cockpit({ camera, game, view, renderer, profiles, doc, hour: 13.5 });
-  return { k, camera, game, view, renderer };
+  const repainted: RenderedCar[] = [];
+  const k = new Cockpit({ camera, game, view, renderer, profiles, doc, hour: 13.5, repaint: c => repainted.push(c) });
+  return { k, camera, game, view, renderer, repainted };
 }
 
 // the camera's position in the frame of `o`
@@ -122,6 +123,23 @@ describe('Cockpit (the driver’s view, lab: cockpit)', () => {
     expect(glass.visible).toBe(true);
     expect((body as THREE.Mesh).material).toBe(paint);
     expect(camera.near).toBe(0.8);
+  });
+
+  it('paints the model again when you leave after a respray inside, and only then', () => {
+    // a respray inside recolours the clipped clones, which leaving throws away for the body's materials in the old paint
+    const { car, body } = volvo();
+    const { k, repainted } = cockpit(car);
+    k.toggle();
+    k.update();
+    k.toggle();
+    k.update();
+    expect(repainted).toEqual([]);
+    k.toggle();
+    k.update();
+    ((body as THREE.Mesh).material as THREE.MeshStandardMaterial).color.set('#1a3a8a'); // as VehicleVisuals.paint does
+    k.toggle();
+    k.update();
+    expect(repainted).toEqual([car]);
   });
 
   it('turns the steering wheel clockwise as you steer right', () => {

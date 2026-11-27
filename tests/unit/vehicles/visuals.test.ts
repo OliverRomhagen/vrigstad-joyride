@@ -64,6 +64,22 @@ test('cached geometry, queued paint, protected glass and owned material disposal
   expect(assets.definition(a)).toBeUndefined();
 });
 
+test('a respray in the driver’s view recolours its clipped material where it is, so the cut keeps following', async () => {
+  const assets = new VehicleVisuals(false),
+    c = car();
+  assets.attach(c, 'volvo240', c.fallback, '#abcdef');
+  assets.update(focus, 0.01);
+  await settle(assets, [c]);
+  const body = mesh(c.mesh, 'body'),
+    planes = [new THREE.Plane()],
+    clipped = Object.assign(body.material.clone(), { clippingPlanes: planes }); // as Cockpit.enter clips it
+  body.material = clipped;
+  assets.paint(c, '#992233');
+  expect(body.material).toBe(clipped);
+  expect(body.material.clippingPlanes).toBe(planes);
+  expect(body.material.color.equals(new THREE.Color('#992233').convertSRGBToLinear())).toBe(true);
+});
+
 test('wheel travel, reverse steering and teleport reset use rendered motion', async () => {
   const assets = new VehicleVisuals(false),
     c = car();
