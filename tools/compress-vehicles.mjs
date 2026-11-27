@@ -25,7 +25,12 @@ try {
     const merged = join(scratch, file);
     writeFileSync(merged, glb);
     const destination = join(output, basename(file));
-    execFileSync(process.execPath, [cli, '-i', merged, '-o', destination, '-c', '-kn', '-km', '-noq'], {
+    // The redraws have dense curved glass and repeated wheels; bound the delivery cost without moving border vertices.
+    const quality =
+      file === 'xc70-civilian.glb' || file === 'xc70-police.glb'
+        ? ['-si', '0.5', '-se', '0.0005', '-slb', '-vp', '16', '-vn', '10', '-vpf']
+        : ['-noq'];
+    execFileSync(process.execPath, [cli, '-i', merged, '-o', destination, '-c', '-kn', '-km', ...quality], {
       stdio: 'inherit',
     });
     console.log(

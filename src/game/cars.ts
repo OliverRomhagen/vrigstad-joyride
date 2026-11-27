@@ -9,7 +9,7 @@ import type { Water } from '../world/water';
 import { choice, command, described } from './command-args';
 import type { Commands } from './commands';
 import { impactSpeed, topSpeedShare, wrecked } from './health';
-import { bodyRadius, nearestBetweenSpines, pushBodyOut } from './sim/car-body';
+import { bodyRadius, bodyReach, nearestBetweenSpines, pushBodyOut } from './sim/car-body';
 import { approach, rearPivotShift, yawRate } from './sim/handling';
 import type { Decal } from './sim/paint-jobs';
 import { accelOf, type CarMods, gripShare, noMods, steerResponseOf, topSpeedOf } from './sim/upgrades';
@@ -538,7 +538,7 @@ export class Fleet {
     } // a wall ends the slide, and the turbo with it (charged or firing)
     for (const o of cars) {
       if (o === c) continue;
-      const reach = (c.T.lengthM + o.T.lengthM) / 2;
+      const reach = bodyReach(c) + bodyReach(o);
       if (Math.abs(c.x - o.x) > reach || Math.abs(c.z - o.z) > reach) continue;
       nearestBetweenSpines(c, o, _onC, _onO);
       let nx = _onC.x - _onO.x,
