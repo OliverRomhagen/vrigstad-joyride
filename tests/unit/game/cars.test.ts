@@ -290,6 +290,22 @@ describe('brake lights (#304)', () => {
     expect(c.brk).toBe(true); // S at speed slows harder than coasting
   });
 
+  it('stay out when the ground slows the car: off-road drag and the off-road speed cap', () => {
+    const { cars } = fleet();
+    const c = car('volvo', 0, 800, 0, 'player');
+    driveFor(cars, c, 6, 1, 0, false);
+    expect(c.v).toBeGreaterThan(c.T.max * c.T.off); // faster than the car may go off the road
+    c.x = 200; // off the road, which runs along x = 0: the cap slows it by 14 m/s²
+    for (let t = 0; t < 1; t += DT) {
+      cars.drive(c, 1, 0, false, DT);
+      expect(c.brk).toBe(false);
+    }
+    for (let t = 0; t < 1; t += DT) {
+      cars.drive(c, 0, 0, false, DT); // coasting on grass: 5 m/s² of drag, no foot on the pedal
+      expect(c.brk).toBe(false);
+    }
+  });
+
   it('show on a traffic car slowing for a parked one, and stay on while it waits', () => {
     const { cars } = fleet();
     const c = Object.assign(car('volvo', 0, 500, 0, 'ai'), { ri: 0, a: 0, dir: 1, t: 400, first: true }) as TrafficCar;
