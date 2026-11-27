@@ -26,7 +26,10 @@ export function postCandidates(placer: Placer): Candidate[] {
       for (let n = 0; ; n++) {
         const id = `gen:roadside-post:${roadKeys[ri]}:${side < 0 ? 'l' : 'r'}${n}`;
         // half a spacing in from the start, so where OSM splits a road the gap across the join is about one spacing
-        const alongM = POST_SPACING_M / 2 + n * POST_SPACING_M + (hash01(id) - 0.5) * 2 * POST_JITTER_M;
+        // n first: fnv1a barely moves the high bits hash01 reads for a change at the end of its key, so hash01(id) would
+        // give nearly the same jitter to every post on the road
+        const jitter = hash01(n, side, roadKeys[ri]);
+        const alongM = POST_SPACING_M / 2 + n * POST_SPACING_M + (jitter - 0.5) * 2 * POST_JITTER_M;
         if (alongM > length - ROAD_END_MARGIN_M) break;
         if (alongM < ROAD_END_MARGIN_M) continue;
         const c = placer.roadside({
