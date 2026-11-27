@@ -364,6 +364,26 @@ describe('a group that runs by itself', () => {
     );
     expect(tune.run('tune constructor')).toBe('No subcommand called constructor. Usage: tune <get> …');
   });
+
+  it('names the subcommands without a stray space when its own argument fails with no words of its own', () => {
+    const c = new Commands();
+    const fill = command({ help: 'fill the tank', args: [], run: () => 'Full.' });
+    const bare = arg('kr', (w): number => {
+      if (!/^\d+$/.test(w)) throw new UsageError();
+      return Number(w);
+    });
+    c.register('fuel', group({ help: 'fuel', subcommands: { fill }, args: [bare], run: ({ kr }) => `${kr}` }));
+    expect(c.run('fuel x')).toBe('Or a subcommand: fill. Usage: fuel <kr> | <fill> …');
+  });
+
+  it('says no subcommand has the name typed when the group takes no arguments of its own', () => {
+    const c = new Commands();
+    const fill = command({ help: 'fill the tank', args: [], run: () => 'Full.' });
+    c.register('fuel', group({ help: 'fuel', subcommands: { fill }, args: [], run: () => 'Half.' }));
+    expect(c.run('fuel')).toBe('Half.');
+    expect(c.run('fuel fill')).toBe('Full.');
+    expect(c.run('fuel fil')).toBe('No subcommand called fil. Usage: fuel <fill> …');
+  });
 });
 
 describe('either', () => {

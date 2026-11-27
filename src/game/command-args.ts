@@ -85,8 +85,8 @@ export function toggle<N extends string>(name: N): Arg<N, boolean> {
 // a choice with this many options or fewer lists them when a word doesn't match: the console on a phone has no Tab
 const CHOICES_LISTED = 8;
 const sorted = (all: readonly string[]) => [...all].sort((a, b) => a.localeCompare(b, 'sv'));
-const pickOneOf = (all: readonly string[]) =>
-  all.length > 0 && all.length <= CHOICES_LISTED ? ` Pick one of: ${sorted(all).join(', ')}.` : '';
+const fewEnough = (all: readonly string[]) => all.length > 0 && all.length <= CHOICES_LISTED;
+const pickOneOf = (all: readonly string[]) => (fewEnough(all) ? ` Pick one of: ${sorted(all).join(', ')}.` : '');
 
 /**
  * One of a set of words, in any case: `choice('place', () => [...places.keys()])`. A function is read on every use, so
@@ -142,7 +142,7 @@ export function either<N extends string, const A extends readonly [AnyArg, AnyAr
           if (!(err instanceof UsageError)) throw err;
           const all = a.choices?.() ?? [];
           // the first kind always says what it wants; a later one with few words only adds them to one list
-          if (said.length > 0 && all.length > 0 && all.length <= CHOICES_LISTED) listed.push(...all);
+          if (said.length > 0 && fewEnough(all)) listed.push(...all);
           else said.push(err.message);
         }
       }
@@ -157,7 +157,7 @@ export function either<N extends string, const A extends readonly [AnyArg, AnyAr
 function listedWords(a: AnyArg): readonly string[] | undefined {
   // a list that isn't ready yet is empty, and the name stands in for it
   const all = a.choices?.() ?? [];
-  return all.length > 0 && all.length <= CHOICES_LISTED ? all : undefined;
+  return fewEnough(all) ? all : undefined;
 }
 
 /** The rest of the line, as one string: `say <words>`. Only the last argument can be one. */
@@ -280,15 +280,17 @@ export function group<const A extends readonly AnyArg[] = readonly []>(spec: Gro
     aliases: spec.aliases,
     subcommands: spec.subcommands,
   };
-  if (!spec.args !== !spec.run) throw new Error('a group that runs by itself needs both args and run');
-  if (!spec.args || !spec.run)
+  const noSubcommand = (word: string) => new UsageError(`No subcommand called ${word}.`);
+  if (!spec.args || !spec.run) {
+    if (spec.args || spec.run) throw new Error('a group that runs by itself needs both args and run');
     return {
       ...shared,
       usage: below,
       run: words => {
-        throw new UsageError(words[0] ? `No subcommand called ${words[0]}.` : '');
+        throw words[0] ? noSubcommand(words[0]) : new UsageError('');
       },
     };
+  }
   // Catches the mistake in a list that is known now. One that isn't ready yet, or grows later, isn't checked: the
   // subcommand wins then too, which is the rule.
   const known = spec.args[0]?.choices?.() ?? [];
@@ -302,12 +304,14 @@ export function group<const A extends readonly AnyArg[] = readonly []>(spec: Gro
     params: own.params,
     complete: own.complete,
     run: (words, call) => {
+      // with no arguments of its own, a first word can only have been meant for a subcommand
+      if (!first && words[0] !== undefined) throw noSubcommand(words[0]);
       try {
         return own.run(words, call);
       } catch (err) {
         // a first word the group's own argument can't take may have been meant for a subcommand: name them too
         if (!(err instanceof UsageError) || !first || words[0] === undefined || takes(first, words[0])) throw err;
-        throw new UsageError(`${err.message} Or a subcommand: ${names.join(', ')}.`);
+        throw new UsageError(`${err.message ? err.message + ' ' : ''}Or a subcommand: ${names.join(', ')}.`);
       }
     },
   };
