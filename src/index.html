@@ -156,15 +156,16 @@ body { isolation: isolate; }
   <canvas id="confetti" aria-hidden="true" hidden></canvas>
   <div id="toast" class="plate" hidden></div>
   <div id="devcon" class="plate" role="dialog" aria-label="Dev console" hidden><ol role="log"></ol><input type="text" aria-label="Command" aria-describedby="devcon-hint" placeholder="help · Tab completes · Esc closes" autocomplete="off" autocapitalize="off" spellcheck="false"><p class="hint" id="devcon-hint" hidden></p></div>
+  <div id="hide" class="plate" hidden></div>
+  <div id="hurt" aria-hidden="true"></div>
+  <div id="title-card" hidden><div><h2 id="title-card-t">Gripen!</h2><p id="title-card-p">Busted. The police drop you off at Torget.</p></div></div>
+  <!-- after the title card, so it paints over a Gripen! card that is up when the game pauses -->
   <div id="pause" role="dialog" aria-modal="true" aria-labelledby="pause-t" hidden><div class="plate">
     <h2 id="pause-t">Paused</h2>
     <label>Look speed <input type="range" id="look-speed" step="0.05"></label>
     <label>Invert look up/down <input type="checkbox" id="invert-y"></label>
     <button type="button" id="resume">Resume</button>
   </div></div>
-  <div id="hide" class="plate" hidden></div>
-  <div id="hurt" aria-hidden="true"></div>
-  <div id="title-card" hidden><div><h2 id="title-card-t">Gripen!</h2><p id="title-card-p">Busted. The police drop you off at Torget.</p></div></div>
   <div id="intro">
     <div id="card">
       <h1>Vrigstad <span>Joyride</span></h1>

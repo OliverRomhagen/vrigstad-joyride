@@ -8,6 +8,7 @@ describe('readSettings', () => {
     expect(readSettings('{not json')).toEqual(defaults);
     expect(readSettings('null')).toEqual(defaults);
     expect(readSettings('{"lookSpeed":"fast","invertY":"yes"}')).toEqual(defaults);
+    for (const v of ['null', '""', 'false', '[]', '"2"']) expect(readSettings(`{"lookSpeed":${v}}`)).toEqual(defaults);
   });
 
   it('keeps saved values, with the look speed held inside its range', () => {

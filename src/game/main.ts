@@ -365,7 +365,7 @@ debugOverlay?.registerCommands(commands);
 
 // ---------- pause menu: Esc or the Menu button stops the game and shows the settings (src/game/pause-menu.ts) ----------
 // storage is a getter: reading localStorage itself throws where storage is blocked, and the menu catches that
-const pause = new PauseMenu({ root: $('pause'), canvas, game, get input() { return input; }, get storage() { return localStorage; } });
+const pause = new PauseMenu({ root: $('pause'), canvas, behind: [$('ui'), $('kmenu')], game, get input() { return input; }, get storage() { return localStorage; } });
 $('menu').addEventListener('click', () => pause.open());
 
 // ---------- input: keys, mouse look and the touch controls (src/game/input.ts) ----------
@@ -374,7 +374,8 @@ const input = new Input({ win: window, doc: document, canvas, $, coarse, menuKey
   get started() { return game.started; }, get menuOpen() { return !kmenu.hidden || pause.isOpen; }, get consoleOpen() { return devcon.isOpen; },
   action: () => action(), respawn: () => respawn(), rain: () => cashRain.makeItRain(), toggleView: () => cockpit?.toggle(),
   jump: () => { if (jumpOk()) game.jumpQ = true; },   // queue only where a jump can start (see jumpOk)
-  look: (dx, dy) => { const { lookSpeed, invertY } = pause.settings; dx *= lookSpeed; dy *= invertY ? -lookSpeed : lookSpeed;
+  look: (dx, dy) => { if (game.paused) return; // a drag that began before the pause would turn the camera all at once on Resume
+    const { lookSpeed, invertY } = pause.settings; dx *= lookSpeed; dy *= invertY ? -lookSpeed : lookSpeed;
     if (game.inCar) { view.lookOff = wrap(view.lookOff + dx * 0.006); view.lookIdle = 0; } else view.camYaw = wrap(view.camYaw + dx * 0.006);
     view.camPitch = clamp(view.camPitch + dy * 0.004, 0.06, 1.25); },
   zoom: f => cameraRig.zoom(f),

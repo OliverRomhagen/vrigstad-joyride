@@ -18,9 +18,12 @@ export function readSettings(raw: string | null): Settings {
   try {
     s = JSON.parse(raw ?? '{}') ?? {};
   } catch {}
-  const speed = Number(s.lookSpeed);
+  const speed = s.lookSpeed; // a number only: Number() would make null, '' or false a 0, held up to the slowest speed
   return {
-    lookSpeed: Number.isFinite(speed) ? Math.min(LOOK_SPEED_MAX, Math.max(LOOK_SPEED_MIN, speed)) : 1,
+    lookSpeed:
+      typeof speed === 'number' && Number.isFinite(speed)
+        ? Math.min(LOOK_SPEED_MAX, Math.max(LOOK_SPEED_MIN, speed))
+        : 1,
     invertY: s.invertY === true,
   };
 }
@@ -29,6 +32,7 @@ export function readSettings(raw: string | null): Settings {
 export interface PauseMenuDeps {
   root: HTMLElement; // #pause, with #look-speed, #invert-y and #resume inside
   canvas: Pick<HTMLElement, 'focus'>;
+  behind: Pick<HTMLElement, 'inert'>[]; // the HUD and menus under the panel: Tab and clicks can't reach them while it's open
   game: Pick<GameState, 'started' | 'paused'>;
   readonly input: Pick<Input, 'lockMouse' | 'releaseKeys'>;
   readonly storage: Pick<Storage, 'getItem' | 'setItem'>;
@@ -54,8 +58,8 @@ export class PauseMenu {
     invert.checked = this.settings.invertY;
     speed.addEventListener('input', () => {
       this.settings.lookSpeed = +speed.value;
-      this.save();
     });
+    speed.addEventListener('change', () => this.save()); // once when the slider is let go, not on every step of a drag
     invert.addEventListener('change', () => {
       this.settings.invertY = invert.checked;
       this.save();
@@ -76,12 +80,14 @@ export class PauseMenu {
     game.paused = true;
     input.releaseKeys();
     root.hidden = false;
+    for (const el of this.g.behind) el.inert = true;
     root.querySelector<HTMLElement>('#resume')!.focus();
   }
 
   resume = () => {
     const { root, game, canvas, input } = this.g;
     root.hidden = true;
+    for (const el of this.g.behind) el.inert = false;
     game.paused = false;
     canvas.focus();
     if (this.relock) input.lockMouse(); // can be refused right after Esc: a click on the game locks it then
