@@ -152,19 +152,19 @@ function clockLine(c: DayClock, pace: DayPace): string {
 
 /**
  * The dev console's `time`: `time 16:30` jumps to an hour of the day, `time night` to the middle of the night skip,
- * `time hold` and `time run` stop and start the clock, and `time speed 20` runs it that many times faster. `changed` runs
+ * `time hold` and `time run` stop and start the clock, and `time speed 20` runs it that many times faster. `applyLight` runs
  * after a jump, so the light follows while the clock is held.
  */
 export function registerDayCommands(
   commands: Pick<Commands, 'register'>,
   c: DayClock,
   pace: DayPace,
-  changed: () => void,
+  applyLight: () => void,
 ) {
   const jump = (hour: number, night = 0) => {
     c.hour = hour;
     c.night = night;
-    changed();
+    applyLight();
   };
   commands.register('time', {
     usage: `[hour|${Object.values(MOMENTS).join('|')}|${PACES.HOLD}|${PACES.RUN}|${PACES.SPEED} <times>]`,

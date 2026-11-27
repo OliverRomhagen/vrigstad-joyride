@@ -110,9 +110,9 @@ describe('the console time command', () => {
     const commands = new Commands(),
       c = makeClock(hour),
       pace = makePace(),
-      changed = vi.fn();
-    registerDayCommands(commands, c, pace, changed);
-    return { commands, c, pace, changed };
+      applyLight = vi.fn();
+    registerDayCommands(commands, c, pace, applyLight);
+    return { commands, c, pace, applyLight };
   };
 
   it('says where the clock is', () => {
@@ -122,10 +122,10 @@ describe('the console time command', () => {
 
   it('jumps to an hour written as 16.5, 16,5 or 16:30, and tells the light to follow', () => {
     for (const hour of ['16.5', '16,5', '16:30']) {
-      const { commands, c, changed } = setup();
+      const { commands, c, applyLight } = setup();
       expect(commands.run('time ' + hour)).toBe('Time: 16:30, running at 1×.');
       expect(c).toEqual({ hour: 16.5, night: 0 });
-      expect(changed).toHaveBeenCalledOnce();
+      expect(applyLight).toHaveBeenCalledOnce();
     }
   });
 
@@ -144,13 +144,13 @@ describe('the console time command', () => {
   });
 
   it('holds and runs the clock, without moving the time or touching the light', () => {
-    const { commands, c, pace, changed } = setup();
+    const { commands, c, pace, applyLight } = setup();
     expect(commands.run('time hold')).toBe('Time: 10:00, held at 1×.');
     expect(pace.running).toBe(false);
     expect(stepClock(c, pace, 60)).toBe(false);
     expect(commands.run('time run')).toBe('Time: 10:00, running at 1×.');
     expect(pace.running).toBe(true);
-    expect(changed).not.toHaveBeenCalled();
+    expect(applyLight).not.toHaveBeenCalled();
   });
 
   it('sets the speed, which holding keeps and shows', () => {
@@ -179,7 +179,7 @@ describe('the console time command', () => {
   });
 
   it('refuses an hour outside the day, a speed out of range and extra words, and changes nothing', () => {
-    const { commands, c, pace, changed } = setup();
+    const { commands, c, pace, applyLight } = setup();
     for (const line of ['time 3', 'time 4.99', 'time 19.01', 'time 19:01', 'time 25:00', 'time -6'])
       expect(commands.run(line), line).toMatch(/^hour is from 5 to 19\. Usage: time /);
     for (const line of ['time lunch', 'time 16:60', 'time 16:5'])
@@ -192,7 +192,7 @@ describe('the console time command', () => {
     expect(commands.run('time speed 2 3')).toMatch(/^Too many words\. Usage: time /);
     expect(c).toEqual({ hour: 10, night: 0 });
     expect(pace).toEqual({ running: true, speed: 1 });
-    expect(changed).not.toHaveBeenCalled();
+    expect(applyLight).not.toHaveBeenCalled();
   });
 
   it('completes its words with Tab', () => {
