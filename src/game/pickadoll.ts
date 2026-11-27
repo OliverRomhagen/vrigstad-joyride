@@ -86,6 +86,9 @@ const ASSIST_CONE_RAD = 0.3,
   ASSIST_CONE_CAR_RAD = 0.6, // wider from a car: both thumbs are busy driving
   ASSIST_RANGE_M = 45;
 const PULL_KEEP_S = 0.12; // a click this long before the weapon is ready still fires when it is
+// the first slot, with nothing in your hand: by the id the `weapon` command and the test hook use, and the name it shows
+const HANDS = 'hands',
+  HANDS_NAME = 'Hands';
 const INTRO_AFTER_S = 5.5; // the lab's own line comes this long after Start, once the start line is gone
 // with ?lab=rapier, a shot knocks street furniture over: this hard for each point of the weapon's power (N·s), so the
 // pickadoll's sends a 12 kg mailbox off at about 3 m/s
@@ -214,10 +217,10 @@ export class Pickadoll {
   private clockS = 0;
   private introS = INTRO_AFTER_S;
   private aimKept = false; // aiming was switched on with C or the Aim button
-  // you start with the weapon put away: the trigger (or Q, changing it) draws it, and H or the `holster` command puts it
-  // back. Until it is drawn there is no crosshair, no aim and nothing in your hand
+  // you start on Hands, the first slot: nothing in your hand, no crosshair, and the trigger and the aim do nothing yet
+  // (a shove: #616). Q or the weapon button steps on from Hands through the weapons and back to it; H or the `holster`
+  // command jumps between Hands and the weapon held last (this.weapon)
   private holstered = true;
-  private drawHeld = false; // the trigger press that drew the weapon is still held: it doesn't also fire
   private aimK = 0; // 0 the game's camera, 1 over the shoulder
   private aimPitch = 0; // rad above level, while aiming
   private ready = false;
@@ -232,26 +235,16 @@ export class Pickadoll {
     this.world = { groundAt: g.world.groundAt, collide: g.world.collide, people: g.crowd.npcs, cars: [] };
     this.spikeWorld = { cars: g.cars, people: g.crowd.npcs, walker: null };
     // The controls, through the game's input: the left mouse button or X fires, the right one aims while held, C keeps
-    // aiming on, Q changes the weapon, G its ammo and H puts the weapon away. A press of the trigger is kept a moment
-    // (pulledS); with the weapon put away, it draws it instead
+    // aiming on, Q changes the weapon (Hands among them), G its ammo, and H goes to Hands and back. A press of the trigger
+    // is kept a moment (pulledS); on Hands it does nothing
     this.trigger = g.input.addControl({
       codes: [LAB_KEYS.FIRE.code],
       mouseButton: MouseButton.LEFT,
       press: () => {
         if (!this.holstered) this.pulledS = 0;
-        else if (this.ready) {
-          this.drawHeld = true;
-          this.runFromInput(LAB_COMMANDS.HOLSTER, 'off');
-        }
       },
     });
-    // holding it aims, so with the weapon put away it draws it, as C does
-    this.aimHold = g.input.addControl({
-      mouseButton: MouseButton.RIGHT,
-      press: () => {
-        if (this.holstered && this.ready) this.runFromInput(LAB_COMMANDS.HOLSTER, 'off');
-      },
-    });
+    this.aimHold = g.input.addControl({ mouseButton: MouseButton.RIGHT });
     g.input.addControl({ codes: [LAB_KEYS.AIM.code], press: () => this.runFromInput(LAB_COMMANDS.AIM) });
     g.input.addControl({ codes: [LAB_KEYS.WEAPON.code], press: () => this.runFromInput(LAB_COMMANDS.WEAPON) });
     g.input.addControl({ codes: [LAB_KEYS.AMMO.code], press: () => this.runFromInput(LAB_COMMANDS.AMMO) });
@@ -308,8 +301,8 @@ export class Pickadoll {
       kbd.textContent = key;
       button.replaceChildren(kbd, name);
     };
-    label(this.weaponButton, LAB_KEYS.WEAPON.label, WEAPONS[this.weapon].name);
-    this.weaponButton.setAttribute('aria-label', 'Weapon: ' + WEAPONS[this.weapon].name);
+    label(this.weaponButton, LAB_KEYS.WEAPON.label, this.weaponName);
+    this.weaponButton.setAttribute('aria-label', 'Weapon: ' + this.weaponName);
     this.ammoButton.setAttribute('aria-label', 'Ammo: ' + AMMOS[this.ammo].name);
     const [lengthM, thickM] = GUN_M[WEAPONS[this.weapon].id];
     this.g.fx.sizeGun(lengthM, thickM);
@@ -329,10 +322,16 @@ export class Pickadoll {
     this.drawHud();
   }
 
-  // puts the weapon away, which also stops aiming and a throw held back, or draws it
+  // what the weapon button and the console call what is in your hand
+  private get weaponName() {
+    return this.holstered ? HANDS_NAME : WEAPONS[this.weapon].name;
+  }
+
+  // to Hands, which also stops aiming and a throw held back, or back to the weapon held last
   private holster(away: boolean) {
     this.holstered = away;
     this.g.fx.holsterGun(away);
+    this.drawHud();
     if (!away) return;
     this.keepAim(false);
     this.isWindingUp = false;
@@ -358,22 +357,18 @@ export class Pickadoll {
     commands.register(
       LAB_COMMANDS.WEAPON,
       command({
-        help: 'change to the next weapon, or to the one you name',
-        examples: ['weapon', 'weapon ' + WeaponId.MINIGUN],
+        help: 'change to the next weapon, Hands among them, or to the one you name',
+        examples: ['weapon', 'weapon ' + WeaponId.MINIGUN, 'weapon ' + HANDS],
         access: 'player',
-        args: [
-          optional(
-            choice(
-              'weapon',
-              WEAPONS.map(w => w.id),
-            ),
-          ),
-        ],
+        args: [optional(choice('weapon', [HANDS, ...WEAPONS.map(w => w.id)]))],
         run: ({ weapon }) => {
-          this.pickWeapon(
-            weapon === undefined ? (this.weapon + 1) % WEAPONS.length : WEAPONS.findIndex(w => w.id === weapon),
-          );
-          return 'Weapon: ' + WEAPONS[this.weapon].name + '.';
+          if (weapon === HANDS) this.holster(true);
+          else if (weapon !== undefined) this.pickWeapon(WEAPONS.findIndex(w => w.id === weapon));
+          // the next in the cycle: from Hands the first weapon, and from the last weapon Hands again
+          else if (this.holstered) this.pickWeapon(0);
+          else if (this.weapon === WEAPONS.length - 1) this.holster(true);
+          else this.pickWeapon(this.weapon + 1);
+          return 'Weapon: ' + this.weaponName + '.';
         },
       }),
     );
@@ -415,8 +410,8 @@ export class Pickadoll {
         access: 'player',
         args: [optional(toggle('kept'))],
         run: ({ kept }) => {
+          if (this.holstered && kept !== false) return 'Nothing to aim with: Q or H takes a weapon out.';
           this.keepAim(kept ?? !this.aimKept);
-          if (this.aimKept) this.holster(false); // aiming takes the weapon out
           return this.aimKept ? 'Aiming.' : 'Not aiming.';
         },
       }),
@@ -424,13 +419,13 @@ export class Pickadoll {
     commands.register(
       LAB_COMMANDS.HOLSTER,
       command({
-        help: 'put the weapon away, or draw it with off: switches when you say neither',
+        help: 'go to Hands, or back to your last weapon with off; switches with neither',
         examples: ['holster', 'holster off'],
         access: 'player',
         args: [optional(toggle('away'))],
         run: ({ away }) => {
           this.holster(away ?? !this.holstered);
-          return this.holstered ? 'Weapon away.' : 'Weapon drawn.';
+          return 'Weapon: ' + this.weaponName + '.';
         },
       }),
     );
@@ -449,7 +444,7 @@ export class Pickadoll {
       hits: this.hits,
       markedHits: this.markedHits,
       splats: this.g.fx.splatted,
-      weapon: WEAPONS[this.weapon].id,
+      weapon: this.holstered ? HANDS : WEAPONS[this.weapon].id,
       ammo: AMMOS[this.ammo].id,
       aiming: this.aimK > 0.5,
       scoped: this.isScoped,
@@ -473,8 +468,8 @@ export class Pickadoll {
       if (this.introS <= 0)
         this.g.toast(
           coarse
-            ? 'Lab: pickadoll. Fire draws your weapon and fires, Aim aims; tap the weapon and the ammo at the top to change them.'
-            : 'Lab: pickadoll. Click or X draws your weapon and fires, right button or C aims, Q changes the weapon, G the ammo, H puts it away.',
+            ? 'Lab: pickadoll. Tap Hands at the top for a weapon, Fire fires, Aim aims; tap the weapon and the ammo to change them.'
+            : 'Lab: pickadoll. Q or H takes a weapon out, click or X fires, right button or C aims, G changes the ammo, H puts it away.',
           6,
         );
     }
@@ -497,8 +492,7 @@ export class Pickadoll {
     this.ready = ready;
     const armed = ready && !this.holstered, // the weapon is out and can be used
       aiming = this.aiming;
-    if (this.drawHeld && !this.trigger.held) this.drawHeld = false;
-    const pulling = this.trigger.held && !this.drawHeld;
+    const pulling = this.trigger.held;
     // going over to the shoulder: the crosshair moves to the middle of the screen with the camera
     if (aiming && this.aimK === 0) this.aimPitch = clamp(Math.asin(this.line.dy), -AIM_PITCH_MAX, AIM_PITCH_MAX); // keep looking where you looked
     this.aimK = this.g.calmMotion.matches
