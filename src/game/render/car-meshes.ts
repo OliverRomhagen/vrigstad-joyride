@@ -2,12 +2,25 @@
 // Moved from src/game/main.ts (#177); main.ts passes in the models and what the meshes read from the rest of the game.
 import * as THREE from 'three';
 import { makeRnd } from '../../world/random';
+import { col } from '../../world/three-legacy';
 import type { Car } from '../cars';
+import type { LampState } from '../lighting';
 import type { CarType } from '../sim/vehicle-spec';
 import type { BodyMotion } from './body-motion';
 import { INK_FLAG } from './ink-flag';
 import { pickVariant, type VehicleId } from './vehicle-registry';
 import type { VehicleVisuals } from './vehicle-visuals';
+
+// lit rear lamps on the procedural body (#304), shared by every car: braking, backing up, or a wreck's hazards. Untone-mapped,
+// as the models' lit lamps are, so a brake light stays red rather than bleaching pink.
+const litLamp = (srgb: number) => new THREE.MeshBasicMaterial({ color: col(srgb), toneMapped: false }),
+  BRAKE_LAMP = litLamp(0xff2418),
+  REVERSE_LAMP = litLamp(0xfff8f0),
+  HAZARD_LAMP = litLamp(0xff9a1f);
+/** What a procedural car's rear lamps show over their baked colour: nothing by day unless braking, backing or wrecked. */
+function rearLook(s: LampState) {
+  return s.hazard ? HAZARD_LAMP : s.brake ? BRAKE_LAMP : s.reverse ? REVERSE_LAMP : null;
+}
 
 const _f = new THREE.Vector3(),
   _r = new THREE.Vector3(),
@@ -29,6 +42,7 @@ export interface CarMeshesDeps {
   groundAt: (x: number, z: number) => number;
   normalAt: (x: number, z: number) => THREE.Vector3;
   carGeo: (type: CarType, color: string) => THREE.BufferGeometry; // the procedural body, cached by type and colour
+  rearLampGeo: (type: CarType) => THREE.BufferGeometry | null; // its rear lamps, to light over it; null when it has none
   carMat: THREE.Material;
   blob: (parent: THREE.Object3D, w: number, l: number) => THREE.Mesh; // the soft shadow under it
   barGeo: THREE.BufferGeometry; // the police light bar; loop.ts blinks barMat
@@ -42,6 +56,9 @@ export class CarMeshes {
   private readonly g: CarMeshesDeps;
   private readonly looks = new Map<Car, Look>();
   private readonly modelRnd = makeRnd(240); // own stream: which model a car wears doesn't shift the world's rolls
+  // each procedural car's lit rear lamps, made the first time they light: a parked car never gets one, and a hidden one
+  // costs no draw call, so only cars braking, backing or wrecked pay one
+  private readonly rearLamps = new Map<Car, THREE.Mesh>();
 
   constructor(g: CarMeshesDeps) {
     this.g = g;
@@ -66,6 +83,29 @@ export class CarMeshes {
     look.paint = c.color;
     c.body.geometry = carGeo(c.type, c.color);
     vehicleVisuals.paint(c, c.color);
+  }
+  /**
+   * Lights the procedural cars' rear lamps from what `lampsOf` says (lighting.ts), once a frame. A car showing its model
+   * lights the model's lamps instead (VehicleVisuals).
+   */
+  updateLamps(cars: readonly RenderedCar[], lampsOf: (c: Car) => LampState) {
+    for (const c of cars) {
+      const look = c.body.visible ? rearLook(lampsOf(c)) : null;
+      let lamp = this.rearLamps.get(c);
+      if (!look) {
+        if (lamp) lamp.visible = false;
+        continue;
+      }
+      if (!lamp) {
+        const geo = this.g.rearLampGeo(c.type);
+        if (!geo) continue;
+        lamp = new THREE.Mesh(geo, look);
+        c.body.add(lamp); // on the sprung body, so it rolls and pitches with it
+        this.rearLamps.set(c, lamp);
+      }
+      lamp.material = look;
+      lamp.visible = true;
+    }
   }
   /** Which model a new car of this type wears, if one: rolled from the meshes' own stream. */
   pickModel(type: CarType): VehicleId | undefined {
@@ -101,6 +141,7 @@ export class CarMeshes {
     const { scene, vehicleVisuals, bodyMotion } = this.g;
     vehicleVisuals.dispose(c);
     this.looks.delete(c);
+    this.rearLamps.delete(c); // its mesh goes with the car's; the geometry and materials are shared
     bodyMotion.remove(c);
     scene.remove(c.mesh);
   }
