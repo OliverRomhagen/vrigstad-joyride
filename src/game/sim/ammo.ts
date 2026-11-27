@@ -12,22 +12,25 @@ export const EffectKind = {
   STARE: 'stare',
   THROW: 'throw',
   SHOVE: 'shove',
+  DAMAGE: 'damage',
   DANCE: 'dance',
   SPIKES: 'spikes',
   SPATTER: 'spatter',
 } as const;
 export type EffectKind = (typeof EffectKind)[keyof typeof EffectKind];
 
-/** One thing a hit does. The weapon's own numbers (its power, its splat and blast) say how much. */
+/** One thing a hit does. The weapon's own numbers (its push, its damage, its splat and blast) say how much. */
 export type Effect =
   // a mark where it lands, this share of the weapon's splat; on a person too when `onPeople`
   | { kind: typeof EffectKind.SPLAT; sizeK: number; onPeople: boolean }
   // a person hit stops and looks at you this long
   | { kind: typeof EffectKind.STARE; s: number }
-  // a person hit is thrown over, the harder the weapon's power
+  // a person hit is thrown over, the harder the weapon's push (knockbackOf)
   | { kind: typeof EffectKind.THROW }
-  // a car hit takes damage by the weapon's power, and a parked one slides (pangCar)
+  // a parked car hit slides, when the weapon's push beats its brakes (slideCar)
   | { kind: typeof EffectKind.SHOVE }
+  // a car hit takes the weapon's damage
+  | { kind: typeof EffectKind.DAMAGE }
   // a person hit spins and hops where they stand this long
   | { kind: typeof EffectKind.DANCE; s: number }
   // it lands as a fotangel, which lies on the ground (./spikes.ts) and does nothing else where it lands
@@ -63,7 +66,7 @@ export const AMMOS = [
       { kind: EffectKind.SPATTER, drops: 7 },
     ],
   },
-  // people are thrown and cars shoved, with no colour: a scuff where it lands
+  // people are thrown and cars damaged, and shoved by a hard enough push, with no colour: a scuff where it lands
   {
     id: AmmoId.PANG,
     name: 'Pang',
@@ -73,6 +76,7 @@ export const AMMOS = [
       { kind: EffectKind.SPLAT, sizeK: 0.45, onPeople: false },
       { kind: EffectKind.THROW },
       { kind: EffectKind.SHOVE },
+      { kind: EffectKind.DAMAGE },
     ],
   },
   // a prank: who is hit dances for a while

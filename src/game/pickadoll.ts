@@ -10,6 +10,7 @@ import type { Rnd } from '../world/random';
 import { NO_FLAT } from './cars';
 import { choice, command, optional, toggle } from './command-args';
 import { type Commands, UsageError } from './commands';
+import { damageCar } from './health';
 import { type Control, type Input, MouseButton } from './input';
 import type { Npc } from './pedestrians';
 import type { PlayerState } from './player';
@@ -28,15 +29,16 @@ import {
   blastPush,
   flightPath,
   HitKind,
+  knockbackOf,
   MUZZLE_M,
   newHit,
-  pangCar,
   SHOTS_MAX,
   type Shot,
   type ShotHit,
   ShotStep,
   type ShotWorld,
   sight,
+  slideCar,
   stepShot,
   WEAPONS,
   WeaponId,
@@ -87,13 +89,13 @@ const ASSIST_CONE_RAD = 0.3,
   ASSIST_RANGE_M = 45;
 const PULL_KEEP_S = 0.12; // a click this long before the weapon is ready still fires when it is
 const INTRO_AFTER_S = 5.5; // the lab's own line comes this long after Start, once the start line is gone
-// with ?lab=rapier, a shot knocks street furniture over: this hard for each point of the weapon's power (N·s), so the
-// pickadoll's sends a 12 kg mailbox off at about 3 m/s
-const KNOCK_NS_PER_POWER = 40,
-  KNOCK_UP = 0.3; // and this much of it upwards, so the prop tips rather than slides
+// with ?lab=rapier, a shot knocks street furniture over with the weapon's push (knockbackOf): the pickadoll's 40 N·s sends a
+// 12 kg mailbox off at about 3 m/s
+const KNOCKBACK_UP_SHARE = 0.3; // this share of the knockback goes upwards, so the prop tips rather than slides
 // a throw (pang): a person hit is thrown over
-const PANG_THROW_MS = 5, // a person leaves at this, plus PANG_THROW_PER_POWER_MS for each point of the weapon's power
-  PANG_THROW_PER_POWER_MS = 2.5;
+const PANG_THROW_MS = 5, // a person leaves at this, plus PANG_THROW_MS_PER_NS for each N·s of the weapon's push
+  PANG_THROW_MS_PER_NS = 0.0625,
+  BLAST_SHARE = 0.6; // a blast reaches those around the hit with this share of its push and damage
 const DANCE_SPIN_RADS = 7, // a dance: they spin this fast and hop
   DANCE_HOP_M = 0.22,
   DANCE_HOP_HZ = 3.2;
@@ -776,28 +778,34 @@ export class Pickadoll {
     }
     const person = hit.kind === HitKind.PERSON ? crowd.npcs[hit.target] : null,
       car = hit.kind === HitKind.CAR ? this.world.cars[hit.target] : null,
-      shoves = !!effectOf(ammo, EffectKind.SHOVE);
-    if (person) this.hitPerson(person, ammo, hit.dx, hit.dz, hit.y, weapon.power, weapon.splatM, colour, s.seed);
+      knockbackNs = knockbackOf(weapon);
+    if (person) this.hitPerson(person, ammo, hit.dx, hit.dz, hit.y, knockbackNs, weapon.splatM, colour, s.seed);
     else if (car) {
-      if (shoves) this.shoveCar(car, hit.dx, hit.dz, weapon.power);
+      this.hitCar(car, ammo, hit.dx, hit.dz, knockbackNs, weapon.damage);
       if (splat) fx.splatOn(car.mesh, hit, splatM, colour, s.seed);
     } else if (hit.kind === HitKind.PROP) {
       // knocked over, whatever the ammo, with no splat: a mark left in the air where it stood would hang there
-      const k = weapon.power * KNOCK_NS_PER_POWER;
-      this.g.physics?.knockProp(hit.target, hit.x, hit.y, hit.z, hit.dx * k, k * KNOCK_UP, hit.dz * k);
+      this.g.physics?.knockProp(
+        hit.target,
+        hit.x,
+        hit.y,
+        hit.z,
+        hit.dx * knockbackNs,
+        knockbackNs * KNOCKBACK_UP_SHARE,
+        hit.dz * knockbackNs,
+      );
     } else if (splat) fx.splat(hit, splatM, colour, s.seed);
     if (person || car) this.mark();
     if (!weapon.blastM) return;
     const { push } = this;
     for (const n of crowd.npcs) {
       if (n === person || n.down || !blastPush(hit.x, hit.z, weapon.blastM, n.x, n.z, push)) continue;
-      this.hitPerson(n, ammo, push.dx, push.dz, hit.y + 1, weapon.power * 0.6, weapon.splatM, colour, rnd());
+      this.hitPerson(n, ammo, push.dx, push.dz, hit.y + 1, knockbackNs * BLAST_SHARE, weapon.splatM, colour, rnd());
       this.mark();
     }
-    if (shoves)
-      for (const c of this.world.cars)
-        if (c !== car && blastPush(hit.x, hit.z, weapon.blastM, c.x, c.z, push))
-          this.shoveCar(c, push.dx, push.dz, weapon.power * 0.6);
+    for (const c of this.world.cars)
+      if (c !== car && blastPush(hit.x, hit.z, weapon.blastM, c.x, c.z, push))
+        this.hitCar(c, ammo, push.dx, push.dz, knockbackNs * BLAST_SHARE, weapon.damage * BLAST_SHARE);
     const spatter = effectOf(ammo, EffectKind.SPATTER);
     for (let i = 0; spatter && i < spatter.drops; i++) {
       const a = rnd() * Math.PI * 2,
@@ -826,7 +834,7 @@ export class Pickadoll {
     dx: number,
     dz: number,
     y: number,
-    power: number,
+    knockbackNs: number,
     splatM: number,
     colour: string,
     turn: number,
@@ -842,7 +850,7 @@ export class Pickadoll {
           break;
         case EffectKind.THROW:
           // too many down already: they are only knocked a step back
-          if (!ragdolls.push(n, dx, dz, PANG_THROW_MS + power * PANG_THROW_PER_POWER_MS)) {
+          if (!ragdolls.push(n, dx, dz, PANG_THROW_MS + knockbackNs * PANG_THROW_MS_PER_NS)) {
             n.x += dx * 0.5;
             n.z += dz * 0.5;
           }
@@ -860,8 +868,11 @@ export class Pickadoll {
     return c.saleKr > 0 || (this.g.god && c === this.g.game.pcar);
   }
 
-  private shoveCar(c: RenderedCar, dx: number, dz: number, power: number) {
-    if (this.spared(c) || !pangCar(c, dx, dz, power)) return;
+  // the ammo's effects on a car: its damage, and a slide when the push beats its brakes
+  private hitCar(c: RenderedCar, ammo: Ammo, dx: number, dz: number, knockbackNs: number, damage: number) {
+    if (this.spared(c)) return;
+    if (effectOf(ammo, EffectKind.DAMAGE)) damageCar(c, damage);
+    if (!effectOf(ammo, EffectKind.SHOVE) || !slideCar(c, dx, dz, knockbackNs)) return;
     pushBodyOut(c, this.world.collide); // or shot by shot it would go through a wall, as a car shoved by a crash (cars.ts)
     this.g.placeCar(c);
   }

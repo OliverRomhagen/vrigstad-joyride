@@ -57,6 +57,7 @@ describe('what an ammo does', () => {
       { kind: EffectKind.SPLAT, sizeK: 0.45, onPeople: false },
       { kind: EffectKind.THROW },
       { kind: EffectKind.SHOVE },
+      { kind: EffectKind.DAMAGE },
     ]);
     expect(AMMOS[index(AmmoId.DANS)].effects).toEqual([
       { kind: EffectKind.SPLAT, sizeK: 0.45, onPeople: false },

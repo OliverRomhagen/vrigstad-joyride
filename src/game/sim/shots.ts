@@ -1,7 +1,7 @@
 // Shots (#17, lab: pickadoll): the weapons, how a shot flies and what it hits. A proof of concept for trying weapons
 // and ammo side by side: the weapon decides how a shot is delivered, the ammo (./ammo.ts) what it does on landing.
 // Plain data and functions: no three.js, no DOM.
-import { damageCar } from '../health';
+import type { CarMode } from '../cars';
 import { AmmoId, type AmmoRule } from './ammo';
 import { bodyRadius, type CarBody, nearestOnSpine, PERSON_RADIUS_M } from './car-body';
 import { SurfaceKind } from './physics-world';
@@ -32,7 +32,8 @@ export interface Weapon extends AmmoRule {
   auto: boolean; // fires for as long as the trigger is held
   pellets: number; // shots per pull
   spreadRad: number; // each shot leaves within this angle of the aim
-  power: number; // how hard a hit lands; 1 is the pickadoll's
+  shotMassKg: number; // what a shot weighs, at the game's scale, not a real bullet's: times speedMs, the push its hit gives (knockbackOf)
+  damage: number; // what a hit does to a car's damage, with an ammo that damages (EffectKind.DAMAGE)
   splatM: number; // radius of the mark a hit leaves
   blastM: number; // a hit also reaches everyone within this radius; 0 for none
   bounces: number; // how many times a shot bounces off the ground, a wall or a car before it stops
@@ -56,7 +57,8 @@ export const WEAPONS = [
     auto: false,
     pellets: 1,
     spreadRad: 0.012,
-    power: 0.25,
+    shotMassKg: 0.3125,
+    damage: 0.5,
     splatM: 0.2,
     blastM: 0,
     bounces: 0,
@@ -75,7 +77,8 @@ export const WEAPONS = [
     auto: false,
     pellets: 1,
     spreadRad: 0.006,
-    power: 1,
+    shotMassKg: 0.571,
+    damage: 2,
     splatM: 0.6,
     blastM: 0,
     bounces: 0,
@@ -94,7 +97,8 @@ export const WEAPONS = [
     auto: true,
     pellets: 1,
     spreadRad: 0.045,
-    power: 0.5,
+    shotMassKg: 0.333,
+    damage: 1,
     splatM: 0.45,
     blastM: 0,
     bounces: 0,
@@ -113,7 +117,8 @@ export const WEAPONS = [
     auto: false,
     pellets: 8,
     spreadRad: 0.09,
-    power: 0.6,
+    shotMassKg: 0.436,
+    damage: 1.2,
     splatM: 0.4,
     blastM: 0,
     bounces: 0,
@@ -132,7 +137,8 @@ export const WEAPONS = [
     auto: false,
     pellets: 1,
     spreadRad: 0.01,
-    power: 4,
+    shotMassKg: 6.15,
+    damage: 8,
     splatM: 2.2,
     blastM: 4,
     bounces: 0,
@@ -151,7 +157,8 @@ export const WEAPONS = [
     auto: true,
     pellets: 1,
     spreadRad: 0.055,
-    power: 0.4,
+    shotMassKg: 0.213,
+    damage: 0.8,
     splatM: 0.38,
     blastM: 0,
     bounces: 0,
@@ -171,7 +178,8 @@ export const WEAPONS = [
     auto: false,
     pellets: 1,
     spreadRad: 0.012,
-    power: 0.3,
+    shotMassKg: 0.4,
+    damage: 0.6,
     splatM: 0.24,
     blastM: 0,
     bounces: 12,
@@ -191,7 +199,8 @@ export const WEAPONS = [
     auto: false,
     pellets: 1,
     spreadRad: 0.004,
-    power: 1.3,
+    shotMassKg: 0.1625,
+    damage: 2.6,
     splatM: 0.25,
     blastM: 0,
     bounces: 0,
@@ -211,7 +220,8 @@ export const WEAPONS = [
     auto: false,
     pellets: 1,
     spreadRad: 0.001,
-    power: 0.6,
+    shotMassKg: 0.141,
+    damage: 1.2,
     splatM: 0.15,
     blastM: 0,
     bounces: 0,
@@ -231,7 +241,8 @@ export const WEAPONS = [
     auto: false,
     pellets: 1,
     spreadRad: 0,
-    power: 5,
+    shotMassKg: 0.263,
+    damage: 10,
     splatM: 0.5,
     blastM: 0,
     bounces: 0,
@@ -251,7 +262,8 @@ export const WEAPONS = [
     auto: false,
     pellets: 1,
     spreadRad: 0.01,
-    power: 3,
+    shotMassKg: 8,
+    damage: 6,
     splatM: 1.8,
     blastM: 5,
     bounces: 6,
@@ -270,7 +282,8 @@ export const WEAPONS = [
     auto: false,
     pellets: 7,
     spreadRad: 0.16,
-    power: 0,
+    shotMassKg: 0,
+    damage: 0,
     splatM: 0,
     blastM: 0,
     bounces: 0,
@@ -382,23 +395,25 @@ export function aimShot(
 const _probe = { x: 0, z: 0 },
   _onCar = { x: 0, z: 0 };
 
-const PANG_CAR_SHOVE_M = 0.14, // a parked car slides this far per point of power
-  PANG_CAR_DMG = 2; // and takes this much damage per point of power
+/** The push a weapon's hit gives, in N·s: what its shot weighs times the speed it leaves at. A faster weapon pushes harder. */
+export const knockbackOf = (w: Pick<Weapon, 'shotMassKg' | 'speedMs'>) => w.shotMassKg * w.speedMs;
+
+const CAR_HOLD_NS = 60, // a parked car's brakes hold against a smaller push: a pistol's shot marks it, a potato shoves it
+  CAR_SLIDE_M_PER_NS = 0.0035; // past that, it slides this far for each N·s of the push
 
 /**
- * What a pang hit does to a car, pushed along (dx, dz): it takes damage by the hit's power, and a parked one slides.
- * A car that drives stays where its driving puts it. True when the car moved, so whoever draws it places it again.
+ * A parked car pushed along (dx, dz) by `knockbackNs`: it slides when the push beats its brakes. A car that drives stays
+ * where its driving puts it. True when the car moved, so whoever draws it places it again.
  */
-export function pangCar(
-  c: { x: number; z: number; dmg: number; mode: string },
+export function slideCar(
+  c: { x: number; z: number; mode: CarMode },
   dx: number,
   dz: number,
-  power: number,
+  knockbackNs: number,
 ): boolean {
-  damageCar(c, power * PANG_CAR_DMG);
-  if (c.mode !== 'parked') return false;
-  c.x += dx * power * PANG_CAR_SHOVE_M;
-  c.z += dz * power * PANG_CAR_SHOVE_M;
+  if (c.mode !== 'parked' || knockbackNs < CAR_HOLD_NS) return false;
+  c.x += dx * knockbackNs * CAR_SLIDE_M_PER_NS;
+  c.z += dz * knockbackNs * CAR_SLIDE_M_PER_NS;
   return true;
 }
 

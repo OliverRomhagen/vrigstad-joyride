@@ -7,13 +7,14 @@ import {
   blastPush,
   flightPath,
   GRAVITY_MS2,
+  knockbackOf,
   MUZZLE_M,
   newHit,
-  pangCar,
   type Shot,
   ShotStep,
   type ShotWorld,
   sight,
+  slideCar,
   stepShot,
   WEAPONS,
   WeaponId,
@@ -450,18 +451,38 @@ describe('assistTarget', () => {
   });
 });
 
-describe('pangCar', () => {
-  it('damages a parked car by the power and slides it along the push', () => {
-    const c = { x: 10, z: 5, dmg: 0, mode: 'parked' };
-    expect(pangCar(c, 0, -1, 3)).toBe(true);
-    expect(c.dmg).toBe(6); // 2 a point of power
-    expect(c.x).toBe(10);
-    expect(c.z).toBeCloseTo(5 - 3 * 0.14); // 0.14 m a point of power
+describe('knockbackOf', () => {
+  it('pushes by what the shot weighs times its speed, so a faster weapon pushes harder', () => {
+    expect(knockbackOf({ shotMassKg: 0.5, speedMs: 80 })).toBe(40);
+    expect(knockbackOf({ shotMassKg: 0.5, speedMs: 160 })).toBe(80);
   });
 
-  it('damages a car that drives, and leaves it where its driving puts it', () => {
-    const c = { x: 10, z: 5, dmg: 20, mode: 'ai' };
-    expect(pangCar(c, 1, 0, 2)).toBe(false);
-    expect(c).toMatchObject({ x: 10, z: 5, dmg: 24 });
+  it("keeps the pushes the weapons' power gave: 40 N·s a point", () => {
+    const by = (id: WeaponId) => knockbackOf(WEAPONS.find(w => w.id === id)!);
+    expect(by(WeaponId.PICKADOLL)).toBeCloseTo(40, 0);
+    expect(by(WeaponId.POTATISKANON)).toBeCloseTo(160, 0);
+    expect(by(WeaponId.ALGSTUDSARE)).toBeCloseTo(200, 0);
+  });
+});
+
+describe('slideCar', () => {
+  it('slides a parked car along a push that beats its brakes', () => {
+    const c = { x: 10, z: 5, mode: 'parked' as const };
+    expect(slideCar(c, 0, -1, 120)).toBe(true);
+    expect(c.x).toBe(10);
+    expect(c.z).toBeCloseTo(5 - 120 * 0.0035); // 0.0035 m an N·s
+  });
+
+  it("holds a parked car against a pistol's push: the shot only marks it", () => {
+    const c = { x: 10, z: 5, mode: 'parked' as const };
+    const pickadoll = WEAPONS.find(w => w.id === WeaponId.PICKADOLL)!;
+    expect(slideCar(c, 0, -1, knockbackOf(pickadoll))).toBe(false);
+    expect(c).toEqual({ x: 10, z: 5, mode: 'parked' });
+  });
+
+  it('leaves a car that drives where its driving puts it', () => {
+    const c = { x: 10, z: 5, mode: 'ai' as const };
+    expect(slideCar(c, 1, 0, 500)).toBe(false);
+    expect(c).toMatchObject({ x: 10, z: 5 });
   });
 });
