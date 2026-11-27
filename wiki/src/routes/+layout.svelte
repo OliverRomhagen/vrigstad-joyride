@@ -64,8 +64,10 @@ function drawer(dialog: HTMLDialogElement) {
       white-space: nowrap;
     }
     /* "Play" alone beside the tag: with "the game" too, a 320px phone has no room for both */
-    .top.top.top .play-long {
-      display: none;
+    @media (width <= 47.5em) {
+      .top.top.top .play-long {
+        display: none;
+      }
     }
     /* and the header scrolls away with the page: nothing would give it its dark ground */
     .top.top.top {
