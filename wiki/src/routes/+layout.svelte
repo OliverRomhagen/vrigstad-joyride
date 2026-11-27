@@ -60,6 +60,12 @@ function drawer(dialog: HTMLDialogElement) {
     /* and with no drawer to hold it, the way to the game stays in a phone's header */
     .top.top.top .play.play.play {
       display: inline-flex;
+      flex-shrink: 0;
+      white-space: nowrap;
+    }
+    /* "Play" alone beside the tag: with "the game" too, a 320px phone has no room for both */
+    .top.top.top .play-long {
+      display: none;
     }
     /* and the header scrolls away with the page: nothing would give it its dark ground */
     .top.top.top {
@@ -99,7 +105,9 @@ function drawer(dialog: HTMLDialogElement) {
   <div class="shell">
     <header class={['top', { scrolled }]}>
       <a class="brand" href={resolve('/')}><span lang="sv">Vrigstad</span> <b>wiki</b></a>
-      <a class="play" rel="external" href={GAME_URL}>Play the game <ArrowRight size="1em" strokeWidth={2.5} /></a>
+      <a class="play" rel="external" href={GAME_URL}
+        >Play<span class="play-long"> the game</span> <ArrowRight size="1em" strokeWidth={2.5} /></a
+      >
       <!-- a phone's header has the tag and this, last, at the window's edge, where a phone's menu is looked for; Play is
            in the drawer it opens -->
       <button
