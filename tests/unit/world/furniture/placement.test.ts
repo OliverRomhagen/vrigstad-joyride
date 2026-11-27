@@ -475,10 +475,12 @@ describe('placeFurniture: along the country roads (#305)', () => {
       const side = posts.filter(p => Math.sign(p.z) === sgn);
       expect(side.length).toBeGreaterThanOrEqual(10); // 600 m of road
       const xs = side.map(p => p.x).sort((a, b) => a - b);
-      for (let i = 1; i < xs.length; i++) {
-        expect(xs[i] - xs[i - 1]).toBeGreaterThanOrEqual(50 - 2 * 4 - 1e-9);
-        expect(xs[i] - xs[i - 1]).toBeLessThanOrEqual(50 + 2 * 4 + 1e-9);
+      const gaps = xs.slice(1).map((x, i) => x - xs[i]);
+      for (const gap of gaps) {
+        expect(gap).toBeGreaterThanOrEqual(50 - 2 * 4 - 1e-9);
+        expect(gap).toBeLessThanOrEqual(50 + 2 * 4 + 1e-9);
       }
+      expect(Math.max(...gaps) - Math.min(...gaps)).toBeGreaterThan(2); // jittered, not all shifted alike
     }
     for (const p of posts) {
       expect(Math.abs(p.z)).toBeCloseTo(ROAD_WIDTH_M[RoadClass.PRIMARY] / 2 + 0.6, 6); // just past the carriageway
