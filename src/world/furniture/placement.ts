@@ -2,8 +2,9 @@
 // they are mapped; overrides add local knowledge; documented rules fill in the rest, deterministically, and every
 // generated object is labelled `procedural`. Placement knows each kind's footprint, never how it is modelled.
 // The steps: mapped objects, override additions, lamps (lamps.ts), benches (seats.ts), bins (bins.ts), what the houses
-// have at their street (homes.ts, #305), posts along the country roads (posts.ts, #305), override edits.
+// have at their street (homes.ts, #305), posts along the country roads (posts.ts, #305), bales in the fields (bales.ts, #305), override edits.
 import { FurnitureCode, RoadClass } from '../data';
+import { baleCandidates } from './bales';
 import { placeBins, TORGET_BINS } from './bins';
 import type { TorgetArea } from './context';
 import { FURNITURE, type FurnitureKind, SHORT_LAMP_EMITTER, SHORT_LAMP_MODEL } from './definitions';
@@ -60,6 +61,7 @@ export function placeFurniture(input: FurnitureInput): FurnitureLayout {
   placeBins(placer, torgetBenches, busBins);
   placeHomeItems(placer);
   for (const c of postCandidates(placer).sort(byOrder)) placer.tryPlace(c);
+  for (const c of baleCandidates(placer).sort(byOrder)) placer.tryPlace(c);
   return {
     placements: applyOverrideEdits(placer.placements, input.overrides ?? []),
     torget: placer.torget,

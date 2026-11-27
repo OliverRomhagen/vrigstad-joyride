@@ -20,6 +20,8 @@ const BUDGET: Record<FurnitureModelId, number> = {
   'mailbox-stand-6': 300,
   'street-cabinet': 60,
   'roadside-post': 40, // three boxes
+  'silage-bale-white': 60, // a 14-sided cylinder
+  'silage-bale-green': 60,
 };
 const tris = (g?: THREE.BufferGeometry) => (g ? g.getAttribute('position').count / 3 : 0);
 const place = (

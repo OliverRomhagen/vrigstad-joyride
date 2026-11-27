@@ -506,6 +506,38 @@ describe('placeFurniture: along the country roads (#305)', () => {
   });
 });
 
+describe('placeFurniture: bales in the fields (#305)', () => {
+  // a 300 m square field, 10 ha, away from any road
+  const FIELD = { k: LandUse.FARMLAND, p: [-150, -150, 150, -150, 150, 150, -150, 150] };
+
+  it('lays short rows of bales inside a field, a row per 3 ha, each of one wrap', () => {
+    const { placements } = place({ world: { l: [FIELD] } });
+    const bales = kinds(placements, 'silage-bale');
+    const rows = new Map<string, typeof bales>();
+    for (const b of bales) {
+      const row = b.id.split(':').slice(2, 4).join(':');
+      rows.set(row, [...(rows.get(row) ?? []), b]);
+    }
+    expect(rows.size).toBe(3);
+    for (const row of rows.values()) {
+      expect(row.length).toBeGreaterThanOrEqual(3);
+      expect(row.length).toBeLessThanOrEqual(6);
+      expect(new Set(row.map(b => b.modelId)).size).toBe(1);
+      for (let i = 1; i < row.length; i++)
+        expect(Math.hypot(row[i].x - row[i - 1].x, row[i].z - row[i - 1].z)).toBeCloseTo(1.5, 6);
+    }
+    for (const b of bales) {
+      expect(Math.abs(b.x)).toBeLessThanOrEqual(150 - 12);
+      expect(Math.abs(b.z)).toBeLessThanOrEqual(150 - 12);
+    }
+  });
+
+  it('puts none outside farmland, and the same ones every time', () => {
+    expect(kinds(place({ world: { l: [{ ...FIELD, k: LandUse.GRASS }] } }).placements, 'silage-bale')).toEqual([]);
+    expect(place({ world: { l: [FIELD] } }).placements).toEqual(place({ world: { l: [FIELD] } }).placements);
+  });
+});
+
 describe('placeFurniture: review fixes', () => {
   it('puts a bus stop mapped on the road itself beside the road, not along the carriageway', () => {
     const fu: FurniturePoint[] = [{ i: 60, k: FurnitureCode.BUS_STOP, x: 40, z: 0 }];

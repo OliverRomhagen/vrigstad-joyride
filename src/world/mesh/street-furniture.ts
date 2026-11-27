@@ -198,6 +198,13 @@ function roadsidePost(): FurnitureModel {
   };
 }
 
+/** A wrapped round silage bale lying on its side, about 1.2 m across and long, its axis along x. */
+function silageBale(wrap: number): FurnitureModel {
+  return {
+    body: merge([[new THREE.CylinderGeometry(0.6, 0.6, 1.2, 14).rotateZ(Math.PI / 2).translate(0, 0.6, 0), wrap]]),
+  };
+}
+
 /** Every model by id; the registry is the seam where a GLB-backed model could later stand in (#59). */
 export const FURNITURE_MODELS: Readonly<Record<FurnitureModelId, () => FurnitureModel>> = {
   'lamp-arm': () => lamp(6.5, 1.25, 1),
@@ -215,6 +222,8 @@ export const FURNITURE_MODELS: Readonly<Record<FurnitureModelId, () => Furniture
   'mailbox-stand-6': () => mailboxStand(6),
   'street-cabinet': streetCabinet,
   'roadside-post': roadsidePost,
+  'silage-bale-white': () => silageBale(0xe9ebe6),
+  'silage-bale-green': () => silageBale(0x3d6545),
 };
 
 export interface StreetFurnitureOptions {
