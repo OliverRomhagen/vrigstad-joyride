@@ -23,7 +23,7 @@ import { col } from '../../world/three-legacy';
 import { GAME_WATER } from '../../world/water-palette';
 import type { WaterBodies } from '../../world/water-shapes';
 import { HOUSE_SHELLS_MATERIAL } from './house-materials';
-import { INK_FLAG } from './ink-flag';
+import { INK_FLAG, INK_NO_FEET_FLAG } from './ink-flag';
 import { mergeGeo } from './models';
 
 // ---------- terrain ----------
@@ -159,6 +159,8 @@ const WIN_W = 2.6,
   STOREY = 2.8; // window spacing and storey height (m)
 /** how far the plinth stands out from a house's wall (m); the safehouse doors stand clear of it (render/places.ts) */
 export const PLINTH_OUT_M = 0.08;
+/** how high the plinth's top stands over the highest ground under a house (m) */
+export const PLINTH_TOP_M = 0.45;
 const CORNER_OUT_M = 0.07,
   EAVE_M = 0.35, // how far a gabled roof runs on past the walls
   FASCIA_M = 0.15, // the depth of the board at its edge
@@ -336,7 +338,7 @@ export function addBuildings(
         }
         const ya = yAt(a),
           yd = yAt(d),
-          py = hi + 0.45,
+          py = hi + PLINTH_TOP_M,
           [p1x, p1z, p2x, p2z] = o(PLINTH_OUT_M),
           OUT: Corner = [ox, 0, oz];
         face(emit, PLINTH, OUT, [p1x, base, p1z], [p2x, base, p2z], [p2x, py, p2z], [p1x, py, p1z]);
@@ -453,6 +455,7 @@ export function addBuildings(
       wallDrop,
     }).mesh;
     shells.userData[INK_FLAG] = true; // the toon style inks the houses' corners and roof edges too
+    shells.userData[INK_NO_FEET_FLAG] = true; // but not their feet: the walls' in the ground, the corner boards' on the plinth
     scene.add(shells);
     // the window skin: the trim is in the shells now (#413)
     const sg = new THREE.BufferGeometry();

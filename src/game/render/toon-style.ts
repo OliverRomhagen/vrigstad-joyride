@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { HOUSE_SHELLS_MATERIAL } from './house-materials';
-import { INK_FLAG } from './ink-flag';
+import { inkEdges } from './ink-edges';
+import { INK_FLAG, INK_NO_FEET_FLAG } from './ink-flag';
 
 // The look follows the "Kraftig" (bold) cel shading of the art direction lab (v20).
 // Light per quarter of MeshToonMaterial's ramp, which it samples at `dot * 0.5 + 0.5` (dot of normal and light
@@ -30,9 +31,13 @@ const INK_CREASE_DEG = 34;
 const INK_COLOR = 0x10151c;
 const INK_OPACITY = 0.67;
 // Lines are drawn this fraction of their distance closer to the camera, along the line of sight: the same place on
-// screen, but in front of the surface they sit on and of the houses' corner boards, which are pulled forward with
-// polygonOffset. Scaling the lines about the mesh's origin instead moved them off meshes whose origin is far away, such
-// as the village's shells (one mesh at Torget).
+// screen, but in front of the surface they sit on, so they don't flicker into it. It has to beat more than the depth
+// buffer's step: a 1 px line covers pixel centres up to half a pixel off its edge, where the face beside it can be
+// nearer than the line, and half a pixel is about 0.08% of the distance at 720p. At 0.0002 the lines lost a fifth to a
+// third of their pixels, as dots along the corner boards and eaves. Every line within the pull of a surface shows
+// through it, which is why the houses' buried feet get no line at all (INK_NO_FEET_FLAG), not a smaller pull.
+// Scaling the lines about the mesh's origin instead moved them off meshes whose origin is far away, such as the
+// village's shells (one mesh at Torget).
 export const INK_PULL = 0.001;
 
 type LitMaterial = THREE.MeshLambertMaterial | THREE.MeshPhongMaterial | THREE.MeshStandardMaterial;
@@ -81,7 +86,9 @@ export class ToonStyle {
   private readonly gradients = new Map<Finish, THREE.DataTexture>();
   private readonly toons = new WeakMap<THREE.Material, THREE.MeshToonMaterial>();
   private readonly toonArrays = new WeakMap<THREE.Material[], THREE.Material[]>();
-  private readonly inkGeometries = new WeakMap<THREE.BufferGeometry, THREE.EdgesGeometry>();
+  private readonly inkGeometries = new WeakMap<THREE.BufferGeometry, THREE.BufferGeometry>();
+  // apart, so a geometry two meshes share gets each its own lines, whichever is inked first
+  private readonly footlessInkGeometries = new WeakMap<THREE.BufferGeometry, THREE.BufferGeometry>();
   private readonly inked = new WeakSet<THREE.Mesh>();
   private readonly inkMaterial = new THREE.LineBasicMaterial({
     color: INK_COLOR,
@@ -103,11 +110,16 @@ export class ToonStyle {
     if (!(object instanceof THREE.Mesh) || this.inked.has(object)) return;
     this.inked.add(object);
     if (!isOpaque(object.material)) return; // no lines across glass
-    let edges = this.inkGeometries.get(object.geometry);
+    // read on the mesh itself, not inherited as INK_FLAG is: it says how this mesh is built
+    const footless = !!object.userData[INK_NO_FEET_FLAG],
+      cache = footless ? this.footlessInkGeometries : this.inkGeometries;
+    let edges = cache.get(object.geometry);
     if (!edges) {
-      edges = new THREE.EdgesGeometry(object.geometry, INK_CREASE_DEG);
-      this.inkGeometries.set(object.geometry, edges);
-      this.disposeWith(object.geometry, edges);
+      edges = footless
+        ? inkEdges(object.geometry, INK_CREASE_DEG)
+        : new THREE.EdgesGeometry(object.geometry, INK_CREASE_DEG);
+      cache.set(object.geometry, edges);
+      this.disposeWith(cache, object.geometry, edges);
     }
     const lines = new THREE.LineSegments(edges, this.inkMaterial);
     lines.renderOrder = 10;
@@ -146,10 +158,14 @@ export class ToonStyle {
   }
 
   /** Frees a geometry's ink lines with it, so line buffers don't build up as meshes come and go. */
-  private disposeWith(source: THREE.BufferGeometry, edges: THREE.BufferGeometry) {
+  private disposeWith(
+    cache: WeakMap<THREE.BufferGeometry, THREE.BufferGeometry>,
+    source: THREE.BufferGeometry,
+    edges: THREE.BufferGeometry,
+  ) {
     const dispose = () => {
       source.removeEventListener('dispose', dispose);
-      this.inkGeometries.delete(source);
+      cache.delete(source);
       edges.dispose();
     };
     source.addEventListener('dispose', dispose);

@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { expect, test, vi } from 'vitest';
 import { HOUSE_SHELLS_MATERIAL } from '../../../../src/game/render/house-materials';
-import { INK_FLAG } from '../../../../src/game/render/ink-flag';
+import { INK_FLAG, INK_NO_FEET_FLAG } from '../../../../src/game/render/ink-flag';
 import {
   FINISH_LEVELS,
   finishOf,
@@ -152,12 +152,86 @@ test('inked objects get crease lines on opaque meshes, once, sharing edges per g
   const ink = (mesh: THREE.Mesh) => mesh.children.filter(o => o instanceof THREE.LineSegments) as THREE.LineSegments[];
   expect(ink(body)).toHaveLength(1);
   expect(ink(door)[0].geometry).toBe(ink(body)[0].geometry);
-  expect(ink(body)[0].geometry).toBeInstanceOf(THREE.EdgesGeometry);
+  expect(ink(body)[0].geometry.getAttribute('position').count).toBe(24); // a box's twelve edges (ink-edges.test.ts)
   expect(ink(glass)).toHaveLength(0);
   expect(ink(house)).toHaveLength(0);
 });
 
-test('ink lines stay on far-off parts of a mesh, and are pulled towards the camera to show over the corner boards', () => {
+test('only a mesh that asks for it loses the line along its open feet', () => {
+  // a 4 m wall with no floor, from y = 0 to 3: top, two sides and a foot
+  const wall = () => {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute(
+      'position',
+      new THREE.Float32BufferAttribute([0, 0, 0, 4, 0, 0, 4, 3, 0, 0, 0, 0, 4, 3, 0, 0, 3, 0], 3),
+    );
+    return new THREE.Mesh(g, new THREE.MeshLambertMaterial());
+  };
+  const scene = new THREE.Scene(),
+    prop = wall(),
+    shells = wall();
+  prop.userData[INK_FLAG] = true;
+  shells.userData[INK_FLAG] = true;
+  shells.userData[INK_NO_FEET_FLAG] = true;
+  scene.add(prop, shells);
+  new ToonStyle({ render: () => {} }).render(scene, camera);
+  const segments = (mesh: THREE.Mesh) =>
+    (mesh.children[0] as THREE.LineSegments).geometry.getAttribute('position').count / 2;
+  expect(segments(prop)).toBe(4);
+  expect(segments(shells)).toBe(3);
+});
+
+test("a mesh not flagged gets three's EdgesGeometry lines, even where inkEdges would draw others", () => {
+  // a roof and its overhang in one plane, the overhang wound the other way: EdgesGeometry draws the edge between them,
+  // inkEdges flips the normal and draws none; a car part like this keeps its line
+  const roofAndOverhang = [
+    [0, 3, 0, 4, 3, 0, 4, 4, -2, 0, 3, 0, 4, 4, -2, 0, 4, -2],
+    [0, 3, 0, 4, 3, 0, 4, 2.8, 0.4, 0, 3, 0, 4, 2.8, 0.4, 0, 2.8, 0.4],
+  ].flat();
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(roofAndOverhang, 3));
+  const scene = new THREE.Scene(),
+    prop = new THREE.Mesh(g, new THREE.MeshLambertMaterial()),
+    shells = new THREE.Mesh(g, new THREE.MeshLambertMaterial());
+  for (const o of [prop, shells]) o.userData[INK_FLAG] = true;
+  shells.userData[INK_NO_FEET_FLAG] = true;
+  scene.add(prop, shells);
+  new ToonStyle({ render: () => {} }).render(scene, camera);
+  const lines = (mesh: THREE.Mesh) => (mesh.children[0] as THREE.LineSegments).geometry.getAttribute('position');
+  const alongTheJoin = (mesh: THREE.Mesh) => {
+    const p = lines(mesh);
+    let n = 0;
+    for (let i = 0; i < p.count; i += 2) if (p.getY(i) === 3 && p.getY(i + 1) === 3) n++;
+    return n;
+  };
+  expect(lines(prop).array).toEqual(new THREE.EdgesGeometry(g, 34).getAttribute('position').array);
+  expect(alongTheJoin(prop)).toBe(1);
+  expect(alongTheJoin(shells)).toBe(0);
+});
+
+test('two meshes that share a geometry each get their own lines, with and without feet, and the flag is not inherited', () => {
+  const g = new THREE.BufferGeometry();
+  g.setAttribute(
+    'position',
+    new THREE.Float32BufferAttribute([0, 0, 0, 4, 0, 0, 4, 3, 0, 0, 0, 0, 4, 3, 0, 0, 3, 0], 3),
+  );
+  const scene = new THREE.Scene(),
+    group = new THREE.Group(),
+    prop = new THREE.Mesh(g, new THREE.MeshLambertMaterial()),
+    shells = new THREE.Mesh(g, new THREE.MeshLambertMaterial()),
+    child = new THREE.Mesh(g, new THREE.MeshLambertMaterial());
+  for (const o of [prop, shells, group]) o.userData[INK_FLAG] = true;
+  shells.userData[INK_NO_FEET_FLAG] = true;
+  group.userData[INK_NO_FEET_FLAG] = true; // on a group it says nothing about the meshes under it
+  group.add(child);
+  scene.add(prop, shells, group);
+  new ToonStyle({ render: () => {} }).render(scene, camera);
+  const segments = (mesh: THREE.Mesh) =>
+    (mesh.children[0] as THREE.LineSegments).geometry.getAttribute('position').count / 2;
+  expect([segments(prop), segments(shells), segments(child)]).toEqual([4, 3, 4]);
+});
+
+test('ink lines stay on far-off parts of a mesh, and are pulled towards the camera to show over the faces beside them', () => {
   // the village shells are one mesh at the origin with world-coordinate vertices: scaling lines about it moved them
   const scene = new THREE.Scene(),
     shells = new THREE.Mesh(box.clone().translate(900, 0, 0), new THREE.MeshLambertMaterial());
