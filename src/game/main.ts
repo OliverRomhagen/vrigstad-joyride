@@ -359,7 +359,7 @@ pets.registerCommands(commands);
 wanted.registerCommands(commands);
 registerHealthCommands(commands, health, drawHealth);
 registerCarDamageCommand(commands, () => (game.inCar ? game.pcar : null));
-registerFlatTyreCommand(commands, () => (game.inCar ? game.pcar : null));
+if (lab.on('pickadoll')) registerFlatTyreCommand(commands, () => (game.inCar ? game.pcar : null));   // flat <wheel|off>: the lab's fotanglar are what burst a tyre, so without the flag nothing can
 registerTunableCommands(commands, tunables);
 // go <place>: you, or the car you drive, straight there, out of any safehouse first
 places.registerCommands(commands, (x, z, name, h) => { leaveHouse(); const c = game.inCar ? game.pcar : null;
