@@ -10,8 +10,9 @@ export type FurnitureKind =
   | 'mailbox'
   | 'mailbox-stand'
   | 'street-cabinet'
-  // along the country roads (#305)
-  | 'roadside-post';
+  // along the country roads and in the fields (#305)
+  | 'roadside-post'
+  | 'silage-bale';
 /** every model src/world/mesh/street-furniture.ts can build, so a misspelt id is a compile error */
 export type FurnitureModelId =
   | 'lamp-arm'
@@ -28,7 +29,9 @@ export type FurnitureModelId =
   | 'mailbox-stand-5'
   | 'mailbox-stand-6'
   | 'street-cabinet'
-  | 'roadside-post';
+  | 'roadside-post'
+  | 'silage-bale-white'
+  | 'silage-bale-green';
 /** where a road or place is, for what furniture it gets; see context.ts */
 export type FurnitureContext = 'torget' | 'centre' | 'main' | 'residential' | 'outer' | 'path';
 /** osm: drawn where OpenStreetMap maps it; override: local knowledge in overrides.ts; procedural: a rule placed it */
@@ -174,7 +177,23 @@ export const FURNITURE: Readonly<Record<FurnitureKind, FurnitureDefinition>> = {
     junctionKeepM: 10, // not in a junction's mouth, where a driver turns
     maxSlopeDeg: 25,
   },
+  // #305: in the fields; a row's bales stand 0.3 m apart, inside the clearances
+  'silage-bale': {
+    kind: 'silage-bale',
+    modelId: 'silage-bale-white',
+    widthM: 1.2,
+    depthM: 1.2,
+    heightM: 1.2,
+    clearanceM: 0.1,
+    carriagewayClearanceM: 3,
+    treeClearanceM: 1,
+    dedupeRadiusM: 1,
+    junctionKeepM: 0,
+    maxSlopeDeg: 12,
+  },
 };
+/** a silage bale's wrap: white plastic, or green */
+export const BALE_MODELS = ['silage-bale-white', 'silage-bale-green'] as const satisfies readonly FurnitureModelId[];
 
 /** the shorter lamp on residential streets and paths, with its light lower and nearer the pole */
 export const SHORT_LAMP_MODEL: FurnitureModelId = 'lamp-arm-short';
