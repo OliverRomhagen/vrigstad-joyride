@@ -352,6 +352,8 @@ test.describe('game (index.html)', () => {
       .toBe(true);
     expect((await state(page)).rapier).toMatchObject({ targets: 7, targetsDown: 0 }); // the range's, standing (#545)
     await frames(page, 3);
+    await page.keyboard.press('KeyX'); // the weapon starts put away: the first pull draws it
+    await expect.poll(async () => (await state(page)).pickadoll.holstered).toBe(false);
     await page.keyboard.down('KeyX');
     await expect.poll(async () => (await state(page)).pickadoll.fired).toBeGreaterThan(0);
     await page.keyboard.up('KeyX');
