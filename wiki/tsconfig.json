@@ -1,0 +1,14 @@
+{
+  "extends": "$app/tsconfig",
+  "compilerOptions": {
+    "types": ["$app/types", "mdsvex/globals"],
+    "paths": {
+      "#lib/*": ["./src/lib/*"],
+      "#game/*": ["../src/game/*"],
+      "#world/*": ["../src/world/*"],
+      "#data/*": ["../data/*"],
+      "#fonts/*": ["../src/fonts/*"]
+    }
+  },
+  "include": ["src", "*"]
+}

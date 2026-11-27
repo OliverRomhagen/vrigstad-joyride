@@ -17,6 +17,7 @@ import {
   REGEN_DELAY_S,
   REGEN_HP_S,
   regen,
+  registerCarDamageCommand,
   registerHealthCommands,
   runOverHurt,
   smokeLevel,
@@ -24,6 +25,7 @@ import {
   wakeSpot,
   wrecked,
 } from '../../../src/game/health';
+import { noMods, UPGRADES } from '../../../src/game/sim/upgrades';
 
 describe('player health', () => {
   it('starts full', () => {
@@ -132,7 +134,7 @@ describe('car damage', () => {
 });
 
 describe('crashes', () => {
-  const car = (dmg = 0) => ({ dmg, hitAt: -9 });
+  const car = (dmg = 0) => ({ dmg, hitAt: -9, mods: noMods() });
   const HARD_MS = 27; // 20 m/s over CRASH_MIN_MS: 45 damage
 
   it('damages both cars in a hard hit, only the car against a wall, and never a spared car', () => {
@@ -145,8 +147,16 @@ describe('crashes', () => {
     expect(crashCars(0, HARD_MS, c, null).map(h => h.car)).toEqual([c]);
     const spared = car(),
       other = car();
-    expect(crashCars(0, HARD_MS, spared, other, spared).map(h => h.wrecked)).toEqual([false, false]);
+    expect(crashCars(0, HARD_MS, spared, other, k => k === spared).map(h => h.wrecked)).toEqual([false, false]);
     expect([spared.dmg, other.dmg]).toEqual([0, crashDamage(HARD_MS)]); // god mode spares the car you drive
+  });
+
+  it('takes half the damage with a reinforced body', () => {
+    const plain = car(),
+      welded = { ...car(), mods: { ...noMods(), body: true } };
+    crashCars(0, HARD_MS, plain, welded);
+    expect(plain.dmg).toBe(45);
+    expect(welded.dmg).toBe(45 * UPGRADES.BODY_DAMAGE);
   });
 
   it('ignores a slow bump, which also leaves the cooldown alone', () => {
@@ -207,5 +217,23 @@ describe('god mode', () => {
     expect(hurt(h, HP_MAX)).toBe(true);
     expect(c.run('god maybe')).toBe('mode is on or off. Usage: god [mode]');
     expect(drawn).toBe(3);
+  });
+});
+
+describe('the damage command', () => {
+  it('sets the damage of the car you drive, within 0 and DMG_MAX', () => {
+    const c = new Commands(),
+      car = { dmg: 10 };
+    registerCarDamageCommand(c, () => car);
+    expect(c.run('damage 60')).toBe('Car damage: 60.');
+    expect(car.dmg).toBe(60);
+    c.run('damage ' + (DMG_MAX + 1));
+    expect(car.dmg).toBe(60);
+  });
+
+  it('asks you to get in a car on foot', () => {
+    const c = new Commands();
+    registerCarDamageCommand(c, () => null);
+    expect(c.run('damage 60')).toBe('Get in a car first.');
   });
 });

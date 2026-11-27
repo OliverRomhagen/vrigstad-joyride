@@ -106,6 +106,34 @@ test.describe('game (index.html)', () => {
     expect(errors).toEqual([]);
   });
 
+  test('a jump against the parked Volvo pulls you up onto it, and you stand on it (#451)', async ({
+    page,
+  }, testInfo) => {
+    const errors = watchErrors(page);
+    // the Volvo parked by Torget stands at (-1.9, 33.1), nose at 0.6 rad: start at its right side, where the push out of
+    // cars leaves you against it, so a jump alone climbs it, with no run-up to time at software WebGL's frame rate
+    await page.goto('/index.html?at=-1.08,33.67,-0.97,0.3');
+    await page.setViewportSize({ width: 640, height: 360 }); // keep software WebGL affordable
+    await expectWebGL(page);
+    await page.locator('#go').click();
+    expect(await state(page)).toMatchObject({ inCar: false, floor: 0 });
+    await expect
+      .poll(
+        async () => {
+          await page.keyboard.press('Space');
+          return (await state(page)).floor;
+        },
+        { timeout: 30_000, intervals: [1000] },
+      )
+      .toBeGreaterThan(0.9);
+    await frames(page, 10);
+    const up = await state(page);
+    expect(up.floor).toBeGreaterThan(0.9); // still up there, on its roof
+    expect(up.y).toBeCloseTo(up.floor, 5);
+    await page.screenshot({ path: testInfo.outputPath('game-on-a-car.png') });
+    expect(errors).toEqual([]);
+  });
+
   test('builds the six mapped bridges and starts you on the Jönköpingsvägen deck', async ({ page }, testInfo) => {
     const errors = watchErrors(page);
     await page.goto('/index.html?at=-33.9,-8.4,1.6,0.3');
@@ -181,6 +209,29 @@ test.describe('game (index.html)', () => {
       }
       expect(errors).toEqual([]);
     });
+
+  test("V puts the camera in the driver's seat, with ?lab=cockpit (#473)", async ({ page }, testInfo) => {
+    const errors = watchErrors(page);
+    await page.setViewportSize({ width: 640, height: 360 }); // keep software WebGL affordable
+    await page.goto('/index.html?lab=cockpit');
+    await expectWebGL(page);
+    await page.locator('#go').click();
+    await expect(page.locator('#p-view')).toBeHidden();
+    await page.keyboard.press('KeyV'); // on foot must not arm the next car's view
+    await getInParkedCar(page);
+    await expect(page.locator('#p-view')).toHaveJSProperty('hidden', false);
+    expect(await state(page)).toMatchObject({ lab: ['cockpit'], cockpit: false }); // behind the car until you press V
+    await page.keyboard.press('KeyV');
+    await expect.poll(async () => (await state(page)).cockpit).toBe(true);
+    await frames(page, 3);
+    await page.screenshot({ path: testInfo.outputPath('cockpit.png') });
+    await page.keyboard.press('KeyV');
+    await expect.poll(async () => (await state(page)).cockpit).toBe(false);
+    await page.keyboard.press('KeyE');
+    await expect.poll(async () => (await state(page)).inCar).toBe(false);
+    await expect(page.locator('#p-view')).toBeHidden();
+    expect(errors).toEqual([]);
+  });
 
   test('ragdolls are on for everyone, without a lab flag', async ({ page }) => {
     const errors = watchErrors(page);
@@ -698,6 +749,83 @@ test.describe('game (index.html)', () => {
     expect(await state(page)).toMatchObject({ inCar: false, car: null });
     expect(errors).toEqual([]);
   });
+
+  test('Plåt-Pelle mends, tunes and resprays a car on the lift in his workshop', async ({ page }, testInfo) => {
+    const errors = watchErrors(page);
+    await page.setViewportSize({ width: 640, height: 360 });
+    await page.goto('/index.html?dev');
+    await page.locator('#go').click();
+    await page.keyboard.press('Backquote');
+    for (const line of ['kr 1500', 'car volvo240']) {
+      await page.keyboard.type(line);
+      await page.keyboard.press('Enter');
+    }
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('KeyE');
+    expect(await state(page)).toMatchObject({ inCar: true, kr: 1700 });
+    await page.keyboard.press('Backquote');
+    for (const line of ['go verkstan', 'damage 60']) {
+      await page.keyboard.type(line); // in the car, onto the lift, then damaged there
+      await page.keyboard.press('Enter');
+    }
+    await expect(page.locator('#devcon li').last()).toHaveText('Car damage: 60.');
+    await page.keyboard.press('Escape');
+    const { lift, carAt } = await state(page);
+    expect(Math.hypot(carAt.x - lift.x, carAt.z - lift.z)).toBeLessThan(1.85); // on the ring (LIFT_RING_M)
+    expect(Math.sin(carAt.h) * lift.inX - Math.cos(carAt.h) * lift.inZ).toBeCloseTo(1); // nose in from the door: the body fits between the posts
+    await expect.poll(async () => (await state(page)).carCrack).toBe(2);
+    await expect(page.locator('#prompt')).toHaveText('ERepair the Volvo 240 · 240 riksdaler');
+    await page.keyboard.press('KeyE');
+    await expect(page.locator('#kmenu')).toContainText('som ny');
+    await page.screenshot({ path: testInfo.outputPath('game-skroten-repair.png') });
+    await page.keyboard.press('Digit1');
+    await expect(page.locator('#kr')).toHaveText('1 460 riksdaler');
+    expect(await state(page)).toMatchObject({ inCar: true, carDmg: 0 });
+    await expect.poll(async () => (await state(page)).carCrack).toBe(0); // whole glass again
+    await page.screenshot({ path: testInfo.outputPath('game-skroten-repaired.png') });
+    // the menu comes back with the upgrades: the engine tune first, then a respray in the first other colour
+    await expect(page.locator('#kmenu')).toContainText('Trimma motorn');
+    await page.keyboard.press('Digit1');
+    await expect(page.locator('#kr')).toHaveText('860 riksdaler');
+    const { carMods, carColor } = await state(page);
+    expect(carMods).toEqual({ engine: true, springs: false, body: false });
+    await page.locator('#kmenu button', { hasText: 'Lacka om' }).click();
+    await expect(page.locator('#kmenu')).toContainText('Vicken färg');
+    await page.keyboard.press('Digit1');
+    await expect(page.locator('#kr')).toHaveText('710 riksdaler');
+    expect((await state(page)).carColor).not.toBe(carColor);
+    await page.screenshot({ path: testInfo.outputPath('game-skroten-resprayed.png') });
+    await page.locator('#kmenu button', { hasText: 'Kliv ur' }).click(); // E on the lift opens the menu, so getting out is on it
+    await expect.poll(async () => (await state(page)).inCar).toBe(false);
+    expect(errors).toEqual([]);
+  });
+
+  test('Plåt-Pelle sells you a car from his lot, and it is yours to drive', async ({ page }, testInfo) => {
+    const errors = watchErrors(page);
+    await page.setViewportSize({ width: 640, height: 360 });
+    // one load: start 3.5 m behind the first car of the fresh row (906.6, 93.2), worked out from the yard's layout (src/game/skroten-yard.ts)
+    await page.goto('/index.html?dev&at=907,89.75,0');
+    const { forSale: lot, x, z } = await state(page);
+    expect(lot.length).toBeGreaterThanOrEqual(8);
+    const c = lot.reduce((a, b) => (Math.hypot(b.x - x, b.z - z) < Math.hypot(a.x - x, a.z - z) ? b : a));
+    expect(Math.hypot(c.x - x, c.z - z)).toBeLessThan(4.4); // in reach: if the yard moved, start next to its new lot
+    await page.locator('#go').click();
+    await page.keyboard.press('Backquote');
+    await page.keyboard.type('kr 5000');
+    await page.keyboard.press('Enter');
+    await page.keyboard.press('Escape');
+    const { kr } = await state(page);
+    await expect(page.locator('#prompt')).toContainText('Buy the ');
+    await page.keyboard.press('KeyE');
+    await expect(page.locator('#kmenu')).toContainText('å den ä din');
+    await page.screenshot({ path: testInfo.outputPath('game-skroten-buy.png') });
+    await page.keyboard.press('Digit1');
+    expect(await state(page)).toMatchObject({ kr: kr - c.kr, inCar: false, stars: 0 });
+    await expect(page.locator('#prompt')).toContainText('Get in the ');
+    await page.keyboard.press('KeyE');
+    expect(await state(page)).toMatchObject({ inCar: true, stars: 0 });
+    expect(errors).toEqual([]);
+  });
 });
 
 // The real pointer lock is unreliable headless, so these fake it: requestPointerLock / exitPointerLock set a fake
@@ -792,6 +920,27 @@ test.describe('map (map.html)', () => {
     // A place label only gets a screen position once a frame has been drawn with the camera.
     await expect(page.locator('#labels .lbl', { hasText: /^Torget$/ })).toHaveAttribute('style', /translate/);
     await page.screenshot({ path: testInfo.outputPath('map.png') });
+    expect(errors).toEqual([]);
+  });
+
+  // the wiki's place pages embed the map this way: a small frame over Slättsjön, with only the map and its credit
+  test('embeds focused on a place, without its tools', async ({ page }, testInfo) => {
+    await page.setViewportSize({ width: 640, height: 360 });
+    const errors = watchErrors(page);
+    await page.goto('/map.html?focus=-433,-835&embed');
+    await expectWebGL(page);
+    // the label gets its translate once a frame is drawn; focused on the lake, the label sits near the frame's middle,
+    // where the overview would put it off to the upper left
+    const lake = page.locator('#labels .lbl', { hasText: /^Slättsjön$/ });
+    await expect(lake).toHaveAttribute('style', /translate/);
+    // a label that collides with another keeps its old translate but is hidden, and would have no box
+    await expect(lake).toBeVisible();
+    const box = await lake.boundingBox();
+    expect(Math.abs(box.x + box.width / 2 - 320)).toBeLessThan(120);
+    expect(Math.abs(box.y + box.height / 2 - 180)).toBeLessThan(90);
+    for (const id of ['#title', '#tools .btns', '#legend']) await expect(page.locator(id)).toBeHidden();
+    for (const id of ['#north', '#credit']) await expect(page.locator(id)).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath('map-embed.png') });
     expect(errors).toEqual([]);
   });
 });

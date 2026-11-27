@@ -2,11 +2,13 @@ import { describe, expect, it } from 'vitest';
 import type { Car } from '../../../src/game/cars';
 import type { Cat } from '../../../src/game/cats';
 import { Crashes } from '../../../src/game/crashes';
+import { noMods } from '../../../src/game/sim/upgrades';
 import { newGameState } from '../../../src/game/state';
 
 const HARD_MS = 27; // 20 m/s over CRASH_MIN_MS: 45 damage, and it hurts the driver
 // only what a crash reads of a car
-const car = (o: Partial<Car> = {}) => ({ x: 0, z: 0, v: 0, mode: 'parked', dmg: 0, hitAt: -9, ...o }) as Car;
+const car = (o: Partial<Car> = {}) =>
+  ({ x: 0, z: 0, v: 0, mode: 'parked', dmg: 0, hitAt: -9, mods: noMods(), ...o }) as Car;
 
 function crashes(o: { cat?: boolean; viewer?: { x: number; z: number }; god?: boolean } = {}) {
   const game = newGameState(),
@@ -37,6 +39,14 @@ describe('Crashes.crash', () => {
     expect(t.pcar.dmg).toBe(0);
     expect(other.dmg).toBe(45);
     expect(t.shakes).toEqual([45]);
+  });
+
+  it("leaves a car for sale on Skroten's lot whole, so a dented one never comes cheap, and still damages yours", () => {
+    const t = crashes(),
+      forSale = car({ saleKr: 2000 });
+    t.c.crash(t.pcar, forSale, HARD_MS);
+    expect(forSale.dmg).toBe(0);
+    expect(t.pcar.dmg).toBe(45);
   });
 
   it('hurts you, shakes the camera and says one line, at most once every few seconds', () => {

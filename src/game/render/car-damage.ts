@@ -5,6 +5,8 @@ import { makeRnd } from '../../world/random';
 import { col } from '../../world/three-legacy';
 import { crackLevel, smokeLevel } from '../health';
 import type { RenderedCar } from './car-meshes';
+import { modelCrackGeometry } from './model-cracks';
+import { GLASS_PREFIX } from './vehicle-registry';
 import type { VehicleVisuals } from './vehicle-visuals';
 
 /** What the damage effects keep for one car: the crack level its glass shows, the crack meshes they have added, and the smoke still owed (puffs). */
@@ -96,11 +98,6 @@ function crackMaterials() {
 const CRACK_REAR: Record<string, number> = { saab: 2 }; // index of the glass profile's point where the rear window starts (default 1); the Saab's is its hatch
 // a car model (#176) cracks its own glass: each of its glass_ parts, with texture coordinates added, split like crackGeo into the panes
 // that face forwards or backwards (material 0) and the rest (material 1); the models' glass has no texture coordinates of its own
-const MODEL_GLASS_FLAT = 0.94; // glass whose normal is closer to straight up than this (about 20°) gets no cracks: a raked windscreen still does
-const _ga = new THREE.Vector3(),
-  _gb = new THREE.Vector3(),
-  _gc = new THREE.Vector3();
-
 // smoke from the bonnet, grey past half damage and black when nearly wrecked
 const SMOKE_N = 48,
   SMOKE_S = 1.8,
@@ -117,6 +114,13 @@ function smokeTexture() {
   g.fillStyle = r;
   g.fillRect(0, 0, 64, 64);
   return new THREE.CanvasTexture(cv);
+}
+
+// whole glass again: the crack meshes stay on the car, hidden, for the next crash
+function mendGlass(v: DamageView) {
+  if (v.crackMesh) v.crackMesh.visible = false;
+  for (const m of v.modelCrack ?? []) m.visible = false;
+  v.crack = 0;
 }
 
 /** The cracks in every car's glass, and the smoke from the bonnets of the damaged cars near the camera. */
@@ -204,37 +208,11 @@ export class CarDamageFx {
     return g;
   }
   private modelCrackGeo(src: THREE.BufferGeometry) {
-    const { modelCrackGeos } = this;
-    let g = modelCrackGeos.get(src);
-    if (g) return g;
-    const s = src.index ? src.toNonIndexed() : src,
-      P = s.attributes.position,
-      pos: number[][] = [[], []],
-      uv: number[][] = [[], []];
-    s.computeBoundingBox();
-    const { min: m, max: M } = s.boundingBox!,
-      w = M.x - m.x,
-      h = M.y - m.y,
-      l = M.z - m.z;
-    for (let i = 0; i < P.count; i += 3) {
-      _ga.fromBufferAttribute(P, i);
-      _gb.fromBufferAttribute(P, i + 1);
-      _gc.fromBufferAttribute(P, i + 2);
-      const n = _gc.sub(_gb).cross(_gb.clone().sub(_ga)).normalize();
-      if (Math.abs(n.y) > MODEL_GLASS_FLAT) continue; // the glass's flat top, hidden under the roof
-      const k = Math.abs(n.z) > Math.abs(n.x) ? 0 : 1; // the models face -z
-      for (let j = 0; j < 3; j++) {
-        _ga.fromBufferAttribute(P, i + j);
-        pos[k].push(_ga.x, _ga.y, _ga.z);
-        uv[k].push(k ? (_ga.z - m.z) / l : (_ga.x - m.x) / w, (_ga.y - m.y) / h);
-      }
+    let g = this.modelCrackGeos.get(src);
+    if (!g) {
+      g = modelCrackGeometry(src);
+      this.modelCrackGeos.set(src, g);
     }
-    g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.Float32BufferAttribute([...pos[0], ...pos[1]], 3));
-    g.setAttribute('uv', new THREE.Float32BufferAttribute([...uv[0], ...uv[1]], 2));
-    g.addGroup(0, pos[0].length / 3, 0);
-    g.addGroup(pos[0].length / 3, pos[1].length / 3, 1);
-    modelCrackGeos.set(src, g);
     return g;
   }
   // the procedural cracks go on the procedural body, so they hide with it when the model shows; the model, which loads later, gets its own
@@ -256,13 +234,18 @@ export class CarDamageFx {
         c.body.add(v.crackMesh);
       }
       v.crackMesh.material = this.crackMats[lv]!;
-      if (v.modelCrack) for (const m of v.modelCrack) m.material = this.crackMats[lv]!;
+      v.crackMesh.visible = true;
+      if (v.modelCrack)
+        for (const m of v.modelCrack) {
+          m.material = this.crackMats[lv]!;
+          m.visible = true;
+        }
       v.crack = lv;
     }
     if (!v.modelCrack && vehicleVisuals.loaded(c) && c.mesh.getObjectByName('glass_envelope')) {
       const glass: THREE.Mesh[] = [];
       c.mesh.traverse(o => {
-        if (o instanceof THREE.Mesh && o.name.startsWith('glass_')) glass.push(o);
+        if (o instanceof THREE.Mesh && o.name.startsWith(GLASS_PREFIX)) glass.push(o);
       });
       v.modelCrack = glass.map(gl => {
         const m = new THREE.Mesh(this.modelCrackGeo(gl.geometry), this.crackMats[lv]!);
@@ -270,6 +253,11 @@ export class CarDamageFx {
         return m;
       });
     }
+  }
+
+  /** The crack level `c`'s glass shows now, for the test hook: 0 for whole glass. */
+  crackShown(c: RenderedCar) {
+    return this.views.get(c)?.crack ?? 0;
   }
 
   /** T is where the camera looks: only the cars near it smoke. */
@@ -281,6 +269,9 @@ export class CarDamageFx {
       if (cl) {
         const v = this.view(c);
         if (v.crack !== cl || (!v.modelCrack && vehicleVisuals.loaded(c))) this.crackGlass(c, v); // after a crash, and once its model loads; one that failed never does
+      } else {
+        const v = this.views.get(c);
+        if (v?.crack) mendGlass(v); // mended on Plåt-Pelle's lift
       }
       const lv = smokeLevel(c.dmg);
       if (!lv || c.wet || Math.abs(c.x - T.x) > SMOKE_NEAR_M || Math.abs(c.z - T.z) > SMOKE_NEAR_M) continue;

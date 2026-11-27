@@ -3,11 +3,11 @@
 // Moved from src/game/main.ts (#177); main.ts calls these in the same order as before, since the house colours roll rnd().
 import * as THREE from 'three';
 import type { BridgeIndex } from '../../world/bridges';
-import { type BuildingShape, HOUSE_MAX_M2, HOUSE_MIN_M2 } from '../../world/buildings';
+import { type BuildingShape, HOUSE_MAX_M2, HOUSE_MIN_M2, type PointXZ } from '../../world/buildings';
 import type { WorldData } from '../../world/data';
 import type { Heightfield } from '../../world/heightfield';
 import { BridgeMesh } from '../../world/mesh/bridge-mesh';
-import { PaintedBuildingShells } from '../../world/mesh/building-shells';
+import { type EmitVertex, PaintedBuildingShells } from '../../world/mesh/building-shells';
 import { ParkingMesh } from '../../world/mesh/parking-mesh';
 import { RoadRibbons } from '../../world/mesh/road-ribbons';
 import { ShoreProps } from '../../world/mesh/shore-props';
@@ -22,8 +22,10 @@ import type { StreetscapeLayout } from '../../world/streetscape';
 import { col } from '../../world/three-legacy';
 import { GAME_WATER } from '../../world/water-palette';
 import type { WaterBodies } from '../../world/water-shapes';
-import { INK_FLAG } from './ink-flag';
+import { HOUSE_SHELLS_MATERIAL } from './house-materials';
+import { INK_COLOR, INK_FLAG, INK_NO_FEET_FLAG } from './ink-flag';
 import { mergeGeo } from './models';
+import { WINDOW_GLASS, WINDOW_TILE_M, WindowFrames, windowRun } from './window-frames';
 
 // ---------- terrain ----------
 const SKIRT_DEPTH_M = 1.5; // the skirt round the edge, and the far ground plane, sit this far below height 0
@@ -151,9 +153,23 @@ export function addBridges(scene: THREE.Scene, bridges: BridgeIndex, heightfield
 }
 
 // ---------- buildings (painted in Swedish house colours) ----------
-// house details: windows (a texture on a skin just outside the walls), white corner boards and eave boards, a dark plinth, and a chimney on gabled roofs
-const WIN_W = 2.6,
+// house details: windows (a texture on a skin just outside the walls), and in the shell's own mesh, so they have edges for the
+// toon style's lines (#413): a dark plinth and white corner boards standing out from the walls, eaves that run on past the
+// walls of gabled roofs, ending in a white fascia board, a white board under flat roofs, and a chimney on gabled roofs
+const WIN_W = WINDOW_TILE_M,
   STOREY = 2.8; // window spacing and storey height (m)
+const BOARD_M = 0.2, // the width of a timber house's panel boards in the toon style (m)
+  BOARD_SEAM_ALPHA = 0.28,
+  TIMBER_MAX_M2 = 450; // the same size that gives a house the big buildings' plaster colours
+/** how far the plinth stands out from a house's wall (m); the safehouse doors stand clear of it (render/places.ts) */
+export const PLINTH_OUT_M = 0.08;
+/** how high the plinth's top stands over the highest ground under a house (m) */
+export const PLINTH_TOP_M = 0.45;
+const CORNER_OUT_M = 0.07,
+  TOON_CORNER_OUT_M = 0.16, // the toon style's posts, as thick as they're wide, as in the art direction mocks
+  EAVE_M = 0.35, // how far a gabled roof runs on past the walls
+  FASCIA_M = 0.15, // the depth of the board at its edge
+  FLAT_BOARD_OUT_M = 0.06;
 /** The game's seeded rnd(), which rolls the house colours so they come out the same every time, and the renderer's anisotropy for the window texture. */
 export interface BuildingMeshOptions {
   rnd(): number;
@@ -161,13 +177,36 @@ export interface BuildingMeshOptions {
   maxAnisotropy: number;
   /** A point inside each building to leave out, because the game draws it itself: Skroten's workshop and carport (render/skroten.ts). */
   skip?: readonly { x: number; z: number }[];
+  /** Walls in one colour, without darkening towards the ground: the toon style's bands read better on them (#413). */
+  flatWalls?: boolean;
+  /** The seams between the panel boards on timber houses, for the toon style (#413). */
+  boardSeams?: boolean;
+  /**
+   * Painted windows with the 3D windows' glass and no cross bars, so the two match where the frames start, and square
+   * corner posts, as thick as they're wide, as in the art direction mocks (#413).
+   */
+  toonWindows?: boolean;
+  /** Draw 3D frames over the painted windows within this many metres of the camera (render/window-frames.ts); 0 for none. */
+  windowFramesM?: number;
 }
-/** The house shells in their colours, and one mesh of windows and trim. Rolls rnd() once or twice per house, in data order. */
+/**
+ * The house shells in their colours with their trim, and one mesh of windows. Rolls rnd() once or twice per house, in data
+ * order. Returns the 3D window frames, for the frame loop to `update` with the camera's position, or null without them.
+ */
 export function addBuildings(
   scene: THREE.Scene,
   D: WorldData,
   heightfield: Heightfield,
-  { rnd, pick, maxAnisotropy, skip = [] }: BuildingMeshOptions,
+  {
+    rnd,
+    pick,
+    maxAnisotropy,
+    skip = [],
+    flatWalls = false,
+    boardSeams = false,
+    toonWindows = false,
+    windowFramesM = 0,
+  }: BuildingMeshOptions,
 ) {
   const isSkipped = (p: readonly number[]) => skip.some(s => inPoly(p as number[], s.x, s.z));
   const hAt = (x: number, z: number) => heightfield.heightAt(x, z);
@@ -177,13 +216,16 @@ export function addBuildings(
     const x = cv.getContext('2d')!,
       u = (v: number) => (v / WIN_W) * 128,
       y = (v: number) => 128 - (v / STOREY) * 128;
+    x.translate(u(WIN_W / 2 - 1.3), 0); // the window below is drawn for a 2.6 m tile: centred in the wider one
     x.fillStyle = '#f1efe8';
     x.fillRect(u(0.8), y(2.15), u(1), y(0.9) - y(2.15)); // frame: 1.0 x 1.25 m, sill 0.9 m up
-    x.fillStyle = '#26323a';
+    x.fillStyle = toonWindows ? WINDOW_GLASS : '#26323a';
     x.fillRect(u(0.88), y(2.07), u(0.84), y(0.98) - y(2.07));
-    x.fillStyle = '#f1efe8';
-    x.fillRect(u(1.265), y(2.07), u(0.07), y(0.98) - y(2.07));
-    x.fillRect(u(0.88), y(1.75), u(0.84), y(1.68) - y(1.75)); // cross bars
+    if (!toonWindows) {
+      x.fillStyle = '#f1efe8';
+      x.fillRect(u(1.265), y(2.07), u(0.07), y(0.98) - y(2.07));
+      x.fillRect(u(0.88), y(1.75), u(0.84), y(1.68) - y(1.75)); // cross bars
+    }
     const t = new THREE.CanvasTexture(cv);
     t.wrapS = t.wrapT = THREE.RepeatWrapping;
     t.colorSpace = THREE.SRGBColorSpace;
@@ -192,15 +234,17 @@ export function addBuildings(
     t.minFilter = THREE.LinearFilter;
     return t; // mips average the mostly transparent tile below alphaTest, so windows would vanish at a distance
   })();
-  (() => {
+  // the frames hold only their own copy of the windows, so the arrays built here can go once this returns
+  return (() => {
     const c = new THREE.Color(),
       c2 = new THREE.Color(),
       c3 = new THREE.Color(),
       paint = { wall: c, wallFoot: c3, roof: c2 };
     const wp: number[] = [],
       wu: number[] = [],
-      tp: number[] = [],
-      tc: number[] = [],
+      frames: number[] = [], // each window's centre, facing and size, for WindowFrames
+      bp: number[] = [], // the board seams' skin, its positions and uvs
+      bu: number[] = [],
       WHITE = col('#f1efe8'),
       PLINTH = col('#5b5d5b');
     const house = ['#9c3a2c', '#9c3a2c', '#a8452f', '#e8e2d2', '#e8e2d2', '#d9b65a', '#cfc8b8', '#8d9a8f'],
@@ -209,19 +253,23 @@ export function addBuildings(
     // a vertical quad from (x1, z1) to (x2, z2), bottom and top heights at each end
     const quad = (out: number[], ...[x1, z1, x2, z2, b1, t1, b2, t2]: Quad) =>
       out.push(x1, b1, z1, x2, b2, z2, x2, t2, z2, x1, b1, z1, x2, t2, z2, x1, t1, z1);
-    const trim = (k: THREE.Color, ...q: Quad) => {
-      quad(tp, ...q);
-      for (let i = 0; i < 6; i++) tc.push(k.r, k.g, k.b);
+    type Corner = [x: number, y: number, z: number];
+    // a flat four-cornered face, in order round its edge, into the shell's mesh; wound to face `out`, whichever way the
+    // outline runs, so its normal points out of the trim (the sun's shadow normalBias goes along it)
+    const face = (emit: EmitVertex, k: THREE.Color, out: Corner, ...q: [Corner, Corner, Corner, Corner]) => {
+      const [p, r, t] = q,
+        ax = r[0] - p[0],
+        ay = r[1] - p[1],
+        az = r[2] - p[2],
+        bx = t[0] - p[0],
+        by = t[1] - p[1],
+        bz = t[2] - p[2],
+        facing = (ay * bz - az * by) * out[0] + (az * bx - ax * bz) * out[1] + (ax * by - ay * bx) * out[2];
+      for (const i of facing >= 0 ? [0, 1, 2, 0, 2, 3] : [0, 2, 1, 0, 3, 2]) emit(q[i][0], q[i][1], q[i][2], k);
     };
-    const box = (
-      emit: (x: number, y: number, z: number, k: THREE.Color) => void,
-      x: number,
-      z: number,
-      y0: number,
-      y1: number,
-      s: number,
-      k: THREE.Color,
-    ) => {
+    const UP: Corner = [0, 1, 0],
+      DOWN: Corner = [0, -1, 0];
+    const box = (emit: EmitVertex, x: number, z: number, y0: number, y1: number, s: number, k: THREE.Color) => {
       const h = s / 2,
         // counter-clockwise on the map, so the walls face out
         P = [
@@ -260,58 +308,268 @@ export function addBuildings(
     };
     // the colours roll rnd() once or twice per house, in data order, before any tree spot
     const colours = ({ building: b, area }: BuildingShape) => {
-      c.set(b.k === 2 ? '#9c3a2c' : b.k ? '#efece3' : area > 450 ? pick(big) : pick(house)).convertSRGBToLinear();
+      c.set(
+        b.k === 2 ? '#9c3a2c' : b.k ? '#efece3' : area > TIMBER_MAX_M2 ? pick(big) : pick(house),
+      ).convertSRGBToLinear();
       c2.set(b.k === 2 ? '#a8573f' : b.k ? '#3f4447' : rnd() < 0.35 ? '#4d4a48' : '#a8573f').convertSRGBToLinear();
       if (isSkipped(b.p)) return null; // after the rolls above, so the houses after it keep their colours
-      c3.copy(c).multiplyScalar(0.62); // walls darken towards the ground
+      c3.copy(c).multiplyScalar(flatWalls ? 1 : 0.62); // walls darken towards the ground, unless flat for the toon style's bands
       return paint;
     };
-    const details = (
-      { building: b, ring, yAt, base, top, hi, area, winding: wind }: BuildingShape,
-      emit: (x: number, y: number, z: number, k: THREE.Color) => void,
+    // not the church and its tower, not sheds or barns, not one drawn elsewhere
+    const trimmed = ({ building: b, area }: BuildingShape) =>
+      b.k !== 1 && area >= HOUSE_MIN_M2 && area <= HOUSE_MAX_M2 && !isSkipped(b.p);
+    // a trimmed gabled house's walls stop at its soffit, which closes them under the eave, so the roof's edge along the
+    // walls is shared only with the eave, in its own plane, and the toon style draws no line 0.35 m in from the fascia's
+    const wallDrop = (shape: BuildingShape) => (shape.building.g && trimmed(shape) ? FASCIA_M : 0);
+    // the timber houses, which get board seams in the toon style; the ones too small for trim too
+    const boarded = ({ building: b, area }: BuildingShape) =>
+      boardSeams && !b.k && area <= TIMBER_MAX_M2 && !isSkipped(b.p);
+    // where each wall's boards start (in boards), counted on from a corner, so a straight wall stays one run of boards
+    // where the outline splits it at the ridge (roofParts) or starts partway along it
+    const boardStarts = (ring: readonly PointXZ[]) => {
+      const m = ring.length,
+        starts = new Array<number>(m).fill(0),
+        walls = ring.map((a, i) => {
+          const d = ring[(i + 1) % m],
+            len = Math.hypot(d.x - a.x, d.z - a.z);
+          return len < 1e-3 ? null : { ux: (d.x - a.x) / len, uz: (d.z - a.z) / len, len };
+        });
+      type Wall = NonNullable<(typeof walls)[number]>;
+      const straightOn = (p: Wall, q: Wall) => p.ux * q.ux + p.uz * q.uz > 0.999;
+      const before = (i: number) => {
+        for (let k = 1; k < m; k++) {
+          const w = walls[(i - k + m) % m];
+          if (w) return w;
+        }
+        return null;
+      };
+      const first = Math.max(
+        0,
+        walls.findIndex((w, i) => {
+          const p = before(i);
+          return w && p && !straightOn(w, p);
+        }),
+      );
+      let run = 0,
+        prev: Wall | null = null;
+      for (let k = 0; k < m; k++) {
+        const i = (first + k) % m,
+          w = walls[i];
+        if (!w) continue;
+        starts[i] = prev && straightOn(w, prev) ? run : 0;
+        run = starts[i] + w.len / BOARD_M;
+        prev = w;
+      }
+      return starts;
+    };
+    // the seams on the wall from a to d (outward normal o, length len), just outside it, from y0 up to ta at a and td at d,
+    // between the wall and the windows' skin; u counts boards along the wall, from u0
+    const seamWall = (
+      a: PointXZ,
+      d: PointXZ,
+      ox: number,
+      oz: number,
+      len: number,
+      u0: number,
+      y0: number,
+      ta: number,
+      td: number,
     ) => {
-      if (b.k === 1 || area < HOUSE_MIN_M2 || area > HOUSE_MAX_M2 || isSkipped(b.p)) return; // not the church and its tower, not sheds or barns, not one drawn elsewhere
+      const u1 = u0 + len / BOARD_M;
+      quad(bp, a.x + ox * 0.02, a.z + oz * 0.02, d.x + ox * 0.02, d.z + oz * 0.02, y0, ta, y0, td);
+      bu.push(u0, 0, u1, 0, u1, 1, u0, 0, u1, 1, u0, 1);
+    };
+    // a house too small for trim has no plinth or eaves: its boards run from its foot to its roof
+    const untrimmedSeams = ({ ring, yAt, base, winding: wind }: BuildingShape) => {
+      const starts = boardStarts(ring);
+      for (let i = 0; i < ring.length; i++) {
+        const a = ring[i],
+          d = ring[(i + 1) % ring.length],
+          len = Math.hypot(d.x - a.x, d.z - a.z);
+        if (len < 1e-3) continue;
+        seamWall(a, d, (wind * (d.z - a.z)) / len, (-wind * (d.x - a.x)) / len, len, starts[i], base, yAt(a), yAt(d));
+      }
+    };
+    const details = (shape: BuildingShape, emit: EmitVertex) => {
+      if (!trimmed(shape)) {
+        if (boarded(shape)) untrimmedSeams(shape);
+        return;
+      }
+      const { building: b, area, ring, yAt, roofY, base, top, hi, winding: wind } = shape;
       const m = ring.length,
         yb = hi + 0.2,
         yt = top - 0.25,
         rows = Math.max(1, Math.round((yt - yb) / STOREY));
+      // a wall's outward normal, from p to q
+      const normal = (p: { x: number; z: number }, q: { x: number; z: number }): [number, number] => {
+        const l = Math.hypot(q.x - p.x, q.z - p.z) || 1;
+        return [(wind * (q.z - p.z)) / l, (-wind * (q.x - p.x)) / l];
+      };
+      const seamStarts = boarded(shape) ? boardStarts(ring) : null;
       for (let i = 0; i < m; i++) {
         const a = ring[i],
           d = ring[(i + 1) % m],
           ex = d.x - a.x,
           ez = d.z - a.z,
           len = Math.hypot(ex, ez);
-        if (len < 0.4) continue;
+        if (len < 1e-3) continue;
+        const short = len < 0.4; // no windows or corner boards, but the plinth and the eave still run on along it
         const ux = ex / len,
           uz = ez / len,
           ox = wind * uz,
           oz = -wind * ux,
-          o = (k: number, s: number): [number, number, number, number] => [
-            a.x + ox * k - ux * s,
-            a.z + oz * k - uz * s,
-            d.x + ox * k + ux * s,
-            d.z + oz * k + uz * s,
-          ];
-        const nwin = Math.round(len / WIN_W); // whole windows only: the tile stretches a little to fit the wall
-        if (len >= 1.6 && nwin > 0) {
-          quad(wp, ...o(0.04, 0), yb, yt, yb, yt);
+          prev = normal(ring[(i + m - 1) % m], a),
+          next = normal(d, ring[(i + 2) % m]),
+          // how far a line `k` m out from this wall runs on past a corner, to where the neighbour's line `k` m out crosses
+          // it: a mitre, so corners of any angle close (none where the outline only splits at the ridge)
+          mitre = (n: [number, number], along: number, k: number) =>
+            (-k / Math.max(0.3, 1 + ox * n[0] + oz * n[1])) * (n[0] * ux + n[1] * uz) * along,
+          // the ends of that line, mitred at both corners unless `mitred` is false
+          o = (k: number, mitred = true): [number, number, number, number] => {
+            const sa = mitred ? mitre(prev, 1, k) : 0,
+              sd = mitred ? mitre(next, -1, k) : 0;
+            return [a.x + ox * k - ux * sa, a.z + oz * k - uz * sa, d.x + ox * k + ux * sd, d.z + oz * k + uz * sd];
+          },
+          // whether that line still runs from a's end to d's: on a wall shorter than what its mitres at inside corners
+          // take off it, its ends swap places
+          forwards = (k: number) => len + mitre(prev, 1, k) + mitre(next, -1, k) > 0;
+        const run = windowRun(len, area > TIMBER_MAX_M2); // whole windows only, off the corners: the tile stretches a little to fit
+        if (run) {
+          const nwin = run.count;
+          // from d to a where the outline runs the other way, so its front faces out, as the shell's walls do: the shadow's
+          // normalBias moves the lookup along the normal, into the wall's own shadow when it points in. The tile is
+          // symmetric, so it needs no mirroring
+          const [w1x, w1z, w2x, w2z] = o(0.04, false),
+            s1x = w1x + ux * run.start,
+            s1z = w1z + uz * run.start,
+            s2x = w2x - ux * run.start,
+            s2z = w2z - uz * run.start;
+          if (wind > 0) quad(wp, s2x, s2z, s1x, s1z, yb, yt, yb, yt);
+          else quad(wp, s1x, s1z, s2x, s2z, yb, yt, yb, yt);
           wu.push(0, 0, nwin, 0, nwin, rows, 0, 0, nwin, rows, 0, rows);
+          if (windowFramesM) {
+            // where the tile puts each window: centred along its stretched tile, its frame 0.9-2.15 m up a 2.8 m storey
+            const tw = run.tile,
+              th = (yt - yb) / rows,
+              facing = Math.atan2(ox, oz);
+            for (let k = 0; k < nwin; k++)
+              for (let r = 0; r < rows; r++) {
+                const along = run.start + (k + 0.5) * tw;
+                frames.push(
+                  a.x + ux * along + ox * 0.04,
+                  yb + (r + 1.525 / STOREY) * th,
+                  a.z + uz * along + oz * 0.04,
+                  facing,
+                  (tw * 1.0) / WIN_W,
+                  (th * 1.25) / STOREY,
+                );
+              }
+          }
         }
-        trim(PLINTH, ...o(0.05, 0.05), base, hi + 0.45, base, hi + 0.45);
-        trim(WHITE, ...o(0.06, 0.06), yAt(a) - 0.22, yAt(a) + 0.02, yAt(d) - 0.22, yAt(d) + 0.02);
+        const ya = yAt(a),
+          yd = yAt(d),
+          py = hi + PLINTH_TOP_M,
+          [p1x, p1z, p2x, p2z] = o(PLINTH_OUT_M),
+          OUT: Corner = [ox, 0, oz];
+        if (seamStarts) {
+          // from the plinth up to the soffit or the flat roof's board, or the roof itself where a gabled wall has no eave
+          const under = !b.g ? 0.22 : forwards(EAVE_M) ? FASCIA_M : 0;
+          seamWall(a, d, ox, oz, len, seamStarts[i], py, ya - under, yd - under);
+        }
+        face(emit, PLINTH, OUT, [p1x, base, p1z], [p2x, base, p2z], [p2x, py, p2z], [p1x, py, p1z]);
+        face(emit, PLINTH, UP, [a.x, py, a.z], [d.x, py, d.z], [p2x, py, p2z], [p1x, py, p1z]);
+        // no eave on a wall too short for its mitres, whose eave line would run backwards and come out crossed
+        if (b.g && forwards(EAVE_M)) {
+          // the roof runs on EAVE_M past the wall in its own plane, mitred at the corners; each corner's height comes from
+          // the corner point alone, so the two walls that meet there agree on it, and never rises above the wall's own top,
+          // which a gable askew to the ridge would otherwise do
+          const [ax2, az2, dx2, dz2] = o(EAVE_M),
+            ya2 = Math.min(ya, roofY({ x: ax2, z: az2 })),
+            yd2 = Math.min(yd, roofY({ x: dx2, z: dz2 }));
+          face(emit, c2, UP, [a.x, ya, a.z], [d.x, yd, d.z], [dx2, yd2, dz2], [ax2, ya2, az2]);
+          face(
+            emit,
+            WHITE,
+            OUT,
+            [ax2, ya2, az2],
+            [dx2, yd2, dz2],
+            [dx2, yd2 - FASCIA_M, dz2],
+            [ax2, ya2 - FASCIA_M, az2],
+          );
+          face(
+            emit,
+            WHITE,
+            DOWN,
+            [a.x, ya - FASCIA_M, a.z],
+            [d.x, yd - FASCIA_M, d.z],
+            [dx2, yd2 - FASCIA_M, dz2],
+            [ax2, ya2 - FASCIA_M, az2],
+          );
+        } else if (b.g) {
+          // the wall stops FASCIA_M short of the roof (wallDrop) for the soffit to close; with no soffit, close it here
+          face(emit, c, OUT, [a.x, ya - FASCIA_M, a.z], [d.x, yd - FASCIA_M, d.z], [d.x, yd, d.z], [a.x, ya, a.z]);
+        } else {
+          const [f1x, f1z, f2x, f2z] = o(FLAT_BOARD_OUT_M),
+            lo = -0.22;
+          face(
+            emit,
+            WHITE,
+            OUT,
+            [f1x, ya + lo, f1z],
+            [f2x, yd + lo, f2z],
+            [f2x, yd + 0.02, f2z],
+            [f1x, ya + 0.02, f1z],
+          );
+          face(emit, WHITE, DOWN, [a.x, ya + lo, a.z], [d.x, yd + lo, d.z], [f2x, yd + lo, f2z], [f1x, ya + lo, f1z]);
+          // and its top, back to the wall, so there's no slot to see into between it and the roof
+          face(
+            emit,
+            WHITE,
+            UP,
+            [a.x, ya + 0.02, a.z],
+            [d.x, yd + 0.02, d.z],
+            [f2x, yd + 0.02, f2z],
+            [f1x, ya + 0.02, f1z],
+          );
+        }
+        if (short) continue;
+        const cornerOut = toonWindows ? TOON_CORNER_OUT_M : CORNER_OUT_M,
+          board = o(cornerOut);
         for (const [v, p, s] of [
           [a, ring[(i + m - 1) % m], 1],
           [d, ring[(i + 2) % m], -1],
         ] as const) {
-          // corner boards where the outline turns
+          // corner boards where the outline turns: a face out from the wall, and a side
           const fx = s > 0 ? v.x - p.x : p.x - v.x,
             fz = s > 0 ? v.z - p.z : p.z - v.z,
             fl = Math.hypot(fx, fz) || 1;
           if (Math.abs((fx * uz - fz * ux) / fl) < 0.3) continue;
-          const k = Math.min(0.18, len / 2),
-            cx = v.x + ox * 0.07,
-            cz = v.z + oz * 0.07;
-          trim(WHITE, cx, cz, cx + ux * k * s, cz + uz * k * s, base, yAt(v) - 0.2, base, yAt(v) - 0.2);
+          // the front starts at the mitre with the next wall's board, so the two close the corner; square posts in the toon style
+          const k = Math.min(toonWindows ? TOON_CORNER_OUT_M : 0.18, len / 2),
+            cx = board[s > 0 ? 0 : 2],
+            cz = board[s > 0 ? 1 : 3],
+            ex2 = v.x + ux * k * s,
+            ez2 = v.z + uz * k * s,
+            y1 = yAt(v) - (b.g ? FASCIA_M : 0.2);
+          face(
+            emit,
+            WHITE,
+            OUT,
+            [cx, py, cz],
+            [ex2 + ox * cornerOut, py, ez2 + oz * cornerOut],
+            [ex2 + ox * cornerOut, y1, ez2 + oz * cornerOut],
+            [cx, y1, cz],
+          );
+          face(
+            emit,
+            WHITE,
+            [ux * s, 0, uz * s],
+            [ex2, py, ez2],
+            [ex2 + ox * cornerOut, py, ez2 + oz * cornerOut],
+            [ex2 + ox * cornerOut, y1, ez2 + oz * cornerOut],
+            [ex2, y1, ez2],
+          );
         }
       }
       if (b.g) {
@@ -324,25 +582,25 @@ export function addBuildings(
       }
     };
     const shells = new PaintedBuildingShells(D, heightfield, {
-      material: new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }),
+      material: new THREE.MeshLambertMaterial({
+        name: HOUSE_SHELLS_MATERIAL, // gives it the toon style's house ramp
+        vertexColors: true,
+        side: THREE.DoubleSide,
+      }),
       colours,
       extra: details,
+      wallDrop,
     }).mesh;
     shells.userData[INK_FLAG] = true; // the toon style inks the houses' corners and roof edges too
+    shells.userData[INK_NO_FEET_FLAG] = true; // but not their feet: the walls' in the ground, the corner boards' on the plinth
     scene.add(shells);
-    // window skin first, trim after: one mesh, two materials
-    const sg = new THREE.BufferGeometry(),
-      nw = wp.length / 3,
-      nt = tp.length / 3,
-      sc = new Float32Array((nw + nt) * 3).fill(1);
-    sc.set(tc, nw * 3);
-    sg.setAttribute('position', new THREE.Float32BufferAttribute(wp.concat(tp), 3));
-    sg.setAttribute('uv', new THREE.Float32BufferAttribute(wu.concat(new Array(nt * 2).fill(0)), 2));
-    sg.setAttribute('color', new THREE.BufferAttribute(sc, 3));
+    // the window skin: the trim is in the shells now (#413)
+    const sg = new THREE.BufferGeometry();
+    sg.setAttribute('position', new THREE.Float32BufferAttribute(wp, 3));
+    sg.setAttribute('uv', new THREE.Float32BufferAttribute(wu, 2));
     sg.computeVertexNormals();
-    sg.addGroup(0, nw, 0);
-    sg.addGroup(nw, nt, 1);
-    const skin = new THREE.Mesh(sg, [
+    const skin = new THREE.Mesh(
+      sg,
       new THREE.MeshLambertMaterial({
         map: winTex,
         alphaTest: 0.5,
@@ -351,16 +609,45 @@ export function addBuildings(
         polygonOffsetFactor: -1,
         polygonOffsetUnits: -2,
       }),
-      new THREE.MeshLambertMaterial({
-        vertexColors: true,
-        side: THREE.DoubleSide,
-        polygonOffset: true,
-        polygonOffsetFactor: -1,
-        polygonOffsetUnits: -2,
-      }),
-    ]);
+    );
     skin.receiveShadow = true;
     scene.add(skin);
+    const near = frames.length ? new WindowFrames(scene, new Float32Array(frames), { radiusM: windowFramesM }) : null;
+    if (bp.length) {
+      // the seams: a dark line at one edge of each board, half transparent so it darkens any wall colour, unlit so the
+      // toon style leaves it alone; its mips fade it out with distance instead of shimmering
+      const cv = document.createElement('canvas');
+      cv.width = 32;
+      cv.height = 4;
+      const x = cv.getContext('2d')!;
+      x.globalAlpha = BOARD_SEAM_ALPHA;
+      x.fillStyle = `#${INK_COLOR.toString(16).padStart(6, '0')}`; // the ink lines' colour
+      x.fillRect(0, 0, 2, 4);
+      const t = new THREE.CanvasTexture(cv);
+      t.colorSpace = THREE.SRGBColorSpace;
+      t.wrapS = t.wrapT = THREE.RepeatWrapping;
+      t.anisotropy = maxAnisotropy;
+      const bg = new THREE.BufferGeometry();
+      bg.setAttribute('position', new THREE.Float32BufferAttribute(bp, 3));
+      bg.setAttribute('uv', new THREE.Float32BufferAttribute(bu, 2));
+      // one mesh for the village, sorted by its origin at Torget: drawn first among the transparent things instead, so
+      // smoke, drift sprites and the place markers in front of a house stay in front of its seams
+      const seams = new THREE.Mesh(
+        bg,
+        new THREE.MeshBasicMaterial({
+          map: t,
+          transparent: true,
+          depthWrite: false,
+          side: THREE.DoubleSide,
+          polygonOffset: true,
+          polygonOffsetFactor: -1,
+          polygonOffsetUnits: -1,
+        }),
+      );
+      seams.renderOrder = -1;
+      scene.add(seams);
+    }
+    return near;
   })();
 }
 

@@ -16,6 +16,8 @@ const SHAKE_S = 0.45,
   SHAKE_PER_DMG_M = 1 / 150; // s it lasts; camera offset (m) at the smallest and largest hit, and per point of car damage
 const ZOOM_MIN = 0.6,
   ZOOM_MAX = 2; // camera zoom (#208), times the normal camera distance
+const RISE_K = 5; // 1/s: how fast the camera follows a new height under your feet (a car's roof, #451): 90% in about 0.45 s
+const HOP_FOLLOW = 0.3; // share of a hop's height the camera lifts with: some life in a jump, without the view bobbing
 
 /** What the camera reads from the rest of the game. The getters are read every frame. */
 export interface CameraRigDeps {
@@ -38,6 +40,7 @@ export class CameraRig {
   private readonly g: CameraRigDeps;
   private shakeT = 0;
   private shakeM = 0;
+  private rise = 0; // m the camera is lifted for what you stand on, easing after `floor`
 
   constructor(g: CameraRigDeps) {
     this.g = g;
@@ -55,11 +58,18 @@ export class CameraRig {
     this.g.view.zoom = clamp(this.g.view.zoom * factor, ZOOM_MIN, ZOOM_MAX);
   };
 
-  /** Follows T, the player or the car they drive; `now` is the frame's time (ms), for the clouds. */
-  update(T: Point, now: number, dt: number) {
-    const { camera, sun, skyDome, game, view, groundAt, heightAt: hAt, rnd: dmgRnd } = this.g;
+  /**
+   * Follows T, the player or the car they drive; `now` is the frame's time (ms), for the clouds. On foot, `floor` is how high
+   * what you stand on is (a car's roof, #451) and `y` how high you are: the camera eases up and down after the floor, rather
+   * than jumping a metre and a half in a frame as you climb up or step off, and lifts with a share of each hop.
+   */
+  update(T: Point & { readonly floor?: number; readonly y?: number }, now: number, dt: number) {
+    const { camera, sun, skyDome, game, view, groundAt, heightAt: hAt, rnd: dmgRnd } = this.g,
+      floor = T.floor ?? 0,
+      hop = this.g.calmMotion.matches ? 0 : Math.max(0, (T.y ?? 0) - floor); // reduced motion: hops don't move the view
+    this.rise += (floor + HOP_FOLLOW * hop - this.rise) * (1 - Math.exp(-RISE_K * dt));
     let dist: number,
-      ty = groundAt(T.x, T.z);
+      ty = groundAt(T.x, T.z) + this.rise;
     if (!game.started) {
       view.camYaw = wrap(view.camYaw + dt * 0.07);
       dist = 46;

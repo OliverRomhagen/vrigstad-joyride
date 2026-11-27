@@ -9,8 +9,9 @@ import type { Water } from '../world/water';
 import { choice, command, described } from './command-args';
 import type { Commands } from './commands';
 import { impactSpeed, topSpeedShare, wrecked } from './health';
-import { bodyRadius, nearestBetweenSpines, pushBodyOut } from './sim/car-body';
+import { bodyRadius, bodyReach, nearestBetweenSpines, pushBodyOut } from './sim/car-body';
 import { approach, rearPivotShift, yawRate } from './sim/handling';
+import { accelOf, type CarMods, gripShare, noMods, steerResponseOf, topSpeedOf } from './sim/upgrades';
 import type { CarType, VehicleSpec } from './sim/vehicle-spec';
 
 // Drifting (player only): brake plus steering at speed breaks the rear loose. The car keeps sliding along its line of
@@ -86,7 +87,8 @@ export interface Car extends Point {
   boost: number; // s of turbo left
   mode: CarMode;
   wet: boolean;
-  owned: boolean;
+  owned: boolean; // you've taken it: stolen, bought or parked by the `car` command
+  saleKr: number; // what Plåt-Pelle asks for it on Skroten's lot; 0 when it isn't for sale
   blocked: number; // traffic: s stuck behind something; then it drives through it as a ghost for `ghost` s
   ghost: number;
   stuck: number; // the police's, in police.ts
@@ -95,6 +97,8 @@ export interface Car extends Point {
   dmg: number; // damage, and the clock (s) of the last hit (health.ts)
   hitAt: number;
   color: string; // the paint (sRGB), one of T.cols
+  mods: CarMods; // Plåt-Pelle's upgrades (sim/upgrades.ts)
+  limiterOff: boolean; // a tuned EPA-traktor's switch under the wheel is on: it drives as fast as a car
 }
 
 /** A new car standing still at (x, z), nose towards h. `color` is the caller's roll from T.cols, so the world's rolls stay in their order. */
@@ -130,6 +134,7 @@ export function newCar(
     mode,
     wet: false,
     owned: false,
+    saleKr: 0,
     blocked: 0,
     ghost: 0,
     stuck: 0,
@@ -138,6 +143,8 @@ export function newCar(
     dmg: 0,
     hitAt: -9,
     color,
+    mods: noMods(),
+    limiterOff: false,
   };
 }
 /** Where a car or a walker is on the street network: road ri, from vertex a towards a + dir. */
@@ -163,13 +170,30 @@ export interface FleetDeps {
   half: number; // half the map's side (m)
   rnd: () => number; // the game's seeded stream, so the rolls stay in the order they were
   pick: <T>(a: readonly T[]) => T;
-  addCar: (type: CarType, x: number, z: number, h: number, mode: CarMode, model?: string) => Car; // makes a car (of that model, if given), gives it its meshes and adds it with `add`
+  addCar: (
+    type: CarType,
+    x: number,
+    z: number,
+    h: number,
+    mode: CarMode,
+    model?: string | null,
+    colour?: string,
+  ) => Car; // makes a car (of that model, or with null of no model, and of that paint, if given), gives it its meshes and adds it with `add`
   placeCar: (c: Car) => void; // puts the car's meshes where the car is
   crash: (c: Car, o: Car | null, impact: number) => void; // c hit o, or a wall, at `impact` m/s: the damage, and what you hear and feel
   rammed: (c: Car, o: Car) => void; // c hit police car o at speed
   canPark: (x: number, z: number) => boolean; // not on a curb, verge or pavement
   readonly player: Point;
   readonly inCar: boolean;
+}
+
+/** A car on Skroten's lot: where it stands, nose towards h, its model and paint, and its price (kr). */
+export interface CarForSale extends Point {
+  type: CarType;
+  h: number;
+  model: string;
+  colour: string;
+  kr: number;
 }
 
 /** Every car in the village: parked, in traffic, the police's and yours. */
@@ -207,13 +231,22 @@ export class Fleet {
           if (this.g.inCar) return 'Get out of the car first.';
           const o = { x: this.g.player.x + CAR_BY_YOU_M, z: this.g.player.z };
           this.g.buildings.collide(o, PARK_CLEAR_M);
-          const c = this.g.addCar(type, o.x, o.z, facing(), 'parked', id === type ? undefined : id);
+          const c = this.g.addCar(type, o.x, o.z, facing(), 'parked', id === type ? null : id);
           c.owned = true;
           this.noReplacement.add(c);
           return 'Parked a ' + carName(c) + ' next to you.';
         },
       }),
     );
+  }
+
+  /** Parks Skroten's cars for sale on its lot, at their asking price. Selling one back to Skroten parks no new car in the village. */
+  parkForSale(lot: readonly CarForSale[]) {
+    for (const s of lot) {
+      const c = this.g.addCar(s.type, s.x, s.z, s.h, 'parked', s.model === s.type ? null : s.model, s.colour); // the tractor's model is its type: it has none of its own
+      c.saleKr = s.kr;
+      this.noReplacement.add(c);
+    }
   }
 
   /** Puts a new car in the village. */
@@ -395,11 +428,13 @@ export class Fleet {
     const { roads, water, half: HALF, crash, rammed, placeCar } = this.g,
       cars = this.cars;
     c.thr = thr = Math.abs(thr - c.thr) < 0.02 ? thr : approach(c.thr, thr, c.T.handling.throttleResponseS, dt);
-    c.st = approach(c.st, steer, c.T.handling.steerResponseS, dt); // weight: speed and heading answer a little late
+    c.st = approach(c.st, steer, steerResponseOf(c), dt); // weight: speed and heading answer a little late
     if (wrecked(c)) {
       thr = c.thr = 0;
       c.boost = 0;
     } // the engine is dead: it only rolls to a stop
+    const acc = accelOf(c),
+      top = topSpeedOf(c); // with Plåt-Pelle's engine tune
     const road = roads.nearestRoad(c.x, c.z).d < 0.6;
     c.wet = water.inWater(c.x, c.z);
     if (c.drift) {
@@ -435,21 +470,20 @@ export class Fleet {
       }
     }
     if (c.drift) {
-      c.v += ((thr > 0 ? c.T.acc * DRIVING.DRIFT_THR * thr : 0) - DRIVING.DRIFT_DRAG) * dt;
+      c.v += ((thr > 0 ? acc * DRIVING.DRIFT_THR * thr : 0) - DRIVING.DRIFT_DRAG) * dt;
       if (Math.abs(c.slip) > 0.25) c.charge += dt;
     } else if (brake) c.v -= Math.sign(c.v) * Math.min(Math.abs(c.v), DRIVING.BRAKE_MS2 * dt);
     else if (c.loose > 0 && Math.abs(c.slip) > 0.1 && c.v > DRIVING.DRIFT_KEEP_V)
-      c.v += ((thr > 0 ? c.T.acc * DRIVING.DRIFT_THR * thr : 0) - DRIVING.DRIFT_DRAG) * dt; // still scrubbing sideways, or tapping Space would beat holding it
-    else if (thr > 0)
-      c.v += (c.v < 0 ? DRIVING.COUNTER_MS2 : c.T.acc * (1 - (0.6 * Math.max(0, c.v)) / c.T.max)) * thr * dt;
-    else if (thr < 0) c.v += (c.v > 0.5 ? DRIVING.COUNTER_MS2 : c.T.acc * 0.6) * thr * dt;
+      c.v += ((thr > 0 ? acc * DRIVING.DRIFT_THR * thr : 0) - DRIVING.DRIFT_DRAG) * dt; // still scrubbing sideways, or tapping Space would beat holding it
+    else if (thr > 0) c.v += (c.v < 0 ? DRIVING.COUNTER_MS2 : acc * (1 - (0.6 * Math.max(0, c.v)) / top)) * thr * dt;
+    else if (thr < 0) c.v += (c.v > 0.5 ? DRIVING.COUNTER_MS2 : acc * 0.6) * thr * dt;
     else c.v -= Math.sign(c.v) * Math.min(Math.abs(c.v), (road ? 2 : 5) * dt);
     if (c.boost > 0) {
       c.boost -= dt;
       if (c.wet) c.boost = 0;
     } // water puts the turbo out
     const max =
-      (c.wet ? 2.5 : c.T.max * (road ? 1 : c.T.off)) * (c.boost > 0 ? DRIVING.TURBO_TOP : 1) * topSpeedShare(c.dmg);
+      (c.wet ? 2.5 : top * (road ? 1 : c.T.off)) * (c.boost > 0 ? DRIVING.TURBO_TOP : 1) * topSpeedShare(c.dmg);
     if (c.boost > 0 && c.v < max) c.v = Math.min(max, c.v + DRIVING.TURBO_ACC * dt); // only up to the limit, so it never cancels the overspeed braking below
     if (c.v > max) c.v = Math.max(max, c.v - 14 * dt);
     if (c.v < -7) c.v = -7;
@@ -461,11 +495,12 @@ export class Fleet {
       c.spin *= Math.exp(-DRIVING.SPIN_DECAY * dt);
     } else c.spin = 0;
     c.h = wrap(c.h + (c.yr * c.spin > 0 ? (Math.abs(c.yr) > Math.abs(c.spin) ? c.yr : c.spin) : c.yr + c.spin) * dt); // steering into the slide doesn't stack on the carried yaw; counter-steer cancels it
-    const grip = c.drift
-      ? DRIVING.DRIFT_GRIP
-      : c.loose > 0
-        ? DRIVING.DRIFT_GRIP + (DRIVING.GRIP - DRIVING.DRIFT_GRIP) * (1 - c.loose / DRIVING.RECOVER_S) ** 2
-        : DRIVING.GRIP; // rear grip comes back slowly, so the slide carries on
+    const full = DRIVING.GRIP * gripShare(c.mods), // sport springs grip harder
+      grip = c.drift
+        ? DRIVING.DRIFT_GRIP
+        : c.loose > 0
+          ? DRIVING.DRIFT_GRIP + (full - DRIVING.DRIFT_GRIP) * (1 - c.loose / DRIVING.RECOVER_S) ** 2
+          : full; // rear grip comes back slowly, so the slide carries on
     if (canDrift) {
       const fix = wrap(c.h - c.vh) * Math.min(1, grip * dt),
         k = c.loose > 0 ? DRIVING.CATCH * Math.max(0, -steer * Math.sign(c.slip)) : 0;
@@ -500,7 +535,7 @@ export class Fleet {
     } // a wall ends the slide, and the turbo with it (charged or firing)
     for (const o of cars) {
       if (o === c) continue;
-      const reach = (c.T.lengthM + o.T.lengthM) / 2;
+      const reach = bodyReach(c) + bodyReach(o);
       if (Math.abs(c.x - o.x) > reach || Math.abs(c.z - o.z) > reach) continue;
       nearestBetweenSpines(c, o, _onC, _onO);
       let nx = _onC.x - _onO.x,
@@ -522,9 +557,11 @@ export class Fleet {
         c.x += nx * push;
         c.z += nz * push;
         if (Math.abs(c.v) > 6 && o.mode === 'police') rammed(c, o);
-        if (o.mode === 'parked' || o.mode === 'idle') {
+        // a parked car gives a little; one for sale on Skroten's lot stands like a wall, as nothing would stop it leaving the yard
+        if ((o.mode === 'parked' || o.mode === 'idle') && !o.saleKr) {
           o.x -= nx * push * 0.4;
           o.z -= nz * push * 0.4;
+          pushBodyOut(o, this.collideBuildings); // or shove by shove it would go through a wall or a fence
           placeCar(o);
         }
         c.v *= 0.05 ** dt;

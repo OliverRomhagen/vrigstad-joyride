@@ -1,7 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import { type Car, type CarMode, Fleet, newCar, type TrafficCar, TURBO_AT } from '../../../src/game/cars';
+import {
+  type Car,
+  type CarForSale,
+  type CarMode,
+  Fleet,
+  newCar,
+  type TrafficCar,
+  TURBO_AT,
+} from '../../../src/game/cars';
 import { Commands } from '../../../src/game/commands';
 import { CRASH_COOL_S, DMG_MAX } from '../../../src/game/health';
+import { UPGRADES } from '../../../src/game/sim/upgrades';
 import { type CarType, specFor } from '../../../src/game/sim/vehicle-spec';
 import { BuildingIndex } from '../../../src/world/buildings';
 import { BuildingKind, ROAD_WIDTH_M, RoadClass, type WorldData } from '../../../src/world/data';
@@ -25,12 +34,17 @@ function car(type: CarType, x: number, z: number, h: number, mode: CarMode): Car
 function fleet(world: Partial<WorldData> = { r: [MAIN_ROAD] }, canPark = (_x: number, _z: number) => true) {
   const data = makeWorld({ size: SIZE_M, ...world });
   const roads = new RoadNetwork(data, { heightAt: () => 0 });
-  const rnd = makeRnd(1);
+  const base = makeRnd(1);
+  let rolls = 0; // how often the game's main stream was rolled
+  const rnd = () => {
+    rolls++;
+    return base();
+  };
   const log = {
     crashes: [] as [Car, Car | null][],
     rammed: [] as Car[],
     placed: new Set<Car>(),
-    models: [] as (string | undefined)[],
+    models: [] as (string | null | undefined)[],
   };
   const player = { x: 0, z: -800 };
   const cars: Fleet = new Fleet({
@@ -57,7 +71,7 @@ function fleet(world: Partial<WorldData> = { r: [MAIN_ROAD] }, canPark = (_x: nu
     player,
     inCar: false,
   });
-  return { cars, log, player };
+  return { cars, log, player, rolls: () => rolls };
 }
 
 /** Drives `c` for `s` seconds with the same inputs every frame. */
@@ -111,6 +125,29 @@ describe('drive', () => {
     expect(c.v).toBeGreaterThan(c.T.max * 0.8);
     expect(fastest).toBeLessThanOrEqual(c.T.max);
     expect(c.z).toBeLessThan(800); // heading 0 is north, towards -z
+  });
+
+  it("goes faster with Plåt-Pelle's engine tune, up to the tuned top speed", () => {
+    const { cars } = fleet();
+    const tuned = car('volvo', 0, 800, 0, 'player'),
+      stock = car('volvo', 0, 800, 0, 'player');
+    tuned.mods.engine = true;
+    driveFor(cars, tuned, 3, 1, 0, false);
+    driveFor(cars, stock, 3, 1, 0, false);
+    expect(tuned.v).toBeGreaterThan(stock.v * 1.15); // quicker off the mark
+    driveFor(cars, tuned, 30, 1, 0, false);
+    expect(tuned.v).toBeGreaterThan(tuned.T.max);
+    expect(tuned.v).toBeLessThanOrEqual(tuned.T.max * UPGRADES.ENGINE_TOP);
+  });
+
+  it('steers sooner on sport springs', () => {
+    const { cars } = fleet();
+    const sprung = car('volvo', 0, 800, 0, 'player'),
+      stock = car('volvo', 0, 800, 0, 'player');
+    sprung.mods.springs = true;
+    driveFor(cars, sprung, 0.05, 0, 1, false);
+    driveFor(cars, stock, 0.05, 0, 1, false);
+    expect(sprung.st).toBeGreaterThan(stock.st);
   });
 
   it('stops with its nose at a wall, not inside it (#201)', () => {
@@ -181,6 +218,33 @@ describe('drive', () => {
     expect(log.crashes).toContainEqual([c, parked]);
     expect(parked.z).toBeLessThan(798);
     expect(log.placed.has(parked)).toBe(true);
+  });
+
+  it('never shoves a parked car into a wall', () => {
+    // a house north of the road's south end, its south wall at z = 700; the parked car stands with its nose 0.1 m from it
+    const { cars, log } = fleet({ r: [MAIN_ROAD], b: [{ p: square(-20, 660, 40), h: 5, k: BuildingKind.OTHER }] });
+    const parked = car('saab', 0, 0, 0, 'parked'),
+      c = car('volvo', 0, 0, 0, 'player');
+    parked.z = 700.1 + parked.T.lengthM / 2;
+    c.z = parked.z + (parked.T.lengthM + c.T.lengthM) / 2 + 2;
+    cars.add(c);
+    cars.add(parked);
+    driveFor(cars, c, 3, 1, 0, false); // full throttle into its tail, for 3 s
+    expect(log.crashes).toContainEqual([c, parked]);
+    expect(parked.z - parked.T.lengthM / 2).toBeGreaterThan(699.8); // the same margin as a car you drive into the wall
+  });
+
+  it("never shoves a car for sale on Skroten's lot: it can't be pushed out of the yard", () => {
+    const { cars } = fleet();
+    const c = car('volvo', 0, 800, 0, 'player'),
+      forSale = car('saab', 0, 798, 0, 'parked');
+    forSale.saleKr = 2500;
+    cars.add(c);
+    cars.add(forSale);
+    c.v = 10;
+    cars.drive(c, 0, 0, false, DT);
+    expect(forSale.z).toBe(798);
+    expect(c.z).toBeGreaterThan(798); // yours is pushed back off it instead
   });
 
   it('reports ramming a police car only at speed', () => {
@@ -330,7 +394,7 @@ describe('the car command', () => {
     expect(Math.hypot(parked.x - player.x, parked.z - player.z)).toBeCloseTo(3.5);
     expect(log.models.at(-1)).toBe('volvo240');
     c.run('car traktor');
-    expect(log.models.at(-1)).toBeUndefined(); // the tractor has no model of its own
+    expect(log.models.at(-1)).toBeNull(); // the tractor has no model of its own, and rolls for none
   });
 
   it('refuses a model it does not know, and Tab offers the ones it does', () => {
@@ -359,5 +423,27 @@ describe('the car command', () => {
     const sold = cars.cars.pop()!;
     cars.replaceSold(sold, { x: 0, z: 0 });
     expect(cars.cars).toEqual([]);
+  });
+});
+
+describe("Skroten's lot", () => {
+  // two spots side by side, as close as the yard's fresh row puts them, far from the fixture's player at (0, -800);
+  // the parked cars roll no paint, so their colour is the type's first
+  const LOT: CarForSale[] = [
+    { x: 100, z: 0, h: 0.5, type: 'volvo', model: 'volvo240', colour: '#123456', kr: 2000 },
+    { x: 102.9, z: 0, h: 0.5, type: 'saab', model: 'micra-k11', colour: '#654321', kr: 1000 },
+  ];
+
+  it('parks each car for sale on its spot at its price, and selling one back parks no replacement', () => {
+    const { cars, log } = fleet({ r: [STREET] });
+    cars.parkForSale(LOT);
+    expect(cars.cars.map(c => [c.type, c.x, c.z, c.h, c.mode, c.saleKr])).toEqual([
+      ['volvo', 100, 0, 0.5, 'parked', 2000],
+      ['saab', 102.9, 0, 0.5, 'parked', 1000],
+    ]);
+    expect(log.models).toEqual(['volvo240', 'micra-k11']);
+    const sold = cars.cars.pop()!;
+    cars.replaceSold(sold, { x: 0, z: 0 });
+    expect(cars.cars.length).toBe(1);
   });
 });

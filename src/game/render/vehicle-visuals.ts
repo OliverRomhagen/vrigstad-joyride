@@ -1,9 +1,9 @@
 import * as THREE from 'three';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { BODY_NODE, type VehicleId, vehicleDefinition, WHEEL_NODES } from './vehicle-registry';
+import { BEACON_PARTS, BODY_NODE, type VehicleId, vehicleDefinition, WHEEL_NODES } from './vehicle-registry';
 
-type Car = { mesh: THREE.Object3D; x: number; z: number; h: number };
+type Car = { mesh: THREE.Object3D; x: number; z: number; h: number; saleKr?: number };
 type Definition = NonNullable<ReturnType<typeof vehicleDefinition>>;
 type Wheel = { pivot: THREE.Group; spin: THREE.Group; front: boolean };
 type View = {
@@ -28,7 +28,37 @@ const DETAIL_RANGE_M = 120,
   DETAIL_KEEP_M = 15, // a detailed car keeps its model until it is this much further away than the next candidate, so it doesn't pop back and forth
   DETAIL_CAP_COARSE = 3,
   DETAIL_CAP_DESKTOP = 8,
-  REFRESH_SECONDS = 0.35;
+  REFRESH_SECONDS = 0.35,
+  // a part casts a shadow only if it has this much surface (m²): the body, the bumpers, the trim; not lamps, grilles,
+  // rims or beacons, whose shadows are a texel or two at the game's shadow resolution (about 0.1 m) but cost a draw call
+  // each. Area, not size: a part merged per material (tools/vehicle-parts.ts) spans the whole car however small it is.
+  SHADOW_MIN_AREA_M2 = 1;
+const areas = new WeakMap<THREE.BufferGeometry, number>(),
+  _a = new THREE.Vector3(),
+  _b = new THREE.Vector3(),
+  _c = new THREE.Vector3();
+/** A geometry's surface area in its own units, once per geometry: the models' clones share theirs. */
+function surfaceArea(geometry: THREE.BufferGeometry) {
+  let area = areas.get(geometry);
+  if (area !== undefined) return area;
+  const position = geometry.attributes.position!,
+    index = geometry.index,
+    count = index ? index.count : position.count;
+  area = 0;
+  for (let i = 0; i + 2 < count; i += 3) {
+    _a.fromBufferAttribute(position, index ? index.getX(i) : i);
+    _b.fromBufferAttribute(position, index ? index.getX(i + 1) : i + 1).sub(_a);
+    _c.fromBufferAttribute(position, index ? index.getX(i + 2) : i + 2).sub(_a);
+    area += _b.cross(_c).length() / 2;
+  }
+  areas.set(geometry, area);
+  return area;
+}
+/** The body and the tyres always cast; glass never does (a car's shadow is its shell); other parts by their area. */
+function castsShadow(node: THREE.Mesh) {
+  if (node.name === BODY_NODE || (WHEEL_NODES as readonly string[]).includes(node.name)) return true;
+  return !node.name.startsWith('glass_') && surfaceArea(node.geometry) >= SHADOW_MIN_AREA_M2;
+}
 // Rendering owns resource lifetime; no simulation or gameplay rules are mutated.
 export class VehicleVisuals {
   private readonly loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
@@ -81,9 +111,9 @@ export class VehicleVisuals {
         root.add(sprung);
         root.traverse(node => {
           if (!(node instanceof THREE.Mesh)) return;
-          node.castShadow = !this.coarse;
+          node.castShadow = !this.coarse && castsShadow(node);
           node.receiveShadow = true;
-          if (view.definition.police && /^lamp_(blue_module|police_grille)/.test(node.name)) {
+          if (view.definition.police && BEACON_PARTS.test(node.name)) {
             node.material = node.material.clone();
             view.materials.add(node.material);
             node.material.emissive.set(0x176cff).convertSRGBToLinear();
@@ -116,9 +146,12 @@ export class VehicleVisuals {
     if (!view.root) return;
     const body = view.root.getObjectByName(BODY_NODE);
     const recolor = (material: THREE.MeshStandardMaterial) => {
-      const m = view.materials.has(material) ? material : material.clone();
+      // the driver's view's clipped clone is the cockpit's own (cockpit.ts): recoloured where it is, as a clone would keep a
+      // copy of its clip planes, frozen where the cut was, and the cockpit disposes it and repaints these when you leave
+      const clipped = !!material.clippingPlanes?.length,
+        m = clipped || view.materials.has(material) ? material : material.clone();
       m.color.set(color).convertSRGBToLinear();
-      view.materials.add(m);
+      if (!clipped) view.materials.add(m);
       return m;
     };
     body?.traverse(node => {
@@ -181,10 +214,12 @@ export class VehicleVisuals {
       this.views.sort((a, b) => a.distance - b.distance);
       let count = 0;
       for (const view of this.views) {
+        // a car for sale on Skroten's lot always shows its model, outside the cap: it's what you're asked to pay for, and the
+        // lot's cars would fill the cap between them and leave the car you came in as a box
         view.selected =
           view.status !== 'failed' &&
           view.distance < DETAIL_RANGE_M &&
-          count++ < (this.coarse ? DETAIL_CAP_COARSE : DETAIL_CAP_DESKTOP);
+          (!!view.car.saleKr || count++ < (this.coarse ? DETAIL_CAP_COARSE : DETAIL_CAP_DESKTOP));
         if (view.selected) this.loadModel(view);
         this.updateVisibility(view);
       }
@@ -196,6 +231,11 @@ export class VehicleVisuals {
   /** Whether the car's detailed model has loaded (false while loading, if it failed, or for a car without one). */
   loaded(car: Car) {
     return this.records.get(car)?.status === 'loaded';
+  }
+  /** The car's detailed model while it shows, else null: then its procedural body shows. */
+  visibleModel(car: Car) {
+    const root = this.records.get(car)?.root;
+    return root?.visible ? root : null;
   }
   definition(car: Car) {
     return this.records.get(car)?.definition;

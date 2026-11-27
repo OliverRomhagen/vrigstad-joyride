@@ -48,7 +48,7 @@ function actions(
     screens: string[] = [];
   const game = { ...newGameState(), started: true },
     view = newViewState(0, 0);
-  const player = { x: 0, z: 0, y: 1, vy: 2, h: 0, speed: 0, phase: 0 },
+  const player = { x: 0, z: 0, y: 1, vy: 2, floor: 0, h: 0, speed: 0, phase: 0 },
     mesh = { visible: true };
   const wanted = {
     stars: o.stars ?? 0,
@@ -90,6 +90,7 @@ function actions(
     },
     nearOwner: () => !!o.owner,
     talkToOwner: () => void calls.push('owner'),
+    offerCar: c => void calls.push('offer ' + c.saleKr),
     collide: () => {},
     placeCar: () => {},
     rnd: () => o.roll ?? 0.9,
@@ -175,6 +176,41 @@ describe('Actions.action', () => {
     t.a.action();
     expect(t.game.inCar).toBe(false);
     expect(t.calls).toEqual(['owner']);
+  });
+
+  it("asks Plåt-Pelle his price for a car on Skroten's lot instead of stealing it", () => {
+    const c = parked({ saleKr: 2000 }),
+      t = actions({ cars: [c] });
+    t.a.action();
+    expect(t.calls).toEqual(['offer 2000']);
+    expect(t.game.inCar).toBe(false);
+    expect(c.owned).toBe(false);
+  });
+
+  it("gets you back into the car you got out of before a nearer car on Skroten's lot", () => {
+    const forSale = parked({ x: 0.9, saleKr: 2000 }),
+      yours = parked({ x: -2, mode: 'idle', owned: true }),
+      t = actions({ cars: [forSale, yours] });
+    t.a.action();
+    expect(t.calls).not.toContain('offer 2000');
+    expect(t.game.pcar).toBe(yours);
+  });
+
+  it('takes the nearer car over the one you got out of, away from the lot', () => {
+    const other = parked({ x: 0.9 }),
+      yours = parked({ x: -2, mode: 'idle', owned: true }),
+      t = actions({ cars: [other, yours] });
+    expect(t.a.nearestCar()).toBe(other);
+    t.a.action();
+    expect(t.game.pcar).toBe(other);
+  });
+
+  it("offers the nearer car on Skroten's lot over a wreck, or a car you bought and haven't driven", () => {
+    for (const other of [parked({ x: -2, mode: 'idle', owned: true, dmg: 999 }), parked({ x: -2, owned: true })]) {
+      const t = actions({ cars: [parked({ x: 0.9, saleKr: 2000 }), other] });
+      t.a.action();
+      expect(t.calls).toEqual(['offer 2000']);
+    }
   });
 
   it('gets you out when Skroten makes no offer: off its ring, or refused', () => {

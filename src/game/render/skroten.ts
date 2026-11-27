@@ -9,6 +9,7 @@ import {
   CONTAINERS,
   floorAt,
   HUT,
+  LIFT_RING_M,
   OWNER_UV,
   PROP_SIZE,
   RAMP_M,
@@ -26,9 +27,12 @@ import {
   yardToWorld,
 } from '../skroten-yard';
 import { boxGeo, carGeo, mergeGeo, type Person, paintMat, personParts } from './models';
-import { BODY_NODE, VEHICLES } from './vehicle-registry';
+import { ringMaterial, SKROT_COLOUR } from './places';
+import { BODY_NODE, CIVILIAN_CAR_TYPES, VEHICLES } from './vehicle-registry';
 
+const LIFT_RING_FLOAT_M = 0.02; // the lift's ring stands this far off the floor
 const PANEL_M = 3; // a sheet of the fence, and the gap between its posts
+const SELLS_MIN_W_M = 1.5; // the SÄLJER BILAR board is left out where the fence leaves it less room than this
 const FENCE_COLOURS = ['#8b8f91', '#9a6a4a', '#6f7c86', '#a3a7a3', '#7e4a30', '#86847a'];
 const WIRE_HEIGHTS_M = [2.45, 2.65, 2.85];
 const SCRAP_COLOURS = ['#7d3a24', '#8f4f2c', '#6b6f6f', '#9a9a92', '#5c4434', '#a0522d', '#4f5a63'];
@@ -196,7 +200,7 @@ export class SkrotenMeshes {
     let lowerTop = 0;
     for (const w of layout.yardCars) {
       const geo = carGeo(simpleType(w.model), w.colour),
-        y = standY(w.u, w.v) - (w.wrecked ? WRECK_SINK_M : 0),
+        y = standY(w.u, w.v) - WRECK_SINK_M, // all wrecks: the cars for sale are fleet cars
         squash = w.stack === 1 ? STACK_SQUASH : 1;
       if (w.stack === 1) {
         geo.computeBoundingBox();
@@ -287,14 +291,27 @@ export class SkrotenMeshes {
     baked.castShadow = baked.receiveShadow = true;
     yard.add(baked, ground(YARD.uMin, uEast, -5.5, vBack));
 
-    // the boards: SKROTEN over the gate, BILAR KÖPES on the fence, and an arrow sign either way along the road
+    // the boards: SKROTEN over the gate, BILAR KÖPES on the fence west of it and SÄLJER BILAR east of it, and an arrow sign either way
+    // along the road
     const gate = board(2 * GATE_POST_U_M + 0.7, 1.5, 'SKROTEN', null); // across both posts, fixed to their road side
     gate.position.set(0, groundY(0, 0) + GATE_SIGN_Y_M, -0.2);
     const buys = board(4, 1, 'BILAR KÖPES', null);
     buys.position.set(-22, groundY(-22, 0) + 1.3, -0.08);
+    // the fence east of the gate runs to the workshop, as long as the hall leaves it: the board sits in its middle, and fits it
+    const eastRun = layout.fence.find(f => f.v0 === 0 && f.v1 === 0 && f.u0 === YARD.gateHalf),
+      eastEnd = eastRun?.u1 ?? YARD.uMax,
+      sellsW = Math.min(4, eastEnd - YARD.gateHalf - 1),
+      sellsU = (YARD.gateHalf + eastEnd) / 2;
     gate.rotation.y = buys.rotation.y = Math.PI; // their fronts face the road
     yard.add(gate, buys);
-    // TILL SALU on two posts in front of the cars for sale, facing the yard, taped over with SNART until they can be bought
+    if (sellsW >= SELLS_MIN_W_M) {
+      // left out if a data refresh ever brings the hall within a few metres of the gate
+      const sells = board(sellsW, 1, 'SÄLJER BILAR', null);
+      sells.position.set(sellsU, groundY(sellsU, 0) + 1.3, -0.08);
+      sells.rotation.y = Math.PI;
+      yard.add(sells);
+    }
+    // TILL SALU on two posts in front of the cars for sale, facing the yard
     const sale = saleSign();
     sale.position.set(SALE_SIGN.u, groundY(SALE_SIGN.u, SALE_SIGN.v), SALE_SIGN.v);
     sale.rotation.y = Math.PI;
@@ -312,7 +329,7 @@ export class SkrotenMeshes {
       this.loadNear = () => void this.loadCars(detailed, yard, standY, g.carModel);
     }
     const built: THREE.Object3D[] = [yard];
-    if (layout.workshop) built.push(hallMeshes(heightAt, layout.workshop));
+    if (layout.workshop) built.push(hallMeshes(heightAt, layout.workshop), liftRing(layout.workshop));
     if (layout.carport) built.push(carportMeshes(heightAt, layout.carport));
     // on a phone nothing here casts a shadow, as the cars on the road don't (VehicleVisuals); the yard's models are skipped there anyway
     if (g.coarse)
@@ -351,23 +368,17 @@ export class SkrotenMeshes {
           const def = VEHICLES.find(v => v.id === id);
           if (!def) throw new Error('no model ' + id);
           const parts = flatten((await carModel(def)).clone(true)); // flatten updates its matrices: leave the shared one be
-          // the wrecks' paint is patched with rust and dirtier low down; the cars for sale keep theirs clean
-          for (const [cars, paintGeo] of [
-            [yardCars.filter(w => !w.wrecked), parts.paint],
-            [yardCars.filter(w => w.wrecked), rusted(parts.paint)],
-          ] as const) {
-            if (!cars.length) continue;
-            const body = new THREE.InstancedMesh(paintGeo, paint, cars.length),
-              trim = new THREE.InstancedMesh(parts.rest, paintMat, cars.length);
-            cars.forEach((w, i) => {
-              const m = placing(w.u, standY(w.u, w.v) - (w.wrecked ? WRECK_SINK_M : 0), w.v, w.turn, w.tilt, w.pitch);
-              body.setMatrixAt(i, m);
-              trim.setMatrixAt(i, m);
-              body.setColorAt(i, colour.set(w.colour).convertSRGBToLinear());
-            });
-            body.castShadow = trim.castShadow = body.receiveShadow = trim.receiveShadow = true;
-            group.add(body, trim);
-          }
+          // every one a wreck (the cars for sale are fleet cars): its paint patched with rust and dirtier low down
+          const body = new THREE.InstancedMesh(rusted(parts.paint), paint, yardCars.length),
+            trim = new THREE.InstancedMesh(parts.rest, paintMat, yardCars.length);
+          yardCars.forEach((w, i) => {
+            const m = placing(w.u, standY(w.u, w.v) - WRECK_SINK_M, w.v, w.turn, w.tilt, w.pitch);
+            body.setMatrixAt(i, m);
+            trim.setMatrixAt(i, m);
+            body.setColorAt(i, colour.set(w.colour).convertSRGBToLinear());
+          });
+          body.castShadow = trim.castShadow = body.receiveShadow = trim.receiveShadow = true;
+          group.add(body, trim);
         }),
       );
     } catch (e) {
@@ -402,8 +413,32 @@ export class SkrotenMeshes {
   }
 }
 
+// an orange ring on the workshop's floor round the lift's bay, like the one on the yard, so you can see where to park to have the car
+// mended; inside the lift's posts
+function liftRing(ws: Workshop) {
+  const geo = new THREE.RingGeometry(LIFT_RING_M - 0.35, LIFT_RING_M, 40),
+    { x, z } = ws.bay,
+    { a, bx, cz } = ws.floor;
+  geo.rotateX(-Math.PI / 2);
+  // each corner on the floor, which slopes (some 8 % along the bay): a flat ring would sink in at one end and float at the other
+  const pos = geo.getAttribute('position');
+  for (let i = 0; i < pos.count; i++) pos.setY(i, bx * pos.getX(i) + cz * pos.getZ(i) + LIFT_RING_FLOAT_M);
+  geo.computeVertexNormals();
+  const ring = new THREE.Mesh(
+    geo,
+    Object.assign(ringMaterial(SKROT_COLOUR), {
+      polygonOffset: true, // drawn over the floor it lies on, even far off where depth is coarse
+      polygonOffsetFactor: -4,
+      polygonOffsetUnits: -4,
+    }),
+  );
+  ring.position.set(x, a + bx * x + cz * z, z);
+  ring.castShadow = ring.receiveShadow = false;
+  return ring;
+}
+
 /** Plåt-Pelle: blue overalls, a red cap with a peak, and a grey beard. Standing at the origin, facing −z. */
-function platPelle(): Person {
+export function platPelle(): Person {
   // a real shadow, unlike the pedestrians: he stands still, close up, among things that all cast one, and it's 3 draw calls
   const owner = personParts('#2f4f7f', '#2f4f7f', '#b8322a', '#e2b796', false, true);
   owner.add(
@@ -432,7 +467,7 @@ function placing(x: number, y: number, z: number, turn = 0, tilt = 0, pitch = 0,
 
 // the simple shape a wreck's model falls back to: its kind of car in models.ts
 function simpleType(m: YardCarModel) {
-  return m === 'traktor' ? 'traktor' : (VEHICLES.find(v => v.id === m)?.archetype ?? 'volvo');
+  return CIVILIAN_CAR_TYPES.get(m) ?? 'volvo';
 }
 
 // a model's paint (white, for the instance colour) with patches of rust and a dirty lower body: rust is the colour the paint is multiplied
@@ -896,7 +931,7 @@ function bake(pieces: THREE.BufferGeometry[]) {
   return out;
 }
 
-// the TILL SALU sign standing on y = 0, its front to +z: a big board on two posts, and a strip of yellow tape across it saying SNART
+// the TILL SALU sign standing on y = 0, its front to +z: a big board on two posts
 function saleSign() {
   const g = new THREE.Group(),
     { h, y } = SALE_BOARD,
@@ -910,26 +945,8 @@ function saleSign() {
       paintMat,
     );
   sign.position.y = y;
-  const cv = document.createElement('canvas');
-  cv.width = 512;
-  cv.height = 96;
-  const c = cv.getContext('2d')!;
-  c.fillStyle = '#f2c230';
-  c.fillRect(0, 0, 512, 96);
-  c.fillStyle = 'rgba(0,0,0,0.12)'; // the tape's torn ends
-  for (const x of [0, 500]) for (let k = 0; k < 96; k += 12) c.fillRect(x + ((k / 12) % 2) * 6, k, 6, 12);
-  c.fillStyle = '#1c1c1c';
-  c.font = 'bold 70px sans-serif';
-  c.textAlign = 'center';
-  c.textBaseline = 'middle';
-  c.fillText('SNART', 256, 52);
-  const map = new THREE.CanvasTexture(cv);
-  map.colorSpace = THREE.SRGBColorSpace;
-  const tape = new THREE.Mesh(new THREE.PlaneGeometry(w * 0.62, h * 0.3), new THREE.MeshLambertMaterial({ map }));
-  tape.position.set(w * 0.12, y - h * 0.45, 0.06); // across the bottom edge, under the lettering
-  tape.rotation.z = 0.1; // slapped on at a slant
-  posts.castShadow = tape.castShadow = true;
-  g.add(posts, sign, tape);
+  posts.castShadow = true;
+  g.add(posts, sign);
   return g;
 }
 
