@@ -43,6 +43,8 @@ import type { GameState, ViewState } from './state';
 const CROSSHAIR_NDC_Y = 0.3, // how far above the middle of the screen, as a share of half its height; #lab-crosshair's top is the same point
   SIGHT_M = 160; // the line of sight looks this far past you
 const TARGET_UP_M = 1; // the soft lock aims this far above its target's feet
+// the weapon you start with; WEAPONS' ids are literal types, so renaming this one fails the typecheck here
+const START_WEAPON = WEAPONS.findIndex(w => w.id === 'pickadoll');
 // hold to aim (the right mouse button, C, or the Aim button): the camera tucks in over your right shoulder and turns
 // about it, so you can look nearly straight up and down, the crosshair sits in the middle, and you face where you aim
 const AIM_BACK_M = 3, // the camera sits this far behind your shoulder
@@ -176,7 +178,7 @@ export class Pickadoll {
   private readonly weaponButton: HTMLButtonElement;
   private readonly flavourButton: HTMLButtonElement;
   private readonly aimButton: HTMLButtonElement;
-  private weapon = 1; // the pickadoll
+  private weapon = START_WEAPON;
   private flavour = 0;
   private readonly trigger: Control; // held while the trigger is down
   private readonly aimHold: Control; // held while the right mouse button is
