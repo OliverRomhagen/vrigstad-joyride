@@ -171,11 +171,13 @@ commands.register('go', command({
   names no subcommand: `time` shows the clock and `time 16:30` sets it, beside `time hold` and `time speed 20`
   (`registerDayCommands` in `src/game/day-cycle.ts`). The usage line shows both (`time [when] | <hold|run|speed> …`),
   and Tab offers the subcommands together with the words of the group's own first argument. A word that names a
-  subcommand always picks it, so `group()` refuses a first argument with such a word among its choices.
-- **`either(name, a, b)`** is one argument that is either of two: `either('when', clockTime('hour'), choice('moment',
-  …))` reads `16.5` as a number and `dusk` as a word, and `run` tells them apart by type. The first that parses the
-  word wins, so the stricter one goes first. A word neither takes gets the first one's error and the second's choices
-  (`hour is from 5 to 19. Or one of: dawn, dusk, night, noon.`).
+  subcommand always picks it, so `group()` refuses a first argument with such a word among its choices; a list that
+  isn't ready when the group is built, or grows later, isn't checked, and the subcommand wins there too.
+- **`either(name, a, b, …)`** is one argument that is one of several kinds: `either('when', clockTime('hour'),
+  choice('moment', …))` reads `16.5` as a number and `dusk` as a word, and `run` tells them apart by type. The first
+  that parses the word wins, so the stricter one goes first. A word none takes gets the first one's error, then each
+  later one's: its words in one list when they are few, else its error (`hour is from 5 to 19. Or one of: dawn, dusk,
+  night, noon.`). `optional()` and `rest()` go round the whole `either`, not one of its kinds.
 - **`arg(name, parse, choices?)`** builds an argument of a type of your own, beside the code that owns the value: the
   clock time `16:30` lives in `day-cycle.ts`, not in the console. `parse` throws a `UsageError` that starts with the
   name; everything else (usage, Tab, `optional()`, `described()`) works as for the built-in ones.

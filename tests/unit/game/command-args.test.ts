@@ -327,6 +327,41 @@ describe('a group that runs by itself', () => {
     expect(() =>
       group({ help: 'fuel', subcommands: { fill }, args: [choice('level', ['half', 'Fill'])], run: () => '' }),
     ).toThrow('Fill names a subcommand');
+    expect(() => group({ help: 'fuel', subcommands: { fill }, run: () => '' })).toThrow('needs both args and run');
+  });
+
+  it("builds with a first argument whose list isn't ready yet, and lets the subcommand win a word added later", () => {
+    const levels: string[] = [];
+    let ready = false;
+    const level = choice('level', () => {
+      if (!ready) throw new Error('not loaded');
+      return levels;
+    });
+    const c = new Commands();
+    const fill = command({ help: 'fill the tank', args: [], run: () => 'Full.' });
+    c.register(
+      'fuel',
+      group({ help: 'fuel', subcommands: { fill }, args: [optional(level)], run: ({ level }) => level ?? 'none' }),
+    );
+    ready = true;
+    levels.push('half', 'fill');
+    expect(c.run('fuel half')).toBe('half');
+    expect(c.run('fuel fill')).toBe('Full.');
+    expect(c.complete('fuel ')).toEqual(['fill', 'half']);
+  });
+
+  it("takes only its own subcommands' names, not the keys every object has", () => {
+    const c = fuel();
+    for (const word of ['constructor', '__proto__', 'toString', 'hasOwnProperty']) {
+      expect(c.run(`fuel ${word}`), word).toMatch(/^litres is a number\. Or one of: half\. Usage: fuel /);
+      expect(c.run(`help fuel ${word}`), word).toBe(`No command called fuel ${word}. Usage: help [command]`);
+    }
+    const tune = new Commands();
+    tune.register(
+      'tune',
+      group({ help: 'numbers', subcommands: { get: command({ help: 'show', args: [], run: () => '' }) } }),
+    );
+    expect(tune.run('tune constructor')).toBe('No subcommand called constructor. Usage: tune <get> …');
   });
 });
 
@@ -359,6 +394,29 @@ describe('either', () => {
       throw new TypeError('bug');
     });
     expect(() => either('x', broken, word('w')).parse('z')).toThrow(TypeError);
+    expect(() => either('x', int('n'), broken).parse('z')).toThrow(TypeError);
+  });
+
+  it('takes more than two kinds, and keeps what each says: errors in order, then the few words in one list', () => {
+    const three = either(
+      'x',
+      int('n'),
+      num('hour', { min: 5, max: 19 }),
+      choice('moment', ['dusk'] as const),
+      toggle('on'),
+    );
+    expect(three.parse('7')).toBe(7);
+    expect(three.parse('7,5')).toBe(7.5);
+    expect(three.parse('dusk')).toBe('dusk');
+    expect(three.parse('nej')).toBe(false);
+    expectTypeOf(three.parse('7')).toEqualTypeOf<number | 'dusk' | boolean>();
+    expect(() => three.parse('30.5')).toThrow('n is a whole number. hour is from 5 to 19. Or one of: dusk, off, on.');
+  });
+
+  it('refuses a kind that is optional or takes the rest: those go round the whole either', () => {
+    expect(() => either('x', int('n'), optional(word('w')))).toThrow('w: wrap the either in optional()');
+    expect(() => either('x', rest('words'), int('n'))).toThrow('words: wrap the either in optional()');
+    expect(optional(either('x', int('n'), word('w'))).optional).toBe(true);
   });
 });
 

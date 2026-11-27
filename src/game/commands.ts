@@ -39,7 +39,7 @@ export interface Command {
   aliases?: readonly string[];
   /**
    * Commands under this one, by name: `tune set …` runs `set` with the words after it. A word that names none runs this
-   * command's own `run` (group() refuses it). They share its access; help, `--help`, Tab and the usage line reach them.
+   * command's own `run` (a group() without one refuses it). They share its access; help, `--help`, Tab and the usage line reach them.
    */
   subcommands?: Readonly<Record<string, Command>>;
   /** The words that fit at argument `index` (0 is the first after the name), given the arguments before it. */
@@ -242,9 +242,12 @@ function usage({ path, cmd }: Pick<Found, 'path' | 'cmd'>) {
 function descend(path: string, cmd: Command, args: string[]): Found {
   let found: Found = { path, cmd, args };
   for (;;) {
-    const sub = found.args[0] && found.cmd.subcommands?.[found.args[0].toLowerCase()];
+    // its own names only: `constructor` and `__proto__` are on every object, and are no subcommands
+    const word = found.args[0]?.toLowerCase(),
+      subs = found.cmd.subcommands;
+    const sub = word !== undefined && subs && Object.hasOwn(subs, word) ? subs[word] : undefined;
     if (!sub) return found;
-    found = { path: `${found.path} ${found.args[0].toLowerCase()}`, cmd: sub, args: found.args.slice(1) };
+    found = { path: `${found.path} ${word}`, cmd: sub, args: found.args.slice(1) };
   }
 }
 

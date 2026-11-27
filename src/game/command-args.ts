@@ -107,32 +107,36 @@ export function choice<N extends string, C extends string>(
 }
 
 /**
- * One argument that is either of two: `either('when', num('hour'), choice('moment', ['dawn', 'dusk']))` reads `16.5` as a
- * number and `dusk` as a word. The first that parses the word wins, so put the stricter one first. Tab offers the
- * choices of both. A word neither takes gets the first one's error, then the second's choices when they are few enough
- * to list, else its error. More than two nest: `either('a', x, either('b', y, z))`.
+ * One argument that is one of several kinds: `either('when', num('hour'), choice('moment', ['dawn', 'dusk']))` reads
+ * `16.5` as a number and `dusk` as a word. The first that parses the word wins, so put the stricter one first. Tab offers
+ * the choices of all. A word none takes gets the first one's error, then each later one's: its words in one "Or one of"
+ * list when they are few enough, else its own error.
  */
-export function either<N extends string, T, U>(name: N, first: Arg<string, T>, second: Arg<string, U>): Arg<N, T | U> {
-  const lists = [first, second].flatMap(a => (a.choices ? [a.choices.bind(a)] : []));
-  return arg<N, T | U>(
+export function either<N extends string, const A extends readonly [AnyArg, AnyArg, ...AnyArg[]]>(
+  name: N,
+  ...kinds: A
+): Arg<N, ReturnType<A[number]['parse']>> {
+  // optional() and rest() go round the whole either, where command() reads them
+  const flagged = kinds.find(a => a.optional || a.rest);
+  if (flagged) throw new Error(`${flagged.name}: wrap the either in optional() or rest(), not one of its kinds`);
+  const lists = kinds.flatMap(a => (a.choices ? [a.choices.bind(a)] : []));
+  return arg(
     name,
     w => {
-      try {
-        return first.parse(w);
-      } catch (firstErr) {
-        if (!(firstErr instanceof UsageError)) throw firstErr;
+      const said: string[] = [],
+        listed: string[] = [];
+      for (const a of kinds) {
         try {
-          return second.parse(w);
-        } catch (secondErr) {
-          if (!(secondErr instanceof UsageError)) throw secondErr;
-          const all = second.choices?.() ?? [];
-          const or =
-            all.length > 0 && all.length <= CHOICES_LISTED
-              ? `Or one of: ${sorted(all).join(', ')}.`
-              : secondErr.message;
-          throw new UsageError(`${firstErr.message} ${or}`);
+          return a.parse(w);
+        } catch (err) {
+          if (!(err instanceof UsageError)) throw err;
+          const all = a.choices?.() ?? [];
+          // the first kind always says what it wants; a later one with few words only adds them to one list
+          if (said.length > 0 && all.length > 0 && all.length <= CHOICES_LISTED) listed.push(...all);
+          else said.push(err.message);
         }
       }
+      throw new UsageError([...said, ...(listed.length ? [`Or one of: ${sorted(listed).join(', ')}.`] : [])].join(' '));
     },
     lists.length ? () => lists.flatMap(list => list()) : undefined,
   );
@@ -265,7 +269,13 @@ export function group<const A extends readonly AnyArg[] = readonly []>(spec: Gro
         throw new UsageError(words[0] ? `No subcommand called ${words[0]}.` : '');
       },
     };
-  const hidden = spec.args[0]?.choices?.().find(c => names.includes(c.toLowerCase()));
+  // Catches the mistake in a list that is known now. One that isn't ready yet, or grows later, isn't checked: the
+  // subcommand wins then too, which is the rule.
+  let known: readonly string[] = [];
+  try {
+    known = spec.args[0]?.choices?.() ?? [];
+  } catch {}
+  const hidden = known.find(c => names.includes(c.toLowerCase()));
   if (hidden !== undefined) throw new Error(`${hidden} names a subcommand, so the group's own argument never gets it`);
   const own = command({ help: spec.help, args: spec.args, run: spec.run });
   return {
