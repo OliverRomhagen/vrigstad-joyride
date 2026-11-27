@@ -1,6 +1,7 @@
 // Lakes, rivers and streams as bodies of water with a level, a width and banks, and the channel they cut into the
 // ground (#263). Pure: no three.js. The heightfield carves the channels (TerrainCut), the game asks it what is wet,
 // and the water and shore meshes are built on the same numbers, so what you see and what the game tests agree.
+import { alongEdge } from './bounds';
 import { type WaterwayKind as Kind, ROAD_WIDTH_M, RoadClass, WaterwayKind, type WorldData } from './data';
 import type { TerrainCut } from './heightfield';
 import { clamp } from './math';
@@ -205,7 +206,7 @@ const percentile = (values: number[], p: number) => {
 export class WaterBodies implements TerrainCut {
   readonly courses: Course[] = [];
   readonly lakes: Lake[] = [];
-  private readonly worldBounds: WorldData['bounds'];
+  private readonly bounds: WorldData['bounds'];
   private readonly base: { heightAt(x: number, z: number): number };
   /** lookup cells: course runs as [course, first sample, last sample], lake shore segments as [lake, ring, vertex] */
   private readonly courseCells = new Map<number, number[]>();
@@ -215,7 +216,7 @@ export class WaterBodies implements TerrainCut {
   private readonly buildings: { p: number[]; x0: number; x1: number; z0: number; z1: number }[];
 
   constructor(data: WorldData, base: { heightAt(x: number, z: number): number }) {
-    this.worldBounds = data.bounds;
+    this.bounds = data.bounds;
     this.base = base;
     this.buildings = data.b.map(b => ({ p: b.p, ...boundsOf(b.p) }));
     data.w.forEach(rings => {
@@ -519,14 +520,7 @@ export class WaterBodies implements TerrainCut {
 
   /** True for a shore segment along the world's edge, where the map cuts a lake rather than a shore. */
   onWorldEdge(ax: number, az: number, bx: number, bz: number) {
-    const [x0, z0, x1, z1] = this.worldBounds;
-    const e = EDGE_M;
-    return (
-      (ax <= x0 + e && bx <= x0 + e) ||
-      (ax >= x1 - e && bx >= x1 - e) ||
-      (az <= z0 + e && bz <= z0 + e) ||
-      (az >= z1 - e && bz >= z1 - e)
-    );
+    return alongEdge(this.bounds, ax, az, bx, bz, EDGE_M);
   }
 
   // ---------- queries ----------

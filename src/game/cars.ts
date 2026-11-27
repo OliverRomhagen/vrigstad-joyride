@@ -1,7 +1,7 @@
 // The cars as the game rules see them: the driving model the player and the police share, traffic that follows the street network, and the cars parked along the streets.
 // Moved from src/game/main.ts (#177, #283); main.ts passes in how a car is made with its meshes (addCar) and placed (placeCar), what a crash does to you and what ramming the police does. No three.js or DOM here.
 // The Fleet owns the list of cars (#297): main.ts's addCar makes one with newCar, gives it its meshes, then adds it.
-import { insideBounds } from '../world/bounds';
+import { clampInside, insideBounds } from '../world/bounds';
 import type { BuildingIndex } from '../world/buildings';
 import { ROAD_WIDTH_M as ROAD_W, type WorldBounds } from '../world/data';
 import { clamp, wrap } from '../world/math';
@@ -520,8 +520,7 @@ export class Fleet {
     } // gripping, the car turns about its rear axle; sliding, the rear swings out instead
     c.x += Math.sin(c.vh) * c.v * dt;
     c.z -= Math.cos(c.vh) * c.v * dt;
-    c.x = clamp(c.x, bounds[0] + 4, bounds[2] - 4);
-    c.z = clamp(c.z, bounds[1] + 4, bounds[3] - 4);
+    clampInside(bounds, c, 4);
     const vx = Math.sin(c.vh) * c.v,
       vz = -Math.cos(c.vh) * c.v,
       bx = c.x,

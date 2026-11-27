@@ -2,6 +2,7 @@
 // terrain wears and the minimap shows. The trees' shadows are baked in once they are placed.
 // Moved from src/game/main.ts (#177).
 import * as THREE from 'three';
+import { alongEdge } from '../../world/bounds';
 import { HOUSE_MAX_M2, HOUSE_MIN_M2 } from '../../world/buildings';
 import { ROAD_WIDTH_M as ROAD_W, type Road, type WorldData } from '../../world/data';
 import { polygonArea as polyArea } from '../../world/polygon';
@@ -137,23 +138,18 @@ export class GroundTexture {
       }
       // the lakes' banks: a narrow band past the mapped shore, and a wide one inside it, where a bank that drops steeply
       // to the water stands above it (the rest of that band lies under the surface)
-      // not where the world's edge cuts a lake: both ends within half a metre of the same edge
-      const onEdge = (ax: number, az: number, bx: number, bz: number) =>
-          (ax < x0 + 0.5 && bx < x0 + 0.5) ||
-          (ax > x1 - 0.5 && bx > x1 - 0.5) ||
-          (az < z0 + 0.5 && bz < z0 + 0.5) ||
-          (az > z1 - 0.5 && bz > z1 - 0.5),
-        shoreLines = () => {
-          ctx.beginPath();
-          for (const w of D.w)
-            for (const r of w)
-              for (let i = 0; i < r.length; i += 2) {
-                const j = (i + 2) % r.length;
-                if (onEdge(r[i], r[i + 1], r[j], r[j + 1])) continue;
-                trace([r[i], r[i + 1], r[j], r[j + 1]]);
-              }
-          ctx.stroke();
-        };
+      // not where the world's edge cuts a lake
+      const shoreLines = () => {
+        ctx.beginPath();
+        for (const w of D.w)
+          for (const r of w)
+            for (let i = 0; i < r.length; i += 2) {
+              const j = (i + 2) % r.length;
+              if (alongEdge(D.bounds, r[i], r[i + 1], r[j], r[j + 1], 0.5)) continue;
+              trace([r[i], r[i + 1], r[j], r[j + 1]]);
+            }
+        ctx.stroke();
+      };
       ctx.strokeStyle = 'rgba(140,122,88,.6)';
       ctx.lineWidth = 2 * BANK_EARTH_M * K;
       shoreLines();

@@ -1,7 +1,7 @@
 // Cats: lounge by the house walls, wander a little, bolt from cars and running feet, and can be petted.
 // Moved from src/game/main.ts (#177); main.ts passes in what the cats read from the rest of the game.
 import * as THREE from 'three';
-import { insideBounds } from '../world/bounds';
+import { clampInside, insideBounds } from '../world/bounds';
 import { BUILDING_CELL_M as BC, type BuildingIndex } from '../world/buildings';
 import type { WorldBounds } from '../world/data';
 import { clamp, wrap } from '../world/math';
@@ -807,8 +807,9 @@ export class CatColony {
         nz = k.z - Math.cos(k.h) * sp * dt;
       if (inWater(nx, nz)) k.want = wrap(k.h + Math.PI);
       else {
-        k.x = clamp(nx, bounds[0] + 2, bounds[2] - 2);
-        k.z = clamp(nz, bounds[1] + 2, bounds[3] - 2);
+        k.x = nx;
+        k.z = nz;
+        clampInside(bounds, k, 2);
       }
       if (this.collide(k, 0.25) && k.state === 'walk') k.want = wrap(k.h + (rnd() < 0.5 ? 1.6 : -1.6));
       k.phase += sp * dt * 9;
