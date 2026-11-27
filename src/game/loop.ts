@@ -99,7 +99,7 @@ export class GameLoop {
     this.g = g;
   }
 
-  /** Draws every later frame through a style: ?lab=toon's (#206), once its code has loaded. */
+  /** Draws every later frame through a style: the cel-shaded one (#206). */
   drawThrough(style: Pick<ToonStyle, 'render'>) {
     this.style = style;
   }

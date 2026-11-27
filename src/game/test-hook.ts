@@ -23,7 +23,7 @@ export interface TestHookDeps {
   cars: readonly Car[];
   labs: readonly string[]; // the lab experiments switched on
   readonly cockpit: boolean; // the camera is in the driver's seat (lab: cockpit, #473)
-  readonly styled: boolean; // frames are drawn through a style (?lab=toon), which loads after the page
+  readonly styled: boolean; // frames are drawn through a style: the cel-shaded one, from the first frame (#206)
   readonly ragdolls: number; // people knocked over right now
   readonly stars: number;
   readonly cats: number;
