@@ -35,7 +35,7 @@ import { houseFronts } from '../world/furniture/houses';
 import { layoutPlots, propertyLineM } from '../world/plots';
 import { PlotOutlines } from '../world/mesh/plot-outlines';
 import { PlotBoundaries } from '../world/mesh/plot-boundaries';
-import { layoutBoundaries } from '../world/plot-boundaries';
+import { industrialFences, layoutBoundaries } from '../world/plot-boundaries';
 import { treeSpots } from '../world/trees';
 import { layoutShore } from '../world/shore';
 import { Water } from '../world/water';
@@ -193,17 +193,6 @@ const bridgeMeshes = addBridges(scene, bridges, heightfield);
 const allTreeSpots = addTrees(scene, forestSpots, street.layout.trees, heightfield, HALF);   // every tree drawn, [x, z, scale, ...]: the street furniture keeps clear of them too
 ground.bakeTreeShadows(allTreeSpots, blobTex);
 
-// ---------- plots: the ground each house owns, its driveway and the hedges, fences and walls round it, inferred (#401) ----------
-const DEBUG_PLOTS = new URLSearchParams(location.search).get('debug') === 'plots';   // ?debug=plots outlines the plots and driveways
-const plots = (function () {
-  const t0 = performance.now(), fronts = houseFronts(D, roads, () => true);
-  const layout = layoutPlots({ data: D, roads, buildings, fronts, inWater, frontEdgeM: (ri, side) => propertyLineM(sideSpecOf(street.sides[ri], side), R[ri].c) });
-  const runs = layoutBoundaries(layout, ri => street.sides[ri].profile);
-  const draw = new PlotBoundaries(runs, { groundAt }); scene.add(...draw.meshes);
-  if (DEBUG_PLOTS) scene.add(new PlotOutlines(layout, groundAt).mesh);
-  return { layout, runs, draw, ms: performance.now() - t0 };
-})();
-
 // ---------- cars ----------
 // the rules (driving, traffic, the parked cars) are in src/game/cars.ts; the meshes in src/game/render/car-meshes.ts
 // the getters are read when they are used, so they can name things declared further down
@@ -334,6 +323,19 @@ const furniture = (function () {
   const draw = new StreetFurniture(layout.placements, { groundAt, debugSources: DEBUG_FURNITURE }); scene.add(...draw.meshes);
   return { layout, draw, ms: performance.now() - t0 };
 })();
+// ---------- plots: the ground each house owns, its driveway and the hedges, fences and walls round it, and the fences round industrial land, inferred (#401) ----------
+// after the furniture: the hedges make room for the mailboxes
+const DEBUG_PLOTS = new URLSearchParams(location.search).get('debug') === 'plots';   // ?debug=plots outlines the plots and driveways
+const plots = (function () {
+  const t0 = performance.now(), fronts = houseFronts(D, roads, () => true);
+  const layout = layoutPlots({ data: D, roads, buildings, fronts, inWater, frontEdgeM: (ri, side) => propertyLineM(sideSpecOf(street.sides[ri], side), R[ri].c) });
+  const mailboxes = furniture.layout.placements.filter(p => p.kind === 'mailbox' || p.kind === 'mailbox-stand');
+  const runs = [...layoutBoundaries(layout, ri => street.sides[ri].profile, mailboxes), ...industrialFences({ data: D, roads, buildings, keepOut: yard.outlines, inWater })];
+  const draw = new PlotBoundaries(runs, { groundAt }); scene.add(...draw.meshes);
+  if (DEBUG_PLOTS) scene.add(new PlotOutlines(layout, groundAt).mesh);
+  return { layout, runs, draw, ms: performance.now() - t0 };
+})();
+
 // the kiosk's and the cats' menus (src/game/kiosk-cat-menus.ts); trisslott is declared further down
 const kioskCatMenus = new KioskCatMenus({ game, player, colony, health, openMenu, esc, toast, scratch: () => trisslott.scratch(), wallet, nearPlace, showHeart, drawPets, drawTreats, drawHealth });
 const { openKiosk, petCat, openOwnCat } = kioskCatMenus;

@@ -6,12 +6,14 @@
 // and a garden gate opposite the house, and keeps off its house's walls. Every choice hashes the street or the plot's
 // key, never data order.
 
+import { LandUse, ROAD_WIDTH_M, type RoadClass, type WorldData } from './data';
 import type { Plot } from './plots';
-import { polygonBounds, segmentDistance, vertexCentre } from './polygon';
+import { type Bounds, pointInPolygon, polygonBounds, segmentDistance, vertexCentre } from './polygon';
 import { hash01 } from './random';
 import type { Profile } from './streetscape-rules';
 
-export const BoundaryKind = { HEDGE: 0, PICKET: 1, BOARD: 2, WALL: 3 } as const;
+/** MESH is the tall chain-link fence (nätstängsel) round industrial land */
+export const BoundaryKind = { HEDGE: 0, PICKET: 1, BOARD: 2, WALL: 3, MESH: 4 } as const;
 export type BoundaryKind = (typeof BoundaryKind)[keyof typeof BoundaryKind];
 
 type Shares = readonly (readonly [BoundaryKind, number])[];
@@ -62,14 +64,14 @@ const STREET_STYLE_SHARE = 0.5;
 /** a hedge is between these heights (m), by edge; the other kinds have one height each (m) */
 const HEDGE_MIN_M = 0.9;
 const HEDGE_SPREAD_M = 0.7;
-const HEIGHT_M: Record<BoundaryKind, number> = { 0: 0, 1: 0.9, 2: 1.4, 3: 0.6 };
+const HEIGHT_M: Record<BoundaryKind, number> = { 0: 0, 1: 0.9, 2: 1.4, 3: 0.6, 4: 2 };
 /** a picket or board fence is white or grey (variant 0) or falu red (1), falu red with this chance, by plot */
-const FALU_SHARE: Record<BoundaryKind, number> = { 0: 0, 1: 0.3, 2: 0.6, 3: 0 };
+const FALU_SHARE: Record<BoundaryKind, number> = { 0: 0, 1: 0.3, 2: 0.6, 3: 0, 4: 0 };
 /**
  * a boundary stands inside its plot from its line, as thick as it is; it is left out where its house's wall is nearer
  * the line than this (m): a hedge needs room, a fence can stand close
  */
-const WALL_CLEAR_M: Record<BoundaryKind, number> = { 0: 0.8, 1: 0.15, 2: 0.15, 3: 0.6 };
+const WALL_CLEAR_M: Record<BoundaryKind, number> = { 0: 0.8, 1: 0.15, 2: 0.15, 3: 0.6, 4: 0.3 };
 /** the gap at a driveway is its width and this much either side (m); the garden gate is this wide (m) */
 const DRIVEWAY_SPARE_M = 0.3;
 const GATE_M = 1;
@@ -77,6 +79,15 @@ const GATE_M = 1;
 const GATE_DRIVEWAY_M = 2;
 /** a piece of boundary shorter than this between gaps (m) is left out */
 const MIN_RUN_M = 0.5;
+/** a hedge within this of a mailbox (m), along its line, is half as thick, cut back from the street side to make room */
+const MAILBOX_ROOM_M = 0.5;
+/** ... where the mailbox stands within this of the hedge's line (m) */
+const MAILBOX_NEAR_M = 0.8;
+/** an industrial fence is cut into pieces this long (m) to test, and leaves out a piece this close to a road's edge (m) */
+const INDUSTRIAL_PIECE_M = 2.5;
+const INDUSTRIAL_ROAD_CLEAR_M = 1;
+/** ... or to a place with a fence of its own (m): Skroten's yard, whose fence and gate stand back from the road */
+const INDUSTRIAL_KEEP_OUT_M = 15;
 
 export interface BoundaryRun {
   kind: BoundaryKind;
@@ -89,6 +100,8 @@ export interface BoundaryRun {
   key: string;
   /** the plot lies to the right (1) or the left (-1) of the line's direction: the side it stands on */
   inward: -1 | 1;
+  /** half as thick, cut back from the line to make room for a mailbox; its far side stays where it was */
+  slim?: true;
 }
 
 /** The kind `roll` (in [0, 1)) picks from `shares`, or null for open. */
@@ -154,6 +167,32 @@ function nearestAlong(p: readonly number[], x: number, z: number) {
   return best.along;
 }
 
+/** Length of polyline `p` (m). */
+function lineLength(p: readonly number[]) {
+  let length = 0;
+  for (let i = 2; i < p.length; i += 2) length += Math.hypot(p[i] - p[i - 2], p[i + 1] - p[i - 1]);
+  return length;
+}
+
+/** Distance from (x, z) to polyline `p` (m). */
+function distanceToLine(p: readonly number[], x: number, z: number) {
+  let d = Infinity;
+  for (let i = 2; i < p.length; i += 2) d = Math.min(d, segmentDistance(x, z, p[i - 2], p[i - 1], p[i], p[i + 1]));
+  return d;
+}
+
+/** The stretches of [0, total] (m) that the intervals leave out, as gaps for `cut`: what is not in them. */
+function between(intervals: readonly (readonly [number, number])[], total: number): [number, number][] {
+  const out: [number, number][] = [];
+  let from = 0;
+  for (const [a, b] of [...intervals].sort((x, y) => x[0] - y[0])) {
+    if (a > from) out.push([from, a]);
+    from = Math.max(from, b);
+  }
+  out.push([from, total]);
+  return out;
+}
+
 /** The pieces of polyline `p` outside the gaps, each [from, to] metres along it. */
 function cut(p: readonly number[], gaps: readonly (readonly [number, number])[]) {
   const arcs = [0];
@@ -184,8 +223,15 @@ function cut(p: readonly number[], gaps: readonly (readonly [number, number])[])
   return pieces;
 }
 
-/** The hedges, fences and walls on the plots' edges; `profileOf` gives a street's profile (StreetSides.profile). */
-export function layoutBoundaries(plots: readonly Plot[], profileOf: (ri: number) => Profile): BoundaryRun[] {
+/**
+ * The hedges, fences and walls on the plots' edges; `profileOf` gives a street's profile (StreetSides.profile), and
+ * `mailboxes` where the mailboxes stand, which the hedges make room for.
+ */
+export function layoutBoundaries(
+  plots: readonly Plot[],
+  profileOf: (ri: number) => Profile,
+  mailboxes: readonly { x: number; z: number }[] = [],
+): BoundaryRun[] {
   const runs: BoundaryRun[] = [];
   for (const plot of plots) {
     const profile = profileOf(plot.ri);
@@ -198,7 +244,17 @@ export function layoutBoundaries(plots: readonly Plot[], profileOf: (ri: number)
       const variant: 0 | 1 = hash01(plot.key, kind, 'paint') < FALU_SHARE[kind] ? 1 : 0;
       // > 0: the house's middle is right of the line's first piece (x east, z south)
       const cross = (p[2] - p[0]) * (hz - p[1]) - (p[3] - p[1]) * (hx - p[0]);
-      runs.push({ kind, p, heightM, variant, key: plot.key, inward: cross > 0 ? 1 : -1 });
+      const run = { kind, heightM, variant, key: plot.key, inward: cross > 0 ? (1 as const) : (-1 as const) };
+      // a hedge makes room for the mailboxes that stand at it
+      const room: [number, number][] = [];
+      if (kind === BoundaryKind.HEDGE)
+        for (const m of mailboxes)
+          if (Math.abs(m.x - hx) < 60 && Math.abs(m.z - hz) < 60 && distanceToLine(p, m.x, m.z) < MAILBOX_NEAR_M) {
+            const at = nearestAlong(p, m.x, m.z);
+            room.push([at - MAILBOX_ROOM_M, at + MAILBOX_ROOM_M]);
+          }
+      for (const piece of cut(p, room)) runs.push({ ...run, p: piece });
+      for (const piece of cut(p, between(room, lineLength(p)))) runs.push({ ...run, p: piece, slim: true });
     };
     const o = plot.outline;
     const n = o.length / 4;
@@ -238,5 +294,121 @@ export function layoutBoundaries(plots: readonly Plot[], profileOf: (ri: number)
       if (kind !== null) add(line, kind, edge);
     }
   }
+  return runs;
+}
+
+export interface IndustrialFenceInputs {
+  data: WorldData;
+  roads: { readonly lines: readonly { p: readonly (readonly [number, number])[]; c: RoadClass }[] };
+  /** every building's outline: the fence leaves out what runs along or through one */
+  buildings: { readonly footprints: readonly (Bounds & { p: number[] })[] };
+  /**
+   * the outlines of a place with a fence of its own (Skroten's yard: its fence, buildings and heaps): the fence keeps
+   * out of their bounding box, and INDUSTRIAL_KEEP_OUT_M round it
+   */
+  keepOut?: readonly number[][];
+  inWater?(x: number, z: number): boolean;
+}
+
+/**
+ * A tall chain-link fence round each industrial area (land use), on its edge: left out within reach of a road (a gap
+ * where a road or an entrance crosses), along or through a building, near something with a fence of its own, and in
+ * water. Each run stands on the area's side of the edge.
+ */
+export function industrialFences({
+  data,
+  roads,
+  buildings,
+  keepOut = [],
+  inWater,
+}: IndustrialFenceInputs): BoundaryRun[] {
+  const runs: BoundaryRun[] = [];
+  data.l.forEach((area, ai) => {
+    if (area.k !== LandUse.INDUSTRIAL) return;
+    const box = polygonBounds(area.p);
+    const reach = 10;
+    const near = (b: Bounds) =>
+      b.x0 < box.x1 + reach && b.x1 > box.x0 - reach && b.z0 < box.z1 + reach && b.z1 > box.z0 - reach;
+    const footprints = buildings.footprints.filter(near);
+    const keepOutBox = keepOut.length
+      ? keepOut.reduce((b, q) => polygonBounds(q, b), { x0: Infinity, x1: -Infinity, z0: Infinity, z1: -Infinity })
+      : null;
+    const segments: number[] = []; // ax, az, bx, bz, half width plus clearance
+    for (const { p, c } of roads.lines)
+      for (let i = 1; i < p.length; i++) {
+        const [a, b] = [p[i - 1], p[i]];
+        const bounds = {
+          x0: Math.min(a[0], b[0]),
+          x1: Math.max(a[0], b[0]),
+          z0: Math.min(a[1], b[1]),
+          z1: Math.max(a[1], b[1]),
+        };
+        if (near(bounds)) segments.push(a[0], a[1], b[0], b[1], ROAD_WIDTH_M[c] / 2 + INDUSTRIAL_ROAD_CLEAR_M);
+      }
+    const free = (ax: number, az: number, bx: number, bz: number) => {
+      const [mx, mz] = [(ax + bx) / 2, (az + bz) / 2];
+      for (let i = 0; i < segments.length; i += 5) {
+        const k = segments[i + 4];
+        for (const [x, z] of [
+          [ax, az],
+          [mx, mz],
+          [bx, bz],
+        ])
+          if (segmentDistance(x, z, segments[i], segments[i + 1], segments[i + 2], segments[i + 3]) < k) return false;
+      }
+      for (const f of footprints)
+        if (
+          pointInPolygon(f.p, mx, mz) ||
+          distanceToLine([...f.p, f.p[0], f.p[1]], mx, mz) < WALL_CLEAR_M[BoundaryKind.MESH]
+        )
+          return false;
+      const k = INDUSTRIAL_KEEP_OUT_M;
+      if (
+        keepOutBox &&
+        mx > keepOutBox.x0 - k &&
+        mx < keepOutBox.x1 + k &&
+        mz > keepOutBox.z0 - k &&
+        mz < keepOutBox.z1 + k
+      )
+        return false;
+      return !inWater?.(mx, mz);
+    };
+    // the edge in pieces, round the ring from a vertex; the kept ones joined into runs
+    const ring = [...area.p, area.p[0], area.p[1]];
+    let run: number[] = [];
+    let index = 0;
+    const flush = () => {
+      if (run.length >= 4 && lineLength(run) >= MIN_RUN_M) {
+        // the area's side: a point just right of the run's first piece is inside it, or not
+        const [ax, az, bx, bz] = run;
+        const length = Math.hypot(bx - ax, bz - az) || 1;
+        const [rx, rz] = [(ax + bx) / 2 - (bz - az) / length, (az + bz) / 2 + (bx - ax) / length];
+        runs.push({
+          kind: BoundaryKind.MESH,
+          p: run,
+          heightM: HEIGHT_M[BoundaryKind.MESH],
+          variant: 0,
+          key: `industry${ai}:${index++}`,
+          inward: pointInPolygon(area.p, rx, rz) ? 1 : -1,
+        });
+      }
+      run = [];
+    };
+    for (let i = 2; i < ring.length; i += 2) {
+      const [ax, az, bx, bz] = [ring[i - 2], ring[i - 1], ring[i], ring[i + 1]];
+      const n = Math.max(1, Math.ceil(Math.hypot(bx - ax, bz - az) / INDUSTRIAL_PIECE_M));
+      for (let k = 0; k < n; k++) {
+        const [x0, z0] = [ax + ((bx - ax) * k) / n, az + ((bz - az) * k) / n];
+        const [x1, z1] = [ax + ((bx - ax) * (k + 1)) / n, az + ((bz - az) * (k + 1)) / n];
+        if (!free(x0, z0, x1, z1)) {
+          flush();
+          continue;
+        }
+        if (!run.length) run.push(x0, z0);
+        run.push(x1, z1);
+      }
+    }
+    flush();
+  });
   return runs;
 }

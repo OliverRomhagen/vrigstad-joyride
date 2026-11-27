@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { BoundaryKind, type BoundaryRun, layoutBoundaries } from '../../../src/world/plot-boundaries';
+import { BuildingIndex } from '../../../src/world/buildings';
+import { BuildingKind, LandUse, type Road, RoadClass } from '../../../src/world/data';
+import { Heightfield } from '../../../src/world/heightfield';
+import { BoundaryKind, type BoundaryRun, industrialFences, layoutBoundaries } from '../../../src/world/plot-boundaries';
 import type { Plot } from '../../../src/world/plots';
+import { RoadNetwork } from '../../../src/world/roads';
 import type { Profile } from '../../../src/world/streetscape-rules';
+import { makeWorld, square } from './fixture';
 
 // A row of 20 m plots along a street at z = 0, from x = 0 eastwards: front edge at z = 5, back at z = 40. Each house is
 // 10 m × 10 m in the middle of its plot, and its driveway runs at 3 m into the plot. Each plot fronts a street of its
@@ -76,9 +81,65 @@ describe('layoutBoundaries', () => {
     }
   });
 
+  it('makes a hedge half as thick where a mailbox stands at it, for a metre', () => {
+    // a mailbox on each plot's front line, 6 m into the plot, 0.15 m inside the line
+    const plots = row(100);
+    const mailboxes = plots.map((_, i) => ({ x: 20 * i + 6, z: 5.15 }));
+    const runs = layoutBoundaries(plots, centre, mailboxes).filter(r => onFront(r) && r.kind === BoundaryKind.HEDGE);
+    expect(runs.length).toBeGreaterThan(5);
+    for (const r of runs) {
+      const x0 = 20 * Number(r.key.slice(1));
+      const [a, b] = [Math.min(...xs(r)), Math.max(...xs(r))];
+      const atMailbox = a < x0 + 6 && b > x0 + 6;
+      if (r.slim) {
+        expect(a).toBeCloseTo(x0 + 5.5, 6);
+        expect(b).toBeCloseTo(x0 + 6.5, 6);
+      } else expect(atMailbox).toBe(false);
+    }
+    expect(runs.some(r => r.slim)).toBe(true);
+    // without mailboxes, nothing is slim
+    expect(layoutBoundaries(plots, centre).some(r => r.slim)).toBe(false);
+  });
+
   it('is the same whatever order the plots come in', () => {
     const plots = row(60);
     const key = (runs: BoundaryRun[]) => runs.map(r => JSON.stringify(r)).sort();
     expect(key(layoutBoundaries([...plots].reverse(), centre))).toEqual(key(layoutBoundaries(plots, centre)));
+  });
+});
+
+describe('industrialFences', () => {
+  // an industrial area 100 m square, x and z from 0 to 100, with a road across its west edge at x = 0 and a road in
+  // through its south edge at x = 50, a building on its north edge, and a fenced yard in its north-east corner
+  const area = { k: LandUse.INDUSTRIAL, p: square(0, 0, 100) };
+  const roads: Road[] = [
+    { c: RoadClass.STREET, n: 'Industrivägen', p: [0, -50, 0, 150], i: 1 },
+    { c: RoadClass.SERVICE, n: '', p: [50, 150, 50, 60], i: 2 },
+  ];
+  const workshop = { p: [30, -5, 45, -5, 45, 10, 30, 10], h: 5, k: BuildingKind.OTHER };
+  const data = makeWorld({ size: 1000, l: [area], r: roads, b: [workshop] });
+  const fences = industrialFences({
+    data,
+    roads: new RoadNetwork(data, new Heightfield(data)),
+    buildings: new BuildingIndex(data),
+    keepOut: [square(90, -10, 20)],
+  });
+  const points = fences.flatMap(r => Array.from({ length: r.p.length / 2 }, (_, i) => [r.p[2 * i], r.p[2 * i + 1]]));
+
+  it('fences the edge with a tall mesh fence, on the area side, leaving gaps at roads, buildings and yards', () => {
+    expect(fences.length).toBeGreaterThan(0);
+    for (const r of fences) expect(r).toMatchObject({ kind: BoundaryKind.MESH, heightM: 2 });
+    expect(points.some(([x, z]) => z === 100 && x > 10 && x < 40)).toBe(true); // the south edge runs
+    expect(points.every(([x]) => x > 2.75 + 1)).toBe(true); // nothing on the west edge, along Industrivägen
+    expect(points.some(([x, z]) => z === 100 && Math.abs(x - 50) < 1.75 + 1)).toBe(false); // a gap at the entrance
+    expect(points.some(([x, z]) => z === 0 && x > 30.5 && x < 44.5)).toBe(false); // none along the workshop
+    // none within 15 m of the yard's box: a piece is kept when its middle is outside, so its end can be 1.25 m in
+    expect(points.some(([x, z]) => x > 76.25 && z < 23.75)).toBe(false);
+    // the fence stands inside the area: right of each run, towards the middle at (50, 50)
+    for (const r of fences) {
+      const [ax, az, bx, bz] = r.p;
+      const cross = (bx - ax) * (50 - az) - (bz - az) * (50 - ax);
+      expect(Math.sign(cross)).toBe(r.inward);
+    }
   });
 });

@@ -12,6 +12,22 @@ const run = (kind: BoundaryKind, p: number[]): BoundaryRun => ({
 });
 
 describe('PlotBoundaries', () => {
+  it('makes a slim hedge half as thick, keeping its inner face, and draws the chain-link fence with its own repeating mesh', () => {
+    const slim = new PlotBoundaries([{ ...run(BoundaryKind.HEDGE, [0, 0, 2, 0]), slim: true }], { groundAt: () => 0 });
+    const z = slim.meshes[0].geometry.getAttribute('position');
+    const zs = Array.from({ length: z.count }, (_, i) => z.getZ(i));
+    expect(Math.min(...zs)).toBeCloseTo(0.35, 6); // the room on the line's side
+    expect(Math.max(...zs)).toBeCloseTo(0.7, 6);
+    slim.dispose();
+    const mesh = new PlotBoundaries([run(BoundaryKind.MESH, [0, 0, 2.5, 0])], { groundAt: () => 0 });
+    const chain = mesh.meshes.find(m => m.material === mesh.materials.chain)!;
+    expect(mesh.materials.chain.alphaTest).toBeLessThan(mesh.materials.panels.alphaTest);
+    const v = chain.geometry.getAttribute('uv');
+    const vs = Array.from({ length: v.count }, (_, i) => v.getY(i));
+    expect(Math.max(...vs)).toBeCloseTo((1 * 1 + 0.15) / 0.08, 6); // the mesh repeats up the fence, 8 cm a diamond
+    mesh.dispose();
+  });
+
   it('builds hedges and walls from boxes and fences from textured panels on posts, two meshes per 250 m chunk', () => {
     const draw = new PlotBoundaries(
       [

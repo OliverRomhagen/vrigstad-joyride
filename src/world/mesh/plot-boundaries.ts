@@ -10,6 +10,8 @@ export interface BoundaryColours {
   picket: readonly [number, number];
   board: readonly [number, number];
   wall: number;
+  /** the industrial chain-link fence's galvanised steel */
+  mesh: number;
 }
 
 const BOUNDARY_COLOURS: BoundaryColours = {
@@ -17,34 +19,47 @@ const BOUNDARY_COLOURS: BoundaryColours = {
   picket: [0xe8e3d6, 0x8e3424],
   board: [0x9a9184, 0x8e3424],
   wall: 0x8d877c,
+  mesh: 0x9da3a1,
 };
 
 /** side of a batching chunk (m), the same chunking as the streetscape's */
 const CHUNK_M = 250;
 /**
  * each kind's run is cut into pieces at most this long (m): a hedge's and a wall's each get their own height and shade,
- * and a picket fence has a post at each end of its pieces; a board fence's posts are behind its boards, so it shows
+ * and a picket or chain-link fence has a post at each end of its pieces; a board fence's posts are behind its boards, so it shows
  * only the run's end posts
  */
-const PIECE_M: Record<BoundaryKind, number> = { 0: 2.4, 1: 2.4, 2: 2.4, 3: 1 };
+const PIECE_M: Record<BoundaryKind, number> = { 0: 2.4, 1: 2.4, 2: 2.4, 3: 1, 4: 2.5 };
 /** how thick each kind is across its line (m); a fence's panel is a plane, its posts are this thick */
-const WIDTH_M: Record<BoundaryKind, number> = { 0: 0.7, 1: 0.09, 2: 0.1, 3: 0.5 };
+const WIDTH_M: Record<BoundaryKind, number> = { 0: 0.7, 1: 0.09, 2: 0.1, 3: 0.5, 4: 0.08 };
 /** a hedge's or wall's pieces vary their height by up to this either way (m), and their shade by this share */
-const HEIGHT_JITTER_M: Record<BoundaryKind, number> = { 0: 0.08, 1: 0, 2: 0, 3: 0.1 };
+const HEIGHT_JITTER_M: Record<BoundaryKind, number> = { 0: 0.08, 1: 0, 2: 0, 3: 0.1, 4: 0 };
 const SHADE_JITTER = 0.06;
 /** a hedge's top is this much lighter, as if lit from above */
 const HEDGE_TOP_LIGHTER = 0.12;
-/** one repeat of the fence texture along a picket fence (m): a picket and its gap; along a board fence: four boards */
-const REPEAT_M: Record<BoundaryKind, number> = { 0: 1, 1: 0.15, 2: 0.5, 3: 1 };
+/** one repeat of the fence texture along a fence (m): a picket and its gap, four boards, or one mesh of chain-link */
+const REPEAT_M: Record<BoundaryKind, number> = { 0: 1, 1: 0.15, 2: 0.5, 3: 1, 4: 0.08 };
 /** a fence's posts stand this far above its panel (m), and are this much darker */
 const POST_ABOVE_M = 0.06;
 const POST_DARKER = 0.85;
 /**
- * the fence texture (FENCE_TEXTURE_PX wide, FENCE_ROWS tall): its lower half is a picket and its gap, with two rails,
- * pointed at the top and see-through between; its upper half four boards in slightly different shades, with dark joins
+ * the fence texture (FENCE_TEXTURE_PX wide, two bands of BAND_ROWS, bottom up): a picket and its gap, with two rails,
+ * pointed at the top and see-through between; and four boards in slightly different shades, with dark joins
  */
 const FENCE_TEXTURE_PX = 32;
-const FENCE_ROWS = 128;
+const BAND_ROWS = 64;
+/** each panel fence's band in the texture */
+const BAND: Partial<Record<BoundaryKind, number>> = { 1: 0, 2: 1 };
+/**
+ * the chain-link texture: one diamond mesh, CHAIN_PX square, repeating both ways every REPEAT_M[MESH]; its wires are
+ * this share of a mesh thick. Its own alphaTest is low, so the wires thin out with distance rather than vanishing at
+ * once, as a real one does; the posts and the top rail carry the fence's line far off.
+ */
+const CHAIN_PX = 32;
+const CHAIN_WIRE = 0.09;
+const CHAIN_ALPHA_TEST = 0.3;
+/** the chain-link fence's top rail: this thick and tall (m) */
+const TOP_RAIL_M = 0.05;
 /** the picket half's rows, from the bottom: the picket starts above the ground (the panel is sunk SINK_M), rails, point */
 const PICKET_FROM_ROW = 11;
 const RAILS: readonly (readonly [number, number])[] = [
@@ -56,23 +71,26 @@ const POINT_FROM_ROW = 56;
 const PICKET_SHARE = 0.6;
 const BOARD_SHADES = [235, 216, 228, 208];
 const JOIN_SHADE = 140;
+
 /** everything starts this far below the ground (m), so sloping ground doesn't show a gap under it */
 const SINK_M = 0.15;
 
 /** The fence texture: white, see-through between the pickets, grey at the boards' joins (the vertex colour paints it). */
 function fenceTexture() {
-  const [w, h] = [FENCE_TEXTURE_PX, FENCE_ROWS];
+  const [w, h] = [FENCE_TEXTURE_PX, BAND_ROWS * 2];
   const px = new Uint8Array(w * h * 4);
   for (let row = 0; row < h; row++)
     for (let col = 0; col < w; col++) {
       const u = (col + 0.5) / w; // across one repeat
       let shade = 255;
       let opaque: boolean;
-      if (row < h / 2) {
+      const band = Math.floor(row / BAND_ROWS);
+      const r = row % BAND_ROWS; // the row within its band
+      if (band === 0) {
         // a picket in the middle of its repeat, narrowing to a point at the top, and the rails right across
-        const tip = row < POINT_FROM_ROW ? 1 : (h / 2 - row) / (h / 2 - POINT_FROM_ROW);
-        const picket = row >= PICKET_FROM_ROW && Math.abs(u - 0.5) < (PICKET_SHARE / 2) * tip;
-        opaque = picket || RAILS.some(([a, b]) => row >= a && row < b);
+        const tip = r < POINT_FROM_ROW ? 1 : (BAND_ROWS - r) / (BAND_ROWS - POINT_FROM_ROW);
+        const picket = r >= PICKET_FROM_ROW && Math.abs(u - 0.5) < (PICKET_SHARE / 2) * tip;
+        opaque = picket || RAILS.some(([a, b]) => r >= a && r < b);
       } else {
         const board = Math.floor(u * BOARD_SHADES.length);
         const join = (u * BOARD_SHADES.length) % 1 < 1 / 8; // a texel's width of each board
@@ -83,6 +101,25 @@ function fenceTexture() {
     }
   const texture = new THREE.DataTexture(px, w, h);
   texture.wrapS = THREE.RepeatWrapping;
+  texture.magFilter = THREE.LinearFilter;
+  texture.minFilter = THREE.LinearMipmapLinearFilter;
+  texture.generateMipmaps = true;
+  texture.needsUpdate = true;
+  return texture;
+}
+
+/** The chain-link texture: white wires on a diamond, see-through between (the vertex colour paints it). */
+function chainTexture() {
+  const px = new Uint8Array(CHAIN_PX * CHAIN_PX * 4);
+  for (let row = 0; row < CHAIN_PX; row++)
+    for (let col = 0; col < CHAIN_PX; col++) {
+      // a diamond with its corners at the middles of the tile's edges: the wires where |x| + |y| is a half
+      const [x, y] = [(col + 0.5) / CHAIN_PX - 0.5, (row + 0.5) / CHAIN_PX - 0.5];
+      const wire = Math.abs(Math.abs(x) + Math.abs(y) - 0.5) < CHAIN_WIRE / 2;
+      px.set([255, 255, 255, wire ? 255 : 0], (row * CHAIN_PX + col) * 4);
+    }
+  const texture = new THREE.DataTexture(px, CHAIN_PX, CHAIN_PX);
+  texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
   texture.magFilter = THREE.LinearFilter;
   texture.minFilter = THREE.LinearMipmapLinearFilter;
   texture.generateMipmaps = true;
@@ -253,20 +290,28 @@ export class PlotBoundaries {
       alphaTest: 0.5,
       side: THREE.DoubleSide,
     }),
+    chain: new THREE.MeshLambertMaterial({
+      vertexColors: true,
+      map: chainTexture(),
+      alphaTest: CHAIN_ALPHA_TEST,
+      side: THREE.DoubleSide,
+    }),
   };
   readonly triangles: number;
 
   constructor(runs: readonly BoundaryRun[], { groundAt, colours = BOUNDARY_COLOURS }: PlotBoundariesOptions) {
-    const chunks = new Map<string, { boxes: Soup; panels: Soup }>();
+    const chunks = new Map<string, { boxes: Soup; panels: Soup; chain: Soup }>();
     const base = new THREE.Color();
     const shade = new THREE.Color();
     const top = new THREE.Color();
     const uv = new Array<number>(8);
     for (const run of runs) {
       const key = `${Math.floor(run.p[0] / CHUNK_M)},${Math.floor(run.p[1] / CHUNK_M)}`;
-      const chunk = chunks.get(key) ?? { boxes: new Soup(), panels: new Soup() };
+      const chunk = chunks.get(key) ?? { boxes: new Soup(), panels: new Soup(), chain: new Soup() };
       chunks.set(key, chunk);
-      const fence = run.kind === BoundaryKind.PICKET || run.kind === BoundaryKind.BOARD;
+      const band = BAND[run.kind];
+      const chainLink = run.kind === BoundaryKind.MESH;
+      const fence = band !== undefined || chainLink;
       const srgb =
         run.kind === BoundaryKind.HEDGE
           ? colours.hedge
@@ -274,13 +319,17 @@ export class PlotBoundaries {
             ? colours.picket[run.variant]
             : run.kind === BoundaryKind.BOARD
               ? colours.board[run.variant]
-              : colours.wall;
+              : run.kind === BoundaryKind.MESH
+                ? colours.mesh
+                : colours.wall;
       base.set(srgb).convertSRGBToLinear();
       const runPieces = pieces(run.p, PIECE_M[run.kind]);
       let groundBefore = 0; // the ground at the end of the piece before, where this one starts
       let alongM = 0; // along the run, so the fence texture carries on from piece to piece
-      // each piece stands just inside the plot, its outer face on the line
-      const insetM = (run.inward * WIDTH_M[run.kind]) / 2;
+      // each piece stands just inside the plot, its outer face on the line; a slim one keeps its inner face where a
+      // full one's is, and leaves the room on the line's side
+      const widthM = WIDTH_M[run.kind] * (run.slim ? 0.5 : 1);
+      const insetM = run.inward * (WIDTH_M[run.kind] - widthM / 2);
       runPieces.forEach(([px, pz, qx, qz], i) => {
         const length = Math.hypot(qx - px, qz - pz) || 1;
         const [rx, rz] = [(-(qz - pz) / length) * insetM, ((qx - px) / length) * insetM]; // to the right, times the inset
@@ -299,11 +348,14 @@ export class PlotBoundaries {
           const y1 = ground + height;
           const [tx, tz] = [(bx - ax) / length, (bz - az) / length];
           const [u0, u1] = [alongM / REPEAT_M[run.kind], (alongM + length) / REPEAT_M[run.kind]];
-          const [v0, v1] = run.kind === BoundaryKind.PICKET ? [0, 0.5] : [0.5, 1];
+          // a panel fence's band of the fence texture; the chain-link repeats its mesh up the fence too
+          const [v0, v1] = band === undefined ? [0, (y1 - y0) / REPEAT_M[run.kind]] : [band / 2, (band + 1) / 2];
           [uv[0], uv[1], uv[2], uv[3], uv[4], uv[5], uv[6], uv[7]] = [u0, v0, u1, v0, u1, v1, u0, v1];
-          chunk.panels.quad(corners(ax, y0, az, bx, y0, bz, bx, y1, bz, ax, y1, az), -tz, 0, tx, shade, uv);
+          const soup = chainLink ? chunk.chain : chunk.panels;
+          soup.quad(corners(ax, y0, az, bx, y0, bz, bx, y1, bz, ax, y1, az), -tz, 0, tx, shade, uv);
           alongM += length;
           top.copy(shade).multiplyScalar(POST_DARKER);
+          if (chainLink) box(chunk.boxes, ax, az, bx, bz, TOP_RAIL_M, y1 - TOP_RAIL_M, y1, top, false);
           const post = (x: number, z: number) =>
             box(
               chunk.boxes,
@@ -316,12 +368,12 @@ export class PlotBoundaries {
               y1 + POST_ABOVE_M,
               top,
             );
-          if (i === 0 || run.kind === BoundaryKind.PICKET) post(ax, az);
+          if (i === 0 || run.kind !== BoundaryKind.BOARD) post(ax, az);
           if (i === runPieces.length - 1) post(bx, bz);
           return;
         }
         top.copy(shade).multiplyScalar(run.kind === BoundaryKind.HEDGE ? 1 + HEDGE_TOP_LIGHTER : 1);
-        box(chunk.boxes, ax, az, bx, bz, WIDTH_M[run.kind], y0, ground + height, shade, true, top);
+        box(chunk.boxes, ax, az, bx, bz, widthM, y0, ground + height, shade, true, top);
       });
     }
     let triangles = 0;
@@ -329,6 +381,7 @@ export class PlotBoundaries {
       for (const [soup, material] of [
         [chunk.boxes, this.materials.boxes],
         [chunk.panels, this.materials.panels],
+        [chunk.chain, this.materials.chain],
       ] as const) {
         if (!soup.vertices) continue;
         const geometry = new THREE.BufferGeometry();
@@ -336,7 +389,7 @@ export class PlotBoundaries {
         geometry.setAttribute('position', new THREE.BufferAttribute(soup.position.slice(0, n), 3));
         geometry.setAttribute('normal', new THREE.BufferAttribute(soup.normal.slice(0, n), 3));
         geometry.setAttribute('color', new THREE.BufferAttribute(soup.color.slice(0, n), 3));
-        if (material === this.materials.panels)
+        if (material !== this.materials.boxes)
           geometry.setAttribute('uv', new THREE.BufferAttribute(soup.uv.slice(0, soup.vertices * 2), 2));
         geometry.computeBoundingSphere();
         const mesh = new THREE.Mesh(geometry, material);
@@ -351,7 +404,9 @@ export class PlotBoundaries {
   dispose() {
     for (const mesh of this.meshes) mesh.geometry.dispose();
     this.materials.boxes.dispose();
-    this.materials.panels.map?.dispose();
-    this.materials.panels.dispose();
+    for (const material of [this.materials.panels, this.materials.chain]) {
+      material.map?.dispose();
+      material.dispose();
+    }
   }
 }

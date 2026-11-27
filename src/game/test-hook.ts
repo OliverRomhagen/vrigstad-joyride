@@ -104,18 +104,18 @@ export function installTestHook(g: TestHookDeps) {
   }
   function plotsState() {
     const { layout, runs, draw, ms } = g.plots;
-    const boundaryM = [0, 0, 0, 0];
+    const boundaryM = [0, 0, 0, 0, 0];
     for (const r of runs)
       for (let i = 2; i < r.p.length; i += 2)
         boundaryM[r.kind] += Math.hypot(r.p[i] - r.p[i - 2], r.p[i + 1] - r.p[i - 1]);
-    const [hedge, picket, board, wall] = boundaryM.map(Math.round);
+    const [hedge, picket, board, wall, mesh] = boundaryM.map(Math.round);
     return {
       plots: layout.length,
       driveways: {
         mapped: layout.filter(p => p.driveway?.source === 'mapped').length,
         generated: layout.filter(p => p.driveway?.source === 'inferred').length,
       },
-      boundaryM: { hedge, picket, board, wall },
+      boundaryM: { hedge, picket, board, wall, mesh },
       meshes: draw.meshes.length,
       triangles: draw.triangles,
       buildMs: Math.round(ms),

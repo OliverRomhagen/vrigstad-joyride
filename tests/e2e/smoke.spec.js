@@ -177,7 +177,7 @@ test.describe('game (index.html)', () => {
     const { plots: p } = await state(page);
     expect(p.plots).toBeGreaterThan(400);
     expect(p.driveways.mapped + p.driveways.generated).toBeGreaterThan(0.95 * p.plots);
-    for (const k of ['hedge', 'picket', 'board', 'wall']) expect(p.boundaryM[k]).toBeGreaterThan(0);
+    for (const k of ['hedge', 'picket', 'board', 'wall', 'mesh']) expect(p.boundaryM[k]).toBeGreaterThan(0); // mesh: round industrial land
     expect(p.meshes).toBeGreaterThan(0);
     expect(p.meshes).toBeLessThanOrEqual(2 * 81); // boxes and fence panels per 250 m chunk of the 2200 m world, 9 × 9
     expect(p.debug).toBe(false);
