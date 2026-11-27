@@ -2,7 +2,13 @@ import { describe, expect, it } from 'vitest';
 import { BuildingIndex } from '../../../src/world/buildings';
 import { BuildingKind, LandUse, type Road, RoadClass } from '../../../src/world/data';
 import { Heightfield } from '../../../src/world/heightfield';
-import { BoundaryKind, type BoundaryRun, industrialFences, layoutBoundaries } from '../../../src/world/plot-boundaries';
+import {
+  BoundaryKind,
+  type BoundaryRun,
+  drivewaySurface,
+  industrialFences,
+  layoutBoundaries,
+} from '../../../src/world/plot-boundaries';
 import type { Plot } from '../../../src/world/plots';
 import { RoadNetwork } from '../../../src/world/roads';
 import type { Profile } from '../../../src/world/streetscape-rules';
@@ -41,6 +47,19 @@ describe('layoutBoundaries', () => {
     const kindsOn = (test: (r: BoundaryRun) => boolean) => [...new Set(runs.filter(test).map(r => r.kind))].sort();
     expect(kindsOn(onFront)).toEqual([BoundaryKind.HEDGE, BoundaryKind.PICKET, BoundaryKind.BOARD, BoundaryKind.WALL]);
     expect(kindsOn(r => !onFront(r))).toEqual([BoundaryKind.HEDGE, BoundaryKind.PICKET, BoundaryKind.BOARD]);
+  });
+
+  it('fences a plot in on every edge, or on none', () => {
+    const runs = layoutBoundaries(row(300), centre);
+    const byKey = new Map<string, BoundaryRun[]>();
+    for (const r of runs) byKey.set(r.key, [...(byKey.get(r.key) ?? []), r]);
+    for (const [key, rs] of byKey) {
+      const x0 = 20 * Number(key.slice(1));
+      expect(rs.some(onFront)).toBe(true);
+      expect(rs.some(r => zs(r).every(z => z === 40))).toBe(true);
+      expect(rs.some(r => xs(r).every(x => x === x0))).toBe(true); // west side
+      expect(rs.some(r => xs(r).every(x => x === x0 + 20))).toBe(true); // east side
+    }
   });
 
   it('leaves gaps at the driveway and at a gate opposite the house', () => {
@@ -130,7 +149,10 @@ describe('industrialFences', () => {
     expect(fences.length).toBeGreaterThan(0);
     for (const r of fences) expect(r).toMatchObject({ kind: BoundaryKind.MESH, heightM: 2.5 });
     expect(points.some(([x, z]) => z === 100 && x > 10 && x < 40)).toBe(true); // the south edge runs
-    expect(points.every(([x]) => x > 2.75 + 1)).toBe(true); // nothing on the west edge, along Industrivägen
+    // along Industrivägen on the west edge, the fence stands back from it, inside the area: 4 m clears its 2.75 m half
+    // width and 1 m
+    expect(points.every(([x]) => x > 2.75 + 1)).toBe(true);
+    expect(points.some(([x, z]) => x === 4 && z > 20 && z < 80)).toBe(true);
     expect(points.some(([x, z]) => z === 100 && Math.abs(x - 50) < 1.75 + 1)).toBe(false); // a gap at the entrance
     expect(points.some(([x, z]) => z === 0 && x > 30.5 && x < 44.5)).toBe(false); // none along the workshop
     // none within 15 m of the yard's box: a piece is kept when its middle is outside, so its end can be 1.25 m in
@@ -141,5 +163,16 @@ describe('industrialFences', () => {
       const cross = (bx - ax) * (50 - az) - (bz - az) * (50 - ax);
       expect(Math.sign(cross)).toBe(r.inward);
     }
+  });
+});
+
+describe('drivewaySurface', () => {
+  it('lays more driveways with asphalt in the centre than on the outskirts, the same for the same plot', () => {
+    const plots = row(400);
+    const asphalt = (profile: 'centre' | 'outskirts') =>
+      plots.filter(p => drivewaySurface(p, profile) === 'asphalt').length / plots.length;
+    expect(asphalt('centre')).toBeGreaterThan(0.5);
+    expect(asphalt('outskirts')).toBeLessThan(0.25);
+    expect(drivewaySurface(plots[7], 'centre')).toBe(drivewaySurface(plots[7], 'centre'));
   });
 });
