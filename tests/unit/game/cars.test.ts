@@ -264,6 +264,48 @@ describe('drive', () => {
   });
 });
 
+describe('brake lights (#304)', () => {
+  it('light while braking, and go out once stopped and released', () => {
+    const { cars } = fleet();
+    const c = car('volvo', 0, 800, 0, 'player');
+    driveFor(cars, c, 4, 1, 0, false);
+    expect(c.brk).toBe(false); // accelerating
+    cars.drive(c, 0, 0, true, DT);
+    expect(c.brk).toBe(true);
+    driveFor(cars, c, 3, 0, 0, true);
+    expect(c.v).toBe(0);
+    expect(c.brk).toBe(true); // held on at a stop, as a foot on the pedal
+    cars.drive(c, 0, 0, false, DT);
+    expect(c.brk).toBe(false);
+  });
+
+  it('stay out when coasting, and light when slowing by reverse throttle', () => {
+    const { cars } = fleet();
+    const c = car('volvo', 0, 800, 0, 'player');
+    driveFor(cars, c, 4, 1, 0, false);
+    driveFor(cars, c, 1, 0, 0, false);
+    expect(c.v).toBeGreaterThan(5);
+    expect(c.brk).toBe(false); // lifting off on the road
+    driveFor(cars, c, 0.3, -1, 0, false);
+    expect(c.brk).toBe(true); // S at speed slows harder than coasting
+  });
+
+  it('show on a traffic car slowing for a parked one, and stay on while it waits', () => {
+    const { cars } = fleet();
+    const c = Object.assign(car('volvo', 0, 500, 0, 'ai'), { ri: 0, a: 0, dir: 1, t: 400, first: true }) as TrafficCar;
+    cars.add(c);
+    for (let t = 0; t < 3; t += DT) cars.updateTraffic(c, DT); // up to speed
+    expect(c.brk).toBe(false);
+    cars.add(car('saab', c.x + Math.sin(c.h) * 10, c.z - Math.cos(c.h) * 10, c.h, 'parked')); // inside LOOK_CAR_M
+    cars.updateTraffic(c, DT);
+    expect(c.v).toBeGreaterThan(0);
+    expect(c.brk).toBe(true);
+    for (let t = 0; t < 2; t += DT) cars.updateTraffic(c, DT);
+    expect(c.v).toBe(0);
+    expect(c.brk).toBe(true);
+  });
+});
+
 describe('traffic', () => {
   it('turns back at the end of a road', () => {
     const { cars } = fleet();
