@@ -2,3 +2,5 @@
 // style, which reads the name, only loads behind ?lab=toon (src/game/render/toon-style.ts).
 /** The name of the house shells' material (walls, roofs and trim), which gives it the toon style's house ramp. Lower case: `finishOf` compares it so. */
 export const HOUSE_SHELLS_MATERIAL = 'house shells';
+/** The name of the 3D window frames' material (src/game/render/window-frames.ts), which gets the same ramp. */
+export const HOUSE_FRAMES_MATERIAL = 'house frames';
