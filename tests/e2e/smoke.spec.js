@@ -106,6 +106,34 @@ test.describe('game (index.html)', () => {
     expect(errors).toEqual([]);
   });
 
+  test('a jump against the parked Volvo pulls you up onto it, and you stand on it (#451)', async ({
+    page,
+  }, testInfo) => {
+    const errors = watchErrors(page);
+    // the Volvo parked by Torget stands at (-1.9, 33.1), nose at 0.6 rad: start at its right side, where the push out of
+    // cars leaves you against it, so a jump alone climbs it, with no run-up to time at software WebGL's frame rate
+    await page.goto('/index.html?at=-1.08,33.67,-0.97,0.3');
+    await page.setViewportSize({ width: 640, height: 360 }); // keep software WebGL affordable
+    await expectWebGL(page);
+    await page.locator('#go').click();
+    expect(await state(page)).toMatchObject({ inCar: false, floor: 0 });
+    await expect
+      .poll(
+        async () => {
+          await page.keyboard.press('Space');
+          return (await state(page)).floor;
+        },
+        { timeout: 30_000, intervals: [1000] },
+      )
+      .toBeGreaterThan(0.9);
+    await frames(page, 10);
+    const up = await state(page);
+    expect(up.floor).toBeGreaterThan(0.9); // still up there, on its roof
+    expect(up.y).toBeCloseTo(up.floor, 5);
+    await page.screenshot({ path: testInfo.outputPath('game-on-a-car.png') });
+    expect(errors).toEqual([]);
+  });
+
   test('builds the six mapped bridges and starts you on the Jönköpingsvägen deck', async ({ page }, testInfo) => {
     const errors = watchErrors(page);
     await page.goto('/index.html?at=-33.9,-8.4,1.6,0.3');

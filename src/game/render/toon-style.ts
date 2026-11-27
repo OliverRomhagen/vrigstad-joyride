@@ -110,11 +110,13 @@ export class ToonStyle {
     this.inked.add(object);
     if (!isOpaque(object.material)) return; // no lines across glass
     // read on the mesh itself, not inherited as INK_FLAG is: it says how this mesh is built
-    const dropFeet = !!object.userData[INK_NO_FEET_FLAG],
-      cache = dropFeet ? this.footlessInkGeometries : this.inkGeometries;
+    const footless = !!object.userData[INK_NO_FEET_FLAG],
+      cache = footless ? this.footlessInkGeometries : this.inkGeometries;
     let edges = cache.get(object.geometry);
     if (!edges) {
-      edges = inkEdges(object.geometry, INK_CREASE_DEG, { dropFeet });
+      edges = footless
+        ? inkEdges(object.geometry, INK_CREASE_DEG)
+        : new THREE.EdgesGeometry(object.geometry, INK_CREASE_DEG);
       cache.set(object.geometry, edges);
       this.disposeWith(cache, object.geometry, edges);
     }

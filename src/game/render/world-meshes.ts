@@ -162,6 +162,8 @@ const BOARD_M = 0.2, // the width of a timber house's panel boards in the toon s
   TIMBER_MAX_M2 = 450; // the same size that gives a house the big buildings' plaster colours
 /** how far the plinth stands out from a house's wall (m); the safehouse doors stand clear of it (render/places.ts) */
 export const PLINTH_OUT_M = 0.08;
+/** how high the plinth's top stands over the highest ground under a house (m) */
+export const PLINTH_TOP_M = 0.45;
 const CORNER_OUT_M = 0.07,
   EAVE_M = 0.35, // how far a gabled roof runs on past the walls
   FASCIA_M = 0.15, // the depth of the board at its edge
@@ -349,7 +351,7 @@ export function addBuildings(
         }
         const ya = yAt(a),
           yd = yAt(d),
-          py = hi + 0.45,
+          py = hi + PLINTH_TOP_M,
           [p1x, p1z, p2x, p2z] = o(PLINTH_OUT_M),
           OUT: Corner = [ox, 0, oz];
         if (boardSeams && !b.k && area <= TIMBER_MAX_M2) {
@@ -478,7 +480,7 @@ export function addBuildings(
       wallDrop,
     }).mesh;
     shells.userData[INK_FLAG] = true; // the toon style inks the houses' corners and roof edges too
-    shells.userData[INK_NO_FEET_FLAG] = true; // but not the walls' feet, which the ground buries
+    shells.userData[INK_NO_FEET_FLAG] = true; // but not their feet: the walls' in the ground, the corner boards' on the plinth
     scene.add(shells);
     // the window skin: the trim is in the shells now (#413)
     const sg = new THREE.BufferGeometry();
