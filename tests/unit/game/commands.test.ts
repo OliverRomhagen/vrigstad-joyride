@@ -433,6 +433,35 @@ describe('commands', () => {
       expect(runs()).toBe(0);
     });
 
+    it('counts an outcome a hook returns instead of calling next as a refusal, even one that says it was done', () => {
+      const { c, park, runs } = garage();
+      park();
+      const seen: Outcome[] = [];
+      c.use((_call, next) => {
+        const outcome = next();
+        seen.push(outcome);
+        return outcome;
+      });
+      c.use(() => ({ ok: true, text: 'Cached.', code: 'not-checked' }));
+      expect(c.execute('enter')).toEqual({ ok: false, text: 'Cached.', code: REFUSAL.HOOK });
+      expect(seen).toEqual([{ ok: false, text: 'Cached.', code: REFUSAL.HOOK }]);
+      expect(runs()).toBe(0);
+    });
+
+    it('checks the name of a refusal a hook makes up as it checks refuse()', () => {
+      const c = new Commands();
+      c.register('kr', { help: 'money', run: () => 'Rich.' });
+      c.use(() => ({ ok: false, text: 'No.', code: 'Not_Kebab' }));
+      expect(() => c.execute('kr')).toThrow('kebab-case');
+    });
+
+    it('names a refusal a hook makes up without a name hook', () => {
+      const c = new Commands();
+      c.register('kr', { help: 'money', run: () => 'Rich.' });
+      c.use(() => ({ ok: false, text: 'No.' }));
+      expect(c.execute('kr')).toEqual({ ok: false, text: 'No.', code: REFUSAL.HOOK });
+    });
+
     it('gives a hook that calls next twice the same outcome, from one run', () => {
       const { c, runs } = garage();
       const seen: Outcome[] = [];
