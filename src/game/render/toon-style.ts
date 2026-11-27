@@ -87,6 +87,8 @@ export class ToonStyle {
   private readonly toons = new WeakMap<THREE.Material, THREE.MeshToonMaterial>();
   private readonly toonArrays = new WeakMap<THREE.Material[], THREE.Material[]>();
   private readonly inkGeometries = new WeakMap<THREE.BufferGeometry, THREE.BufferGeometry>();
+  // apart, so a geometry two meshes share gets each its own lines, whichever is inked first
+  private readonly footlessInkGeometries = new WeakMap<THREE.BufferGeometry, THREE.BufferGeometry>();
   private readonly inked = new WeakSet<THREE.Mesh>();
   private readonly inkMaterial = new THREE.LineBasicMaterial({
     color: INK_COLOR,
@@ -108,11 +110,14 @@ export class ToonStyle {
     if (!(object instanceof THREE.Mesh) || this.inked.has(object)) return;
     this.inked.add(object);
     if (!isOpaque(object.material)) return; // no lines across glass
-    let edges = this.inkGeometries.get(object.geometry);
+    // read on the mesh itself, not inherited as INK_FLAG is: it says how this mesh is built
+    const dropFeet = !!object.userData[INK_NO_FEET_FLAG],
+      cache = dropFeet ? this.footlessInkGeometries : this.inkGeometries;
+    let edges = cache.get(object.geometry);
     if (!edges) {
-      edges = inkEdges(object.geometry, INK_CREASE_DEG, { dropFeet: !!object.userData[INK_NO_FEET_FLAG] });
-      this.inkGeometries.set(object.geometry, edges);
-      this.disposeWith(object.geometry, edges);
+      edges = inkEdges(object.geometry, INK_CREASE_DEG, { dropFeet });
+      cache.set(object.geometry, edges);
+      this.disposeWith(cache, object.geometry, edges);
     }
     const lines = new THREE.LineSegments(edges, this.inkMaterial);
     lines.renderOrder = 10;
@@ -151,10 +156,14 @@ export class ToonStyle {
   }
 
   /** Frees a geometry's ink lines with it, so line buffers don't build up as meshes come and go. */
-  private disposeWith(source: THREE.BufferGeometry, edges: THREE.BufferGeometry) {
+  private disposeWith(
+    cache: WeakMap<THREE.BufferGeometry, THREE.BufferGeometry>,
+    source: THREE.BufferGeometry,
+    edges: THREE.BufferGeometry,
+  ) {
     const dispose = () => {
       source.removeEventListener('dispose', dispose);
-      this.inkGeometries.delete(source);
+      cache.delete(source);
       edges.dispose();
     };
     source.addEventListener('dispose', dispose);

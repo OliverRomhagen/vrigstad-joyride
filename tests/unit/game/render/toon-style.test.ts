@@ -181,6 +181,28 @@ test('only a mesh that asks for it loses the line along its open feet', () => {
   expect(segments(shells)).toBe(3);
 });
 
+test('two meshes that share a geometry each get their own lines, with and without feet, and the flag is not inherited', () => {
+  const g = new THREE.BufferGeometry();
+  g.setAttribute(
+    'position',
+    new THREE.Float32BufferAttribute([0, 0, 0, 4, 0, 0, 4, 3, 0, 0, 0, 0, 4, 3, 0, 0, 3, 0], 3),
+  );
+  const scene = new THREE.Scene(),
+    group = new THREE.Group(),
+    prop = new THREE.Mesh(g, new THREE.MeshLambertMaterial()),
+    shells = new THREE.Mesh(g, new THREE.MeshLambertMaterial()),
+    child = new THREE.Mesh(g, new THREE.MeshLambertMaterial());
+  for (const o of [prop, shells, group]) o.userData[INK_FLAG] = true;
+  shells.userData[INK_NO_FEET_FLAG] = true;
+  group.userData[INK_NO_FEET_FLAG] = true; // on a group it says nothing about the meshes under it
+  group.add(child);
+  scene.add(prop, shells, group);
+  new ToonStyle({ render: () => {} }).render(scene, camera);
+  const segments = (mesh: THREE.Mesh) =>
+    (mesh.children[0] as THREE.LineSegments).geometry.getAttribute('position').count / 2;
+  expect([segments(prop), segments(shells), segments(child)]).toEqual([4, 3, 4]);
+});
+
 test('ink lines stay on far-off parts of a mesh, and are pulled towards the camera to show over the corner boards', () => {
   // the village shells are one mesh at the origin with world-coordinate vertices: scaling lines about it moved them
   const scene = new THREE.Scene(),

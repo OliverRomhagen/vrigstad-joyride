@@ -89,6 +89,14 @@ test('a ledge keeps the edge where it meets the wall, and its open foot goes', (
   expect(s.some(e => level(e) && lowestY(e) === 0)).toBe(false); // the foot, in the ground
 });
 
+test('a triangle with no area gives no line and takes none away', () => {
+  // the wall again, with a sliver along its top whose three corners are two points
+  const pos = [0, 0, 0, 4, 0, 0, 4, 3, 0, 0, 0, 0, 4, 3, 0, 0, 3, 0, 0, 3, 0, 4, 3, 0, 4, 3, 0];
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  expect(segments(inkEdges(g, 34))).toHaveLength(4);
+});
+
 test('the same corners in an indexed geometry give the same lines', () => {
   const box = new THREE.BoxGeometry(1, 2, 3);
   expect(segments(inkEdges(box, 34)).length).toBe(segments(inkEdges(box.toNonIndexed(), 34)).length);
