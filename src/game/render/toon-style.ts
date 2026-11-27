@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { col } from '../../world/three-legacy';
 import { HOUSE_SHELLS_MATERIAL } from './house-materials';
 import { inkEdges } from './ink-edges';
 import { INK_COLOR, INK_FLAG, INK_NO_FEET_FLAG } from './ink-flag';
@@ -142,7 +143,7 @@ export class ToonStyle {
   private readonly inkNearM: number;
   private readonly eye = new THREE.Vector3(); // the camera, this frame
   private readonly inkMaterial = new THREE.LineBasicMaterial({
-    color: INK_COLOR,
+    color: col(INK_COLOR), // the frames' rims and the board seams draw this colour in sRGB too; colour management is off
     transparent: true,
     opacity: INK_OPACITY,
     depthWrite: false,

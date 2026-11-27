@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { col } from '../../world/three-legacy';
 import { HOUSE_FRAMES_MATERIAL } from './house-materials';
+import { INK_COLOR } from './ink-flag';
 
 // 3D window frames near the camera, for the toon style (#413): a ring and a sill standing out from the wall over each
 // painted window, so the frames get the toon style's bands and some depth. The village has ~36 500 windows, ~660 of them
@@ -47,7 +48,7 @@ const DEPTH_M = 0.06; // how far the ring stands out
 export const WINDOW_GLASS = '#304d61';
 const SILL_DEPTH_M = 0.1;
 const FRAME = col('#f1efe8'), // col(): the vertex colours are linear, and colour management is off (world/three-legacy.ts)
-  INK = col('#10151c'), // the toon style's line colour (toon-style.ts)
+  INK = col(INK_COLOR), // the toon style's line colour
   GLASS = col(WINDOW_GLASS); // as the art direction mocks' windows
 const GLASS_Z_M = 0.03; // the pane sits back in the frame
 
