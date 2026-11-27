@@ -180,6 +180,7 @@ test.describe('game (index.html)', () => {
     for (const k of ['hedge', 'picket', 'board', 'wall', 'mesh']) expect(p.boundaryM[k]).toBeGreaterThan(0); // mesh: round industrial land
     expect(p.meshes).toBeGreaterThan(0);
     expect(p.meshes).toBeLessThanOrEqual(2 * 81); // boxes and fence panels per 250 m chunk of the 2200 m world, 9 × 9
+    expect(p.drivewayMeshes).toBeGreaterThan(0); // asphalt and gravel on the driveways
     expect(p.debug).toBe(false);
     await page.locator('#go').click();
     await frames(page, 5);

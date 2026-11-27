@@ -35,7 +35,8 @@ import { houseFronts } from '../world/furniture/houses';
 import { layoutPlots, propertyLineM } from '../world/plots';
 import { PlotOutlines } from '../world/mesh/plot-outlines';
 import { PlotBoundaries } from '../world/mesh/plot-boundaries';
-import { industrialFences, layoutBoundaries } from '../world/plot-boundaries';
+import { drivewaySurface, industrialFences, layoutBoundaries } from '../world/plot-boundaries';
+import { DrivewaySurfaces } from '../world/mesh/driveways';
 import { treeSpots } from '../world/trees';
 import { layoutShore } from '../world/shore';
 import { Water } from '../world/water';
@@ -334,8 +335,9 @@ const plots = (function () {
   const mailboxes = furniture.layout.placements.filter(p => p.kind === 'mailbox' || p.kind === 'mailbox-stand');
   const runs = [...layoutBoundaries(layout, ri => street.sides[ri].profile, mailboxes), ...industrialFences({ data: D, roads, buildings, keepOut: yard.outlines, inWater })];
   const draw = new PlotBoundaries(runs, { groundAt }); scene.add(...draw.meshes);
+  const drives = new DrivewaySurfaces(layout, { groundAt, surfaceOf: p => drivewaySurface(p, street.sides[p.ri].profile) }); scene.add(...drives.meshes);
   if (DEBUG_PLOTS) scene.add(new PlotOutlines(layout, groundAt).mesh);
-  return { layout, runs, draw, ms: street.plotMs + performance.now() - t0 };
+  return { layout, runs, draw, drives, ms: street.plotMs + performance.now() - t0 };
 })();
 
 // the kiosk's and the cats' menus (src/game/kiosk-cat-menus.ts); trisslott is declared further down

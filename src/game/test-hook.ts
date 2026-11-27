@@ -50,6 +50,7 @@ export interface TestHookDeps {
     layout: readonly Pick<Plot, 'driveway'>[];
     runs: readonly Pick<BoundaryRun, 'kind' | 'p'>[];
     draw: { meshes: readonly unknown[]; triangles: number };
+    drives: { meshes: readonly unknown[] };
     ms: number;
   };
   debugPlots: boolean;
@@ -103,7 +104,7 @@ export function installTestHook(g: TestHookDeps) {
     };
   }
   function plotsState() {
-    const { layout, runs, draw, ms } = g.plots;
+    const { layout, runs, draw, drives, ms } = g.plots;
     const boundaryM = [0, 0, 0, 0, 0];
     for (const r of runs)
       for (let i = 2; i < r.p.length; i += 2)
@@ -117,6 +118,7 @@ export function installTestHook(g: TestHookDeps) {
       },
       boundaryM: { hedge, picket, board, wall, mesh },
       meshes: draw.meshes.length,
+      drivewayMeshes: drives.meshes.length,
       triangles: draw.triangles,
       buildMs: Math.round(ms),
       debug: g.debugPlots,
