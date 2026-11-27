@@ -287,6 +287,7 @@ const PERSON_TALL_M = 1.85; // a standard person, to the top of the head
 const CAR_TALL_M = 1.5;
 const WALL_PROBE_M = 0.05; // the radius of the circle that feels for a wall
 const SLOPE_STEP_M = 0.5; // the ground's slope where a shot lands is read over this distance
+const AIM_ROUNDS = 4; // aimAtMoving: the drift and the time in the air settle each other in this many rounds
 export const SHOTS_MAX = 256; // in the air at once
 
 /** One shot in the air. Metres and m/s; y is up. */
@@ -738,7 +739,6 @@ export function aimAtMoving(
   }
   return aimAt(speedMs, x, y, z, ax, ty, az, out);
 }
-const AIM_ROUNDS = 4;
 
 /**
  * The soft lock: the person or car nearest to where you look, by the angle from the heading `yaw`, within `coneRad`
