@@ -35,6 +35,14 @@ export type VehicleSpec = {
   widthM: number;
   /** How far the body's middle lies ahead of the car's origin, where its wheels are measured from (m); 0 if left out. */
   bodyAheadM?: number;
+  /**
+   * What you can stand on (#451), in m above the ground: the body's top at its ends (bonnet, boot or load bed), and its
+   * roof, which runs from `roofRearM` to `roofFrontM` along the car, in m ahead of its middle (behind it is negative).
+   */
+  deckM: number;
+  roofM: number;
+  roofRearM: number;
+  roofFrontM: number;
   handling: Handling;
   /** How the body moves on its springs; only rendering reads it. */
   suspension: Suspension;
@@ -53,6 +61,11 @@ export const VEHICLE_SPECS: Readonly<Record<CarType, VehicleSpec>> = {
     cols: ['#27406b', '#7a2530', '#c9bd9c', '#e6e4dc', '#2f5a41', '#8a8f93'],
     lengthM: 4.8,
     widthM: 1.74,
+    // from the procedural model's profile (render/models.ts), whose x runs from the nose back, so these are its -x
+    deckM: 0.98,
+    roofM: 1.54,
+    roofRearM: -1.95,
+    roofFrontM: 0.35,
     handling: { wheelbaseM: 2.95, rearAxleM: 1.45, steerResponseS: 0.13, throttleResponseS: 0.25 },
     suspension: {
       freqHz: 1.3,
@@ -73,6 +86,10 @@ export const VEHICLE_SPECS: Readonly<Record<CarType, VehicleSpec>> = {
     cols: ['#1d1d1f', '#8c1c1c', '#3d5a80', '#d8d4c8', '#55606a'],
     lengthM: 4.6,
     widthM: 1.7,
+    deckM: 0.93,
+    roofM: 1.45,
+    roofRearM: -0.75,
+    roofFrontM: 0.3,
     handling: { wheelbaseM: 2.8, rearAxleM: 1.35, steerResponseS: 0.1, throttleResponseS: 0.18 },
     suspension: {
       freqHz: 1.6,
@@ -93,6 +110,10 @@ export const VEHICLE_SPECS: Readonly<Record<CarType, VehicleSpec>> = {
     cols: ['#c8372d', '#2a2a2c', '#e8a020', '#3f6b8a'],
     lengthM: 4.8,
     widthM: 1.74,
+    deckM: 0.98, // the load bed, as the bonnet
+    roofM: 1.56,
+    roofRearM: -0.35,
+    roofFrontM: 0.7,
     handling: { wheelbaseM: 2.9, rearAxleM: 1.4, steerResponseS: 0.16, throttleResponseS: 0.37 },
     suspension: {
       freqHz: 1.2,
@@ -113,6 +134,10 @@ export const VEHICLE_SPECS: Readonly<Record<CarType, VehicleSpec>> = {
     cols: ['#2f7a3a', '#b5302a', '#2a5fa0'],
     lengthM: 3.8,
     widthM: 1.9,
+    deckM: 1.52, // the bonnet; the cab's roof over the rear wheels
+    roofM: 2.72,
+    roofRearM: -1.52,
+    roofFrontM: 0.02,
     handling: { wheelbaseM: 2.4, rearAxleM: 0.9, steerResponseS: 0.26, throttleResponseS: 0.5 },
     suspension: {
       freqHz: 2.2,
@@ -133,6 +158,10 @@ export const VEHICLE_SPECS: Readonly<Record<CarType, VehicleSpec>> = {
     cols: ['#f1f1ee'],
     lengthM: 4.8,
     widthM: 1.74,
+    deckM: 0.98,
+    roofM: 1.54,
+    roofRearM: -1.95,
+    roofFrontM: 0.35,
     handling: { wheelbaseM: 2.95, rearAxleM: 1.45, steerResponseS: 0.08, throttleResponseS: 0.14 },
     suspension: {
       freqHz: 1.8,
@@ -154,6 +183,10 @@ export type ModelOverrides = {
   length?: number;
   width?: number;
   bodyAhead?: number;
+  height?: number; // the roof's height (m), from the car's spec sheet: what you stand on up there (#451)
+  // where its roof runs, in m ahead of its middle (behind it is negative), measured on the model: a model needn't have its type's shape
+  roofRear?: number;
+  roofFront?: number;
   handling?: Partial<Pick<Handling, 'steerResponseS' | 'throttleResponseS'>>;
   suspension?: Partial<Suspension>;
 };
@@ -177,6 +210,9 @@ export function specFor(type: CarType, model?: ModelOverrides): VehicleSpec {
     !model?.length &&
     !model?.width &&
     !model?.bodyAhead &&
+    !model?.height &&
+    model?.roofRear === undefined &&
+    model?.roofFront === undefined &&
     !model?.handling &&
     !model?.suspension
   )
@@ -215,6 +251,10 @@ function mergeModel(type: CarType, base: VehicleSpec, model: ModelOverrides): Ve
     lengthM: model.length ?? base.lengthM,
     widthM: model.width ?? base.widthM,
     bodyAheadM: model.bodyAhead ?? base.bodyAheadM,
+    roofM: model.height ?? base.roofM,
+    // the model's own roof, else the type's, kept in its place on a model of another length
+    roofRearM: model.roofRear ?? (base.roofRearM * (model.length ?? base.lengthM)) / base.lengthM,
+    roofFrontM: model.roofFront ?? (base.roofFrontM * (model.length ?? base.lengthM)) / base.lengthM,
     handling: {
       ...base.handling,
       ...model.handling,
