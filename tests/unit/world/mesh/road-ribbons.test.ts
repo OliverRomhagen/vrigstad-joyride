@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 import { BridgeIndex } from '../../../../src/world/bridges';
 import { ROAD_WIDTH_M, RoadClass, Surface } from '../../../../src/world/data';
-import { RoadRibbons, TILE_M } from '../../../../src/world/mesh/road-ribbons';
+import { RoadRibbons, SURFACE_BLEND_M, TILE_M } from '../../../../src/world/mesh/road-ribbons';
 import { type Point, RoadNetwork, roadLiftM } from '../../../../src/world/roads';
 import { makeWorld } from '../fixture';
 
@@ -159,10 +159,10 @@ describe('RoadRibbons after the move to polyline.ts', () => {
 });
 
 describe('RoadRibbons by surface (#399)', () => {
-  // two streets in one class mesh: a mapped paving one and an untagged one, which surfaceOf makes asphalt
+  // two streets in one class mesh, apart: a mapped paving one and an untagged one, which surfaceOf makes asphalt
   const lines = [
     { c: RoadClass.STREET, n: '', p: [0, 0, 30, 0], sf: Surface.PAVING },
-    { c: RoadClass.STREET, n: '', p: [30, 0, 30, 30] },
+    { c: RoadClass.STREET, n: '', p: [40, 0, 40, 30] },
   ];
   const ribbons = new RoadRibbons(new RoadNetwork(makeWorld({ r: lines }), terrainAt(0)), terrainAt(0), {
     asphalt: new THREE.Texture(),
@@ -195,6 +195,53 @@ describe('RoadRibbons by surface (#399)', () => {
     for (let i = 0; i < pos.count; i++) {
       expect(uv.getX(i)).toBeCloseTo(pos.getX(i) / TILE_M, 5);
       expect(uv.getY(i)).toBeCloseTo(pos.getZ(i) / TILE_M, 5);
+    }
+  });
+});
+
+describe('RoadRibbons where the surface changes (#399)', () => {
+  // a gravel track leaving the middle of an asphalt street, north from (0, 0), and a second street continuing the first
+  const lines = [
+    { c: RoadClass.STREET, n: '', p: [-30, 0, 0, 0, 30, 0] },
+    { c: RoadClass.TRACK, n: '', p: [0, 0, 0, -30] },
+    { c: RoadClass.STREET, n: '', p: [30, 0, 60, 0] },
+  ];
+  const ribbons = new RoadRibbons(new RoadNetwork(makeWorld({ r: lines }), terrainAt(0)), terrainAt(0), {
+    asphalt: new THREE.Texture(),
+    surfaceColours: SURFACE_COLOURS,
+    centreLineColour: 0xffffff,
+  });
+  const meshOf = (c: RoadClass) =>
+    ribbons.meshes.find(m => m.geometry.getAttribute('color') && m.renderOrder === 6 - c)!;
+  const colourAt = (m: THREE.Mesh, i: number) => {
+    const col = m.geometry.getAttribute('color');
+    return new THREE.Color(col.getX(i), col.getY(i), col.getZ(i));
+  };
+  const asphalt = ribbons.surfaceColour(Surface.ASPHALT),
+    gravel = ribbons.surfaceColour(Surface.GRAVEL);
+
+  it('fades the softer road in from the harder one over SURFACE_BLEND_M, and no further', () => {
+    const track = meshOf(RoadClass.TRACK),
+      pos = track.geometry.getAttribute('position');
+    let atJunction = 0;
+    for (let i = 0; i < pos.count; i++) {
+      const along = -pos.getZ(i), // the track runs north from the junction, towards -z
+        c = colourAt(track, i);
+      if (along < 0.01) {
+        atJunction++;
+        expect(c.r).toBeCloseTo(asphalt.r, 5);
+      } else if (along >= SURFACE_BLEND_M) expect(c.r).toBeCloseTo(gravel.r, 5);
+      else expect(c.r).toBeGreaterThan(Math.min(asphalt.r, gravel.r) - 1e-6);
+    }
+    expect(atJunction).toBeGreaterThan(0);
+  });
+
+  it('leaves the harder road, and roads meeting one of their own surface, as they are', () => {
+    const streets = meshOf(RoadClass.STREET),
+      n = streets.geometry.getAttribute('color').count;
+    for (let i = 0; i < n; i++) {
+      const c = colourAt(streets, i);
+      for (const k of ['r', 'g', 'b'] as const) expect(c[k]).toBeCloseTo(asphalt[k], 6); // stored as float32
     }
   });
 });

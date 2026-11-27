@@ -1,9 +1,9 @@
 import '../three-legacy';
 import * as THREE from 'three';
-import { ROAD_WIDTH_M, type Surface, surfaceOf } from '../data';
+import { ROAD_WIDTH_M, Surface, surfaceOf } from '../data';
 import type { Heightfield } from '../heightfield';
 import { resample, ribbonEdges, STEP_M } from '../polyline';
-import { type Point, type RoadNetwork, roadLiftM } from '../roads';
+import { nodeKey, type Point, type RoadNetwork, roadLiftM } from '../roads';
 
 export interface RoadRibbonOptions {
   /** a light tile that the road colours tint, repeating every TILE_M in world x and z; it stays the caller's */
@@ -17,6 +17,23 @@ export interface RoadRibbonOptions {
   /** roads that draw their own surface and get no ribbon: the footbridges, whose decks are the walking surface */
   skip?: (ri: number) => boolean;
 }
+
+/**
+ * where a road meets one of a harder surface at its end, its colour fades in from that road's over this far (m), on the
+ * softer road's side, so a gravel track leaving a street doesn't step (#399). Colours are per vertex and the ribbons are
+ * sampled every STEP_M, so the fade shows over the first sample step: up to STEP_M on a long straight.
+ */
+export const SURFACE_BLEND_M = 4;
+/** how soft each surface is, for which side of a surface change fades: the softer one; equal ones don't fade */
+const SOFTNESS: Readonly<Record<Surface, number>> = {
+  [Surface.UNKNOWN]: 0,
+  [Surface.ASPHALT]: 0,
+  [Surface.CONCRETE]: 0,
+  [Surface.PAVING]: 1,
+  [Surface.GRAVEL]: 2,
+  [Surface.UNPAVED]: 3,
+  [Surface.GRASS]: 3,
+};
 
 /** bridge roads are cut every metre, so the ribbon follows the deck's crest (m) */
 const BRIDGE_STEP_M = 1;
@@ -55,6 +72,8 @@ export class RoadRibbons {
     this.surfaceColours = surfaceColours;
     const positions: number[][] = Array.from({ length: CENTRE_LINE + 1 }, () => []);
     const colours: number[][] = Array.from({ length: CENTRE_LINE }, () => []);
+    // each ribbon vertex's distance along its road (m), for the fades; filled by ribbon() when asked
+    let arcs: number[] | null = null;
     const ribbon = (ri: number, out: number[], points: Point[], width: number, lift: number) => {
       const onBridge = heightOf?.(ri, points[0][0], points[0][1], lift) !== undefined;
       const q = resample(points, onBridge ? BRIDGE_STEP_M : STEP_M);
@@ -62,7 +81,10 @@ export class RoadRibbons {
         (onBridge ? heightOf?.(ri, x, z, lift) : undefined) ?? heightfield.heightAt(x, z) + lift;
       let pl: number[] = [];
       let pr: number[] = [];
+      let along = 0;
+      let before = 0;
       for (let i = 0; i < q.length; i++) {
+        if (i > 0) along += Math.hypot(q[i][0] - q[i - 1][0], q[i][1] - q[i - 1][1]);
         const { lx, lz, rx, rz } = ribbonEdges(q, i, width);
         const l = [lx, y(lx, lz), lz];
         const r = [rx, y(rx, rz), rz];
@@ -87,18 +109,49 @@ export class RoadRibbons {
             pr[1],
             pr[2],
           );
+          arcs?.push(before, along, along, before, along, before); // pl, l, r, pl, r, pr
         }
         pl = l;
         pr = r;
+        before = along;
       }
+      return along;
     };
+    const surfaces = roads.lines.map(r => surfaceOf(r));
+    const atNode = new Map<string, number[]>();
+    roads.lines.forEach((r, ri) => {
+      if (skip?.(ri)) return;
+      for (const p of r.p) {
+        const k = nodeKey(p);
+        const list = atNode.get(k);
+        if (!list) atNode.set(k, [ri]);
+        else if (!list.includes(ri)) list.push(ri);
+      }
+    });
+    // the hardest surface of another road at point p, if it's harder than road ri's: what ri fades in from there
+    const fadeFrom = (ri: number, p: Point) => {
+      let from: Surface | null = null;
+      for (const o of atNode.get(nodeKey(p)) ?? [])
+        if (SOFTNESS[surfaces[o]] < SOFTNESS[from ?? surfaces[ri]]) from = surfaces[o];
+      return from === null ? null : this.surfaceColour(from);
+    };
+    const _c = new THREE.Color();
     roads.lines.forEach((r, ri) => {
       if (skip?.(ri)) return;
       const out = positions[r.c],
-        from = out.length,
-        c = this.surfaceColour(surfaceOf(r));
-      ribbon(ri, out, r.p, ROAD_WIDTH_M[r.c], roadLiftM(r.c));
-      for (let k = from; k < out.length; k += 3) colours[r.c].push(c.r, c.g, c.b);
+        own = this.surfaceColour(surfaces[ri]),
+        start = fadeFrom(ri, r.p[0]),
+        end = fadeFrom(ri, r.p[r.p.length - 1]);
+      arcs = start || end ? [] : null;
+      const length = ribbon(ri, out, r.p, ROAD_WIDTH_M[r.c], roadLiftM(r.c));
+      const n = (out.length - colours[r.c].length) / 3;
+      for (let k = 0; k < n; k++) {
+        _c.copy(own);
+        if (arcs && start) _c.lerpColors(start, _c, Math.min(1, arcs[k] / SURFACE_BLEND_M));
+        if (arcs && end) _c.lerpColors(end, _c, Math.min(1, (length - arcs[k]) / SURFACE_BLEND_M));
+        colours[r.c].push(_c.r, _c.g, _c.b);
+      }
+      arcs = null;
       if (r.c < 2) ribbon(ri, positions[CENTRE_LINE], r.p, CENTRE_LINE_WIDTH_M, CENTRE_LINE_LIFT_M);
     });
 
