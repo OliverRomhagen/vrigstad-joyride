@@ -163,6 +163,7 @@ export function installTestHook(g: TestHookDeps) {
         displayCar = g.displayCar;
       return {
         started: game.started,
+        paused: game.paused,
         lab: g.labs,
         cockpit: g.cockpit,
         styled: g.styled,
