@@ -376,7 +376,6 @@ debugOverlay?.registerCommands(commands);
 registerDayCommands(commands, dayClock, dayPace, () => daylight.apply(skyAt(dayClock, sky)));   // time <hour>
 
 // ---------- pause menu: Esc or the Menu button stops the game and shows the settings (src/game/pause-menu.ts) ----------
-// storage is a getter: reading localStorage itself throws where storage is blocked, and the menu catches that
 const pause = new PauseMenu({ root: $('pause'), canvas, behind: [$('ui'), $('kmenu')], game, get input() { return input; } });
 mount(SettingsPanel, { target: $('pause-settings'), props: { settings, reload: () => location.reload() } });
 $('menu').addEventListener('click', () => pause.open());

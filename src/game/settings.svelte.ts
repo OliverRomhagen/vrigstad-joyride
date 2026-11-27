@@ -149,9 +149,14 @@ export class Settings {
     this.listeners.set(setting.id, list);
   }
 
-  /** Whether a setting that only applies on a reload differs from what the page loaded with. */
+  /** The settings that only apply on a reload and differ from what the page loaded with, in the menu's order. */
+  get waitingForReload(): Setting[] {
+    return Object.values(SETTINGS).filter(s => s.needsReload && this.values[s.id] !== this.loaded[s.id]);
+  }
+
+  /** Whether any setting waits for a reload. */
   get reloadPending(): boolean {
-    return Object.values(SETTINGS).some(s => s.needsReload && this.values[s.id] !== this.loaded[s.id]);
+    return this.waitingForReload.length > 0;
   }
 
   private write(setting: Setting, value: boolean | number) {
@@ -180,18 +185,16 @@ function accept(setting: SettingDef, value: unknown): boolean | number | undefin
   return Math.min(setting.max, Math.max(setting.min, value));
 }
 
-// the saved values, by id: from an entry of this version, else from the first pause menu's entry; nothing from anything else
+// the saved values, by id: from an entry of this version, with the first pause menu's entry filling the ids it lacks
+// (an entry saved before look speed moved here holds only the graphics); nothing from anything else
 function read(storage: SettingsStorage | null): Record<string, unknown> {
   try {
-    const saved = parse(storage?.getItem(SETTINGS_KEY));
-    if (saved) {
-      if (saved.version !== VERSION) return {};
-      const values = saved.values;
-      return values && typeof values === 'object' ? (values as Record<string, unknown>) : {};
-    }
-    const legacy = parse(storage?.getItem(LEGACY_SETTINGS_KEY));
-    if (!legacy) return {};
-    return { [SETTINGS.LOOK_SPEED.id]: legacy.lookSpeed, [SETTINGS.INVERT_LOOK.id]: legacy.invertY };
+    const saved = parse(storage?.getItem(SETTINGS_KEY)),
+      legacy = parse(storage?.getItem(LEGACY_SETTINGS_KEY)),
+      values = saved?.version === VERSION && saved.values && typeof saved.values === 'object' ? saved.values : null;
+    if (saved && !values) return {}; // a later or broken shape: the defaults, rather than half of what it says
+    const old = legacy ? { [SETTINGS.LOOK_SPEED.id]: legacy.lookSpeed, [SETTINGS.INVERT_LOOK.id]: legacy.invertY } : {};
+    return { ...old, ...values };
   } catch {
     return {}; // storage can be blocked (private modes, embeds): the defaults still work
   }

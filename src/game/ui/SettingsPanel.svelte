@@ -15,6 +15,9 @@ const groups = Object.values(SETTING_GROUPS).map(group => ({
   group,
   settings: Object.values(SETTINGS).filter(s => s.group.id === group.id),
 }));
+const names = new Intl.ListFormat('en', { type: 'conjunction' });
+// "Cel-shaded style", or "A and B": the settings waiting for a reload, named in the note
+const waiting = $derived(names.format(settings.waitingForReload.map(s => s.label)));
 </script>
 
 {#each groups as { group, settings: list } (group.id)}
@@ -28,9 +31,7 @@ const groups = Object.values(SETTING_GROUPS).map(group => ({
   </section>
 {/each}
 {#if settings.reloadPending}
-  <p class="note" id="settings-reload-note">
-    The cel-shaded style changes when the page reloads, and the game starts over.
-  </p>
+  <p class="note" id="settings-reload-note">{waiting}: applies when the page reloads, and the game starts over.</p>
   <button type="button" class="reload" aria-describedby="settings-reload-note" onclick={reload}>
     <RotateCw size={14} aria-hidden="true" />
     Reload to apply

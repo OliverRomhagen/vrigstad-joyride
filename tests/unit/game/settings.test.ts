@@ -56,6 +56,13 @@ describe('Settings', () => {
     expect(new Settings(storage(undefined, { lookSpeed: null, invertY: 'yes' })).get(SETTINGS.LOOK_SPEED)).toBe(1);
     const both = new Settings(storage({ version: 1, values: { 'look-speed': 0.5 } }, { lookSpeed: 2 }));
     expect(both.get(SETTINGS.LOOK_SPEED)).toBe(0.5); // the new entry wins
+    // an entry saved before look speed moved into the store holds only the graphics: the old entry fills the rest
+    const graphicsOnly = new Settings(
+      storage({ version: 1, values: { outlines: false } }, { lookSpeed: 2, invertY: true }),
+    );
+    expect(graphicsOnly.get(SETTINGS.LOOK_SPEED)).toBe(2);
+    expect(graphicsOnly.get(SETTINGS.INVERT_LOOK)).toBe(true);
+    expect(graphicsOnly.get(SETTINGS.OUTLINES)).toBe(false);
   });
 
   it('saves a change, and the next page load reads it back', () => {
@@ -98,6 +105,7 @@ describe('Settings', () => {
     expect(settings.reloadPending).toBe(false);
     settings.set(SETTINGS.CEL_SHADED, false);
     expect(settings.reloadPending).toBe(true);
+    expect(settings.waitingForReload).toEqual([SETTINGS.CEL_SHADED]);
     settings.set(SETTINGS.CEL_SHADED, true); // back to what the page has
     expect(settings.reloadPending).toBe(false);
   });
