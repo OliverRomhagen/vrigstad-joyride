@@ -1064,7 +1064,7 @@ export class Pickadoll {
     for (const e of ammo.effects)
       switch (e.kind) {
         case EffectKind.SPLAT:
-          if (e.onPeople) fx.splatOnPerson(n.mesh, dx, dz, y, splatM * e.sizeK, colour, turn);
+          if (e.onPeople) fx.splatOnPerson(n.mesh, dx, dz, y, splatM * e.sizeK, colour, turn, isHead);
           break;
         case EffectKind.STARE:
           crowd.stare(n, 0.1, e.s * (isHead ? HEAD_STARE_K : 1));

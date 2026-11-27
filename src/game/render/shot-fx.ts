@@ -30,6 +30,12 @@ const BODY_HALF_DEPTH_M = 0.15,
   BODY_LOW_M = 0.9,
   BODY_HIGH_M = 1.4,
   BODY_SPLAT_MAX_M = 0.2;
+// a headshot's splat goes on the head's box instead (personParts in ./models.ts: 0.27 m, its middle 1.62 m up), and
+// smaller, to fit a face
+const HEAD_SPLAT_OUT_M = 0.14, // 5 mm off the head's faces (0.135), as the body's sit off the torso, and inside the hair's
+  HEAD_LOW_M = 1.6, // no lower, or its lower edge hangs in the air under the chin: the model has no neck
+  HEAD_HIGH_M = 1.7,
+  HEAD_SPLAT_MAX_M = 0.12;
 
 export interface ShotFxDeps {
   scene: THREE.Scene;
@@ -311,25 +317,36 @@ export class ShotFx {
   }
 
   /** Leaves a splat on a person's body, on the side the shot came from: (dx, dz) is the way the shot flew, `y` its height. */
-  splatOnPerson(person: THREE.Object3D, dx: number, dz: number, y: number, r: number, colour: string, turn: number) {
+  splatOnPerson(
+    person: THREE.Object3D,
+    dx: number,
+    dz: number,
+    y: number,
+    r: number,
+    colour: string,
+    turn: number,
+    isHead = false, // a headshot: on the head, not the body
+  ) {
     person.updateWorldMatrix(true, false);
     // the way back to the shooter, in the person's own axes
     _n.set(-dx, 0, -dz).transformDirection(_m.copy(person.matrixWorld).invert());
     const up = THREE.MathUtils.clamp(
-      _p.set(person.position.x, y, person.position.z).applyMatrix4(_m).y,
-      BODY_LOW_M,
-      BODY_HIGH_M,
-    );
+        _p.set(person.position.x, y, person.position.z).applyMatrix4(_m).y,
+        isHead ? HEAD_LOW_M : BODY_LOW_M,
+        isHead ? HEAD_HIGH_M : BODY_HIGH_M,
+      ),
+      halfDepth = isHead ? HEAD_SPLAT_OUT_M : BODY_HALF_DEPTH_M,
+      halfWidth = isHead ? HEAD_SPLAT_OUT_M : BODY_HALF_WIDTH_M;
     const mesh = this.stick(colour);
     if (Math.abs(_n.z) >= Math.abs(_n.x)) {
-      mesh.position.set(0, up, Math.sign(_n.z) * BODY_HALF_DEPTH_M);
+      mesh.position.set(0, up, Math.sign(_n.z) * halfDepth);
       _n.set(0, 0, Math.sign(_n.z) || 1);
     } else {
-      mesh.position.set(Math.sign(_n.x) * BODY_HALF_WIDTH_M, up, 0);
+      mesh.position.set(Math.sign(_n.x) * halfWidth, up, 0);
       _n.set(Math.sign(_n.x), 0, 0);
     }
     mesh.quaternion.setFromUnitVectors(Z, _n).multiply(_spin.setFromAxisAngle(Z, turn * Math.PI * 2));
-    mesh.scale.setScalar(Math.min(r, BODY_SPLAT_MAX_M) * 2);
+    mesh.scale.setScalar(Math.min(r, isHead ? HEAD_SPLAT_MAX_M : BODY_SPLAT_MAX_M) * 2);
     person.add(mesh);
   }
 
