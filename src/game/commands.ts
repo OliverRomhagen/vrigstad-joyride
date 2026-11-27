@@ -180,9 +180,10 @@ export class Commands {
     if (!cmd || name === undefined || !this.canRun(cmd)) return [];
     // the words before the cursor that name a subcommand lead to it; the cursor's word may be one
     const found = descend(name, cmd, words.slice(1));
-    if (found.cmd.subcommands) return found.args.length ? [] : fits(Object.keys(found.cmd.subcommands)).sort();
+    // a group offers its subcommands for the first word, and what its own arguments offer when it runs by itself
     const before = found.args;
-    return fits(found.cmd.complete?.(before.length, before) ?? []).sort();
+    const below = found.cmd.subcommands && before.length === 0 ? Object.keys(found.cmd.subcommands) : [];
+    return fits([...below, ...(found.cmd.complete?.(before.length, before) ?? [])]).sort();
   }
 
   /** The usage line of the command a line starts with (`go <place> [speed]`), for the hint under the input. */

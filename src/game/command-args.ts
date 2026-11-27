@@ -26,7 +26,11 @@ export type ArgValues<A extends readonly AnyArg[]> = {
     : never;
 };
 
-const arg = <N extends string, T>(name: N, parse: (word: string) => T, choices?: () => readonly string[]) => ({
+/**
+ * An argument of a type of your own, beside the code that owns the value: `arg('hour', w => …)` reads `16:30`. `parse`
+ * throws a UsageError, starting with the name, for a word it can't use; `choices` are the words Tab offers.
+ */
+export const arg = <N extends string, T>(name: N, parse: (word: string) => T, choices?: () => readonly string[]) => ({
   name,
   optional: false as const,
   rest: false,
@@ -77,10 +81,9 @@ export function toggle<N extends string>(name: N): Arg<N, boolean> {
 
 // a choice with this many options or fewer lists them when a word doesn't match: the console on a phone has no Tab
 const CHOICES_LISTED = 8;
+const sorted = (all: readonly string[]) => [...all].sort((a, b) => a.localeCompare(b, 'sv'));
 const pickOneOf = (all: readonly string[]) =>
-  all.length > 0 && all.length <= CHOICES_LISTED
-    ? ` Pick one of: ${[...all].sort((a, b) => a.localeCompare(b, 'sv')).join(', ')}.`
-    : '';
+  all.length > 0 && all.length <= CHOICES_LISTED ? ` Pick one of: ${sorted(all).join(', ')}.` : '';
 
 /**
  * One of a set of words, in any case: `choice('place', () => [...places.keys()])`. A function is read on every use, so
@@ -100,6 +103,38 @@ export function choice<N extends string, C extends string>(
       return found;
     },
     list,
+  );
+}
+
+/**
+ * One argument that is either of two: `either('when', num('hour'), choice('moment', ['dawn', 'dusk']))` reads `16.5` as a
+ * number and `dusk` as a word. The first that parses the word wins, so put the stricter one first. Tab offers the
+ * choices of both. A word neither takes gets the first one's error, then the second's choices when they are few enough
+ * to list, else its error. More than two nest: `either('a', x, either('b', y, z))`.
+ */
+export function either<N extends string, T, U>(name: N, first: Arg<string, T>, second: Arg<string, U>): Arg<N, T | U> {
+  const lists = [first, second].flatMap(a => (a.choices ? [a.choices.bind(a)] : []));
+  return arg<N, T | U>(
+    name,
+    w => {
+      try {
+        return first.parse(w);
+      } catch (firstErr) {
+        if (!(firstErr instanceof UsageError)) throw firstErr;
+        try {
+          return second.parse(w);
+        } catch (secondErr) {
+          if (!(secondErr instanceof UsageError)) throw secondErr;
+          const all = second.choices?.() ?? [];
+          const or =
+            all.length > 0 && all.length <= CHOICES_LISTED
+              ? `Or one of: ${sorted(all).join(', ')}.`
+              : secondErr.message;
+          throw new UsageError(`${firstErr.message} ${or}`);
+        }
+      }
+    },
+    lists.length ? () => lists.flatMap(list => list()) : undefined,
   );
 }
 
@@ -190,7 +225,7 @@ export function command<const A extends readonly AnyArg[]>(spec: TypedCommand<A>
   };
 }
 
-export interface GroupSpec {
+export interface GroupSpec<A extends readonly AnyArg[] = readonly []> {
   help: string;
   details?: string;
   examples?: readonly string[];
@@ -198,24 +233,46 @@ export interface GroupSpec {
   aliases?: readonly string[];
   /** the commands under it, by the word that picks one: `{ set: command({ … }) }` */
   subcommands: Readonly<Record<string, Command>>;
+  /** with `run`: the group's own arguments, for a line whose first word names no subcommand */
+  args?: A;
+  /** with `args`: what the group does by itself, as a command()'s run: `time` and `time 16:30` beside `time hold` */
+  run?(values: ArgValues<A>, call: Call): string;
 }
 
 /**
- * A command that only holds others: `tune set driving.grip 8` runs the `set` under `tune`. Typed on its own, or with a
- * word that names none of them, it shows its usage line, which lists them.
+ * A command that holds others: `tune set driving.grip 8` runs the `set` under `tune`. Typed on its own, or with a word
+ * that names none of them, it shows its usage line, which lists them. Given `args` and `run`, it runs by itself then
+ * instead: `time` and `time 16:30` beside `time hold`. A word that names a subcommand always picks it, so the group's
+ * first argument can't have one of those names among its choices.
  */
-export function group(spec: GroupSpec): Command {
+export function group<const A extends readonly AnyArg[] = readonly []>(spec: GroupSpec<A>): Command {
   const names = Object.keys(spec.subcommands).sort();
-  return {
+  const below = `<${names.join('|')}> …`;
+  const shared = {
     help: spec.help,
     details: spec.details,
     examples: spec.examples,
     access: spec.access,
     aliases: spec.aliases,
     subcommands: spec.subcommands,
-    usage: `<${names.join('|')}> …`,
-    run: words => {
-      throw new UsageError(words[0] ? `No subcommand called ${words[0]}.` : '');
-    },
+  };
+  if (!spec.args !== !spec.run) throw new Error('a group that runs by itself needs both args and run');
+  if (!spec.args || !spec.run)
+    return {
+      ...shared,
+      usage: below,
+      run: words => {
+        throw new UsageError(words[0] ? `No subcommand called ${words[0]}.` : '');
+      },
+    };
+  const hidden = spec.args[0]?.choices?.().find(c => names.includes(c.toLowerCase()));
+  if (hidden !== undefined) throw new Error(`${hidden} names a subcommand, so the group's own argument never gets it`);
+  const own = command({ help: spec.help, args: spec.args, run: spec.run });
+  return {
+    ...shared,
+    usage: own.usage ? `${own.usage} | ${below}` : below,
+    params: own.params,
+    complete: own.complete,
+    run: own.run,
   };
 }
