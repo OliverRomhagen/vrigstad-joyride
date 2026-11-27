@@ -161,7 +161,7 @@ geometric and screenshot verification, not physical-phone performance or final
 human silhouette/livery approval.
 
 Uniform inherited wheel scales are supported; bake nonuniform ancestor scales
-in Blender before export. No model-specific collision changes are made.
+in Blender before export.
 
 ## Delivery and checks
 
@@ -203,5 +203,9 @@ approval claim. Physical mobile/Safari performance, final silhouette/livery
 approval and traffic placement decisions remain for human review.
 
 The body hitbox reads the delivered length and specification width from the
-vehicle registry; it is a box rather than an exact match to the body surface.
+vehicle registry; it is a capsule rather than an exact match to the body surface.
+Wheels and `rearAxle` are measured from the model's origin, which is not always the
+middle of its length: `bodyAhead` moves the hitbox to the middle (the civilian XC70
+0.058 m back, the police XC70 0.035 m forward for its bull bar, the Duett 0.258 m back).
+An asset test checks both the delivered length and that centre within 5 mm.
 Physics/collision calibration remains a separate gameplay decision.

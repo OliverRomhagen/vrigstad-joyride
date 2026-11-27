@@ -33,6 +33,8 @@ export type VehicleSpec = {
   /** The body's length and width (m, no mirrors): its hitbox (sim/car-body.ts). */
   lengthM: number;
   widthM: number;
+  /** How far the body's middle lies ahead of the car's origin, where its wheels are measured from (m); 0 if left out. */
+  bodyAheadM?: number;
   handling: Handling;
   /** How the body moves on its springs; only rendering reads it. */
   suspension: Suspension;
@@ -151,6 +153,7 @@ export type ModelOverrides = {
   rearAxle?: number;
   length?: number;
   width?: number;
+  bodyAhead?: number;
   handling?: Partial<Pick<Handling, 'steerResponseS' | 'throttleResponseS'>>;
   suspension?: Partial<Suspension>;
 };
@@ -173,6 +176,7 @@ export function specFor(type: CarType, model?: ModelOverrides): VehicleSpec {
     !model?.rearAxle &&
     !model?.length &&
     !model?.width &&
+    !model?.bodyAhead &&
     !model?.handling &&
     !model?.suspension
   )
@@ -210,6 +214,7 @@ function mergeModel(type: CarType, base: VehicleSpec, model: ModelOverrides): Ve
     ...base,
     lengthM: model.length ?? base.lengthM,
     widthM: model.width ?? base.widthM,
+    bodyAheadM: model.bodyAhead ?? base.bodyAheadM,
     handling: {
       ...base.handling,
       ...model.handling,
