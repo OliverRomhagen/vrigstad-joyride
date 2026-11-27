@@ -2,6 +2,7 @@
 // Crashes (#40), knocking down pedestrians (#35), food (#30), drink (#16) and cat scratches build on hurt / heal / damageCar.
 import { command, int, optional, toggle } from './command-args';
 import type { Commands } from './commands';
+import { type CarMods, damageShare } from './sim/upgrades';
 
 export const HP_MAX = 100;
 /** The health a korv me brö from the kiosk gives back, in health points (of HP_MAX). */
@@ -94,6 +95,7 @@ export const crackLevel = (dmg: number) =>
 
 export interface Crashable extends Damageable {
   hitAt: number; // clock (s) of the car's last hit, for CRASH_COOL_S
+  mods: CarMods; // a reinforced body takes less of the damage (sim/upgrades.ts)
 }
 
 export interface CrashHit<C extends Crashable> {
@@ -122,7 +124,7 @@ export function crashCars<C extends Crashable>(
     if (nowS - car.hitAt < CRASH_COOL_S) continue;
     car.hitAt = nowS;
     const smoke = smokeLevel(car.dmg),
-      w = !spared(car) && damageCar(car, d);
+      w = !spared(car) && damageCar(car, d * damageShare(car.mods));
     hits.push({ car, wrecked: w, smokeUp: !w && smokeLevel(car.dmg) > smoke });
   }
   return hits;

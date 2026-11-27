@@ -9,6 +9,7 @@ import {
   type Spike,
   type SpikeWorld,
   stepSpikes,
+  wheelOver,
 } from '../../../../src/game/sim/spikes';
 
 const flat = () => 0;
@@ -42,13 +43,13 @@ describe('dropSpike', () => {
 describe('stepSpikes', () => {
   it('is used up by a car that rolls over it, and left alone by one that stands on it', () => {
     const spikes = [spike()],
-      parked = { x: 0.5, z: 0, v: 0 },
+      parked = { x: 0.5, z: 0, v: 0, h: 0 },
       out = newSpikeStep();
     stepSpikes(spikes, 0.1, world({ cars: [parked] }), out);
     expect(out).toMatchObject({ cars: [], changed: false });
     parked.v = -3; // reversing counts
-    stepSpikes(spikes, 0.1, world({ cars: [{ x: 9, z: 9, v: 10 }, parked] }), out);
-    expect(out).toMatchObject({ cars: [1], changed: true });
+    stepSpikes(spikes, 0.1, world({ cars: [{ x: 9, z: 9, v: 10, h: 0 }, parked] }), out);
+    expect(out).toMatchObject({ cars: [1], wheels: [0], changed: true }); // the spike at the origin is on its left
     expect(spikes).toEqual([]);
   });
 
@@ -77,7 +78,7 @@ describe('stepSpikes', () => {
     const out = stepSpikes(
       [spike()],
       0.1,
-      world({ cars: [{ x: 0, z: 0, v: 5 }], people: [{ x: 0, z: 0 }], walker: { x: 0, z: 0 } }),
+      world({ cars: [{ x: 0, z: 0, v: 5, h: 0 }], people: [{ x: 0, z: 0 }], walker: { x: 0, z: 0 } }),
       newSpikeStep(),
     );
     expect(out).toMatchObject({ cars: [0], people: [], walker: false });
@@ -96,5 +97,17 @@ describe('stepSpikes', () => {
     stepSpikes(spikes, 0.1, world({ people: [{ x: 0, z: 0 }], walker: { x: 0, z: 0 } }), out);
     stepSpikes(spikes, 0.1, world(), out);
     expect(out).toEqual(newSpikeStep());
+  });
+});
+
+describe('wheelOver', () => {
+  it('names the wheel on the side of the car the point is on', () => {
+    const north = { x: 0, z: 0, h: 0 },
+      east = { x: 0, z: 0, h: Math.PI / 2 };
+    expect(wheelOver(north, { x: -0.8, z: -1.2 })).toBe(0); // front left
+    expect(wheelOver(north, { x: 0.8, z: -1.2 })).toBe(1); // front right
+    expect(wheelOver(north, { x: -0.8, z: 1.2 })).toBe(2); // rear left
+    expect(wheelOver(north, { x: 0.8, z: 1.2 })).toBe(3); // rear right
+    expect(wheelOver(east, { x: 1.2, z: 0.8 })).toBe(1); // facing east, south is on the right
   });
 });
