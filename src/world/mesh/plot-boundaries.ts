@@ -52,12 +52,13 @@ const BAND_ROWS = 64;
 const BAND: Partial<Record<BoundaryKind, number>> = { 1: 0, 2: 1 };
 /**
  * the chain-link texture: one diamond mesh, CHAIN_PX square, repeating both ways every REPEAT_M[MESH]; its wires are
- * this share of a mesh thick. Its own alphaTest is low, so the wires thin out with distance rather than vanishing at
- * once, as a real one does; the posts and the top rail carry the fence's line far off.
+ * this share of a mesh thick. It is blended, not alpha-tested: the mipmaps average the thin wires to a faint alpha a few
+ * metres off, which a test would throw away whole, while blended it becomes the grey haze a real fence is from afar.
+ * Only fully empty texels are discarded (CHAIN_ALPHA_TEST), so the gaps write no depth close up.
  */
 const CHAIN_PX = 32;
 const CHAIN_WIRE = 0.09;
-const CHAIN_ALPHA_TEST = 0.3;
+const CHAIN_ALPHA_TEST = 0.02;
 /** the chain-link fence's top rail: this thick and tall (m) */
 const TOP_RAIL_M = 0.05;
 /** the picket half's rows, from the bottom: the picket starts above the ground (the panel is sunk SINK_M), rails, point */
@@ -293,6 +294,7 @@ export class PlotBoundaries {
     chain: new THREE.MeshLambertMaterial({
       vertexColors: true,
       map: chainTexture(),
+      transparent: true,
       alphaTest: CHAIN_ALPHA_TEST,
       side: THREE.DoubleSide,
     }),
@@ -393,7 +395,8 @@ export class PlotBoundaries {
           geometry.setAttribute('uv', new THREE.BufferAttribute(soup.uv.slice(0, soup.vertices * 2), 2));
         geometry.computeBoundingSphere();
         const mesh = new THREE.Mesh(geometry, material);
-        mesh.castShadow = true;
+        // the chain-link's shadow would be a solid block at the shadow map's resolution: its posts and rail cast one
+        mesh.castShadow = material !== this.materials.chain;
         mesh.receiveShadow = true;
         this.meshes.push(mesh);
         triangles += soup.vertices / 3;

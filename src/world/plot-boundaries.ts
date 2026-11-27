@@ -64,7 +64,7 @@ const STREET_STYLE_SHARE = 0.5;
 /** a hedge is between these heights (m), by edge; the other kinds have one height each (m) */
 const HEDGE_MIN_M = 0.9;
 const HEDGE_SPREAD_M = 0.7;
-const HEIGHT_M: Record<BoundaryKind, number> = { 0: 0, 1: 0.9, 2: 1.4, 3: 0.6, 4: 2 };
+const HEIGHT_M: Record<BoundaryKind, number> = { 0: 0, 1: 0.9, 2: 1.4, 3: 0.6, 4: 2.5 };
 /** a picket or board fence is white or grey (variant 0) or falu red (1), falu red with this chance, by plot */
 const FALU_SHARE: Record<BoundaryKind, number> = { 0: 0, 1: 0.3, 2: 0.6, 3: 0, 4: 0 };
 /**

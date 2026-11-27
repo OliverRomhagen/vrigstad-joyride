@@ -21,7 +21,11 @@ describe('PlotBoundaries', () => {
     slim.dispose();
     const mesh = new PlotBoundaries([run(BoundaryKind.MESH, [0, 0, 2.5, 0])], { groundAt: () => 0 });
     const chain = mesh.meshes.find(m => m.material === mesh.materials.chain)!;
-    expect(mesh.materials.chain.alphaTest).toBeLessThan(mesh.materials.panels.alphaTest);
+    // blended, so the wires fade to a haze with distance instead of vanishing under a test, and casting no shadow
+    expect(mesh.materials.chain.transparent).toBe(true);
+    expect(mesh.materials.chain.alphaTest).toBeLessThan(0.1);
+    expect(chain.castShadow).toBe(false);
+    expect(mesh.meshes.filter(m => m !== chain).every(m => m.castShadow)).toBe(true); // its posts and rail do
     const v = chain.geometry.getAttribute('uv');
     const vs = Array.from({ length: v.count }, (_, i) => v.getY(i));
     expect(Math.max(...vs)).toBeCloseTo((1 * 1 + 0.15) / 0.08, 6); // the mesh repeats up the fence, 8 cm a diamond

@@ -128,7 +128,7 @@ describe('industrialFences', () => {
 
   it('fences the edge with a tall mesh fence, on the area side, leaving gaps at roads, buildings and yards', () => {
     expect(fences.length).toBeGreaterThan(0);
-    for (const r of fences) expect(r).toMatchObject({ kind: BoundaryKind.MESH, heightM: 2 });
+    for (const r of fences) expect(r).toMatchObject({ kind: BoundaryKind.MESH, heightM: 2.5 });
     expect(points.some(([x, z]) => z === 100 && x > 10 && x < 40)).toBe(true); // the south edge runs
     expect(points.every(([x]) => x > 2.75 + 1)).toBe(true); // nothing on the west edge, along Industrivägen
     expect(points.some(([x, z]) => z === 100 && Math.abs(x - 50) < 1.75 + 1)).toBe(false); // a gap at the entrance
