@@ -73,7 +73,7 @@ import { buildStage, SUN_DIR, setUpRenderer } from './render/stage';
 import { ToonStyle } from './render/toon-style';
 import { mount } from 'svelte';
 import { Settings, SETTINGS } from './settings.svelte';
-import GraphicsSettings from './ui/GraphicsSettings.svelte';
+import SettingsPanel from './ui/SettingsPanel.svelte';
 import { addBridges, addBuildings, addRoadRibbons, addStreetscapeMeshes, addTerrain, addTrees, addWater } from './render/world-meshes';
 import { WINDOW_FRAMES_COARSE_M, WINDOW_FRAMES_M } from './render/window-frames';
 import { type CarType, specFor } from './sim/vehicle-spec';
@@ -377,7 +377,8 @@ registerDayCommands(commands, dayClock, dayPace, () => daylight.apply(skyAt(dayC
 
 // ---------- pause menu: Esc or the Menu button stops the game and shows the settings (src/game/pause-menu.ts) ----------
 // storage is a getter: reading localStorage itself throws where storage is blocked, and the menu catches that
-const pause = new PauseMenu({ root: $('pause'), canvas, behind: [$('ui'), $('kmenu')], game, get input() { return input; }, get storage() { return localStorage; } });
+const pause = new PauseMenu({ root: $('pause'), canvas, behind: [$('ui'), $('kmenu')], game, get input() { return input; } });
+mount(SettingsPanel, { target: $('pause-settings'), props: { settings, reload: () => location.reload() } });
 $('menu').addEventListener('click', () => pause.open());
 
 // ---------- input: keys, mouse look and the touch controls (src/game/input.ts) ----------
@@ -387,7 +388,7 @@ const input = new Input({ win: window, doc: document, canvas, $, coarse, menuKey
   action: () => action(), respawn: () => respawn(), rain: () => cashRain.makeItRain(), toggleView: () => cockpit?.toggle(),
   jump: () => { if (jumpOk()) game.jumpQ = true; },   // queue only where a jump can start (see jumpOk)
   look: (dx, dy) => { if (game.paused) return; // a drag that began before the pause would turn the camera all at once on Resume
-    const { lookSpeed, invertY } = pause.settings; dx *= lookSpeed; dy *= invertY ? -lookSpeed : lookSpeed;
+    const lookSpeed = settings.get(SETTINGS.LOOK_SPEED); dx *= lookSpeed; dy *= settings.get(SETTINGS.INVERT_LOOK) ? -lookSpeed : lookSpeed;
     if (game.inCar) { view.lookOff = wrap(view.lookOff + dx * 0.006); view.lookIdle = 0; } else view.camYaw = wrap(view.camYaw + dx * 0.006);
     view.camPitch = clamp(view.camPitch + dy * 0.004, 0.06, 1.25); },
   zoom: f => cameraRig.zoom(f),
@@ -443,7 +444,6 @@ if (celShaded) {
   settings.watch(SETTINGS.OUTLINES, on => { toonStyle.ink = on; });
   loop.drawThrough(toonStyle);
 }
-mount(GraphicsSettings, { target: $('settings'), props: { settings, reload: () => location.reload() } });   // under Start on the intro card
 loop.start();
 
 // ---------- test hook: read-only state for the smoke tests (src/game/test-hook.ts) ----------

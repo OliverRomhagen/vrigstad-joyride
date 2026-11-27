@@ -294,17 +294,18 @@ test.describe('game (index.html)', () => {
     expect(errors).toEqual([]);
   });
 
-  test('Graphics on the intro card turns the cel-shaded style off after a reload, and the choice is kept', async ({
-    page,
-  }) => {
+  test('the pause menu turns the cel-shaded style off after a reload, and the choice is kept', async ({ page }) => {
     await page.setViewportSize({ width: 640, height: 360 }); // checks only the hook; keep software WebGL affordable
     const errors = watchErrors(page);
     await page.goto('/index.html');
-    await page.getByText('Graphics').click();
+    await page.locator('#go').click();
+    await page.getByRole('button', { name: 'Menu' }).click();
+    await expect(page.getByRole('switch', { name: /Outlines/ })).toBeEnabled();
     const celShaded = page.getByRole('switch', { name: /Cel-shaded style/ });
     await expect(celShaded).toBeChecked();
     await expect(page.getByRole('button', { name: 'Reload to apply' })).toBeHidden();
     await celShaded.uncheck();
+    await expect(page.getByRole('switch', { name: /Outlines/ })).toBeDisabled(); // the ink is the cel-shaded style's
     // the houses are built for one look or the other; wait for the new page's load, not the old one's
     await Promise.all([page.waitForEvent('load'), page.getByRole('button', { name: 'Reload to apply' }).click()]);
     await page.locator('#go').click();
