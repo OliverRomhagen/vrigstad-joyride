@@ -54,7 +54,7 @@ const isOpaque = (material: MeshMaterial) =>
 
 export function finishOf(material: THREE.Material): Finish {
   const name = material.name.toLowerCase();
-  if (name === HOUSE_SHELLS_MATERIAL) return 'house';
+  if (name === HOUSE_SHELLS_MATERIAL) return 'house'; // the window frames stay on the paint ramp, as the painted windows do (#413)
   if (/glass|glazing|window/.test(name)) return 'glass';
   if (/lamp|lens|beam|indicator|reflector/.test(name)) return 'lamp';
   if (/rubber|tire|tyre|weatherstrip/.test(name)) return 'rubber';

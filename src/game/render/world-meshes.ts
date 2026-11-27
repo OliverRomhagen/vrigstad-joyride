@@ -25,6 +25,7 @@ import type { WaterBodies } from '../../world/water-shapes';
 import { HOUSE_SHELLS_MATERIAL } from './house-materials';
 import { INK_COLOR, INK_FLAG, INK_NO_FEET_FLAG } from './ink-flag';
 import { mergeGeo } from './models';
+import { WINDOW_GLASS, WINDOW_TILE_M, WindowFrames, windowRun } from './window-frames';
 
 // ---------- terrain ----------
 const SKIRT_DEPTH_M = 1.5; // the skirt round the edge, and the far ground plane, sit this far below height 0
@@ -155,7 +156,7 @@ export function addBridges(scene: THREE.Scene, bridges: BridgeIndex, heightfield
 // house details: windows (a texture on a skin just outside the walls), and in the shell's own mesh, so they have edges for the
 // toon style's lines (#413): a dark plinth and white corner boards standing out from the walls, eaves that run on past the
 // walls of gabled roofs, ending in a white fascia board, a white board under flat roofs, and a chimney on gabled roofs
-const WIN_W = 2.6,
+const WIN_W = WINDOW_TILE_M,
   STOREY = 2.8; // window spacing and storey height (m)
 const BOARD_M = 0.2, // the width of a timber house's panel boards in the toon style (m)
   BOARD_SEAM_ALPHA = 0.28,
@@ -165,6 +166,7 @@ export const PLINTH_OUT_M = 0.08;
 /** how high the plinth's top stands over the highest ground under a house (m) */
 export const PLINTH_TOP_M = 0.45;
 const CORNER_OUT_M = 0.07,
+  TOON_CORNER_OUT_M = 0.16, // the toon style's posts, as thick as they're wide, as in the art direction mocks
   EAVE_M = 0.35, // how far a gabled roof runs on past the walls
   FASCIA_M = 0.15, // the depth of the board at its edge
   FLAT_BOARD_OUT_M = 0.06;
@@ -179,13 +181,32 @@ export interface BuildingMeshOptions {
   flatWalls?: boolean;
   /** The seams between the panel boards on timber houses, for the toon style (#413). */
   boardSeams?: boolean;
+  /**
+   * Painted windows with the 3D windows' glass and no cross bars, so the two match where the frames start, and square
+   * corner posts, as thick as they're wide, as in the art direction mocks (#413).
+   */
+  toonWindows?: boolean;
+  /** Draw 3D frames over the painted windows within this many metres of the camera (render/window-frames.ts); 0 for none. */
+  windowFramesM?: number;
 }
-/** The house shells in their colours with their trim, and one mesh of windows. Rolls rnd() once or twice per house, in data order. */
+/**
+ * The house shells in their colours with their trim, and one mesh of windows. Rolls rnd() once or twice per house, in data
+ * order. Returns the 3D window frames, for the frame loop to `update` with the camera's position, or null without them.
+ */
 export function addBuildings(
   scene: THREE.Scene,
   D: WorldData,
   heightfield: Heightfield,
-  { rnd, pick, maxAnisotropy, skip = [], flatWalls = false, boardSeams = false }: BuildingMeshOptions,
+  {
+    rnd,
+    pick,
+    maxAnisotropy,
+    skip = [],
+    flatWalls = false,
+    boardSeams = false,
+    toonWindows = false,
+    windowFramesM = 0,
+  }: BuildingMeshOptions,
 ) {
   const isSkipped = (p: readonly number[]) => skip.some(s => inPoly(p as number[], s.x, s.z));
   const hAt = (x: number, z: number) => heightfield.heightAt(x, z);
@@ -195,13 +216,16 @@ export function addBuildings(
     const x = cv.getContext('2d')!,
       u = (v: number) => (v / WIN_W) * 128,
       y = (v: number) => 128 - (v / STOREY) * 128;
+    x.translate(u(WIN_W / 2 - 1.3), 0); // the window below is drawn for a 2.6 m tile: centred in the wider one
     x.fillStyle = '#f1efe8';
     x.fillRect(u(0.8), y(2.15), u(1), y(0.9) - y(2.15)); // frame: 1.0 x 1.25 m, sill 0.9 m up
-    x.fillStyle = '#26323a';
+    x.fillStyle = toonWindows ? WINDOW_GLASS : '#26323a';
     x.fillRect(u(0.88), y(2.07), u(0.84), y(0.98) - y(2.07));
-    x.fillStyle = '#f1efe8';
-    x.fillRect(u(1.265), y(2.07), u(0.07), y(0.98) - y(2.07));
-    x.fillRect(u(0.88), y(1.75), u(0.84), y(1.68) - y(1.75)); // cross bars
+    if (!toonWindows) {
+      x.fillStyle = '#f1efe8';
+      x.fillRect(u(1.265), y(2.07), u(0.07), y(0.98) - y(2.07));
+      x.fillRect(u(0.88), y(1.75), u(0.84), y(1.68) - y(1.75)); // cross bars
+    }
     const t = new THREE.CanvasTexture(cv);
     t.wrapS = t.wrapT = THREE.RepeatWrapping;
     t.colorSpace = THREE.SRGBColorSpace;
@@ -210,13 +234,15 @@ export function addBuildings(
     t.minFilter = THREE.LinearFilter;
     return t; // mips average the mostly transparent tile below alphaTest, so windows would vanish at a distance
   })();
-  (() => {
+  // the frames hold only their own copy of the windows, so the arrays built here can go once this returns
+  return (() => {
     const c = new THREE.Color(),
       c2 = new THREE.Color(),
       c3 = new THREE.Color(),
       paint = { wall: c, wallFoot: c3, roof: c2 };
     const wp: number[] = [],
       wu: number[] = [],
+      frames: number[] = [], // each window's centre, facing and size, for WindowFrames
       bp: number[] = [], // the board seams' skin, its positions and uvs
       bu: number[] = [],
       WHITE = col('#f1efe8'),
@@ -370,7 +396,7 @@ export function addBuildings(
         if (boarded(shape)) untrimmedSeams(shape);
         return;
       }
-      const { building: b, ring, yAt, roofY, base, top, hi, winding: wind } = shape;
+      const { building: b, area, ring, yAt, roofY, base, top, hi, winding: wind } = shape;
       const m = ring.length,
         yb = hi + 0.2,
         yt = top - 0.25,
@@ -408,15 +434,38 @@ export function addBuildings(
           // whether that line still runs from a's end to d's: on a wall shorter than what its mitres at inside corners
           // take off it, its ends swap places
           forwards = (k: number) => len + mitre(prev, 1, k) + mitre(next, -1, k) > 0;
-        const nwin = Math.round(len / WIN_W); // whole windows only: the tile stretches a little to fit the wall
-        if (len >= 1.6 && nwin > 0) {
+        const run = windowRun(len, area > TIMBER_MAX_M2); // whole windows only, off the corners: the tile stretches a little to fit
+        if (run) {
+          const nwin = run.count;
           // from d to a where the outline runs the other way, so its front faces out, as the shell's walls do: the shadow's
           // normalBias moves the lookup along the normal, into the wall's own shadow when it points in. The tile is
           // symmetric, so it needs no mirroring
-          const [s1x, s1z, s2x, s2z] = o(0.04, false);
+          const [w1x, w1z, w2x, w2z] = o(0.04, false),
+            s1x = w1x + ux * run.start,
+            s1z = w1z + uz * run.start,
+            s2x = w2x - ux * run.start,
+            s2z = w2z - uz * run.start;
           if (wind > 0) quad(wp, s2x, s2z, s1x, s1z, yb, yt, yb, yt);
           else quad(wp, s1x, s1z, s2x, s2z, yb, yt, yb, yt);
           wu.push(0, 0, nwin, 0, nwin, rows, 0, 0, nwin, rows, 0, rows);
+          if (windowFramesM) {
+            // where the tile puts each window: centred along its stretched tile, its frame 0.9-2.15 m up a 2.8 m storey
+            const tw = run.tile,
+              th = (yt - yb) / rows,
+              facing = Math.atan2(ox, oz);
+            for (let k = 0; k < nwin; k++)
+              for (let r = 0; r < rows; r++) {
+                const along = run.start + (k + 0.5) * tw;
+                frames.push(
+                  a.x + ux * along + ox * 0.04,
+                  yb + (r + 1.525 / STOREY) * th,
+                  a.z + uz * along + oz * 0.04,
+                  facing,
+                  (tw * 1.0) / WIN_W,
+                  (th * 1.25) / STOREY,
+                );
+              }
+          }
         }
         const ya = yAt(a),
           yd = yAt(d),
@@ -485,7 +534,8 @@ export function addBuildings(
           );
         }
         if (short) continue;
-        const board = o(CORNER_OUT_M);
+        const cornerOut = toonWindows ? TOON_CORNER_OUT_M : CORNER_OUT_M,
+          board = o(cornerOut);
         for (const [v, p, s] of [
           [a, ring[(i + m - 1) % m], 1],
           [d, ring[(i + 2) % m], -1],
@@ -495,8 +545,8 @@ export function addBuildings(
             fz = s > 0 ? v.z - p.z : p.z - v.z,
             fl = Math.hypot(fx, fz) || 1;
           if (Math.abs((fx * uz - fz * ux) / fl) < 0.3) continue;
-          // the front starts at the mitre with the next wall's board, so the two close the corner
-          const k = Math.min(0.18, len / 2),
+          // the front starts at the mitre with the next wall's board, so the two close the corner; square posts in the toon style
+          const k = Math.min(toonWindows ? TOON_CORNER_OUT_M : 0.18, len / 2),
             cx = board[s > 0 ? 0 : 2],
             cz = board[s > 0 ? 1 : 3],
             ex2 = v.x + ux * k * s,
@@ -507,8 +557,8 @@ export function addBuildings(
             WHITE,
             OUT,
             [cx, py, cz],
-            [ex2 + ox * CORNER_OUT_M, py, ez2 + oz * CORNER_OUT_M],
-            [ex2 + ox * CORNER_OUT_M, y1, ez2 + oz * CORNER_OUT_M],
+            [ex2 + ox * cornerOut, py, ez2 + oz * cornerOut],
+            [ex2 + ox * cornerOut, y1, ez2 + oz * cornerOut],
             [cx, y1, cz],
           );
           face(
@@ -516,8 +566,8 @@ export function addBuildings(
             WHITE,
             [ux * s, 0, uz * s],
             [ex2, py, ez2],
-            [ex2 + ox * CORNER_OUT_M, py, ez2 + oz * CORNER_OUT_M],
-            [ex2 + ox * CORNER_OUT_M, y1, ez2 + oz * CORNER_OUT_M],
+            [ex2 + ox * cornerOut, py, ez2 + oz * cornerOut],
+            [ex2 + ox * cornerOut, y1, ez2 + oz * cornerOut],
             [ex2, y1, ez2],
           );
         }
@@ -562,6 +612,7 @@ export function addBuildings(
     );
     skin.receiveShadow = true;
     scene.add(skin);
+    const near = frames.length ? new WindowFrames(scene, new Float32Array(frames), { radiusM: windowFramesM }) : null;
     if (bp.length) {
       // the seams: a dark line at one edge of each board, half transparent so it darkens any wall colour, unlit so the
       // toon style leaves it alone; its mips fade it out with distance instead of shimmering
@@ -596,6 +647,7 @@ export function addBuildings(
       seams.renderOrder = -1;
       scene.add(seams);
     }
+    return near;
   })();
 }
 
