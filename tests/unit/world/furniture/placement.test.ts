@@ -499,6 +499,30 @@ describe('placeFurniture: along the country roads (#305)', () => {
     }
   });
 
+  it('keeps posts out of a farm track’s or service road’s mouth too, but not where a road only continues', () => {
+    for (const c of [RoadClass.SERVICE, RoadClass.TRACK]) {
+      // the main road from x = -300 gets a post about every 50 m from x = -275, so one would stand by x = 25
+      const main = road(RoadClass.PRIMARY, [-300, 0, 25, 0, 300, 0], { i: 1000 }),
+        side = road(c, [25, 0, 25, 200]);
+      const { placements } = place({ world: { r: [main, side] }, profiles: [sides('outskirts'), sides('outskirts')] });
+      const posts = kinds(placements, 'roadside-post');
+      expect(posts.length).toBeGreaterThan(0);
+      for (const p of posts) expect(Math.abs(p.x - 25)).toBeGreaterThanOrEqual(10);
+    }
+    // the main road in two pieces that meet at x = 0, as OSM splits a way: no gap there beyond the usual spacing
+    const west = road(RoadClass.PRIMARY, [-300, 0, 0, 0], { i: 1001 }),
+      east = road(RoadClass.PRIMARY, [0, 0, 300, 0], { i: 1002 });
+    const split = kinds(
+      place({ world: { r: [west, east] }, profiles: [sides('outskirts'), sides('outskirts')] }).placements,
+      'roadside-post',
+    );
+    const xs = split
+      .filter(p => p.z > 0)
+      .map(p => p.x)
+      .sort((a, b) => a - b);
+    for (let i = 1; i < xs.length; i++) expect(xs[i] - xs[i - 1]).toBeLessThanOrEqual(50 + 2 * 4 + 2 * 2 + 1e-9);
+  });
+
   it('keeps posts out of a side road’s mouth', () => {
     const side = road(RoadClass.STREET, [0, 0, 0, 200]);
     const { placements } = place({ world: { r: [MAIN(), side] }, profiles: [sides('outskirts'), sides('outskirts')] });
