@@ -1,13 +1,10 @@
-// Shots (#17, lab: pickadoll): what the weapons fire, how a shot flies and what it hits. A proof of concept for trying
-// weapons and hits side by side: the weapon decides how a shot is delivered, the hit flavour what it does on landing.
+// Shots (#17, lab: pickadoll): the weapons, how a shot flies and what it hits. A proof of concept for trying weapons
+// and ammo side by side: the weapon decides how a shot is delivered, the ammo (./ammo.ts) what it does on landing.
 // Plain data and functions: no three.js, no DOM.
 import { damageCar } from '../health';
+import { AmmoId, type AmmoRule } from './ammo';
 import { bodyRadius, type CarBody, nearestOnSpine, PERSON_RADIUS_M } from './car-body';
 import { SurfaceKind } from './physics-world';
-
-/** What a weapon's shot leaves on the ground where it lands: SPIKES are fotanglar. */
-export const WeaponZone = { NONE: '', SPIKES: 'spikes' } as const;
-export type WeaponZone = (typeof WeaponZone)[keyof typeof WeaponZone];
 
 /** The weapons, by the id the lab's `weapon` command and the test hook use. */
 export const WeaponId = {
@@ -26,8 +23,8 @@ export const WeaponId = {
 } as const;
 export type WeaponId = (typeof WeaponId)[keyof typeof WeaponId];
 
-/** How a weapon delivers its shots. */
-export interface Weapon {
+/** How a weapon delivers its shots, and which ammo it fires (AmmoRule: null for every ammo any weapon fires). */
+export interface Weapon extends AmmoRule {
   id: WeaponId;
   name: string;
   speedMs: number; // muzzle speed
@@ -41,7 +38,6 @@ export interface Weapon {
   bounces: number; // how many times a shot bounces off the ground, a wall or a car before it stops
   thrown: boolean; // lobbed by hand, not fired
   fuseS: number; // it goes off this long after it leaves, wherever it is by then; until then it only bounces and lies. 0 for none
-  zone: WeaponZone; // what it leaves on the ground where it lands
   shotM: number; // the radius it is drawn with
   tracerM: number; // drawn as a streak this long behind it, not as a ball: for a shot too fast to see. 0 for a ball
   scope: number; // aiming looks through a scope that magnifies this many times; 0 for none
@@ -66,10 +62,10 @@ export const WEAPONS = [
     bounces: 0,
     thrown: false,
     fuseS: 0,
-    zone: WeaponZone.NONE,
     shotM: 0.07,
     tracerM: 0,
     scope: 0,
+    ammo: null,
   },
   {
     id: WeaponId.PICKADOLL,
@@ -85,10 +81,10 @@ export const WEAPONS = [
     bounces: 0,
     thrown: false,
     fuseS: 0,
-    zone: WeaponZone.NONE,
     shotM: 0.07,
     tracerM: 0,
     scope: 0,
+    ammo: null,
   },
   {
     id: WeaponId.PEPPRAPUFFRA,
@@ -104,10 +100,10 @@ export const WEAPONS = [
     bounces: 0,
     thrown: false,
     fuseS: 0,
-    zone: WeaponZone.NONE,
     shotM: 0.07,
     tracerM: 0,
     scope: 0,
+    ammo: null,
   },
   {
     id: WeaponId.HAGELBOSSA,
@@ -123,10 +119,10 @@ export const WEAPONS = [
     bounces: 0,
     thrown: false,
     fuseS: 0,
-    zone: WeaponZone.NONE,
     shotM: 0.07,
     tracerM: 0,
     scope: 0,
+    ammo: null,
   },
   {
     id: WeaponId.POTATISKANON,
@@ -142,10 +138,10 @@ export const WEAPONS = [
     bounces: 0,
     thrown: false,
     fuseS: 0,
-    zone: WeaponZone.NONE,
     shotM: 0.07,
     tracerM: 0,
     scope: 0,
+    ammo: null,
   },
   {
     id: WeaponId.MINIGUN,
@@ -161,10 +157,10 @@ export const WEAPONS = [
     bounces: 0,
     thrown: false,
     fuseS: 0,
-    zone: WeaponZone.NONE,
     shotM: 0.07,
     tracerM: 0,
     scope: 0,
+    ammo: null,
   },
   // the legendary one from #17: the weakest gun, but its peas bounce
   {
@@ -181,10 +177,10 @@ export const WEAPONS = [
     bounces: 12,
     thrown: false,
     fuseS: 0,
-    zone: WeaponZone.NONE,
     shotM: 0.07,
     tracerM: 0,
     scope: 0,
+    ammo: null,
   },
   // fast shots: they arrive nearly as you fire and are drawn as a streak. The plain pistol of #17's ladder
   {
@@ -201,10 +197,10 @@ export const WEAPONS = [
     bounces: 0,
     thrown: false,
     fuseS: 0,
-    zone: WeaponZone.NONE,
     shotM: 0.03,
     tracerM: 5,
     scope: 0,
+    ammo: null,
   },
   // rifles with a scope: slow to fire, and they go where the cross is. The air rifle is the gentle one
   {
@@ -221,10 +217,10 @@ export const WEAPONS = [
     bounces: 0,
     thrown: false,
     fuseS: 0,
-    zone: WeaponZone.NONE,
     shotM: 0.03,
     tracerM: 3,
     scope: 3,
+    ammo: null,
   },
   // the sniper of #17: a moose rifle
   {
@@ -241,10 +237,10 @@ export const WEAPONS = [
     bounces: 0,
     thrown: false,
     fuseS: 0,
-    zone: WeaponZone.NONE,
     shotM: 0.04,
     tracerM: 14,
     scope: 8,
+    ammo: null,
   },
   // throwables (#17): lobbed by hand
   {
@@ -261,10 +257,10 @@ export const WEAPONS = [
     bounces: 6,
     thrown: true,
     fuseS: 2.2,
-    zone: WeaponZone.NONE,
     shotM: 0.13,
     tracerM: 0,
     scope: 0,
+    ammo: null,
   },
   {
     id: WeaponId.FOTANGLAR,
@@ -280,23 +276,12 @@ export const WEAPONS = [
     bounces: 0,
     thrown: true,
     fuseS: 0,
-    zone: WeaponZone.SPIKES,
     shotM: 0.1,
     tracerM: 0,
     scope: 0,
+    ammo: [AmmoId.FOTANGLAR],
   },
 ] as const satisfies readonly Weapon[];
-
-/** What a hit does: the answers to try side by side. */
-export const HitFlavour = { GEGGA: 'gegga', PANG: 'pang', DANS: 'dans' } as const;
-export type HitFlavour = (typeof HitFlavour)[keyof typeof HitFlavour];
-
-/** The flavours in the order the lab steps through them, with the names it shows. */
-export const HIT_FLAVOURS = [
-  { id: HitFlavour.GEGGA, name: 'Gegga' }, // a bright splat where it lands; nobody is hurt
-  { id: HitFlavour.PANG, name: 'Pang' }, // people are thrown and cars shoved; no colour
-  { id: HitFlavour.DANS, name: 'Dans' }, // a prank: who is hit dances for a while
-] as const satisfies readonly { id: HitFlavour; name: string }[];
 
 export const GRAVITY_MS2 = 9.8;
 export const MUZZLE_M = 1.35; // a shot leaves this far above the shooter's feet

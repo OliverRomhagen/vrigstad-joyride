@@ -31,9 +31,6 @@ const BODY_HALF_DEPTH_M = 0.15,
   BODY_HIGH_M = 1.4,
   BODY_SPLAT_MAX_M = 0.2;
 
-/** The gegga's colours. */
-export const GEGGA = ['#ff3b6b', '#ffd400', '#22d3a0', '#2e9bff', '#b45cff', '#ff7a1a'] as const;
-
 export interface ShotFxDeps {
   scene: THREE.Scene;
   camera: THREE.PerspectiveCamera; // the line of sight starts here, and aiming moves it

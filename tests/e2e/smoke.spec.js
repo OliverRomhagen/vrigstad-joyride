@@ -297,7 +297,7 @@ test.describe('game (index.html)', () => {
     expect(errors).toEqual([]);
   });
 
-  test('?lab=pickadoll fires a shot that lands, switches weapon and hit, and aims through a scope', async ({
+  test('?lab=pickadoll fires a shot that lands, switches weapon and ammo, and aims through a scope', async ({
     page,
   }) => {
     const errors = watchErrors(page);
@@ -305,9 +305,7 @@ test.describe('game (index.html)', () => {
     await page.goto('/index.html?lab=pickadoll');
     await page.locator('#go').click();
     // the lab loads behind its flag, and a failure to load only warns: without this, the plain game would pass
-    await expect
-      .poll(async () => (await state(page)).pickadoll)
-      .toMatchObject({ weapon: 'pickadoll', flavour: 'gegga' });
+    await expect.poll(async () => (await state(page)).pickadoll).toMatchObject({ weapon: 'pickadoll', ammo: 'gegga' });
     await frames(page, 3); // the lab waits a frame after Start, and a pull before it is ready is dropped
     await page.keyboard.down('KeyX');
     await expect.poll(async () => (await state(page)).pickadoll.fired).toBeGreaterThan(0);
@@ -320,7 +318,7 @@ test.describe('game (index.html)', () => {
       .poll(async () => (await state(page)).pickadoll)
       .toMatchObject({
         weapon: 'pepprapuffra',
-        flavour: 'pang',
+        ammo: 'pang',
         aiming: true,
       });
     await expect(page.locator('#p-aim')).toHaveAttribute('aria-pressed', 'true');
