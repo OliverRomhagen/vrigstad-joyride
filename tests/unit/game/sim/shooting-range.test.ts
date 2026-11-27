@@ -23,6 +23,7 @@ import {
   type ShotWorld,
   stepShot,
   WEAPONS,
+  WeaponId,
 } from '../../../../src/game/sim/shots';
 import { Tunables } from '../../../../src/game/sim/tunables';
 import { makeWorld } from '../../world/fixture';
@@ -125,7 +126,7 @@ describe('the shooting range', () => {
     const w = rangeWorld();
     const world: ShotWorld = { groundAt, collide: () => false, people: [], cars: [] };
     world.cast = physicsCast(w, world, () => null);
-    const weapon = WEAPONS.findIndex(x => x.id === 'pickadoll');
+    const weapon = WEAPONS.findIndex(x => x.id === WeaponId.PICKADOLL);
     const fire = (x: number, pitch: number) => fireFrom(x, RANGE_Z, pitch, Math.PI); // south
     const fireFrom = (x: number, z: number, pitch: number, yaw: number) => {
       const s: Shot = {

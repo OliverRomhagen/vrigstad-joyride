@@ -16,9 +16,10 @@ import {
   sight,
   stepShot,
   WEAPONS,
+  WeaponId,
 } from '../../../../src/game/sim/shots';
 
-const PICKADOLL = WEAPONS.findIndex(w => w.id === 'pickadoll');
+const PICKADOLL = WEAPONS.findIndex(w => w.id === WeaponId.PICKADOLL);
 const T = { lengthM: 4.6, widthM: 1.8 };
 
 // flat ground at 0, and one house: everything north of z = -20 between x = -5 and 5
@@ -146,12 +147,12 @@ describe('stepShot', () => {
 
 describe('the weapons', () => {
   it('has a minigun that fires for as long as the trigger is held', () => {
-    expect(WEAPONS.find(w => w.id === 'minigun')).toMatchObject({ auto: true });
+    expect(WEAPONS.find(w => w.id === WeaponId.MINIGUN)).toMatchObject({ auto: true });
   });
 });
 
 describe('a shot that bounces', () => {
-  const GULD = WEAPONS.findIndex(w => w.id === 'guldartpuffra');
+  const GULD = WEAPONS.findIndex(w => w.id === WeaponId.GULDARTPUFFRA);
 
   it('comes back off a wall the way it went in, slower, and flies on', () => {
     // aimed a little up: a level pea is on the ground before the wall, 20 m away
@@ -182,7 +183,7 @@ describe('a shot that bounces', () => {
 });
 
 describe('a thrown shot with a fuse', () => {
-  const GRANAT = WEAPONS.findIndex(w => w.id === 'granat'),
+  const GRANAT = WEAPONS.findIndex(w => w.id === WeaponId.GRANAT),
     fuseS = WEAPONS[GRANAT].fuseS;
 
   // steps until it goes off; says how many times it touched something before, and when it went off
@@ -224,7 +225,7 @@ describe('a thrown shot with a fuse', () => {
 
 describe('a bounce on a slope', () => {
   it('goes on up a hill instead of stopping where it first touches', () => {
-    const GULD = WEAPONS.findIndex(w => w.id === 'guldartpuffra'),
+    const GULD = WEAPONS.findIndex(w => w.id === WeaponId.GULDARTPUFFRA),
       // the ground rises 1 m for every 2 m north
       w = world({ collide: () => false, groundAt: (_x, z) => -z * 0.5 }),
       s = { ...shot(GULD), ...aimShot(WEAPONS[GULD], 0, 0.5) },
@@ -257,7 +258,7 @@ describe('aimAtMoving', () => {
 });
 
 describe('a fast shot', () => {
-  const ALG = WEAPONS.findIndex(w => w.id === 'algstudsare');
+  const ALG = WEAPONS.findIndex(w => w.id === WeaponId.ALGSTUDSARE);
 
   it('stops at someone in its way, however far it flies in a frame', () => {
     // 760 m/s is 25 m in one step of 1/30 s: well past a person 0.7 m across
@@ -315,7 +316,7 @@ describe('blastPush', () => {
 
 describe('a grenade at rest', () => {
   it('lies on the ground where it stopped, on a slope too', () => {
-    const GRANAT = WEAPONS.findIndex(w => w.id === 'granat'),
+    const GRANAT = WEAPONS.findIndex(w => w.id === WeaponId.GRANAT),
       // a hill that rises to the north and to the east
       w = world({ collide: () => false, groundAt: (x, z) => -z * 0.3 + x * 0.2 }),
       s = { ...shot(GRANAT), vx: 3 },
@@ -340,7 +341,7 @@ describe('flightPath', () => {
   });
 
   it('follows a grenade through its bounces to where it comes to rest', () => {
-    const GRANAT = WEAPONS.findIndex(w => w.id === 'granat'),
+    const GRANAT = WEAPONS.findIndex(w => w.id === WeaponId.GRANAT),
       points: number[] = [],
       end = newHit(),
       n = flightPath(shot(GRANAT), world({ collide: () => false }), 1 / 20, 64, points, end);
@@ -397,7 +398,7 @@ describe('sight', () => {
 
 describe('aimAt', () => {
   it('sends a shot through the point it is aimed at, drop and all', () => {
-    for (const weapon of [PICKADOLL, WEAPONS.findIndex(w => w.id === 'potatiskanon')]) {
+    for (const weapon of [PICKADOLL, WEAPONS.findIndex(w => w.id === WeaponId.POTATISKANON)]) {
       // a point on the house's south wall, 3 m up and a little to the east
       const { yaw, pitch } = aimAt(WEAPONS[weapon].speedMs, 0, MUZZLE_M, 0, 2, 3, -20, { yaw: 0, pitch: 0 });
       const hit = fly(

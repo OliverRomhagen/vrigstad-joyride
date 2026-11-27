@@ -39,6 +39,7 @@ import {
   sight,
   stepShot,
   WEAPONS,
+  WeaponId,
   WeaponZone,
 } from './sim/shots';
 import { dropSpike, newSpikeStep, type Spike, type SpikeWorld, stepSpikes } from './sim/spikes';
@@ -55,8 +56,8 @@ const SCOPE_EYE_M = 1.6, // the eye, above your feet
   SCOPE_SIGHT_M = 420,
   SCOPE_ON_K = 0.6; // the scope's edge and cross show, and you are hidden, from this far into the aim
 const TARGET_UP_M = 1; // the soft lock aims this far above its target's feet
-// the weapon you start with; WEAPONS' ids are literal types, so renaming this one fails the typecheck here
-const START_WEAPON = WEAPONS.findIndex(w => w.id === 'pickadoll');
+// the weapon you start with
+const START_WEAPON = WEAPONS.findIndex(w => w.id === WeaponId.PICKADOLL);
 // hold to aim (the right mouse button, C, or the Aim button): the camera tucks in over your right shoulder and turns
 // about it, so you can look nearly straight up and down, the crosshair sits in the middle, and you face where you aim
 const AIM_BACK_M = 3, // the camera sits this far behind your shoulder
@@ -108,19 +109,19 @@ const ARC_STEP_S = 1 / 20, // the arc has a dot this often along the flight
 const RAISED_S = 1.2, // the arm stays up this long after a shot
   WIND_UP_RAD = -0.9; // the arm goes back this far while you hold a throw
 // the placeholder gun in the hand, by weapon: its length and thickness (m). No models yet
-const GUN_M: Record<(typeof WEAPONS)[number]['id'], readonly [number, number]> = {
-  artpuffra: [0.5, 0.04],
-  pickadoll: [0.3, 0.08],
-  pepprapuffra: [0.4, 0.1],
-  hagelbossa: [0.65, 0.09],
-  potatiskanon: [0.85, 0.2],
-  minigun: [0.75, 0.17],
-  guldartpuffra: [0.5, 0.05],
-  puffra: [0.28, 0.07],
-  luftgevar: [0.95, 0.05],
-  algstudsare: [1.1, 0.07],
-  granat: [0.14, 0.14],
-  fotanglar: [0.12, 0.16],
+const GUN_M: Record<WeaponId, readonly [number, number]> = {
+  [WeaponId.ARTPUFFRA]: [0.5, 0.04],
+  [WeaponId.PICKADOLL]: [0.3, 0.08],
+  [WeaponId.PEPPRAPUFFRA]: [0.4, 0.1],
+  [WeaponId.HAGELBOSSA]: [0.65, 0.09],
+  [WeaponId.POTATISKANON]: [0.85, 0.2],
+  [WeaponId.MINIGUN]: [0.75, 0.17],
+  [WeaponId.GULDARTPUFFRA]: [0.5, 0.05],
+  [WeaponId.PUFFRA]: [0.28, 0.07],
+  [WeaponId.LUFTGEVAR]: [0.95, 0.05],
+  [WeaponId.ALGSTUDSARE]: [1.1, 0.07],
+  [WeaponId.GRANAT]: [0.14, 0.14],
+  [WeaponId.FOTANGLAR]: [0.12, 0.16],
 };
 const HIT_MARK_S = 0.1; // the crosshair's ticks stay this long after a hit on a person or a car, then fade (index.html)
 const BLAST_DROPS = 7; // a blast of gegga leaves this many more splats around the hit
@@ -328,7 +329,7 @@ export class Pickadoll {
       LAB_COMMANDS.WEAPON,
       command({
         help: 'change to the next weapon, or to the one you name',
-        examples: ['weapon', 'weapon minigun'],
+        examples: ['weapon', 'weapon ' + WeaponId.MINIGUN],
         access: 'player',
         args: [
           optional(

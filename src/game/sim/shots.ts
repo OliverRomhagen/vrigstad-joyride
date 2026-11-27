@@ -9,9 +9,26 @@ import { SurfaceKind } from './physics-world';
 export const WeaponZone = { NONE: '', SPIKES: 'spikes' } as const;
 export type WeaponZone = (typeof WeaponZone)[keyof typeof WeaponZone];
 
+/** The weapons, by the id the lab's `weapon` command and the test hook use. */
+export const WeaponId = {
+  ARTPUFFRA: 'artpuffra',
+  PICKADOLL: 'pickadoll',
+  PEPPRAPUFFRA: 'pepprapuffra',
+  HAGELBOSSA: 'hagelbossa',
+  POTATISKANON: 'potatiskanon',
+  MINIGUN: 'minigun',
+  GULDARTPUFFRA: 'guldartpuffra',
+  PUFFRA: 'puffra',
+  LUFTGEVAR: 'luftgevar',
+  ALGSTUDSARE: 'algstudsare',
+  GRANAT: 'granat',
+  FOTANGLAR: 'fotanglar',
+} as const;
+export type WeaponId = (typeof WeaponId)[keyof typeof WeaponId];
+
 /** How a weapon delivers its shots. */
 export interface Weapon {
-  id: string;
+  id: WeaponId;
   name: string;
   speedMs: number; // muzzle speed
   coolS: number; // between shots
@@ -36,7 +53,7 @@ export interface Weapon {
  */
 export const WEAPONS = [
   {
-    id: 'artpuffra',
+    id: WeaponId.ARTPUFFRA,
     name: 'Ärtpuffra',
     speedMs: 32,
     coolS: 0.08,
@@ -55,7 +72,7 @@ export const WEAPONS = [
     scope: 0,
   },
   {
-    id: 'pickadoll',
+    id: WeaponId.PICKADOLL,
     name: 'Pickadoll',
     speedMs: 70,
     coolS: 0.1,
@@ -74,7 +91,7 @@ export const WEAPONS = [
     scope: 0,
   },
   {
-    id: 'pepprapuffra',
+    id: WeaponId.PEPPRAPUFFRA,
     name: 'Pepprapuffra',
     speedMs: 60,
     coolS: 0.07,
@@ -93,7 +110,7 @@ export const WEAPONS = [
     scope: 0,
   },
   {
-    id: 'hagelbossa',
+    id: WeaponId.HAGELBOSSA,
     name: 'Hagelbössa',
     speedMs: 55,
     coolS: 0.8,
@@ -112,7 +129,7 @@ export const WEAPONS = [
     scope: 0,
   },
   {
-    id: 'potatiskanon',
+    id: WeaponId.POTATISKANON,
     name: 'Potatiskanon',
     speedMs: 26,
     coolS: 1.2,
@@ -131,7 +148,7 @@ export const WEAPONS = [
     scope: 0,
   },
   {
-    id: 'minigun',
+    id: WeaponId.MINIGUN,
     name: 'Minigun',
     speedMs: 75,
     coolS: 0.03,
@@ -151,7 +168,7 @@ export const WEAPONS = [
   },
   // the legendary one from #17: the weakest gun, but its peas bounce
   {
-    id: 'guldartpuffra',
+    id: WeaponId.GULDARTPUFFRA,
     name: 'Guldärtpuffran',
     speedMs: 30,
     coolS: 0.08,
@@ -171,7 +188,7 @@ export const WEAPONS = [
   },
   // fast shots: they arrive nearly as you fire and are drawn as a streak. The plain pistol of #17's ladder
   {
-    id: 'puffra',
+    id: WeaponId.PUFFRA,
     name: 'Puffra',
     speedMs: 320,
     coolS: 0.13,
@@ -191,7 +208,7 @@ export const WEAPONS = [
   },
   // rifles with a scope: slow to fire, and they go where the cross is. The air rifle is the gentle one
   {
-    id: 'luftgevar',
+    id: WeaponId.LUFTGEVAR,
     name: 'Luftgevär',
     speedMs: 170,
     coolS: 0.7,
@@ -211,7 +228,7 @@ export const WEAPONS = [
   },
   // the sniper of #17: a moose rifle
   {
-    id: 'algstudsare',
+    id: WeaponId.ALGSTUDSARE,
     name: 'Älgstudsare',
     speedMs: 760,
     coolS: 1.4,
@@ -231,7 +248,7 @@ export const WEAPONS = [
   },
   // throwables (#17): lobbed by hand
   {
-    id: 'granat',
+    id: WeaponId.GRANAT,
     name: 'Granat',
     speedMs: 15,
     coolS: 0.9,
@@ -250,7 +267,7 @@ export const WEAPONS = [
     scope: 0,
   },
   {
-    id: 'fotanglar',
+    id: WeaponId.FOTANGLAR,
     name: 'Fotanglar',
     speedMs: 11,
     coolS: 1,

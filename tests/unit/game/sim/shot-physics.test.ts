@@ -20,13 +20,14 @@ import {
   sight,
   stepShot,
   WEAPONS,
+  WeaponId,
 } from '../../../../src/game/sim/shots';
 import { BuildingKind } from '../../../../src/world/data';
 import { makeWorld, square } from '../../world/fixture';
 
 beforeAll(() => RAPIER.init());
 
-const PICKADOLL = WEAPONS.findIndex(w => w.id === 'pickadoll');
+const PICKADOLL = WEAPONS.findIndex(w => w.id === WeaponId.PICKADOLL);
 
 // flat ground, sampled every 5 m over a 200 m square
 const flat = {
