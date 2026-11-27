@@ -4,6 +4,7 @@
 import type * as THREE from 'three';
 import { clamp } from '../world/math';
 import type { Car, Fleet, TrafficCar } from './cars';
+import { type Emoting, stepEmote } from './emotes';
 import { CRASH_COOL_S, type Health, impactSpeed, regen, runOverHurt } from './health';
 import type { Input } from './input';
 import type { Places } from './places';
@@ -11,6 +12,7 @@ import { type CarHold, carry, carTopAt, holdCar, hop, type PlayerState, ride, st
 import type { Wanted } from './police';
 import type { CameraRig } from './render/camera-rig';
 import type { Person } from './render/models';
+import type { PlayerPose } from './render/player-pose';
 import type { ToonStyle } from './render/toon-style';
 import { bodyRadius, nearestOnSpine, PERSON_RADIUS_M } from './sim/car-body';
 import type { GameState, ViewState } from './state';
@@ -32,7 +34,8 @@ export interface GameLoopDeps {
   half: number; // half the playable square (m)
   game: GameState;
   view: ViewState;
-  player: PlayerState & { mesh: Person };
+  player: PlayerState & Emoting & { mesh: Person };
+  pose: Pick<PlayerPose, 'walk' | 'emote'>; // the player's arms and legs
   health: Health;
   input: Pick<Input, 'keys' | 'joy' | 'lockMouse'>;
   places: Pick<Places, 'inside'>;
@@ -176,6 +179,7 @@ export class GameLoop {
     if (game.inCar && game.pcar) {
       g.drive(game.pcar, my, mx, !!keys.brake, dt, true);
       ride(player, game.pcar);
+      player.emote = null;
       this.hold.car = this.stood = this.left = null;
     } else {
       carry(player, this.hold); // the car you're on moved since last frame, and turned (#451)
@@ -227,19 +231,18 @@ export class GameLoop {
       if (standing && on !== this.left) this.left = null; // landed: on the ground, or on another car
       this.stood = on && standing ? on : null;
       holdCar(this.hold, on); // in the air above it or climbing onto it too, so a moving car doesn't drive out from under you
-      // walking: arms swing against the legs and the body bobs; in the air: legs apart and both arms up
-      const air = player.y > player.floor,
-        sw = air ? 0.5 : Math.sin(player.phase) * 0.75,
-        lift = player.y + (air ? 0 : Math.abs(Math.sin(player.phase)) * 0.05),
-        m = player.mesh,
-        arms = m.arms!;
-      m.legs[0].rotation.x = sw;
-      m.legs[1].rotation.x = -sw;
-      arms[0].rotation.x = air ? 2.4 : -sw * 0.8;
-      arms[1].rotation.x = air ? 2.4 : sw * 0.8;
-      m.blob.position.y = 0.06 - lift; // the blob shadow stays on the ground
+      // in the air over the ground or over the car you stand on (#451); moving, jumping, Gripen! or Däckad! and a
+      // safehouse end an emote at once (#296)
+      const air = player.y > player.floor;
+      stepEmote(player, dt, player.speed > 0 || air || game.titleCardT > 0 || !!places.inside);
+      const e = player.emote,
+        at = e ? g.pose.emote(e.id, e.t) : g.pose.walk(player.phase, air),
+        lift = player.y + at.lift,
+        m = player.mesh;
+      m.blob.position.y = 0.06 - lift; // the blob shadow stays flat on the ground
+      m.blob.rotation.x = -at.lean;
       m.position.set(player.x, g.groundAt(player.x, player.z) - (wetNow ? 0.95 : 0) + lift, player.z);
-      m.rotation.y = -player.h;
+      m.rotation.set(at.lean, -player.h + at.twist, 0, 'YXZ'); // heading last, so the lean is forward whichever way you face
     }
     g.updateDriftFx(game.inCar ? game.pcar : null);
     const T = game.inCar && game.pcar ? game.pcar : player;
