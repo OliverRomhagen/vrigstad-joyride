@@ -1,11 +1,29 @@
 import * as THREE from 'three';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { BEACON_PARTS, BODY_NODE, type VehicleId, vehicleDefinition, WHEEL_NODES } from './vehicle-registry';
+import type { LampState } from '../lighting';
+import {
+  BEACON_PARTS,
+  BODY_NODE,
+  type VehicleId,
+  type VehicleLamps,
+  vehicleDefinition,
+  WHEEL_NODES,
+} from './vehicle-registry';
 
 type Car = { mesh: THREE.Object3D; x: number; z: number; h: number; saleKr?: number };
 type Definition = NonNullable<ReturnType<typeof vehicleDefinition>>;
 type Wheel = { pivot: THREE.Group; spin: THREE.Group; front: boolean };
+type LampGroup = keyof VehicleLamps;
+/** How a lamp looks: its model's own material, or lit dimly (dipped headlights, rear position lights) or fully. */
+type LampLook = 'off' | 'run' | 'full';
+type Lamp = {
+  mesh: THREE.Mesh;
+  group: LampGroup;
+  off: THREE.Material;
+  lit: Record<'run' | 'full', THREE.Material>;
+  look: LampLook;
+};
 type View = {
   car: Car;
   definition: Definition;
@@ -15,6 +33,7 @@ type View = {
   wheels: Wheel[];
   materials: Set<THREE.Material>;
   beacons: THREE.MeshStandardMaterial[];
+  lamps: Lamp[];
   selected: boolean;
   removed: boolean;
   x: number;
@@ -33,6 +52,13 @@ const DETAIL_RANGE_M = 120,
   // rims or beacons, whose shadows are a texel or two at the game's shadow resolution (about 0.1 m) but cost a draw call
   // each. Area, not size: a part merged per material (tools/vehicle-parts.ts) spans the whole car however small it is.
   SHADOW_MIN_AREA_M2 = 1;
+// Lamp colours (#304, sRGB): warm halogen on the old cars, a cooler white on the XC70s, deep red tails, amber hazards.
+const LAMP_COLOURS: Record<LampGroup, number> = { head: 0xffe7c2, rear: 0xc4101a, reverse: 0xfff8f0, hazard: 0xff9a1f },
+  COOL_HEAD = 0xf2f4ff,
+  // emissive intensities, picked by eye in daylight: a dipped or position lamp reads as switched on, a brake light
+  // clearly brighter than the tail beside it. Lit lamps skip tone mapping, which bleaches a bright red to pink.
+  LAMP_RUN_I = 0.5,
+  LAMP_FULL_I = 2;
 const areas = new WeakMap<THREE.BufferGeometry, number>(),
   _a = new THREE.Vector3(),
   _b = new THREE.Vector3(),
@@ -67,10 +93,15 @@ export class VehicleVisuals {
   private readonly records = new WeakMap<Car, View>();
   private elapsed = REFRESH_SECONDS;
   private time = 0;
-  // onBody hands out each loaded model's sprung body, the part that rolls and pitches without the wheels.
+  // lit variants of each lamp material, shared by every car of a model: a car's lamps swap materials, never clone them.
+  // At most two per lamp material of the fleet (about 40), kept for the page's life like the templates.
+  private readonly lit = new Map<THREE.Material, Record<'run' | 'full', THREE.Material>>();
+  // onBody hands out each loaded model's sprung body, the part that rolls and pitches without the wheels. lampsOf says
+  // what a car's lamps show this frame (lighting.ts); without it the lamps stay as modelled.
   constructor(
     private readonly coarse: boolean,
     private readonly onBody?: (car: Car, body: THREE.Object3D) => void,
+    private readonly lampsOf?: (car: Car) => LampState,
   ) {}
   /** A model's loaded scene, fetched and parsed once and shared: clone it, or read it without changing it. */
   template(definition: { id: string; url: string }) {
@@ -109,8 +140,15 @@ export class VehicleVisuals {
         root.attach(body);
         sprung.add(body);
         root.add(sprung);
+        const lamps: VehicleLamps = view.definition.lamps,
+          cool = 'coolHead' in view.definition && view.definition.coolHead;
         root.traverse(node => {
           if (!(node instanceof THREE.Mesh)) return;
+          const group = (Object.keys(lamps) as LampGroup[]).find(g => lamps[g]?.includes(node.name));
+          if (group && !Array.isArray(node.material)) {
+            const lit = this.litVariants(node.material, group === 'head' && cool ? COOL_HEAD : LAMP_COLOURS[group]);
+            view.lamps.push({ mesh: node, group, off: node.material, lit, look: 'off' });
+          }
           node.castShadow = !this.coarse && castsShadow(node);
           node.receiveShadow = true;
           if (view.definition.police && BEACON_PARTS.test(node.name)) {
@@ -133,6 +171,45 @@ export class VehicleVisuals {
           console.warn('Vehicle asset failed:', view.definition.id, error);
         }
       });
+  }
+  private litVariants(off: THREE.Material, colour: number) {
+    let variants = this.lit.get(off);
+    if (!variants) {
+      const make = (intensity: number) => {
+        const m = off.clone() as THREE.MeshStandardMaterial;
+        m.emissive.set(colour).convertSRGBToLinear();
+        m.emissiveIntensity = intensity;
+        m.toneMapped = false;
+        return m;
+      };
+      variants = { run: make(LAMP_RUN_I), full: make(LAMP_FULL_I) };
+      this.lit.set(off, variants);
+    }
+    return variants;
+  }
+  private light(view: View, s: LampState) {
+    for (const lamp of view.lamps) {
+      const g = lamp.group,
+        look: LampLook =
+          g === 'head'
+            ? s.head >= 0.5
+              ? 'full'
+              : s.head > 0
+                ? 'run'
+                : 'off'
+            : g === 'rear'
+              ? s.brake
+                ? 'full'
+                : s.rear > 0
+                  ? 'run'
+                  : 'off'
+              : s[g]
+                ? 'full'
+                : 'off';
+      if (look === lamp.look) continue;
+      lamp.look = look;
+      lamp.mesh.material = look === 'off' ? lamp.off : lamp.lit[look];
+    }
   }
   private updateVisibility(view: View) {
     const visible = view.selected && view.status === 'loaded';
@@ -169,6 +246,7 @@ export class VehicleVisuals {
       wheels: [],
       materials: new Set(),
       beacons: [],
+      lamps: [],
       selected: false,
       removed: false,
       x: car.x,
@@ -224,9 +302,11 @@ export class VehicleVisuals {
         this.updateVisibility(view);
       }
     }
-    for (const view of this.views)
+    for (const view of this.views) {
       for (const beacon of view.beacons)
         beacon.emissiveIntensity = view.selected && Math.floor(this.time / 0.22) % 2 ? 1.8 : 0;
+      if (this.lampsOf && view.lamps.length && view.root?.visible) this.light(view, this.lampsOf(view.car));
+    }
   }
   /** Whether the car's detailed model has loaded (false while loading, if it failed, or for a car without one). */
   loaded(car: Car) {
@@ -252,6 +332,7 @@ export class VehicleVisuals {
             spin: w.spin.rotation.x,
           })),
           fallback: view.fallback.visible,
+          lamps: Object.fromEntries(view.lamps.map(l => [l.group, l.look])) as Partial<Record<LampGroup, LampLook>>,
         }
       : null;
   }

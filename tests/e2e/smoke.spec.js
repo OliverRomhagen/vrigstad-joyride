@@ -370,6 +370,11 @@ test.describe('game (index.html)', () => {
     } = await state(page);
     expect(wheels.some(w => Math.abs(w.spin) > 0.1)).toBe(true);
     expect(wheels.slice(2).every(w => w.steer === 0)).toBe(true); // only the front wheels steer
+    // its lamps (#304): dipped headlights once someone drives it, and the brake lights while Space is held
+    expect((await state(page)).activeVehicle.lamps).toMatchObject({ head: 'run', reverse: 'off', hazard: 'off' });
+    await page.keyboard.down('Space');
+    await expect.poll(async () => (await state(page)).activeVehicle.lamps.rear).toBe('full');
+    await page.keyboard.up('Space');
     expect(await page.evaluate(() => document.getElementById('gl').getContext('webgl2').getError())).toBe(0);
     await page.screenshot({ path: testInfo.outputPath('game-in-volvo.png') });
 
