@@ -287,7 +287,8 @@ const CAST_STEP_M = 2; // with a world's ray cast, a shot's path is cast in stra
 const WALL_MAX_M = 9; // houses are taken to be this tall: a shot above it flies over
 const PERSON_TALL_M = 1.85; // a standard person, to the top of the head
 const CAR_TALL_M = 1.5;
-const HEAD_FROM_K = 0.83; // a hit this share of a person's height up, or higher, is on the head: from 1.54 m on a 1.85 m person
+const HEAD_FROM_K = 0.83, // a hit this share of a person's height up, or higher, is on the head: from 1.54 m on a 1.85 m person
+  HEAD_SIDE_M = 0.15; // and no further than this from their middle, across the shot's way: past it is a shoulder
 const WALL_PROBE_M = 0.05; // the radius of the circle that feels for a wall
 const SLOPE_STEP_M = 0.5; // the ground's slope where a shot lands is read over this distance
 const AIM_ROUNDS = 4; // aimAtMoving: the drift and the time in the air settle each other in this many rounds
@@ -378,12 +379,15 @@ const _probe = { x: 0, z: 0 },
 /** The push a weapon's hit gives, in N·s: what its shot weighs times the speed it leaves at. A faster weapon pushes harder. */
 export const knockbackOf = (w: Pick<Weapon, 'shotMassKg' | 'speedMs'>) => w.shotMassKg * w.speedMs;
 
-const CAR_HOLD_NS = 60, // a parked car's brakes hold against a smaller push: a pistol's shot marks it, a potato shoves it
+const CAR_HOLD_NS = 60, // a parked car's brakes hold against a smaller push: a pistol's shot marks it, a rifle's shoves it
   CAR_SLIDE_M_PER_NS = 0.0035; // past that, it slides this far for each N·s of the push
 
-/** A hit `upM` above a person's feet is on their head; `scale` is their size, 1 for the standard person. */
-export function onHead(upM: number, scale: number): boolean {
-  return upM >= HEAD_FROM_K * PERSON_TALL_M * scale;
+/**
+ * A hit `upM` above a person's feet, `sideM` to the side of their middle (across the shot's way), is on their head;
+ * `scale` is their size, 1 for the standard person.
+ */
+export function onHead(upM: number, sideM: number, scale: number): boolean {
+  return upM >= HEAD_FROM_K * PERSON_TALL_M * scale && Math.abs(sideM) <= HEAD_SIDE_M * scale;
 }
 
 /**

@@ -970,14 +970,22 @@ export class Pickadoll {
     const person = hit.kind === HitKind.PERSON ? crowd.npcs[hit.target] : null,
       car = hit.kind === HitKind.CAR ? this.world.cars[hit.target] : null,
       knockbackNs = knockbackOf(weapon);
-    const isHead = !!person && onHead(hit.y - this.g.world.groundAt(person.x, person.z), person.scale);
+    // how far the person's middle is to the side of the shot's way (hit.dx, hit.dz is a unit vector along the ground)
+    const isHead =
+      !!person &&
+      onHead(
+        hit.y - this.g.world.groundAt(person.x, person.z),
+        (person.x - hit.x) * hit.dz - (person.z - hit.z) * hit.dx,
+        person.scale,
+      );
     if (person) this.hitPerson(person, ammo, hit.dx, hit.dz, hit.y, knockbackNs, weapon.splatM, colour, s.seed, isHead);
     else if (car) {
+      // the tyre first: a heavy shot's shove moves the car away from where the shot met it
+      const wheel = effectOf(ammo, EffectKind.PUNCTURE)
+        ? tyreHit(car, hit, hit.y - this.g.world.groundAt(hit.x, hit.z))
+        : null;
+      if (wheel !== null && this.burst(car, wheel)) this.punctures++;
       this.hitCar(car, ammo, hit.dx, hit.dz, knockbackNs, weapon.damage);
-      if (effectOf(ammo, EffectKind.PUNCTURE)) {
-        const wheel = tyreHit(car, hit, hit.y - this.g.world.groundAt(hit.x, hit.z));
-        if (wheel !== null && this.burst(car, wheel)) this.punctures++;
-      }
       if (splat) fx.splatOn(car.mesh, hit, splatM, colour, s.seed);
     } else if (hit.kind === HitKind.PROP) {
       // knocked over, whatever the ammo, with no splat: a mark left in the air where it stood would hang there
@@ -1024,6 +1032,10 @@ export class Pickadoll {
     if (!isHead) return;
     this.headshots++;
     this.headMarkS = HEAD_MARK_S;
+    // each headshot kicks the ring again, in a burst too: the class comes off, a layout, and it goes back on
+    this.crosshair.classList.remove('head');
+    void this.crosshair.offsetWidth;
+    this.crosshair.classList.add('head');
   }
 
   // a burst tyre, from a shot or a fotangel: one flat per car, and your own says so. True when it burst

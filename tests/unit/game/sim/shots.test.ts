@@ -464,9 +464,10 @@ describe('assistTarget', () => {
 
 describe('onHead', () => {
   it('takes the top of a person for their head, by their size', () => {
-    expect(onHead(1.6, 1)).toBe(true);
-    expect(onHead(1.4, 1)).toBe(false);
-    expect(onHead(1.6, 1.1)).toBe(false); // a tall person's head is higher up
+    expect(onHead(1.6, 0, 1)).toBe(true);
+    expect(onHead(1.4, 0, 1)).toBe(false);
+    expect(onHead(1.6, 0, 1.1)).toBe(false); // a tall person's head is higher up
+    expect(onHead(1.6, 0.3, 1)).toBe(false); // at head height, but past the shoulder
   });
 });
 
