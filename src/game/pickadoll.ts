@@ -5,6 +5,7 @@
 // firing and holding the aim are held input. The rules are in ./sim/shots.ts and ./sim/ammo.ts and the drawing in
 // ./render/shot-fx.ts; this file reads the controls, shows the two HUD buttons and carries out each hit's effects on
 // the world. A page module: it uses the DOM.
+import { createElement, Egg, type IconNode, Music, Triangle, Zap } from 'lucide';
 import { clamp, wrap } from '../world/math';
 import type { Rnd } from '../world/random';
 import { NO_FLAT } from './cars';
@@ -18,7 +19,7 @@ import type { Ragdolls } from './ragdolls';
 import type { RenderedCar } from './render/car-meshes';
 import type { Person } from './render/models';
 import type { ShotFx } from './render/shot-fx';
-import { AMMOS, type Ammo, accepts, ammoFor, EffectKind, effectOf, nextAmmo } from './sim/ammo';
+import { AMMOS, type Ammo, AmmoId, accepts, ammoFor, EffectKind, effectOf, nextAmmo } from './sim/ammo';
 import { pushBodyOut } from './sim/car-body';
 import type { PhysicsWorld } from './sim/physics-world';
 import { physicsCast } from './sim/shot-physics';
@@ -80,6 +81,13 @@ const LAB_KEYS = {
   AMMO: { code: 'KeyG', label: 'G' },
   HOLSTER: { code: 'KeyH', label: 'H' },
 } as const;
+// each ammo's icon, beside its name on the ammo button, so a glance tells which one is loaded: Lucide, as in the wiki
+const AMMO_ICONS: Record<AmmoId, IconNode> = {
+  [AmmoId.GEGGA]: Egg,
+  [AmmoId.PANG]: Zap,
+  [AmmoId.DANS]: Music,
+  [AmmoId.FOTANGLAR]: Triangle,
+};
 // the lab's commands, by the name typed in the console: what its keys and buttons run
 const LAB_COMMANDS = { AIM: 'aim', WEAPON: 'weapon', AMMO: 'ammo', HOLSTER: 'holster' } as const;
 type LabCommand = (typeof LAB_COMMANDS)[keyof typeof LAB_COMMANDS];
@@ -297,18 +305,18 @@ export class Pickadoll {
   }
 
   private drawHud() {
-    const label = (button: HTMLButtonElement, key: string, name: string) => {
+    const label = (button: HTMLButtonElement, key: string, name: string, icon?: IconNode) => {
       const kbd = document.createElement('kbd');
       kbd.setAttribute('aria-hidden', 'true');
       kbd.textContent = key;
-      button.replaceChildren(kbd, name);
+      button.replaceChildren(kbd, ...(icon ? [createElement(icon, { 'aria-hidden': 'true' })] : []), name);
     };
     label(this.weaponButton, LAB_KEYS.WEAPON.label, this.weaponName);
     this.weaponButton.setAttribute('aria-label', 'Weapon: ' + this.weaponName);
     this.ammoButton.setAttribute('aria-label', 'Ammo: ' + AMMOS[this.ammo].name);
     const [lengthM, thickM] = GUN_M[WEAPONS[this.weapon].id];
     this.g.fx.sizeGun(lengthM, thickM);
-    label(this.ammoButton, LAB_KEYS.AMMO.label, AMMOS[this.ammo].name);
+    label(this.ammoButton, LAB_KEYS.AMMO.label, AMMOS[this.ammo].name, AMMO_ICONS[AMMOS[this.ammo].id]);
   }
 
   // C and the Aim button switch aiming on until they switch it off

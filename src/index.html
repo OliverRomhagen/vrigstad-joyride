@@ -141,6 +141,8 @@ body { isolation: isolate; }
 /* with the lab's Fire and Aim the pad has four buttons: on a narrow phone they stack two and two, Fire and Aim under the thumb, or Fire lies under the joystick */
 @media (max-width: 480px) { #pad.lab { flex-wrap: wrap-reverse; justify-content: flex-end; width: 146px; } }
 #pets, #menu, .lab-weapon { border: 0; cursor: pointer; pointer-events: auto; }
+.lab-weapon { display: inline-flex; align-items: center; }   /* the key, the ammo's icon and its name, their middles level */
+.lab-weapon svg { width: 1.15em; height: 1.15em; margin-right: 5px; flex: none; opacity: .85; }
 #pets kbd, #menu kbd, .lab-weapon kbd { font-size: 12px; min-width: 16px; padding: 0 4px; }
 @media (pointer: coarse) { #pets kbd, #menu kbd, .lab-weapon kbd { display: none; } #pets, #menu, .lab-weapon { min-height: 44px; padding: 0 16px; } }   /* a finger-sized target */
 #pause { position: absolute; inset: 0; display: grid; place-items: center; padding: 20px; background: rgba(12, 18, 16, .55); }

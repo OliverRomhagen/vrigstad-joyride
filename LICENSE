@@ -28,9 +28,10 @@ Third-party components keep their own licenses:
   License 2.0: https://www.apache.org/licenses/LICENSE-2.0 . Served beside
   the pages as vendor/rapier.mjs, and loaded only by the ?lab=rapier
   experiment (src/game/rapier-lab.ts).
-- Icons in the wiki: Lucide (ISC License, full text below; some icons are
-  from Feather, MIT License, as its text says), drawn from the npm package
-  @lucide/svelte.
+- Icons in the wiki and in the game's weapons lab (?lab=pickadoll): Lucide
+  (ISC License, full text below; some icons are from Feather, MIT License,
+  as its text says), drawn from the npm packages @lucide/svelte (the wiki)
+  and lucide (the game).
 
 ---
 
@@ -253,8 +254,8 @@ DAMAGES, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 FROM, OUT OF THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM
 OTHER DEALINGS IN THE FONT SOFTWARE.
 
-Lucide (icons in the wiki)
---------------------------
+Lucide (icons in the wiki and the game)
+---------------------------------------
 Source: https://lucide.dev
 
 ISC License
