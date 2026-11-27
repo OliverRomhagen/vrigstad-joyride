@@ -34,6 +34,8 @@ import { classifyStreetscape, sideSpecOf } from '../world/streetscape-rules';
 import { houseFronts } from '../world/furniture/houses';
 import { layoutPlots, propertyLineM } from '../world/plots';
 import { PlotOutlines } from '../world/mesh/plot-outlines';
+import { PlotBoundaries } from '../world/mesh/plot-boundaries';
+import { layoutBoundaries } from '../world/plot-boundaries';
 import { treeSpots } from '../world/trees';
 import { layoutShore } from '../world/shore';
 import { Water } from '../world/water';
@@ -191,13 +193,16 @@ const bridgeMeshes = addBridges(scene, bridges, heightfield);
 const allTreeSpots = addTrees(scene, forestSpots, street.layout.trees, heightfield, HALF);   // every tree drawn, [x, z, scale, ...]: the street furniture keeps clear of them too
 ground.bakeTreeShadows(allTreeSpots, blobTex);
 
-// ---------- plots: the ground each house owns and its driveway, inferred (#401); only drawn by ?debug=plots so far ----------
-if (new URLSearchParams(location.search).get('debug') === 'plots') {
+// ---------- plots: the ground each house owns, its driveway and the hedges, fences and walls round it, inferred (#401) ----------
+const DEBUG_PLOTS = new URLSearchParams(location.search).get('debug') === 'plots';   // ?debug=plots outlines the plots and driveways
+const plots = (function () {
   const t0 = performance.now(), fronts = houseFronts(D, roads, () => true);
-  const plots = layoutPlots({ data: D, roads, buildings, fronts, inWater, frontEdgeM: (ri, side) => propertyLineM(sideSpecOf(street.sides[ri], side), R[ri].c) });
-  scene.add(new PlotOutlines(plots, groundAt).mesh);
-  console.info(`Plots: ${plots.length} for ${fronts.length} houses, ${plots.filter(p => p.driveway?.source === 'mapped').length} mapped driveways, ${(performance.now() - t0).toFixed(0)} ms`);
-}
+  const layout = layoutPlots({ data: D, roads, buildings, fronts, inWater, frontEdgeM: (ri, side) => propertyLineM(sideSpecOf(street.sides[ri], side), R[ri].c) });
+  const runs = layoutBoundaries(layout, ri => street.sides[ri].profile);
+  const draw = new PlotBoundaries(runs, { groundAt }); scene.add(...draw.meshes);
+  if (DEBUG_PLOTS) scene.add(new PlotOutlines(layout, groundAt).mesh);
+  return { layout, runs, draw, ms: performance.now() - t0 };
+})();
 
 // ---------- cars ----------
 // the rules (driving, traffic, the parked cars) are in src/game/cars.ts; the meshes in src/game/render/car-meshes.ts
@@ -445,6 +450,6 @@ loop.start();
 
 // ---------- test hook: read-only state for the smoke tests (src/game/test-hook.ts) ----------
 installTestHook({ game, view, player, health, cars, labs: lab.list(), get styled() { return loop.styled; }, get cockpit() { return !!cockpit?.inside; }, get ragdolls() { return ragdolls.count; }, get stars() { return wanted.stars; }, get cats() { return cats.length; }, get ownCat() { return !!colony.owned; }, get displayCar() { return displayCar; }, lift: yard.workshop?.bay ?? null,
-  vehicleVisuals: { state: c => vehicleVisuals.state(meshed(c)) }, crackShown: c => carDamage.crackShown(meshed(c)), bodyMotion: { state: c => bodyMotion.state(meshed(c)) }, skyDome, street, debugStreetscape: DEBUG_STREETSCAPE, bridges: { index: bridges, draw: bridgeMeshes, groundAt }, furniture, water: { bodies: waterBodies, surface: waterLook.surface, props: waterLook.props, shore, terrainTriangles: terrainMesh.triangles, refinedCells: heightfield.refinedCells, buildMs: waterCutMs + waterMeshMs, inWater, hAt }, debugFurniture: DEBUG_FURNITURE, nearestCar,
+  vehicleVisuals: { state: c => vehicleVisuals.state(meshed(c)) }, crackShown: c => carDamage.crackShown(meshed(c)), bodyMotion: { state: c => bodyMotion.state(meshed(c)) }, skyDome, street, debugStreetscape: DEBUG_STREETSCAPE, bridges: { index: bridges, draw: bridgeMeshes, groundAt }, furniture, water: { bodies: waterBodies, surface: waterLook.surface, props: waterLook.props, shore, terrainTriangles: terrainMesh.triangles, refinedCells: heightfield.refinedCells, buildMs: waterCutMs + waterMeshMs, inWater, hAt }, debugFurniture: DEBUG_FURNITURE, plots, debugPlots: DEBUG_PLOTS, nearestCar,
   get kr() { return wallet.kr; }, get banknotes() { return banknotes.live; }, get confetti() { return confetti.live; }, get devcon() { return devcon.isOpen; }, build: __BUILD__, get fps() { return !!debugOverlay?.shown; }, day: { get hour() { return dayClock.hour; }, get night() { return dayClock.night; }, get sunLight() { return sky.sun; } }, sunStreaks });
 })();
