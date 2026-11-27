@@ -30,7 +30,7 @@ import { RoadNetwork } from '../../../../src/world/roads';
 import { sidewalkCentreM } from '../../../../src/world/streetscape';
 import type { Profile, SideSpec, StreetSides } from '../../../../src/world/streetscape-rules';
 import { Water } from '../../../../src/world/water';
-import { makeWorld, square } from '../fixture';
+import { centred, makeWorld, square } from '../fixture';
 
 // A flat 1000 m world. Roads are hand-placed so every expected position can be worked out.
 const side = (sidewalk: SideSpec['sidewalk'] = 'absent', widthM = 0): SideSpec => ({
@@ -61,7 +61,7 @@ interface Fixture {
   elev?: number[];
 }
 function place({ world = {}, profiles, trees = [], extra = {}, elev }: Fixture) {
-  const data = makeWorld({ size: 1000, ...(elev ? { n: 3, elev } : {}), ...world });
+  const data = makeWorld({ bounds: centred(1000), ...(elev ? { nx: 3, nz: 3, elev } : {}), ...world });
   const heightfield = new Heightfield(data);
   const roads = new RoadNetwork(data, heightfield);
   const buildings = new BuildingIndex(data);

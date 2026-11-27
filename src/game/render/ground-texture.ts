@@ -23,24 +23,31 @@ const WATER_PAINT = '#4d7774',
 // each road class's asphalt or gravel, from primary to path
 const ROAD_PAINT = ['#55585a', '#5d6062', '#66696a', '#77776f', '#a08c6c', '#b8ab90'];
 
-/** The painted ground; `P` turns a world coordinate into canvas pixels, `K` is pixels per metre. */
+/**
+ * The painted ground over the world's bounds; `Px` and `Pz` turn a world x or z into canvas pixels, `K` is pixels per
+ * metre, the same along both axes, so the canvas is as much taller or shorter than wide as the world is.
+ */
 export class GroundTexture {
   readonly canvas: HTMLCanvasElement;
   readonly texture: THREE.CanvasTexture;
   readonly K: number;
   private readonly ctx: CanvasRenderingContext2D;
-  private readonly half: number;
+  private readonly x0: number;
+  private readonly z0: number;
   private readonly bridgeRoads: readonly Road[];
 
   constructor(D: WorldData, { coarse, maxTextureSize, maxAnisotropy, shore }: GroundTextureOptions) {
-    const S = D.size,
+    const [x0, z0, x1, z1] = D.bounds,
       CW = coarse || maxTextureSize < 4096 ? 2048 : 4096,
-      K = CW / S;
-    this.half = S / 2;
+      K = CW / (x1 - x0),
+      CH = Math.round((z1 - z0) * K);
+    this.x0 = x0;
+    this.z0 = z0;
     this.K = K;
     this.bridgeRoads = D.r.filter(r => r.br);
     const tex2d = document.createElement('canvas');
-    tex2d.width = tex2d.height = CW;
+    tex2d.width = CW;
+    tex2d.height = CH;
     const ctx = tex2d.getContext('2d')!;
     this.canvas = tex2d;
     this.ctx = ctx;
@@ -50,7 +57,7 @@ export class GroundTexture {
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
       ctx.fillStyle = '#9db87a';
-      ctx.fillRect(0, 0, CW, CW);
+      ctx.fillRect(0, 0, CW, CH);
       const fillLand = (k: number) => {
         ctx.fillStyle = land[k];
         ctx.beginPath();
@@ -67,7 +74,7 @@ export class GroundTexture {
       };
       for (let i = 0; i < 2600; i++) {
         const cx = nr() * CW,
-          cy = nr() * CW,
+          cy = nr() * CH,
           r = (6 + nr() * 24) * K,
           g = ctx.createRadialGradient(cx, cy, 0, cx, cy, r),
           c = ['143,176,111', '169,196,134', '120,150,95', '179,201,141'][i % 4];
@@ -79,7 +86,7 @@ export class GroundTexture {
       ctx.globalAlpha = 0.45;
       for (const c of ['#86a866', '#b0c88e', '#7c9d5c', '#c3cf98']) {
         ctx.fillStyle = c;
-        for (let i = 0; i < 40000; i++) ctx.fillRect(nr() * CW, nr() * CW, 1 + nr() * 1.5, 1 + nr() * 1.5);
+        for (let i = 0; i < 40000; i++) ctx.fillRect(nr() * CW, nr() * CH, 1 + nr() * 1.5, 1 + nr() * 1.5);
       }
       ctx.globalAlpha = 1;
       for (let k = 0; k < 7; k++) if (!GRASS.includes(k)) fillLand(k);
@@ -130,18 +137,19 @@ export class GroundTexture {
       }
       // the lakes' banks: a narrow band past the mapped shore, and a wide one inside it, where a bank that drops steeply
       // to the water stands above it (the rest of that band lies under the surface)
-      const edge = S / 2 - 0.5, // not where the world's edge cuts a lake
+      // not where the world's edge cuts a lake: both ends within half a metre of the same edge
+      const onEdge = (ax: number, az: number, bx: number, bz: number) =>
+          (ax < x0 + 0.5 && bx < x0 + 0.5) ||
+          (ax > x1 - 0.5 && bx > x1 - 0.5) ||
+          (az < z0 + 0.5 && bz < z0 + 0.5) ||
+          (az > z1 - 0.5 && bz > z1 - 0.5),
         shoreLines = () => {
           ctx.beginPath();
           for (const w of D.w)
             for (const r of w)
               for (let i = 0; i < r.length; i += 2) {
                 const j = (i + 2) % r.length;
-                if (
-                  (Math.abs(r[i]) > edge && Math.abs(r[j]) > edge) ||
-                  (Math.abs(r[i + 1]) > edge && Math.abs(r[j + 1]) > edge)
-                )
-                  continue;
+                if (onEdge(r[i], r[i + 1], r[j], r[j + 1])) continue;
                 trace([r[i], r[i + 1], r[j], r[j + 1]]);
               }
           ctx.stroke();
@@ -182,11 +190,12 @@ export class GroundTexture {
     this.texture = texture;
   }
 
-  P = (v: number) => (v + this.half) * this.K;
+  Px = (x: number) => (x - this.x0) * this.K;
+  Pz = (z: number) => (z - this.z0) * this.K;
   private trace = (p: readonly number[], close?: boolean) => {
-    const { ctx, P } = this;
-    ctx.moveTo(P(p[0]), P(p[1]));
-    for (let i = 2; i < p.length; i += 2) ctx.lineTo(P(p[i]), P(p[i + 1]));
+    const { ctx, Px, Pz } = this;
+    ctx.moveTo(Px(p[0]), Pz(p[1]));
+    for (let i = 2; i < p.length; i += 2) ctx.lineTo(Px(p[i]), Pz(p[i + 1]));
     if (close) ctx.closePath();
   };
 
@@ -211,12 +220,12 @@ export class GroundTexture {
 
   /** Bakes a soft shadow under every tree into the texture (the minimap shows them too); `spots` is x, z, scale per tree. */
   bakeTreeShadows(spots: readonly number[], blobTex: CanvasImageSource) {
-    const { ctx, K, P } = this,
+    const { ctx, K, Px, Pz } = this,
       N = spots.length / 3;
     ctx.globalAlpha = 0.5;
     for (let i = 0; i < N; i++) {
       const r = 3.4 * spots[i * 3 + 2] * K;
-      ctx.drawImage(blobTex, P(spots[i * 3]) - r, P(spots[i * 3 + 1]) - r, r * 2, r * 2);
+      ctx.drawImage(blobTex, Px(spots[i * 3]) - r, Pz(spots[i * 3 + 1]) - r, r * 2, r * 2);
     }
     ctx.globalAlpha = 1;
     this.texture.needsUpdate = true;

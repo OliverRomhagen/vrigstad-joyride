@@ -46,10 +46,13 @@ export class Heightfield {
   readonly minElevationM: number;
   /** highest sample above sea level (m), not exaggerated */
   readonly maxElevationM: number;
-  /** samples along each side of the grid */
-  readonly samples: number;
-  private readonly size: number;
-  private readonly half: number;
+  /** samples along x (west to east) and along z (north to south) */
+  readonly nx: number;
+  readonly nz: number;
+  /** the grid's west and north edges, and its square cells' side (m) */
+  private readonly x0: number;
+  private readonly z0: number;
+  private readonly cell: number;
   private readonly elev: number[];
   private readonly minDm: number;
   private readonly exaggeration: number;
@@ -60,9 +63,14 @@ export class Heightfield {
   private readonly fine: FineCell[] = [];
 
   constructor(data: WorldData, { exaggeration = 1, cut }: HeightfieldOptions = {}) {
-    this.size = data.size;
-    this.half = data.size / 2;
-    this.samples = data.n;
+    const [x0, z0, x1, z1] = data.bounds;
+    this.nx = data.nx;
+    this.nz = data.nz;
+    this.x0 = x0;
+    this.z0 = z0;
+    this.cell = (x1 - x0) / (data.nx - 1);
+    // the cut's refined cells and the terrain's triangles take a cell as square
+    if (Math.abs((z1 - z0) / (data.nz - 1) - this.cell) > 1e-9) throw new Error('elevation cells must be square');
     this.elev = data.elev;
     // a loop, not Math.min(...elev): spreading a finer grid would pass the engine's argument limit
     let minDm = Infinity;
@@ -77,20 +85,20 @@ export class Heightfield {
     this.exaggeration = exaggeration;
     if (cut) {
       this.cutElev = Float64Array.from(data.elev, h => (h - minDm) / 10);
-      this.fineIndex = new Int32Array((this.samples - 1) ** 2).fill(-1);
+      this.fineIndex = new Int32Array((this.nx - 1) * (this.nz - 1)).fill(-1);
       this.applyCut(cut);
     }
   }
 
   /** samples per side of grid cell (i, j): 0 or 1 where it is the plain grid cell, more where a cut refined it */
   cellDetail(i: number, j: number) {
-    const f = this.fineIndex ? this.fineIndex[j * (this.samples - 1) + i] : -1;
+    const f = this.fineIndex ? this.fineIndex[j * (this.nx - 1) + i] : -1;
     return f < 0 ? 0 : this.fine[f].m;
   }
 
   /** Height of sub-sample (a, b) of refined cell (i, j), a from the west and b from the north, as `heightAt` reads it. */
   fineHeight(i: number, j: number, a: number, b: number) {
-    const c = this.fine[(this.fineIndex as Int32Array)[j * (this.samples - 1) + i]];
+    const c = this.fine[(this.fineIndex as Int32Array)[j * (this.nx - 1) + i]];
     return c.h[b * (c.m + 1) + a] * this.exaggeration;
   }
 
@@ -101,10 +109,9 @@ export class Heightfield {
 
   heightAt(x: number, z: number) {
     if (this.cutElev) return this.cutHeight(x, z) * this.exaggeration;
-    const n = this.samples;
-    const half = this.half;
-    const u = clamp(((x + half) / this.size) * (n - 1), 0, n - 1.0001);
-    const v = clamp(((z + half) / this.size) * (n - 1), 0, n - 1.0001);
+    const n = this.nx;
+    const u = this.gridU(x);
+    const v = this.gridV(z);
     const i = Math.floor(u);
     const j = Math.floor(v);
     const fu = u - i;
@@ -119,21 +126,36 @@ export class Heightfield {
    * interpolates from there, worked out the same way, so a mesh built on the samples matches the lookup.
    */
   sampleHeight(i: number, j: number) {
-    if (this.cutElev) return this.cutElev[j * this.samples + i] * this.exaggeration;
-    const h = this.elev[j * this.samples + i];
+    if (this.cutElev) return this.cutElev[j * this.nx + i] * this.exaggeration;
+    const h = this.elev[j * this.nx + i];
     return ((h - this.minDm) / 10) * this.exaggeration;
   }
 
-  /** x of the samples in column `i`, or z of those in row `i` (m); the grid's edges are at ±half its size */
-  sampleCoord(i: number) {
-    return -this.half + (this.size * i) / (this.samples - 1);
+  /** x of the samples in column `i` (m), from the west edge */
+  sampleCoordX(i: number) {
+    return this.x0 + this.cell * i;
+  }
+
+  /** z of the samples in row `j` (m), from the north edge */
+  sampleCoordZ(j: number) {
+    return this.z0 + this.cell * j;
+  }
+
+  /** x as a fractional column, held inside the grid */
+  private gridU(x: number) {
+    return clamp((x - this.x0) / this.cell, 0, this.nx - 1.0001);
+  }
+
+  /** z as a fractional row, held inside the grid */
+  private gridV(z: number) {
+    return clamp((z - this.z0) / this.cell, 0, this.nz - 1.0001);
   }
 
   /** the uncut ground at (x, z), in metres above the lowest sample, not exaggerated */
   private baseAt(x: number, z: number) {
-    const n = this.samples;
-    const u = clamp(((x + this.half) / this.size) * (n - 1), 0, n - 1.0001);
-    const v = clamp(((z + this.half) / this.size) * (n - 1), 0, n - 1.0001);
+    const n = this.nx;
+    const u = this.gridU(x);
+    const v = this.gridV(z);
     const i = Math.floor(u);
     const j = Math.floor(v);
     const k = j * n + i;
@@ -142,9 +164,9 @@ export class Heightfield {
   }
 
   private cutHeight(x: number, z: number) {
-    const n = this.samples;
-    const u = clamp(((x + this.half) / this.size) * (n - 1), 0, n - 1.0001);
-    const v = clamp(((z + this.half) / this.size) * (n - 1), 0, n - 1.0001);
+    const n = this.nx;
+    const u = this.gridU(x);
+    const v = this.gridV(z);
     const i = Math.floor(u);
     const j = Math.floor(v);
     const f = (this.fineIndex as Int32Array)[j * (n - 1) + i];
@@ -170,38 +192,41 @@ export class Heightfield {
    * and is straight between them. So the mesh built on these samples has no cracks.
    */
   private applyCut(cut: TerrainCut) {
-    const n = this.samples;
-    const cells = n - 1;
-    const at = (i: number) => this.sampleCoord(i);
+    const n = this.nx;
+    const cells = n - 1; // cells per row
+    const rows = this.nz - 1;
+    const atX = (i: number) => this.sampleCoordX(i);
+    const atZ = (j: number) => this.sampleCoordZ(j);
     const elev = this.cutElev as Float64Array;
     const fineIndex = this.fineIndex as Int32Array;
-    const asked = new Uint8Array(cells * cells);
-    for (let j = 0; j < cells; j++)
-      for (let i = 0; i < cells; i++) asked[j * cells + i] = cut.detail(at(i), at(j), at(i + 1), at(j + 1));
+    const asked = new Uint8Array(cells * rows);
+    for (let j = 0; j < rows; j++)
+      for (let i = 0; i < cells; i++) asked[j * cells + i] = cut.detail(atX(i), atZ(j), atX(i + 1), atZ(j + 1));
     // corners first: every sample of a cell the cut touches takes the cut's height there; a cell left plain shares its
     // corners with the mesh, so it stays joined even where a corner moved
-    const touched = new Uint8Array(n * n);
-    for (let j = 0; j < cells; j++)
+    const touched = new Uint8Array(n * this.nz);
+    for (let j = 0; j < rows; j++)
       for (let i = 0; i < cells; i++)
         if (asked[j * cells + i]) {
           const k = j * n + i;
           touched[k] = touched[k + 1] = touched[k + n] = touched[k + n + 1] = 1;
         }
-    for (let k = 0; k < n * n; k++) if (touched[k]) elev[k] = cut.cutAt(at(k % n), at(Math.floor(k / n)), elev[k]);
+    for (let k = 0; k < n * this.nz; k++)
+      if (touched[k]) elev[k] = cut.cutAt(atX(k % n), atZ(Math.floor(k / n)), elev[k]);
 
     // the cut at every sub-sample of the detail asked for, and the coarsest grid that holds it
-    const full: (Float32Array | null)[] = new Array(cells * cells).fill(null);
-    const detail = new Uint8Array(cells * cells);
-    for (let j = 0; j < cells; j++)
+    const full: (Float32Array | null)[] = new Array(cells * rows).fill(null);
+    const detail = new Uint8Array(cells * rows);
+    for (let j = 0; j < rows; j++)
       for (let i = 0; i < cells; i++) {
         const m = asked[j * cells + i];
         if (m < 2) {
           detail[j * cells + i] = m;
           continue;
         }
-        const x0 = at(i);
-        const z0 = at(j);
-        const side = at(i + 1) - x0;
+        const x0 = atX(i);
+        const z0 = atZ(j);
+        const side = this.cell;
         const h = new Float32Array((m + 1) * (m + 1));
         let changed = false;
         for (let b = 0; b <= m; b++)
@@ -221,8 +246,8 @@ export class Heightfield {
 
     // past the world's edge there is no neighbour to agree with: the edge takes the cut at every sub-sample
     const detailOf = (i: number, j: number, own: number) =>
-      i < 0 || j < 0 || i >= cells || j >= cells ? own : detail[j * cells + i];
-    for (let j = 0; j < cells; j++)
+      i < 0 || j < 0 || i >= cells || j >= rows ? own : detail[j * cells + i];
+    for (let j = 0; j < rows; j++)
       for (let i = 0; i < cells; i++) {
         const c = detail[j * cells + i];
         const h0 = full[j * cells + i];

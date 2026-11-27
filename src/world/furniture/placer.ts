@@ -1,6 +1,7 @@
 // What every street furniture rule shares (#144): the types, the queries over the world, the geometric checks and the
 // order candidates are accepted in. Pure: no three.js, no DOM. The rules themselves are in lamps.ts, seats.ts, bins.ts
 // and homes.ts; placement.ts runs them in order.
+import { insideBounds } from '../bounds';
 import { BUILDING_CELL_M } from '../buildings';
 import { type FurniturePoint, ROAD_WIDTH_M, RoadClass, type WorldData } from '../data';
 import { pointInPolygon, polygonBounds, segmentDistance, segmentParam } from '../polygon';
@@ -250,7 +251,6 @@ export class Placer {
   readonly placements: FurniturePlacement[] = [];
   readonly rejected = Object.fromEntries(REJECTIONS.map(k => [k, 0])) as Record<Rejection, number>;
   readonly generated: Partial<Record<CandidateOrigin, Record<FurnitureKind, number>>> = {};
-  private readonly halfSizeM: number;
   private readonly torgetRoads: Set<number>;
   /** per road: the pieces that carry straight on from its ends, the same street where OSM split the way */
   private readonly sameStreet: Set<number>[];
@@ -266,7 +266,6 @@ export class Placer {
   constructor(readonly input: FurnitureInput) {
     const { data, roads, street } = input;
     this.data = data;
-    this.halfSizeM = data.size / 2;
     this.torget = torgetArea(data, roads);
     this.torgetRoads = new Set(this.torget?.roads ?? []);
     this.contexts = roadContexts(data, roads, street.sides, this.torget);
@@ -461,7 +460,7 @@ export class Placer {
   private rejectionFor(c: Candidate): Rejection | null {
     const d = FURNITURE[c.kind];
     const { x, z } = c;
-    if (Math.abs(x) > this.halfSizeM - EDGE_KEEP_M || Math.abs(z) > this.halfSizeM - EDGE_KEEP_M) return 'edge';
+    if (!insideBounds(this.data.bounds, x, z, EDGE_KEEP_M)) return 'edge';
     this.input.heightfield.normalAt(x, z, this._normal);
     if (this._normal.y < Math.cos((d.maxSlopeDeg * Math.PI) / 180)) return 'slope';
     const box = corners(c.kind, x, z, c.rotationY);

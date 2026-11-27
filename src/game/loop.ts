@@ -2,6 +2,7 @@
 // and the police, places the camera, updates the HUD and renders. Also the Start button and fitting the canvas.
 // DOM over the canvas. Moved from src/game/main.ts (#177); main.ts passes in the modules it steps.
 import type * as THREE from 'three';
+import type { WorldBounds } from '../world/data';
 import { clamp } from '../world/math';
 import type { Car, Fleet, TrafficCar } from './cars';
 import { CRASH_COOL_S, type Health, impactSpeed, regen, runOverHurt } from './health';
@@ -29,7 +30,7 @@ export interface GameLoopDeps {
   camera: THREE.PerspectiveCamera;
   canvas: HTMLCanvasElement;
   coarse: boolean;
-  half: number; // half the playable square (m)
+  bounds: WorldBounds; // the world's [x0, z0, x1, z1] (m)
   game: GameState;
   view: ViewState;
   player: PlayerState & { mesh: Person };
@@ -191,7 +192,7 @@ export class GameLoop {
           wet: player.floor === 0 && g.inWater(player.x, player.z), // on a car's roof in the lake, you're dry
           still: game.titleCardT > 0 || !!places.inside,
         },
-        g.half,
+        g.bounds,
       );
       g.collide(player, 0.5);
       let on: Car | null = null; // the car you stand on, or pull yourself up onto: it neither pushes you off nor runs you over

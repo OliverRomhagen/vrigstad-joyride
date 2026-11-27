@@ -205,7 +205,7 @@ const percentile = (values: number[], p: number) => {
 export class WaterBodies implements TerrainCut {
   readonly courses: Course[] = [];
   readonly lakes: Lake[] = [];
-  private readonly half: number;
+  private readonly worldBounds: WorldData['bounds'];
   private readonly base: { heightAt(x: number, z: number): number };
   /** lookup cells: course runs as [course, first sample, last sample], lake shore segments as [lake, ring, vertex] */
   private readonly courseCells = new Map<number, number[]>();
@@ -215,7 +215,7 @@ export class WaterBodies implements TerrainCut {
   private readonly buildings: { p: number[]; x0: number; x1: number; z0: number; z1: number }[];
 
   constructor(data: WorldData, base: { heightAt(x: number, z: number): number }) {
-    this.half = data.size / 2;
+    this.worldBounds = data.bounds;
     this.base = base;
     this.buildings = data.b.map(b => ({ p: b.p, ...boundsOf(b.p) }));
     data.w.forEach(rings => {
@@ -519,10 +519,13 @@ export class WaterBodies implements TerrainCut {
 
   /** True for a shore segment along the world's edge, where the map cuts a lake rather than a shore. */
   onWorldEdge(ax: number, az: number, bx: number, bz: number) {
-    const e = this.half - EDGE_M;
+    const [x0, z0, x1, z1] = this.worldBounds;
+    const e = EDGE_M;
     return (
-      (Math.abs(ax) >= e && Math.abs(bx) >= e && Math.sign(ax) === Math.sign(bx)) ||
-      (Math.abs(az) >= e && Math.abs(bz) >= e && Math.sign(az) === Math.sign(bz))
+      (ax <= x0 + e && bx <= x0 + e) ||
+      (ax >= x1 - e && bx >= x1 - e) ||
+      (az <= z0 + e && bz <= z0 + e) ||
+      (az >= z1 - e && bz >= z1 - e)
     );
   }
 

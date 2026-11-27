@@ -21,8 +21,11 @@ import {
 const codes = (kinds: Record<string, number>) => new Set(Object.values(kinds));
 
 describe('data/vrigstad.json', () => {
-  it('has a full elevation grid', () => {
-    expect(data.elev).toHaveLength(data.n * data.n);
+  it('has a full elevation grid on square cells, with Torget inside the bounds', () => {
+    const [x0, z0, x1, z1] = data.bounds;
+    expect(data.elev).toHaveLength(data.nx * data.nz);
+    expect((x1 - x0) / (data.nx - 1)).toBeCloseTo((z1 - z0) / (data.nz - 1), 9);
+    expect(x0 < 0 && z0 < 0 && x1 > 0 && z1 > 0).toBe(true);
   });
 
   it('uses only the class codes data.ts names', () => {

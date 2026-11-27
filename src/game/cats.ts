@@ -1,7 +1,9 @@
 // Cats: lounge by the house walls, wander a little, bolt from cars and running feet, and can be petted.
 // Moved from src/game/main.ts (#177); main.ts passes in what the cats read from the rest of the game.
 import * as THREE from 'three';
+import { insideBounds } from '../world/bounds';
 import { BUILDING_CELL_M as BC, type BuildingIndex } from '../world/buildings';
+import type { WorldBounds } from '../world/data';
 import { clamp, wrap } from '../world/math';
 import { pointInPolygon as inPoly } from '../world/polygon';
 import { makeRnd } from '../world/random';
@@ -193,7 +195,7 @@ export interface CatDeps {
   buildings: BuildingIndex;
   inWater(x: number, z: number): boolean;
   groundAt(x: number, z: number): number;
-  half: number; // half the playable square's side (m)
+  bounds: WorldBounds; // the world's [x0, z0, x1, z1] (m)
   coarse: boolean; // touch screen: fewer cats
   geoCache: Record<string, THREE.BufferGeometry>;
   boxGeo(parts: BoxPart[]): THREE.BufferGeometry;
@@ -453,8 +455,7 @@ export class CatColony {
   // a spot just outside a random wall of a house in the cell around (x, z)
   private spawn(T: Point, minD: number) {
     const { grid: bGrid, footprints: bPolys } = this.g.buildings,
-      { inWater } = this.g,
-      HALF = this.g.half,
+      { inWater, bounds } = this.g,
       rnd = this.rnd;
     for (let t = 0; t < 10; t++) {
       const ang = rnd() * Math.PI * 2,
@@ -482,13 +483,7 @@ export class CatColony {
       }
       const o = { x: mx + nx * out, z: mz + nz * out };
       this.collide(o, 0.3);
-      if (
-        Math.abs(o.x) > HALF - 10 ||
-        Math.abs(o.z) > HALF - 10 ||
-        inWater(o.x, o.z) ||
-        Math.hypot(o.x - T.x, o.z - T.z) < minD
-      )
-        continue;
+      if (!insideBounds(bounds, o.x, o.z, 10) || inWater(o.x, o.z) || Math.hypot(o.x - T.x, o.z - T.z) < minD) continue;
       this.make(o.x, o.z, Math.atan2(nx, -nz));
       return;
     }
@@ -670,8 +665,7 @@ export class CatColony {
 
   private updateCat(k: Cat, dt: number) {
     const g = this.g,
-      { player, inWater, groundAt } = g,
-      HALF = g.half,
+      { player, inWater, groundAt, bounds } = g,
       rnd = this.rnd;
     const car = k.owned && g.inCar ? g.pcar : null; // the car your own cat goes with
     if (k.ride) {
@@ -813,8 +807,8 @@ export class CatColony {
         nz = k.z - Math.cos(k.h) * sp * dt;
       if (inWater(nx, nz)) k.want = wrap(k.h + Math.PI);
       else {
-        k.x = clamp(nx, -HALF + 2, HALF - 2);
-        k.z = clamp(nz, -HALF + 2, HALF - 2);
+        k.x = clamp(nx, bounds[0] + 2, bounds[2] - 2);
+        k.z = clamp(nz, bounds[1] + 2, bounds[3] - 2);
       }
       if (this.collide(k, 0.25) && k.state === 'walk') k.want = wrap(k.h + (rnd() < 0.5 ? 1.6 : -1.6));
       k.phase += sp * dt * 9;

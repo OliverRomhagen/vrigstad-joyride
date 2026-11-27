@@ -11,7 +11,7 @@ export interface TerrainMeshOptions {
 
 type Field = Pick<
   Heightfield,
-  'samples' | 'sampleCoord' | 'sampleHeight' | 'cellDetail' | 'fineHeight' | 'heightAt' | 'normalAt'
+  'nx' | 'nz' | 'sampleCoordX' | 'sampleCoordZ' | 'sampleHeight' | 'cellDetail' | 'fineHeight' | 'heightAt' | 'normalAt'
 >;
 
 /** refined cells are batched in square blocks of this many grid cells, one mesh each, so the camera culls them */
@@ -30,17 +30,21 @@ export class TerrainMesh {
   readonly skirt: THREE.Mesh;
 
   constructor(heightfield: Field, { material, skirtMaterial, skirtDepthM }: TerrainMeshOptions) {
-    const n = heightfield.samples;
-    const at = (i: number) => heightfield.sampleCoord(i);
-    const half = at(n - 1);
-    const size = 2 * half;
+    const n = heightfield.nx;
+    const nz = heightfield.nz;
+    const atX = (i: number) => heightfield.sampleCoordX(i);
+    const atZ = (j: number) => heightfield.sampleCoordZ(j);
+    const west = atX(0);
+    const north = atZ(0);
+    const width = atX(n - 1) - west;
+    const depth = atZ(nz - 1) - north;
 
     // the plain grid's vertices, shared by every plain cell
     const pos: number[] = [];
     const index: number[] = [];
-    for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) pos.push(at(i), heightfield.sampleHeight(i, j), at(j));
+    for (let j = 0; j < nz; j++) for (let i = 0; i < n; i++) pos.push(atX(i), heightfield.sampleHeight(i, j), atZ(j));
     const blocks = new Map<string, { pos: number[]; index: number[]; x0: number; z0: number }>();
-    for (let j = 0; j < n - 1; j++) {
+    for (let j = 0; j < nz - 1; j++) {
       for (let i = 0; i < n - 1; i++) {
         const m = heightfield.cellDetail(i, j);
         if (m < 2) {
@@ -54,13 +58,13 @@ export class TerrainMesh {
         const key = bi + ',' + bj;
         let block = blocks.get(key);
         if (!block) {
-          block = { pos: [], index: [], x0: at(bi * BLOCK_CELLS), z0: at(bj * BLOCK_CELLS) };
+          block = { pos: [], index: [], x0: atX(bi * BLOCK_CELLS), z0: atZ(bj * BLOCK_CELLS) };
           blocks.set(key, block);
         }
         const first = block.pos.length / 3;
-        const x0 = at(i);
-        const z0 = at(j);
-        const side = at(i + 1) - x0;
+        const x0 = atX(i);
+        const z0 = atZ(j);
+        const side = atX(i + 1) - x0;
         for (let b = 0; b <= m; b++)
           for (let a = 0; a <= m; a++)
             block.pos.push(
@@ -83,8 +87,8 @@ export class TerrainMesh {
       for (let v = 0; v < count; v++) {
         const x = p[v * 3] + ox;
         const z = p[v * 3 + 2] + oz;
-        uv[v * 2] = (x + half) / size;
-        uv[v * 2 + 1] = 1 - (z + half) / size;
+        uv[v * 2] = (x - west) / width;
+        uv[v * 2 + 1] = 1 - (z - north) / depth;
         // from the height lookup rather than per mesh face, so a refined cell's edge shades like its neighbour's
         heightfield.normalAt(x, z, nv);
         normal[v * 3] = nv.x;
@@ -112,13 +116,15 @@ export class TerrainMesh {
     // one wall per grid step along each edge, from the terrain down to the base, split where a cell is refined
     const bottom = -skirtDepthM;
     const v: number[] = [];
-    const last = n - 1;
+    const lastX = n - 1;
+    const lastZ = nz - 1;
     // the point t of the way along an edge's grid step i: [x, y, z]; along each edge in turn, by (i, t)
     const edge = (
+      steps: number,
       point: (i: number, s: number, m: number) => [number, number, number],
       cell: (i: number) => [number, number],
     ) => {
-      for (let i = 0; i < last; i++) {
+      for (let i = 0; i < steps; i++) {
         const m = Math.max(1, heightfield.cellDetail(...cell(i)));
         for (let s = 0; s < m; s++) {
           const a = point(i, s, m);
@@ -148,8 +154,8 @@ export class TerrainMesh {
     };
     // a point on the edge of cell (ci, cj) at sub-sample (a, b) of m, from the plain grid at its corners
     const edgePoint = (ci: number, cj: number, a: number, b: number, m: number): [number, number, number] => {
-      const x = a === 0 ? at(ci) : a === m ? at(ci + 1) : at(ci) + ((at(ci + 1) - at(ci)) * a) / m;
-      const z = b === 0 ? at(cj) : b === m ? at(cj + 1) : at(cj) + ((at(cj + 1) - at(cj)) * b) / m;
+      const x = a === 0 ? atX(ci) : a === m ? atX(ci + 1) : atX(ci) + ((atX(ci + 1) - atX(ci)) * a) / m;
+      const z = b === 0 ? atZ(cj) : b === m ? atZ(cj + 1) : atZ(cj) + ((atZ(cj + 1) - atZ(cj)) * b) / m;
       const corner = (a === 0 || a === m) && (b === 0 || b === m);
       const y =
         corner || m < 2
@@ -158,18 +164,22 @@ export class TerrainMesh {
       return [x, y, z];
     };
     edge(
-      (i, s, m) => edgePoint(i, last - 1, s, m, m),
-      i => [i, last - 1],
+      lastX,
+      (i, s, m) => edgePoint(i, lastZ - 1, s, m, m),
+      i => [i, lastZ - 1],
     );
     edge(
+      lastX,
       (i, s, m) => edgePoint(i, 0, s, 0, m),
       i => [i, 0],
     );
     edge(
-      (i, s, m) => edgePoint(last - 1, i, m, s, m),
-      i => [last - 1, i],
+      lastZ,
+      (i, s, m) => edgePoint(lastX - 1, i, m, s, m),
+      i => [lastX - 1, i],
     );
     edge(
+      lastZ,
       (i, s, m) => edgePoint(0, i, 0, s, m),
       i => [0, i],
     );

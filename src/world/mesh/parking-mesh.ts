@@ -154,12 +154,13 @@ export function parkingSurfaces(
 
 /** The segment split wherever it crosses a terrain triangle's edge, so a skirt's top follows the cut surface exactly. */
 function splitAtTerrain(ax: number, az: number, bx: number, bz: number, grid: GridLike): [number, number][] {
-  const x0 = grid.sampleCoord(0);
-  const cell = grid.sampleCoord(1) - x0;
+  const x0 = grid.sampleCoordX(0);
+  const z0 = grid.sampleCoordZ(0);
+  const cell = grid.sampleCoordX(1) - x0;
   const ua = (ax - x0) / cell,
-    va = (az - x0) / cell,
+    va = (az - z0) / cell,
     ub = (bx - x0) / cell,
-    vb = (bz - x0) / cell;
+    vb = (bz - z0) / cell;
   const ts = new Set<number>([0, 1]);
   const cross = (fa: number, fb: number) => {
     for (let k = Math.ceil(Math.min(fa, fb)); k <= Math.floor(Math.max(fa, fb)); k++)

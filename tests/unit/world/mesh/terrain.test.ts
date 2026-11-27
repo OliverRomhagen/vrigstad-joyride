@@ -59,6 +59,32 @@ describe('TerrainMesh', () => {
     terrain.dispose();
   });
 
+  it('builds a rectangle as nx × nz samples, with UVs from corner to corner and a skirt round all four edges', () => {
+    // 100 m east to west, 50 m north to south: 3 × 2 samples, 2 × 1 cells
+    const world = makeWorld({ bounds: [-50, 0, 50, 50], nx: 3, nz: 2, elev: [10, 20, 30, 40, 55, 60] });
+    const material = new THREE.MeshBasicMaterial();
+    const terrain = new TerrainMesh(new Heightfield(world), { material, skirtMaterial: material, skirtDepthM: 1 });
+    const geo = terrain.surface.geometry;
+    const pos = geo.getAttribute('position');
+    const uv = geo.getAttribute('uv');
+    expect(pos.count).toBe(6);
+    expect(geo.getIndex()?.count).toBe(2 * 2 * 3);
+    const xs = new Set<number>();
+    const zs = new Set<number>();
+    for (let v = 0; v < pos.count; v++) {
+      xs.add(pos.getX(v));
+      zs.add(pos.getZ(v));
+      // the ground texture spans the rectangle: u from the west edge, v from the south edge
+      expect(uv.getX(v)).toBeCloseTo((pos.getX(v) + 50) / 100);
+      expect(uv.getY(v)).toBeCloseTo(1 - pos.getZ(v) / 50);
+    }
+    expect([...xs].sort((a, b) => a - b)).toEqual([-50, 0, 50]);
+    expect([...zs].sort((a, b) => a - b)).toEqual([0, 50]);
+    // one wall per grid step: two along each of the long edges and one along each short one, six vertices each
+    expect(terrain.skirt.geometry.getAttribute('position').count).toBe((2 + 2 + 1 + 1) * 6);
+    terrain.dispose();
+  });
+
   it('draws refined cells on their finer grid, joined to their neighbours without cracks', () => {
     const world = makeValley({ ww: [{ k: WaterwayKind.RIVER, p: [-180, 10, 180, 10] }] });
     const base = new Heightfield(world);

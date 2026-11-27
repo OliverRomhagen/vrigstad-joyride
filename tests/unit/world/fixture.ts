@@ -1,8 +1,23 @@
-import type { WorldData } from '../../../src/world/data';
+import type { WorldBounds, WorldData } from '../../../src/world/data';
+
+/** the bounds of a square world `side` metres across, centred on the origin */
+export const centred = (side: number): WorldBounds => [-side / 2, -side / 2, side / 2, side / 2];
 
 /** A 100 m square world, flat unless `elev` says otherwise. The 3 × 3 grid puts samples at -50, 0 and 50 m. */
 export function makeWorld(overrides: Partial<WorldData> = {}): WorldData {
-  return { size: 100, n: 3, elev: new Array(9).fill(0), b: [], r: [], w: [], ww: [], l: [], labels: [], ...overrides };
+  return {
+    bounds: [-50, -50, 50, 50],
+    nx: 3,
+    nz: 3,
+    elev: new Array(9).fill(0),
+    b: [],
+    r: [],
+    w: [],
+    ww: [],
+    l: [],
+    labels: [],
+    ...overrides,
+  };
 }
 
 /** An axis-aligned square outline, as a flat [x, z, ...] array. */
@@ -25,5 +40,5 @@ export function makeValley(overrides: Partial<WorldData> = {}): WorldData {
   const n = 17;
   const elev: number[] = [];
   for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) elev.push(100 - i * 2.5);
-  return makeWorld({ size: 400, n, elev, ...overrides });
+  return makeWorld({ bounds: [-200, -200, 200, 200], nx: n, nz: n, elev, ...overrides });
 }

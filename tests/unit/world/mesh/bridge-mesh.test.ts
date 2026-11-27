@@ -5,7 +5,7 @@ import { BridgeIndex } from '../../../../src/world/bridges';
 import { RoadClass, type WorldData } from '../../../../src/world/data';
 import { Heightfield } from '../../../../src/world/heightfield';
 import { BridgeMesh } from '../../../../src/world/mesh/bridge-mesh';
-import { makeWorld } from '../fixture';
+import { centred, makeWorld } from '../fixture';
 
 const materials = () => ({
   body: new THREE.MeshLambertMaterial({ vertexColors: true }),
@@ -13,7 +13,7 @@ const materials = () => ({
 });
 // a primary road bridge, a cycle footbridge and a short footway, on gently sloping ground far from the origin
 const world = makeWorld({
-  size: 2000,
+  bounds: centred(2000),
   r: [
     { c: RoadClass.PRIMARY, n: '', p: [500, 500, 525, 502], i: 1, br: { l: 1 } },
     { c: RoadClass.PATH, n: '', p: [600, 600, 603, 608], i: 2, br: { l: 1, cy: 1 } },

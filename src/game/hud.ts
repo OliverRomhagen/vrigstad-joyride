@@ -15,7 +15,8 @@ type Point = { x: number; z: number };
 export interface HudDeps {
   $(id: string): HTMLElement;
   ground: HTMLCanvasElement; // the painted ground texture the minimap is cut from
-  P(v: number): number; // world x or z (m) to a pixel on `ground`
+  Px(x: number): number; // world x (m) to a pixel column on `ground`
+  Pz(z: number): number; // world z (m) to a pixel row on `ground`
   K: number; // pixels of `ground` per metre
   paintBridgeRoads(ctx: CanvasRenderingContext2D): void; // the roads `ground` leaves out under the bridges, in world metres
   roads: Pick<RoadNetwork, 'nearestRoad' | 'lines'>;
@@ -151,10 +152,10 @@ export class Hud {
   /** T is where the player (or their car) is, and its heading `h`. */
   drawMini(T: Point & { h: number }) {
     const { mctx, MW } = this,
-      { ground, P, K, cars, pcar, blink, places } = this.g;
+      { ground, Px, Pz, K, cars, pcar, blink, places } = this.g;
     mctx.fillStyle = '#6f9a5e';
     mctx.fillRect(0, 0, MW, MW);
-    mctx.drawImage(ground, P(T.x - MR), P(T.z - MR), MR * 2 * K, MR * 2 * K, 0, 0, MW, MW);
+    mctx.drawImage(ground, Px(T.x - MR), Pz(T.z - MR), MR * 2 * K, MR * 2 * K, 0, 0, MW, MW);
     // the bridge roads over it, in world metres: the same square as the copy above, scaled to the minimap
     const s = MW / (2 * MR);
     mctx.setTransform(s, 0, 0, s, (MR - T.x) * s, (MR - T.z) * s);

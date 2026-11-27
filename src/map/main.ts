@@ -27,7 +27,7 @@ import { WaterBodies } from '../world/water-shapes';
 
 (function () {
 'use strict';
-const S = D.size, HALF = S / 2, N = D.n, EX = 2;
+const [X0, Z0, X1, Z1] = D.bounds, NX = D.nx, NZ = D.nz, EX = 2;
 // the game's river channels and lake shores, cut into the same doubled relief (src/world/water-shapes.ts)
 const baseGround = new Heightfield(D), waterBodies = new WaterBodies(D, baseGround), shore = layoutShore(waterBodies, baseGround);
 const heightfield = new Heightfield(D, { exaggeration: EX, cut: waterBodies }), hAt = heightfield.heightAt.bind(heightfield);
@@ -71,10 +71,10 @@ controls.minDistance = 120; controls.maxDistance = 5200;
 controls.screenSpacePanning = false;
 const query = new URLSearchParams(location.search);
 // ?focus=x,z (metres from Torget) starts the view close in over that spot, with a pin: the wiki's place pages embed it.
-// Each part must be a plain decimal (Number also takes '', '0x1F' and '1e9') on the map's square: a spot off it is
-// a bad link, and gets the plain overview rather than a pin at the edge.
+// Each part must be a plain decimal (Number also takes '', '0x1F' and '1e9') inside the map's bounds: a spot off it
+// is a bad link, and gets the plain overview rather than a pin at the edge.
 const focus = (query.get('focus') || '').split(',')
-  .map(part => (/^\s*-?\d+(\.\d+)?\s*$/.test(part) && Math.abs(Number(part)) <= HALF ? Number(part) : NaN));
+  .map((part, k) => (/^\s*-?\d+(\.\d+)?\s*$/.test(part) && Number(part) >= D.bounds[k] && Number(part) <= D.bounds[k + 2] ? Number(part) : NaN));
 const hasFocus = focus.length === 2 && focus.every(Number.isFinite);
 let focusY = 0;   // what the spot stands on, set once the bridges are built (the ?focus pin, below)
 const FOCUS_ZOOM = 0.3;   // share of the overview's camera distance for the focused first view
@@ -120,31 +120,32 @@ function paintStreetscape(pal, before) {
   for (const x of D.x || []) {
     if (x.r === undefined) continue;
     const p = D.r[x.r].p, v = x.v, a = Math.max(0, v - 1) * 2, b = Math.min(p.length / 2 - 1, v + 1) * 2, dx = p[b] - p[a], dz = p[b + 1] - p[a + 1], l = Math.hypot(dx, dz) || 1;
-    ctx.lineWidth = 3 * K; ctx.beginPath(); ctx.moveTo(P(x.x - dz / l * ROAD_W[D.r[x.r].c] / 2), P(x.z + dx / l * ROAD_W[D.r[x.r].c] / 2));
-    ctx.lineTo(P(x.x + dz / l * ROAD_W[D.r[x.r].c] / 2), P(x.z - dx / l * ROAD_W[D.r[x.r].c] / 2)); ctx.stroke();
+    ctx.lineWidth = 3 * K; ctx.beginPath(); ctx.moveTo(PX(x.x - dz / l * ROAD_W[D.r[x.r].c] / 2), PZ(x.z + dx / l * ROAD_W[D.r[x.r].c] / 2));
+    ctx.lineTo(PX(x.x + dz / l * ROAD_W[D.r[x.r].c] / 2), PZ(x.z - dx / l * ROAD_W[D.r[x.r].c] / 2)); ctx.stroke();
   }
   ctx.lineCap = 'round';
 }
 
 // ---- map texture ----
 const CW = (Math.min(innerWidth, innerHeight) < 600 || renderer.capabilities.maxTextureSize < 4096) ? 2048 : 4096;
-const K = CW / S;
-const tex2d = document.createElement('canvas'); tex2d.width = tex2d.height = CW;
+const K = CW / (X1 - X0);   // pixels per metre, the same along z: the canvas is as tall as the world is deep
+const CH = Math.round((Z1 - Z0) * K);
+const tex2d = document.createElement('canvas'); tex2d.width = CW; tex2d.height = CH;
 const ctx = tex2d.getContext('2d');
 const texture = new THREE.CanvasTexture(tex2d);
 texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
-const P = v => (v + HALF) * K;
+const PX = x => (x - X0) * K, PZ = z => (z - Z0) * K;
 function trace(p, close) {
-  ctx.moveTo(P(p[0]), P(p[1]));
-  for (let i = 2; i < p.length; i += 2) ctx.lineTo(P(p[i]), P(p[i + 1]));
+  ctx.moveTo(PX(p[0]), PZ(p[1]));
+  for (let i = 2; i < p.length; i += 2) ctx.lineTo(PX(p[i]), PZ(p[i + 1]));
   if (close) ctx.closePath();
 }
 function contours(step) {
-  const e = D.elev, c = S / (N - 1) * K;
+  const e = D.elev, c = (X1 - X0) / (NX - 1) * K, N = NX;
   ctx.beginPath();
   for (let lev = Math.ceil(minE / step) * step; lev < maxE; lev += step) {
     const L = lev * 10 + 0.01;
-    for (let j = 0; j < N - 1; j++) for (let i = 0; i < N - 1; i++) {
+    for (let j = 0; j < NZ - 1; j++) for (let i = 0; i < NX - 1; i++) {
       const a = e[j * N + i], b = e[j * N + i + 1], d = e[(j + 1) * N + i], cc = e[(j + 1) * N + i + 1];
       const pts = [];
       if ((a > L) !== (b > L)) pts.push(i + (L - a) / (b - a), j);
@@ -176,14 +177,14 @@ function streetNames(pal) {
     const a = at(r.p, len / 2 - w / 2), b = at(r.p, len / 2 + w / 2), m = at(r.p, len / 2);
     let ang = Math.atan2(b[1] - a[1], b[0] - a[0]);
     if (ang > Math.PI / 2 || ang < -Math.PI / 2) ang += Math.PI;
-    ctx.save(); ctx.translate(P(m[0]), P(m[1])); ctx.rotate(ang);
+    ctx.save(); ctx.translate(PX(m[0]), PZ(m[1])); ctx.rotate(ang);
     ctx.lineWidth = fs * 0.32; ctx.strokeStyle = pal.halo; ctx.strokeText(name, 0, 0);
     ctx.fillStyle = pal.text; ctx.fillText(name, 0, 0); ctx.restore();
   }
 }
 function paint(pal) {
   ctx.setLineDash([]); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-  ctx.fillStyle = pal.ground; ctx.fillRect(0, 0, CW, CW);
+  ctx.fillStyle = pal.ground; ctx.fillRect(0, 0, CW, CH);
   for (const k of [0, 1, 2, 3, 4, 5, 6]) {
     ctx.fillStyle = pal.land[k]; ctx.beginPath();
     for (const l of D.l) if (l.k === k) trace(l.p, true);
@@ -200,7 +201,7 @@ function paint(pal) {
   ctx.lineWidth = 2.6 * K;
   for (const st of shore.stretches) { if (st.type !== 'sandy' && st.type !== 'stony') continue;
     ctx.strokeStyle = st.type === 'sandy' ? pal.sand : pal.gravel; ctx.beginPath();
-    ctx.moveTo(P(st.x + st.nx - st.tx * 4), P(st.z + st.nz - st.tz * 4)); ctx.lineTo(P(st.x + st.nx + st.tx * 4), P(st.z + st.nz + st.tz * 4)); ctx.stroke(); }
+    ctx.moveTo(PX(st.x + st.nx - st.tx * 4), PZ(st.z + st.nz - st.tz * 4)); ctx.lineTo(PX(st.x + st.nx + st.tx * 4), PZ(st.z + st.nz + st.tz * 4)); ctx.stroke(); }
   paintStreetscape(pal, true);
   // paths and tracks
   ctx.lineCap = 'butt';
