@@ -2,7 +2,7 @@
 // hear and feel: a line, the hurt, the camera's jolt. Also what you say to your cat while it rides along.
 // Moved from src/game/main.ts (#177); main.ts passes in the HUD's toast, the player's hurt and the camera's shake.
 import { makeRnd } from '../world/random';
-import type { Car } from './cars';
+import { type Car, CarMode } from './cars';
 import type { Cat } from './cats';
 import { crashCars, crashDamage, driverHurt, smokeLevel } from './health';
 import type { GameState } from './state';
@@ -78,7 +78,7 @@ export class Crashes {
           4,
         );
         said = true;
-      } else if (w && k.mode === 'police' && Math.hypot(k.x - viewer.x, k.z - viewer.z) < POLICE_WRECK_SEEN_M) {
+      } else if (w && k.mode === CarMode.POLICE && Math.hypot(k.x - viewer.x, k.z - viewer.z) < POLICE_WRECK_SEEN_M) {
         toast(pickLine(POLICE_WRECK_LINES) + ' The police car is wrecked.', 3);
         said = true;
       } else if (smokeUp && k === game.pcar) {
