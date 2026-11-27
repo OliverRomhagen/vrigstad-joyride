@@ -6,8 +6,10 @@ import { clamp, wrap } from '../../world/math';
 import type { GameState, ViewState } from '../state';
 import type { Sky } from './sky';
 import { SUN_DIR } from './stage';
+import { SHADOW_AHEAD_M, steadyShadowCentre } from './sun-shadow';
 
 type Point = { x: number; z: number };
+const _focus = { x: 0, y: 0, z: 0 }; // where the shadow box would go, before steadyShadowCentre: no allocation per frame
 
 // camera shake on a crash: a jolt that dies away, bigger for a harder hit; none with reduced motion
 const SHAKE_S = 0.45,
@@ -93,7 +95,14 @@ export class CameraRig {
       camera.position.y += (dmgRnd() - 0.5) * k;
       camera.position.z += (dmgRnd() - 0.5) * k;
     }
-    sun.target.position.set(T.x, ty, T.z);
+    // the shadow box: ahead of the player in the camera's direction, moved only in whole pixels (render/sun-shadow.ts)
+    const ahead = SHADOW_AHEAD_M / (Math.hypot(T.x - cx, T.z - cz) || 1);
+    _focus.x = T.x + (T.x - cx) * ahead;
+    _focus.y = ty;
+    _focus.z = T.z + (T.z - cz) * ahead;
+    const box = sun.shadow.camera;
+    const target = sun.target.position;
+    steadyShadowCentre(target, target, _focus, SUN_DIR, (box.right - box.left) / sun.shadow.mapSize.x);
     sun.position.copy(sun.target.position).addScaledVector(SUN_DIR, 400);
     skyDome.update(camera.position, now / 1000, dt);
     sun.intensity = this.g.sunIntensity * skyDome.sunFactor; // also centres the dome; the time of day sets the base, a cloud in front of the sun takes some away
