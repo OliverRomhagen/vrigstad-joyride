@@ -135,6 +135,7 @@ const ARC_STEP_S = 1 / 20, // the arc has a dot this often along the flight
   ARC_RING_M = 0.7; // the ring where it lands, for a throwable with no blast
 // the stance: the right arm comes up along the aim while you aim, hold the trigger or have just fired
 const RAISED_S = 1.2, // the arm stays up this long after a shot
+  ARM_EASE_PER_S = 18, // the arm follows the aim's pitch this fast (1/s), so crossing something near doesn't flick it
   WIND_UP_RAD = -0.9; // the arm goes back this far while you hold a throw
 // the placeholder gun in the hand, by weapon: its length and thickness (m). No models yet
 const GUN_M: Record<WeaponId, readonly [number, number]> = {
@@ -207,6 +208,7 @@ export class Pickadoll {
   private readonly arcEnd = newHit();
   private isWindingUp = false; // a throw is held back, its arc showing
   private raisedS = 0; // s the arm stays up
+  private armPitch = 0; // rad: the arm's pitch, easing after the aim's
   private markS = 0; // s the crosshair's hit ticks stay on
   private markedHits = 0; // hits on a person or a car, for the test hook
   private readonly hit = newHit();
@@ -782,10 +784,13 @@ export class Pickadoll {
     }
     // the stance, drawn over the walk's arm swing: the right arm along the aim, or back for a throw
     this.raisedS -= dt;
-    const arms = player.mesh.arms;
+    const arms = player.mesh.arms,
+      raised = aiming || this.raisedS > 0 || (pulling && !weapon.thrown);
+    // the shot goes at the aim's own pitch; only the arm eases, and it starts from the aim when it comes up
+    this.armPitch = raised ? this.armPitch + (pitch - this.armPitch) * (1 - Math.exp(-ARM_EASE_PER_S * dt)) : pitch;
     if (arms && !car && armed) {
       if (this.isWindingUp) arms[1].rotation.x = WIND_UP_RAD;
-      else if (aiming || this.raisedS > 0 || (pulling && !weapon.thrown)) arms[1].rotation.x = Math.PI / 2 + pitch;
+      else if (raised) arms[1].rotation.x = Math.PI / 2 + this.armPitch;
     }
 
     for (let i = this.shots.length - 1; i >= 0; i--) {
@@ -803,7 +808,7 @@ export class Pickadoll {
       this.shots[i] = this.shots[this.shots.length - 1];
       this.shots.pop();
     }
-    fx.drawShots(this.shots, this.colourOf, this.radiusOf, this.tracerOf, dt);
+    fx.drawShots(this.shots, this.flightColourOf, this.radiusOf, this.tracerOf, dt);
     this.dance(dt);
     this.stepSpikes(dt);
   }
@@ -901,6 +906,11 @@ export class Pickadoll {
   private readonly colourOf = (s: { seed: number; ammo: number }) => {
     const { colours } = AMMOS[s.ammo];
     return colours[Math.floor(s.seed * colours.length)];
+  };
+  // the shot in the air: its ammo's flight colour, else the colour it marks with
+  private readonly flightColourOf = (s: { seed: number; ammo: number }) => {
+    const ammo: Ammo = AMMOS[s.ammo];
+    return ammo.flightColour ?? this.colourOf(s);
   };
 
   private fire(car: RenderedCar | null, yaw: number, pitch: number) {

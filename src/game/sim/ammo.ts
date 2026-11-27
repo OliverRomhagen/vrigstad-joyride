@@ -42,6 +42,7 @@ export interface Ammo {
   id: AmmoId;
   name: string;
   colours: readonly string[]; // what it marks with; a shot rolls one of them (sRGB)
+  flightColour?: string; // the shot in the air, when its mark's colour would be lost against the ground (sRGB)
   anyWeapon: boolean; // every weapon fires it, unless the weapon names its own ammo (Weapon.ammo)
   effects: readonly Effect[];
 }
@@ -71,6 +72,7 @@ export const AMMOS = [
     id: AmmoId.PANG,
     name: 'Pang',
     colours: ['#2b2b2b'],
+    flightColour: '#f3ead2', // a pale streak: the dark scuff's own colour is hardly seen in flight
     anyWeapon: true,
     effects: [
       { kind: EffectKind.SPLAT, sizeK: 0.45, onPeople: false },

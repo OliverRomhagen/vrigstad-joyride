@@ -740,7 +740,8 @@ function miss(x: number, y: number, z: number, dx: number, dy: number, dz: numbe
 
 /**
  * The yaw and pitch that send a shot at `speedMs` from (x, y, z) through (tx, ty, tz), allowing for its drop: the
- * flattest way there, or 45° up when the point is out of reach.
+ * flattest way there. A point out of reach is aimed at straight, so the shot goes where you look and falls short:
+ * a lob at 45° would fling the arm and the shot up whenever the crosshair crossed the sky or far ground.
  */
 export function aimAt(
   speedMs: number,
@@ -763,7 +764,7 @@ export function aimAt(
     flat < 0.01
       ? Math.sign(up) * (Math.PI / 2)
       : reach < 0
-        ? Math.PI / 4
+        ? Math.atan2(up, flat)
         : Math.atan((v2 - Math.sqrt(reach)) / (GRAVITY_MS2 * flat));
   return out;
 }

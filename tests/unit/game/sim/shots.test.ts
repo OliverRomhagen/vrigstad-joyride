@@ -424,8 +424,9 @@ describe('aimAt', () => {
     }
   });
 
-  it('fires at 45 degrees at a point out of reach', () => {
-    expect(aimAt(10, 0, 0, 0, 0, 0, -500, { yaw: 0, pitch: 0 }).pitch).toBeCloseTo(Math.PI / 4);
+  it('fires straight at a point out of reach, not in a lob', () => {
+    expect(aimAt(10, 0, 0, 0, 0, 0, -500, { yaw: 0, pitch: 0 }).pitch).toBeCloseTo(0);
+    expect(aimAt(10, 0, 0, 0, 0, 50, -500, { yaw: 0, pitch: 0 }).pitch).toBeCloseTo(Math.atan2(50, 500));
   });
 });
 
