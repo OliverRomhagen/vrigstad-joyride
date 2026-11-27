@@ -10,12 +10,14 @@ import { LandUse, ROAD_WIDTH_M, type RoadClass, RoadUse, type WorldData } from '
 import { HOUSE_LINE_M, HOUSE_PAST_SIDEWALK_M } from './furniture/homes';
 import { type HouseFront, project } from './furniture/houses';
 import { type Bounds, pointInPolygon, polygonArea, polygonBounds, segmentDistance } from './polygon';
-import { arcLengths, pointAtArc } from './polyline';
+import { arcLengths } from './polyline';
 import { hash01 } from './random';
 import type { Point, RoadLine } from './roads';
 import { sidewalkCentreM } from './streetscape';
 import type { SideSpec } from './streetscape-rules';
 
+/** side of the cells that road segments and buildings are filed in, to find the ones near a plot (m) */
+const CELL_M = 32;
 /** a plot reaches at most this far back from its front edge (m) */
 const MAX_DEPTH_M = 40;
 /** ... and at most this far past the side of its house, along the street (m) */
@@ -23,7 +25,7 @@ const SIDE_REACH_M = 12;
 /** a plot stops this far short of another road's edge (m) */
 const ROAD_CLEARANCE_M = 0.5;
 /** how far the edges grow at a time before the last step is halved down to FINE_M (m) */
-const GROW_STEP_M = 4;
+const GROW_STEP_M = 8;
 const FINE_M = 0.25;
 /** the front and back edges follow the street with a point every this many metres, and are tested piece by piece */
 const EDGE_POINT_M = 4;
@@ -62,10 +64,12 @@ export interface Plot {
   side: -1 | 1;
   /**
    * the outline, flat [x, z, ...], either winding: the front edge along the street from one side to the other, then
-   * the back edge returning; the sides are the pieces that close it, from the front's last point to the back's first
-   * and from the back's last point to the front's first
+   * the back edge returning, with as many points as the front; the sides are the pieces that close it, from the
+   * front's last point to the back's first and from the back's last point to the front's first
    */
   outline: number[];
+  /** the house's outline, flat [x, z, ...] */
+  house: readonly number[];
   /** null where the house stands at the carriageway's edge */
   driveway: Driveway | null;
 }
@@ -95,6 +99,9 @@ interface Pt {
   x: number;
   z: number;
 }
+/** scratch points for the edges being tested */
+const _a: Pt = { x: 0, z: 0 };
+const _b: Pt = { x: 0, z: 0 };
 
 /** > 0 when c is left of the line from a to b, < 0 right of it (x east, z south). */
 const turnOf = (ax: number, az: number, bx: number, bz: number, cx: number, cz: number) =>
@@ -165,10 +172,22 @@ function samples(a: number, b: number, stepM: number) {
  * The point `s` metres along the polyline and `rightM` out to its right (negative: left). Within BEND_BLEND_M of a
  * vertex the direction out turns towards the vertex's bisector, so offset edges have no spikes at the bends.
  */
-function offsetPoint(q: readonly Point[], arcs: readonly number[], s: number, rightM: number) {
-  const { x, z, tx: sx, tz: sz } = pointAtArc(q, arcs, s);
+function offsetPoint(
+  q: readonly Point[],
+  arcs: readonly number[],
+  s: number,
+  rightM: number,
+  out: Pt = { x: 0, z: 0 },
+) {
   let i = 1;
   while (i < q.length - 1 && arcs[i] < s) i++;
+  // the point s along segment i - 1 to i (clamped to the line's ends) and the segment's direction
+  const segmentM = arcs[i] - arcs[i - 1] || 1;
+  const t = Math.max(0, Math.min(1, (s - arcs[i - 1]) / segmentM));
+  const sx = (q[i][0] - q[i - 1][0]) / segmentM;
+  const sz = (q[i][1] - q[i - 1][1]) / segmentM;
+  const x = q[i - 1][0] + sx * segmentM * t;
+  const z = q[i - 1][1] + sz * segmentM * t;
   const fromStartM = s - arcs[i - 1];
   const toEndM = arcs[i] - s;
   const vertex = fromStartM < toEndM ? i - 1 : i;
@@ -184,7 +203,9 @@ function offsetPoint(q: readonly Point[], arcs: readonly number[], s: number, ri
     tz += (share * ((b[1] - a[1]) / ab + (c[1] - b[1]) / bc - 2 * sz)) / 2;
   }
   const length = Math.hypot(tx, tz) || 1;
-  return { x: x - (tz / length) * rightM, z: z + (tx / length) * rightM };
+  out.x = x - (tz / length) * rightM;
+  out.z = z + (tx / length) * rightM;
+  return out;
 }
 
 /**
@@ -253,6 +274,41 @@ function straightRun(line: readonly Point[], s: number, arcs: readonly number[])
   return [first, last];
 }
 
+/** Indices of things by the CELL_M cells their bounds touch, to find the ones near a box without looking at all. */
+class Cells {
+  private readonly cells = new Map<number, number[]>();
+  /** the query each index was last met in, so one met in several cells is visited once */
+  private readonly metIn: Int32Array;
+  private query = 0;
+
+  constructor(count: number, boundsOf: (i: number) => Bounds) {
+    this.metIn = new Int32Array(count);
+    for (let i = 0; i < count; i++)
+      this.forEachCell(boundsOf(i), key => {
+        const list = this.cells.get(key);
+        if (list) list.push(i);
+        else this.cells.set(key, [i]);
+      });
+  }
+
+  /** Calls `visit` once with every index whose bounds share a cell with `b`. */
+  near(b: Bounds, visit: (i: number) => void) {
+    this.query++;
+    this.forEachCell(b, key => {
+      for (const i of this.cells.get(key) ?? []) {
+        if (this.metIn[i] === this.query) continue;
+        this.metIn[i] = this.query;
+        visit(i);
+      }
+    });
+  }
+
+  private forEachCell(b: Bounds, visit: (key: number) => void) {
+    for (let x = Math.floor(b.x0 / CELL_M); x <= Math.floor(b.x1 / CELL_M); x++)
+      for (let z = Math.floor(b.z0 / CELL_M); z <= Math.floor(b.z1 / CELL_M); z++) visit(x * 65536 + z);
+  }
+}
+
 /** A plot for each house in `fronts` that has room for one, in the order of `fronts`. */
 export function layoutPlots(inp: PlotInputs): Plot[] {
   const { data, roads, buildings, fronts } = inp;
@@ -264,11 +320,19 @@ export function layoutPlots(inp: PlotInputs): Plot[] {
   // every road segment that can stop a plot, as ax, az, bx, bz, road index: driveways belong to plots, and a sidewalk
   // mapped on its own runs along the front of them
   const segments: number[] = [];
-  roads.lines.forEach(({ p }, ri) => {
+  // where each road's segments start in `segments` (in segments, not numbers); -1 for a road left out
+  const firstSegment = roads.lines.map(({ p }, ri) => {
     const use = data.r[ri].s;
-    if (use === RoadUse.DRIVEWAY || use === RoadUse.SIDEWALK) return;
+    if (use === RoadUse.DRIVEWAY || use === RoadUse.SIDEWALK) return -1;
+    const start = segments.length / 5;
     for (let i = 1; i < p.length; i++) segments.push(p[i - 1][0], p[i - 1][1], p[i][0], p[i][1], ri);
+    return start;
   });
+  const segmentCells = new Cells(segments.length / 5, i => {
+    const [ax, az, bx, bz] = segments.slice(i * 5, i * 5 + 4);
+    return { x0: Math.min(ax, bx), x1: Math.max(ax, bx), z0: Math.min(az, bz), z1: Math.max(az, bz) };
+  });
+  const claimantCells = new Cells(claimants.length, i => claimants[i]);
   const plots: Plot[] = [];
 
   for (const f of fronts) {
@@ -300,23 +364,24 @@ export function layoutPlots(inp: PlotInputs): Plot[] {
     const vLine = Math.min(inp.frontEdgeM(f.ri, f.side), vMin);
     // what can stop this plot's edges, gathered once: within its furthest reach of the house's middle
     const reachM = MAX_DEPTH_M + SIDE_REACH_M + Math.hypot(sMax - sMin, vMax - vMin);
-    const near = (b: Bounds) =>
-      b.x0 < f.x + reachM && b.x1 > f.x - reachM && b.z0 < f.z + reachM && b.z1 > f.z - reachM;
-    const claims = claimants.filter(c => c.p !== f.outline && near(c));
+    const reachBox: Bounds = { x0: f.x - reachM, x1: f.x + reachM, z0: f.z - reachM, z1: f.z + reachM };
+    const near = (b: Bounds) => b.x0 < reachBox.x1 && b.x1 > reachBox.x0 && b.z0 < reachBox.z1 && b.z1 > reachBox.z0;
+    const claims: (Bounds & { p: number[] })[] = [];
+    claimantCells.near(reachBox, i => {
+      if (claimants[i].p !== f.outline && near(claimants[i])) claims.push(claimants[i]);
+    });
     const lots = parking.filter(near);
-    // road segments as ax, az, bx, bz and how far off the plot keeps (m): its own street as far as its front edge,
-    // so the inside of a bend doesn't reach the street's other leg
+    // road segments as ax, az, bx, bz and how far off the plot keeps (m): the rest of its own street as far as its
+    // front edge, so the inside of a bend doesn't reach the street's other leg
     const keepOff: number[] = [];
-    for (let i = 0; i < segments.length; i += 5) {
-      const ax = segments[i];
-      const az = segments[i + 1];
-      const bx = segments[i + 2];
-      const bz = segments[i + 3];
-      if ((ax > f.x + reachM && bx > f.x + reachM) || (ax < f.x - reachM && bx < f.x - reachM)) continue;
-      if ((az > f.z + reachM && bz > f.z + reachM) || (az < f.z - reachM && bz < f.z - reachM)) continue;
+    segmentCells.near(reachBox, k => {
+      // the plot's own stretch of street: its edges are as far from it as the front edge by construction
+      if (k >= firstSegment[f.ri] + first && k < firstSegment[f.ri] + last) return;
+      const i = k * 5;
       const ri = segments[i + 4];
-      keepOff.push(ax, az, bx, bz, ri === f.ri ? vLine - 1e-6 : ROAD_WIDTH_M[roads.lines[ri].c] / 2 + ROAD_CLEARANCE_M);
-    }
+      const keepM = ri === f.ri ? vLine - 1e-6 : ROAD_WIDTH_M[roads.lines[ri].c] / 2 + ROAD_CLEARANCE_M;
+      keepOff.push(segments[i], segments[i + 1], segments[i + 2], segments[i + 3], keepM);
+    });
     // the point is nearer this house than any other building
     const owned = (p: Pt) => {
       const own = outlineDistance(f.outline, p.x, p.z);
@@ -344,17 +409,36 @@ export function layoutPlots(inp: PlotInputs): Plot[] {
       return true;
     };
     // the edge through these points is free: every point owned, every piece between them free
-    const edgeFree = (points: Pt[]) => points.every((p, i) => owned(p) && (i === 0 || pieceFree(points[i - 1], p)));
-    const rowFree = (s0: number, s1: number, v: number) =>
-      edgeFree(samples(s0, s1, EDGE_POINT_M).map(s => toWorld(s, v)));
+    // the edge through the points at (s, v) from (s0, v0) to (s1, v1), at most EDGE_POINT_M apart, is free: every point
+    // owned, every piece between them free; written into two scratch points, as this runs some 50 000 times
+    const edgeFree = (s0: number, v0: number, s1: number, v1: number) => {
+      const n = Math.max(1, Math.ceil((Math.abs(s1 - s0) + Math.abs(v1 - v0)) / EDGE_POINT_M));
+      for (let k = 0; k <= n; k++) {
+        const p = offsetPoint(
+          line,
+          arcs,
+          s0 + ((s1 - s0) * k) / n,
+          (v0 + ((v1 - v0) * k) / n) * f.side,
+          k % 2 ? _b : _a,
+        );
+        if (!owned(p) || (k > 0 && !pieceFree(k % 2 ? _a : _b, p))) return false;
+      }
+      return true;
+    };
+    // an edge from (s0, v) to (s1, v) that has moved out from v = from is free, and so is the ground it swept over:
+    // the swept band's two ends are tested too, so a road or path running along the edge can't fall between two steps
+    const rowFree = (s0: number, s1: number, v: number, from: number) =>
+      edgeFree(s0, v, s1, v) && edgeFree(s0, from, s0, v) && edgeFree(s1, from, s1, v);
+    const columnFree = (s: number, from: number, v0: number, v1: number) =>
+      edgeFree(s, v0, s, v1) && edgeFree(from, v0, s, v0) && edgeFree(from, v1, s, v1);
     // the front edge comes forward from the house to the property line, or stops behind a path along the street
-    const vFront = vMin - reach(vMin - vLine, m => rowFree(sMin, sMax, vMin - m));
-    const columnFree = (s: number) => edgeFree(samples(vFront, vMax, EDGE_POINT_M).map(v => toWorld(s, v)));
-    const sLeft = sMin - reach(SIDE_REACH_M, m => columnFree(sMin - m));
-    const sRight = sMax + reach(SIDE_REACH_M, m => columnFree(sMax + m));
+    const vFront = vMin - reach(vMin - vLine, m => rowFree(sMin, sMax, vMin - m, vMin));
+    const sLeft = sMin - reach(SIDE_REACH_M, m => columnFree(sMin - m, sMin, vFront, vMax));
+    const sRight = sMax + reach(SIDE_REACH_M, m => columnFree(sMax + m, sMax, vFront, vMax));
     // the front edge again, now across the whole width: its corners may reach a bend's other leg
-    const vFrontWide = vMin - reach(vMin - vFront, m => rowFree(sLeft, sRight, vMin - m));
-    const vBack = vMax + reach(Math.max(0, vFrontWide + MAX_DEPTH_M - vMax), m => rowFree(sLeft, sRight, vMax + m));
+    const vFrontWide = vMin - reach(vMin - vFront, m => rowFree(sLeft, sRight, vMin - m, vMin));
+    const depthM = Math.max(0, vFrontWide + MAX_DEPTH_M - vMax);
+    const vBack = vMax + reach(depthM, m => rowFree(sLeft, sRight, vMax + m, vMax));
 
     // the front and back edges follow the street's bends
     const along = samples(sLeft, sRight, EDGE_POINT_M);
@@ -372,6 +456,7 @@ export function layoutPlots(inp: PlotInputs): Plot[] {
       ri: f.ri,
       side: f.side,
       outline,
+      house: f.outline,
       driveway: driveway(f, inp, toWorld, { sMin, sMax, vMin, vMax, sLeft, sRight }),
     });
   }

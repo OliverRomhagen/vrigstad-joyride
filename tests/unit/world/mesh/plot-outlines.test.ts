@@ -7,6 +7,7 @@ const plot: Plot = {
   ri: 0,
   side: 1,
   outline: [0, 5, 4, 5, 4, 9, 0, 9],
+  house: [1, 6, 3, 6, 3, 8, 1, 8],
   driveway: { p: [2, 2, 2, 6], widthM: 2, source: 'inferred' },
 };
 

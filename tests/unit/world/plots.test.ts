@@ -56,6 +56,12 @@ describe('layoutPlots', () => {
     expect(b.z1).toBeLessThanOrEqual(30.01);
   });
 
+  it('stops at a narrow path behind, even one that lies between two steps of the growing edge', () => {
+    // a footpath at z = 32: the back edge grows from the house's back wall at z = 20 in 8 m steps, to 28 and then 36
+    const path: Road = { c: RoadClass.PATH, n: '', p: [-200, 32, 200, 32], i: 2 };
+    expect(bounds(plots([house(0, 10)], [STREET, path])[0]).z1).toBeLessThanOrEqual(32 - 0.75 - 0.5 + 0.01);
+  });
+
   it('lets a shed join the plot, and keeps the plot off a big building behind', () => {
     expect(bounds(plots([house(0, 10), house(2, 25, 5)])[0]).z1).toBeCloseTo(FRONT_M + 40, 6); // 25 m²: joins
     // a 30 m × 20 m barn 16 m behind the house's back wall: halfway would be z = 28, but the plot's back corners,
