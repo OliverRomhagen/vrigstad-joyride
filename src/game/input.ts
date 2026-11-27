@@ -173,6 +173,7 @@ export class Input {
   private lx = 0;
   private ly = 0;
   private joyId: number | null = null;
+  private releaseJoy = () => {}; // centres the joystick; set once its elements are found
   private readonly pinch = new Map<number, { x: number; y: number }>(); // touches on the game, by pointer id
   private pinchD = 0; // the two touches' last distance apart (px); 0 until two are down
   private readonly controls: HeldControl[] = [];
@@ -358,12 +359,14 @@ export class Input {
     joyEl.addEventListener('pointermove', e => {
       if (e.pointerId === this.joyId) joyMove(e);
     });
-    const joyEnd = (e: PointerEvent) => {
-      if (e.pointerId !== this.joyId) return;
+    this.releaseJoy = () => {
       this.joyId = null;
       joy.on = false;
       joy.x = joy.y = 0;
       knob.style.transform = '';
+    };
+    const joyEnd = (e: PointerEvent) => {
+      if (e.pointerId === this.joyId) this.releaseJoy();
     };
     joyEl.addEventListener('pointerup', joyEnd);
     joyEl.addEventListener('pointercancel', joyEnd);
@@ -399,6 +402,7 @@ export class Input {
   /** Lets go of every held key and control, as when the window loses focus or the dev console takes the keys. */
   releaseKeys() {
     for (const k in this.keys) this.keys[k as Key] = false;
+    this.releaseJoy(); // a menu over the joystick (the pause) can keep its finger's pointerup from ever reaching it
     this.eachControl(c => c.dropAll());
   }
 
