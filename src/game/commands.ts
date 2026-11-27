@@ -39,7 +39,7 @@ export interface Command {
   aliases?: readonly string[];
   /**
    * Commands under this one, by name: `tune set …` runs `set` with the words after it. A word that names none runs this
-   * command's own `run` (group() refuses it). They share its access; help, `--help`, Tab and the usage line reach them.
+   * command's own `run` (a group() without one refuses it). They share its access; help, `--help`, Tab and the usage line reach them.
    */
   subcommands?: Readonly<Record<string, Command>>;
   /** The words that fit at argument `index` (0 is the first after the name), given the arguments before it. */
@@ -226,9 +226,10 @@ export class Commands {
     if (!cmd || name === undefined || !this.canRun(cmd)) return [];
     // the words before the cursor that name a subcommand lead to it; the cursor's word may be one
     const found = descend(name, cmd, words.slice(1));
-    if (found.cmd.subcommands) return found.args.length ? [] : fits(Object.keys(found.cmd.subcommands)).sort();
+    // a group offers its subcommands for the first word, and what its own arguments offer when it runs by itself
     const before = found.args;
-    return fits(found.cmd.complete?.(before.length, before) ?? []).sort();
+    const below = found.cmd.subcommands && before.length === 0 ? Object.keys(found.cmd.subcommands) : [];
+    return fits([...below, ...(found.cmd.complete?.(before.length, before) ?? [])]).sort();
   }
 
   /** The usage line of the command a line starts with (`go <place> [speed]`), for the hint under the input. */
@@ -315,9 +316,12 @@ function usage({ path, cmd }: Pick<Found, 'path' | 'cmd'>) {
 function descend(path: string, cmd: Command, args: string[]): Found {
   let found: Found = { path, cmd, args };
   for (;;) {
-    const sub = found.args[0] && found.cmd.subcommands?.[found.args[0].toLowerCase()];
+    // its own names only: `constructor` and `__proto__` are on every object, and are no subcommands
+    const word = found.args[0]?.toLowerCase(),
+      subs = found.cmd.subcommands;
+    const sub = word !== undefined && subs && Object.hasOwn(subs, word) ? subs[word] : undefined;
     if (!sub) return found;
-    found = { path: `${found.path} ${found.args[0].toLowerCase()}`, cmd: sub, args: found.args.slice(1) };
+    found = { path: `${found.path} ${word}`, cmd: sub, args: found.args.slice(1) };
   }
 }
 

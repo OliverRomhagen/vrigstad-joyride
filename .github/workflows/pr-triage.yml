@@ -3,6 +3,9 @@ name: PR triage
 # Assigns a new PR to its author, gives it a scope label, type labels from its title and the issue's lab, accessibility or security label, and notes when it references no issue.
 # pull_request_target, so it can write to PRs from forks too: it never checks out or runs the PR's code,
 # and reads the PR's text from the event file, never through ${{ }} in the script.
+# GitHub only runs pull_request_target here because the repo's Actions policy allow-pull-request-targe
+# (Settings → Actions → Policies, #525) allows it for this file and claude-review.yml. A trigger added to this file
+# has to be added to that policy too.
 on:
   pull_request_target:
     types: [opened, reopened, edited]

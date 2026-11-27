@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { expect, test, vi } from 'vitest';
-import { INK_FLAG } from '../../../../src/game/render/ink-flag';
+import { HOUSE_FRAMES_MATERIAL, HOUSE_SHELLS_MATERIAL } from '../../../../src/game/render/house-materials';
+import { INK_FLAG, INK_NO_FEET_FLAG } from '../../../../src/game/render/ink-flag';
 import {
   FINISH_LEVELS,
   finishOf,
@@ -45,6 +46,9 @@ test('vehicle finishes come from the GLB material names, or metalness', () => {
   expect(finishOf(named('restrained satin chrome', 0.7))).toBe('metal');
   expect(finishOf(named('period wheel covers', 0.5))).toBe('metal');
   expect(finishOf(new THREE.MeshLambertMaterial())).toBe('paint');
+  expect(finishOf(new THREE.MeshLambertMaterial({ name: HOUSE_SHELLS_MATERIAL }))).toBe('house');
+  // the 3D window frames match the painted windows under them, which the house ramp would light as a pale wall
+  expect(finishOf(new THREE.MeshLambertMaterial({ name: HOUSE_FRAMES_MATERIAL }))).toBe('paint');
 });
 
 test('each finish draws with its own ramp, shared between materials', () => {
@@ -59,6 +63,30 @@ test('each finish draws with its own ramp, shared between materials', () => {
   expect(Array.from(ramps[1].image.data as Uint8Array)).toEqual([...FINISH_LEVELS.lamp]);
   expect(Array.from(ramps[2].image.data as Uint8Array)).toEqual([...FINISH_LEVELS.glass]);
   expect(ramps[3]).toBe(ramps[0]);
+});
+
+test('the houses get more, finer bands, so two walls at different angles to the sun shade apart (#413)', () => {
+  const scene = new THREE.Scene(),
+    [house, car] = [HOUSE_SHELLS_MATERIAL, 'body paint'].map(
+      name => new THREE.Mesh(box, new THREE.MeshLambertMaterial({ name })),
+    );
+  scene.add(house, car);
+  const renderer = recordingRenderer(scene);
+  new ToonStyle(renderer).render(scene, camera);
+  // the light a material is drawn with at a normal-light dot, from the ramp the style gave it, sampled as three does
+  // (gradientmap_pars_fragment: coord = dot * 0.5 + 0.5, nearest texel)
+  const light = (mesh: THREE.Mesh, dot: number) => {
+    const texels = ((renderer.seen.get(mesh) as THREE.MeshToonMaterial).gradientMap as THREE.DataTexture).image
+      .data as Uint8Array;
+    return texels[Math.min(texels.length - 1, Math.floor((dot * 0.5 + 0.5) * texels.length))];
+  };
+  // under a high sun every wall's dot is below 0.5: one facing the sun (0.45) and one turned from it (0.1) are lit the
+  // same on the paint ramp, not on the house ramp
+  expect(light(car, 0.45)).toBe(light(car, 0.1));
+  expect(light(house, 0.45)).toBeGreaterThan(light(house, 0.1));
+  // and every band is lighter than the one before it, so no two neighbours merge
+  const levels: readonly number[] = FINISH_LEVELS.house;
+  for (let i = 1; i < levels.length; i++) expect(levels[i]).toBeGreaterThan(levels[i - 1]);
 });
 
 test('light shifts from the fill to the sun while drawing, and back after', () => {
@@ -126,12 +154,86 @@ test('inked objects get crease lines on opaque meshes, once, sharing edges per g
   const ink = (mesh: THREE.Mesh) => mesh.children.filter(o => o instanceof THREE.LineSegments) as THREE.LineSegments[];
   expect(ink(body)).toHaveLength(1);
   expect(ink(door)[0].geometry).toBe(ink(body)[0].geometry);
-  expect(ink(body)[0].geometry).toBeInstanceOf(THREE.EdgesGeometry);
+  expect(ink(body)[0].geometry.getAttribute('position').count).toBe(24); // a box's twelve edges (ink-edges.test.ts)
   expect(ink(glass)).toHaveLength(0);
   expect(ink(house)).toHaveLength(0);
 });
 
-test('ink lines stay on far-off parts of a mesh, and are pulled towards the camera to show over the corner boards', () => {
+test('only a mesh that asks for it loses the line along its open feet', () => {
+  // a 4 m wall with no floor, from y = 0 to 3: top, two sides and a foot
+  const wall = () => {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute(
+      'position',
+      new THREE.Float32BufferAttribute([0, 0, 0, 4, 0, 0, 4, 3, 0, 0, 0, 0, 4, 3, 0, 0, 3, 0], 3),
+    );
+    return new THREE.Mesh(g, new THREE.MeshLambertMaterial());
+  };
+  const scene = new THREE.Scene(),
+    prop = wall(),
+    shells = wall();
+  prop.userData[INK_FLAG] = true;
+  shells.userData[INK_FLAG] = true;
+  shells.userData[INK_NO_FEET_FLAG] = true;
+  scene.add(prop, shells);
+  new ToonStyle({ render: () => {} }).render(scene, camera);
+  const segments = (mesh: THREE.Mesh) =>
+    (mesh.children[0] as THREE.LineSegments).geometry.getAttribute('position').count / 2;
+  expect(segments(prop)).toBe(4);
+  expect(segments(shells)).toBe(3);
+});
+
+test("a mesh not flagged gets three's EdgesGeometry lines, even where inkEdges would draw others", () => {
+  // a roof and its overhang in one plane, the overhang wound the other way: EdgesGeometry draws the edge between them,
+  // inkEdges flips the normal and draws none; a car part like this keeps its line
+  const roofAndOverhang = [
+    [0, 3, 0, 4, 3, 0, 4, 4, -2, 0, 3, 0, 4, 4, -2, 0, 4, -2],
+    [0, 3, 0, 4, 3, 0, 4, 2.8, 0.4, 0, 3, 0, 4, 2.8, 0.4, 0, 2.8, 0.4],
+  ].flat();
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(roofAndOverhang, 3));
+  const scene = new THREE.Scene(),
+    prop = new THREE.Mesh(g, new THREE.MeshLambertMaterial()),
+    shells = new THREE.Mesh(g, new THREE.MeshLambertMaterial());
+  for (const o of [prop, shells]) o.userData[INK_FLAG] = true;
+  shells.userData[INK_NO_FEET_FLAG] = true;
+  scene.add(prop, shells);
+  new ToonStyle({ render: () => {} }).render(scene, camera);
+  const lines = (mesh: THREE.Mesh) => (mesh.children[0] as THREE.LineSegments).geometry.getAttribute('position');
+  const alongTheJoin = (mesh: THREE.Mesh) => {
+    const p = lines(mesh);
+    let n = 0;
+    for (let i = 0; i < p.count; i += 2) if (p.getY(i) === 3 && p.getY(i + 1) === 3) n++;
+    return n;
+  };
+  expect(lines(prop).array).toEqual(new THREE.EdgesGeometry(g, 34).getAttribute('position').array);
+  expect(alongTheJoin(prop)).toBe(1);
+  expect(alongTheJoin(shells)).toBe(0);
+});
+
+test('two meshes that share a geometry each get their own lines, with and without feet, and the flag is not inherited', () => {
+  const g = new THREE.BufferGeometry();
+  g.setAttribute(
+    'position',
+    new THREE.Float32BufferAttribute([0, 0, 0, 4, 0, 0, 4, 3, 0, 0, 0, 0, 4, 3, 0, 0, 3, 0], 3),
+  );
+  const scene = new THREE.Scene(),
+    group = new THREE.Group(),
+    prop = new THREE.Mesh(g, new THREE.MeshLambertMaterial()),
+    shells = new THREE.Mesh(g, new THREE.MeshLambertMaterial()),
+    child = new THREE.Mesh(g, new THREE.MeshLambertMaterial());
+  for (const o of [prop, shells, group]) o.userData[INK_FLAG] = true;
+  shells.userData[INK_NO_FEET_FLAG] = true;
+  group.userData[INK_NO_FEET_FLAG] = true; // on a group it says nothing about the meshes under it
+  group.add(child);
+  scene.add(prop, shells, group);
+  new ToonStyle({ render: () => {} }).render(scene, camera);
+  const segments = (mesh: THREE.Mesh) =>
+    (mesh.children[0] as THREE.LineSegments).geometry.getAttribute('position').count / 2;
+  expect([segments(prop), segments(shells), segments(child)]).toEqual([4, 3, 4]);
+});
+
+test('ink lines stay on far-off parts of a mesh, and are pulled towards the camera to show over the faces beside them', () => {
   // the village shells are one mesh at the origin with world-coordinate vertices: scaling lines about it moved them
   const scene = new THREE.Scene(),
     shells = new THREE.Mesh(box.clone().translate(900, 0, 0), new THREE.MeshLambertMaterial());
@@ -267,4 +369,19 @@ test('a failing render still puts the game materials back', () => {
   });
   expect(() => style.render(scene, camera)).toThrow('context lost');
   expect(mesh.material).toBe(paint);
+});
+
+test('cockpit clipping stays on the toon material used for the draw', () => {
+  const scene = new THREE.Scene();
+  const planes = [new THREE.Plane(new THREE.Vector3(0, -1, 0), 1)];
+  const paint = new THREE.MeshStandardMaterial({ clippingPlanes: planes, clipIntersection: true, clipShadows: true });
+  const body = new THREE.Mesh(box, paint);
+  scene.add(body);
+  const renderer = recordingRenderer(scene);
+  new ToonStyle(renderer).render(scene, camera);
+  const drawn = renderer.seen.get(body) as THREE.Material;
+  expect(drawn.clippingPlanes).toBe(planes);
+  expect(drawn.clipIntersection).toBe(true);
+  expect(drawn.clipShadows).toBe(true);
+  expect(body.material).toBe(paint);
 });

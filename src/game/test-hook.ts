@@ -22,6 +22,7 @@ export interface TestHookDeps {
   health: Health;
   cars: readonly Car[];
   labs: readonly string[]; // the lab experiments switched on
+  readonly cockpit: boolean; // the camera is in the driver's seat (lab: cockpit, #473)
   readonly styled: boolean; // frames are drawn through a style (?lab=toon), which loads after the page
   readonly ragdolls: number; // people knocked over right now
   readonly stars: number;
@@ -162,12 +163,15 @@ export function installTestHook(g: TestHookDeps) {
         displayCar = g.displayCar;
       return {
         started: game.started,
+        paused: game.paused,
         lab: g.labs,
+        cockpit: g.cockpit,
         styled: g.styled,
         ragdolls: g.ragdolls,
         x: player.x,
         z: player.z,
         y: player.y,
+        floor: player.floor, // how high what you stand on is: a car's top on a car (#451)
         yaw: view.camYaw,
         zoom: view.zoom,
         inCar: game.inCar,
@@ -193,6 +197,8 @@ export function installTestHook(g: TestHookDeps) {
         carDmg: game.pcar ? game.pcar.dmg : null,
         carCrack: game.pcar ? g.crackShown(game.pcar) : null,
         carAt: game.pcar ? { x: game.pcar.x, z: game.pcar.z, h: game.pcar.h } : null, // where the car you drive stands, and its heading
+        carMods: game.pcar ? { ...game.pcar.mods } : null, // Plåt-Pelle's upgrades on the car you drive
+        carColor: game.pcar ? game.pcar.color : null,
         ownCat: g.ownCat,
         vehicle: displayCar ? vehicleVisuals.state(displayCar) : null,
         nearSelectedVehicle: n === displayCar,

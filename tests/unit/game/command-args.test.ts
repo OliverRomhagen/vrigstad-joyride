@@ -1,8 +1,10 @@
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import {
+  arg,
   choice,
   command,
   described,
+  either,
   group,
   int,
   num,
@@ -11,7 +13,7 @@ import {
   toggle,
   word,
 } from '../../../src/game/command-args';
-import { Commands, refuse } from '../../../src/game/commands';
+import { Commands, refuse, UsageError } from '../../../src/game/commands';
 
 const PLACES = ['torget', 'Slättsjön', 'skroten'] as const;
 
@@ -59,7 +61,7 @@ describe('command', () => {
 
   it('shows the usage line for a missing argument, a bad word and extra words', () => {
     const c = withCommand(command({ help: 'x', args: [choice('place', PLACES)], run: ({ place }) => place }));
-    expect(c.run('t')).toBe('Usage: t <place>');
+    expect(c.run('t')).toBe('place is missing. Usage: t <place>');
     expect(c.run('t gnosjö')).toBe('No place called gnosjö. Pick one of: skroten, Slättsjön, torget. Usage: t <place>');
     expect(c.run('t torget skroten')).toBe('Too many words. Usage: t <place>');
   });
@@ -124,7 +126,7 @@ describe('command', () => {
     expect(c.execute('t volvo')).toEqual({ ok: false, text: 'You already own the volvo.', code: 'already-owned' });
     expect(c.run('t volvo')).toBe('You already own the volvo.');
     expect(c.execute('t saab')).toEqual({ ok: true, text: 'Bought the saab.' });
-    expect(c.execute('t')).toEqual({ ok: false, text: 'Usage: t <car>', code: 'usage' });
+    expect(c.execute('t')).toEqual({ ok: false, text: 'car is missing. Usage: t <car>', code: 'usage' });
   });
 
   it("shows each described argument, the details and the examples in the command's help", () => {
@@ -233,7 +235,7 @@ describe('group', () => {
 
   it('shows the usage line of the subcommand, or of the group for a word that names none', () => {
     const { c } = tune();
-    expect(c.run('tune set grip')).toBe('Usage: tune set <key> <value>');
+    expect(c.run('tune set grip')).toBe('value is missing. Usage: tune set <key> <value>');
     expect(c.run('tune')).toBe('Usage: tune <get|set> …');
     expect(c.run('tune fly')).toBe('No subcommand called fly. Usage: tune <get|set> …');
     expect(c.usageFor('tune se')).toBe('tune <get|set> …');
@@ -270,5 +272,226 @@ describe('group', () => {
     expect(() => c.register('tune', group({ help: 'numbers', subcommands: { set } }))).toThrow(
       'tune set: the example "set grip 8" doesn\'t run it',
     );
+  });
+});
+
+describe('a group that runs by itself', () => {
+  // `fuel` shows the tank, `fuel 30` sets it, `fuel fill` fills it
+  const fuel = () => {
+    const c = new Commands();
+    let litres = 10;
+    c.register(
+      'fuel',
+      group({
+        help: 'show or set the fuel',
+        examples: ['fuel', 'fuel 30', 'fuel fill'],
+        args: [
+          optional(
+            described(either('amount', num('litres', { min: 0, max: 60 }), choice('level', ['half'] as const)), 'L'),
+          ),
+        ],
+        run: ({ amount }) => {
+          if (amount !== undefined) litres = amount === 'half' ? 30 : amount;
+          return `${litres} L`;
+        },
+        subcommands: {
+          fill: command({
+            help: 'fill the tank',
+            args: [],
+            run: () => {
+              litres = 60;
+              return 'Full.';
+            },
+          }),
+        },
+      }),
+    );
+    return c;
+  };
+
+  it('runs its own run for a line whose first word names no subcommand, and the subcommand for one that does', () => {
+    const c = fuel();
+    expect(c.run('fuel')).toBe('10 L');
+    expect(c.run('fuel 25,5')).toBe('25.5 L');
+    expect(c.run('fuel half')).toBe('30 L');
+    expect(c.run('fuel FILL')).toBe('Full.');
+    expect(c.run('fuel')).toBe('60 L');
+  });
+
+  it('passes a refusal from its own run through to the registry', () => {
+    const c = new Commands();
+    c.register(
+      'fuel',
+      group({
+        help: 'show or set the fuel',
+        args: [optional(int('litres'))],
+        run: ({ litres }) => (litres === undefined ? '10 L' : refuse('no-pump', 'No pump here.')),
+        subcommands: { fill: command({ help: 'fill the tank', args: [], run: () => 'Full.' }) },
+      }),
+    );
+    expect(c.execute('fuel')).toEqual({ ok: true, text: '10 L' });
+    expect(c.execute('fuel 20')).toEqual({ ok: false, text: 'No pump here.', code: 'no-pump' });
+  });
+
+  it('shows both in its usage line and its help', () => {
+    const c = fuel();
+    expect(c.run('fuel 99')).toBe(
+      'litres is from 0 to 60. Or one of: half. Or a subcommand: fill. Usage: fuel [litres|half] | <fill> …',
+    );
+    expect(c.run('fuel 1 2')).toBe('Too many words. Usage: fuel [litres|half] | <fill> …');
+    expect(c.run('fuel fill 2')).toBe('Too many words. Usage: fuel fill');
+    expect(c.usageFor('fuel ')).toBe('fuel [litres|half] | <fill> …');
+    expect(c.run('help fuel')).toBe(
+      'fuel [litres|half] | <fill> …: show or set the fuel\n  [litres|half]: L\n  fuel fill: fill the tank\nExamples:\n  fuel\n  fuel 30\n  fuel fill',
+    );
+  });
+
+  it('completes the subcommands and the words of its own first argument together, then only its own', () => {
+    const c = fuel();
+    expect(c.complete('fuel ')).toEqual(['fill', 'half']);
+    expect(c.complete('fuel h')).toEqual(['half']);
+    expect(c.complete('fuel half ')).toEqual([]);
+    expect(c.complete('fuel fill ')).toEqual([]);
+  });
+
+  it('refuses args without run, and a first argument whose choices hide behind a subcommand', () => {
+    const fill = command({ help: 'fill the tank', args: [], run: () => '' });
+    expect(() => group({ help: 'fuel', subcommands: { fill }, args: [] })).toThrow('needs both args and run');
+    expect(() =>
+      group({ help: 'fuel', subcommands: { fill }, args: [choice('level', ['half', 'Fill'])], run: () => '' }),
+    ).toThrow('Fill names a subcommand');
+    expect(() => group({ help: 'fuel', subcommands: { fill }, run: () => '' })).toThrow('needs both args and run');
+  });
+
+  it("builds with a first argument whose list isn't ready yet, and lets the subcommand win a word added later", () => {
+    const levels: string[] = [];
+    let ready = false;
+    const level = choice('level', () => (ready ? levels : []));
+    const c = new Commands();
+    const fill = command({ help: 'fill the tank', args: [], run: () => 'Full.' });
+    c.register(
+      'fuel',
+      group({ help: 'fuel', subcommands: { fill }, args: [optional(level)], run: ({ level }) => level ?? 'none' }),
+    );
+    ready = true;
+    levels.push('half', 'fill');
+    expect(c.run('fuel half')).toBe('half');
+    expect(c.run('fuel fill')).toBe('Full.');
+    expect(c.complete('fuel ')).toEqual(['fill', 'half']);
+  });
+
+  it("takes only its own subcommands' names, not the keys every object has", () => {
+    const c = fuel();
+    for (const word of ['constructor', '__proto__', 'toString', 'hasOwnProperty']) {
+      expect(c.run(`fuel ${word}`), word).toMatch(
+        /^litres is a number\. Or one of: half\. Or a subcommand: fill\. Usage: fuel /,
+      );
+      expect(c.run(`help fuel ${word}`), word).toBe(`No command called fuel ${word}. Usage: help [command]`);
+    }
+    const tune = new Commands();
+    tune.register(
+      'tune',
+      group({ help: 'numbers', subcommands: { get: command({ help: 'show', args: [], run: () => '' }) } }),
+    );
+    expect(tune.run('tune constructor')).toBe('No subcommand called constructor. Usage: tune <get> …');
+  });
+
+  it('names the subcommands without a stray space when its own argument fails with no words of its own', () => {
+    const c = new Commands();
+    const fill = command({ help: 'fill the tank', args: [], run: () => 'Full.' });
+    const bare = arg('kr', (w): number => {
+      if (!/^\d+$/.test(w)) throw new UsageError();
+      return Number(w);
+    });
+    c.register('fuel', group({ help: 'fuel', subcommands: { fill }, args: [bare], run: ({ kr }) => `${kr}` }));
+    expect(c.run('fuel x')).toBe('Or a subcommand: fill. Usage: fuel <kr> | <fill> …');
+  });
+
+  it('says no subcommand has the name typed when the group takes no arguments of its own', () => {
+    const c = new Commands();
+    const fill = command({ help: 'fill the tank', args: [], run: () => 'Full.' });
+    c.register('fuel', group({ help: 'fuel', subcommands: { fill }, args: [], run: () => 'Half.' }));
+    expect(c.run('fuel')).toBe('Half.');
+    expect(c.run('fuel fill')).toBe('Full.');
+    expect(c.run('fuel fil')).toBe('No subcommand called fil. Usage: fuel <fill> …');
+  });
+});
+
+describe('either', () => {
+  const when = either('when', int('hour', { min: 5, max: 19 }), choice('moment', ['dawn', 'dusk'] as const));
+
+  it('reads a word as the first argument that takes it, typed as either value', () => {
+    expect(when.parse('7')).toBe(7);
+    expect(when.parse('DUSK')).toBe('dusk');
+    expectTypeOf(when.parse('7')).toEqualTypeOf<number | 'dawn' | 'dusk'>();
+    expect(when.name).toBe('when');
+  });
+
+  it("offers both arguments' choices to Tab", () => {
+    expect(when.choices?.()).toEqual(['dawn', 'dusk']);
+    expect(either('x', toggle('on'), choice('mode', ['auto'])).choices?.()).toEqual(['on', 'off', 'auto']);
+    expect(either('x', int('a'), word('b')).choices).toBeUndefined();
+  });
+
+  it("gives the first argument's error, then the second's choices when they are few, else its error", () => {
+    expect(() => when.parse('3')).toThrow('hour is from 5 to 19. Or one of: dawn, dusk.');
+    expect(() => when.parse('lunch')).toThrow('hour is a whole number. Or one of: dawn, dusk.');
+    const many = choice('key', ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i']);
+    expect(() => either('x', int('n'), many).parse('z')).toThrow('n is a whole number. No key called z.');
+    expect(() => either('x', int('n'), toggle('on')).parse('z')).toThrow('n is a whole number. Or one of: off, on.');
+  });
+
+  it('lets an error that is no UsageError through', () => {
+    const broken = arg('b', () => {
+      throw new TypeError('bug');
+    });
+    expect(() => either('x', broken, word('w')).parse('z')).toThrow(TypeError);
+    expect(() => either('x', int('n'), broken).parse('z')).toThrow(TypeError);
+  });
+
+  it('takes more than two kinds, and keeps what each says: errors in order, then the few words in one list', () => {
+    const three = either(
+      'x',
+      int('n'),
+      num('hour', { min: 5, max: 19 }),
+      choice('moment', ['dusk'] as const),
+      toggle('on'),
+    );
+    expect(three.parse('7')).toBe(7);
+    expect(three.parse('7,5')).toBe(7.5);
+    expect(three.parse('dusk')).toBe('dusk');
+    expect(three.parse('nej')).toBe(false);
+    expectTypeOf(three.parse('7')).toEqualTypeOf<number | 'dusk' | boolean>();
+    expect(() => three.parse('30.5')).toThrow('n is a whole number. hour is from 5 to 19. Or one of: dusk, off, on.');
+  });
+
+  it('refuses a kind that is optional or takes the rest: those go round the whole either', () => {
+    expect(() => either('x', int('n'), optional(word('w')))).toThrow(
+      "w: an either's kinds can't be optional; wrap the whole either in optional()",
+    );
+    expect(() => either('x', rest('words'), int('n'))).toThrow(/^words: an either's kinds can't take the rest$/);
+    expect(optional(either('x', int('n'), word('w'))).optional).toBe(true);
+  });
+
+  it('names no either by a word its usage line never shows when it is left out', () => {
+    const c = new Commands();
+    c.register(
+      't',
+      command({ help: 'h', args: [either('when', int('n'), choice('moment', ['dusk'] as const))], run: () => 'ok' }),
+    );
+    expect(c.run('t')).toBe('An argument is missing. Usage: t <n|dusk>');
+  });
+});
+
+describe('arg', () => {
+  it("builds an argument of a module's own type, which command() reads like the others", () => {
+    const clock = arg('at', w => {
+      const m = /^(\d\d):(\d\d)$/.exec(w);
+      if (!m) throw new UsageError('at is a time, as 16:30.');
+      return Number(m[1]) * 60 + Number(m[2]);
+    });
+    const c = withCommand(command({ help: 'wait until', args: [clock], run: ({ at }) => `${at} min` }));
+    expect(c.run('t 16:30')).toBe('990 min');
+    expect(c.run('t soon')).toBe('at is a time, as 16:30. Usage: t <at>');
   });
 });

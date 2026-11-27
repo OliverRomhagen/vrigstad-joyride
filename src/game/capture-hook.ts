@@ -38,6 +38,8 @@ export interface CaptureHookDeps {
   wallet: unknown;
   TRISS_KR: unknown;
   vehicleVisuals: unknown;
+  /** refreshes what the game places round the camera (the toon style's window frames, #413) once the rig has moved it */
+  followCamera?: () => void;
 }
 
 /** Installs the hook when the page's query has `capture`; otherwise does nothing. */
@@ -48,7 +50,10 @@ export function installCaptureHook(g: CaptureHookDeps, search: string) {
     render = renderer.render.bind(renderer);
   // after the game has placed its camera, so the rig's camera wins; the target is what the game's camera follows (loop.ts)
   renderer.render = (scene, cam) => {
-    win.__cam?.(camera, game.inCar && game.pcar ? game.pcar : player);
+    if (win.__cam) {
+      win.__cam(camera, game.inCar && game.pcar ? game.pcar : player);
+      g.followCamera?.(); // the game placed them round its own camera, before the rig moved it
+    }
     render(scene, cam);
   };
   win.__G = g;

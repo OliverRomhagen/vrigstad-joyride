@@ -4,6 +4,7 @@ import type { Car } from './cars';
 
 export interface GameState {
   started: boolean; // Start was pressed
+  paused: boolean; // the pause menu is open: the frames draw, nothing moves
   clockS: number; // s since the page loaded, for hit cool-downs
   inCar: boolean;
   pcar: Car | null; // the car you drive, while inCar
@@ -16,6 +17,7 @@ export interface GameState {
 
 export const newGameState = (): GameState => ({
   started: false,
+  paused: false,
   clockS: 0,
   inCar: false,
   pcar: null,

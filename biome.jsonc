@@ -24,6 +24,10 @@
     // Rule 5: seeded randomness in the game and the world. The map page isn't gameplay, and neither are tools and tests.
     { "path": "./tools/biome/no-math-random.grit", "includes": ["src/**", "!src/map/**"] }
   ],
+  // The wiki's Svelte files whole, markup and styles too, not only the script: Biome formats them (a block's clauses each on
+  // a line of their own) and sees a name the markup uses. Experimental in Biome, so the wiki's own check and build are what
+  // say a formatted component still works.
+  "html": { "experimentalFullSupportEnabled": true, "formatter": { "enabled": true } },
   "overrides": [
     {
       // The two page scripts keep their dense style, so only formatting is off: reformatting the game's main.ts is its own
@@ -53,6 +57,7 @@
         "!src/game/hud.ts",
         "!src/game/input.ts",
         "!src/game/menu.ts",
+        "!src/game/pause-menu.ts",
         "!src/game/loop.ts",
         "!src/game/prompt.ts",
         "!src/game/test-hook.ts",
