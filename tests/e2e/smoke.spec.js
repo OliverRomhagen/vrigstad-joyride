@@ -294,6 +294,25 @@ test.describe('game (index.html)', () => {
     expect(errors).toEqual([]);
   });
 
+  test('Graphics on the intro card turns the cel-shaded style off after a reload, and the choice is kept', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 640, height: 360 }); // checks only the hook; keep software WebGL affordable
+    const errors = watchErrors(page);
+    await page.goto('/index.html');
+    await page.getByText('Graphics').click();
+    const celShaded = page.getByRole('switch', { name: /Cel-shaded style/ });
+    await expect(celShaded).toBeChecked();
+    await expect(page.getByRole('button', { name: 'Reload to apply' })).toBeHidden();
+    await celShaded.uncheck();
+    // the houses are built for one look or the other; wait for the new page's load, not the old one's
+    await Promise.all([page.waitForEvent('load'), page.getByRole('button', { name: 'Reload to apply' }).click()]);
+    await page.locator('#go').click();
+    await frames(page, 3);
+    expect(await state(page)).toMatchObject({ started: true, styled: false }); // the plain look, saved across the reload
+    expect(errors).toEqual([]);
+  });
+
   test('the wheel zooms the camera, and the browser zoom is blocked', async ({ page }) => {
     const errors = watchErrors(page);
     await page.goto('/index.html');

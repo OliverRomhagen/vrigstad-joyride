@@ -213,6 +213,11 @@ export class ToonStyle {
     this.inkNearM = coarse ? INK_NEAR_COARSE_M : INK_NEAR_M;
   }
 
+  /** Whether the ink lines are drawn (the Outlines setting); they're still built, so turning them on is instant. */
+  set ink(on: boolean) {
+    this.inkMaterial.visible = on; // every line shares the material, and three skips what a hidden material draws
+  }
+
   render(scene: THREE.Scene, camera: THREE.Camera) {
     this.eye.setFromMatrixPosition(camera.matrixWorld);
     try {

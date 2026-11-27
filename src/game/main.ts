@@ -70,6 +70,9 @@ import { GroundTexture } from './render/ground-texture';
 import { BAR_BLUE, BAR_RED, barGeo, barMat, blob, blobTex, boxGeo, carGeo, carMat, GLASS, geoCache, PROFILES, paintMat, personParts, TRACTOR_CAB } from './render/models';
 import { buildStage, SUN_DIR, setUpRenderer } from './render/stage';
 import { ToonStyle } from './render/toon-style';
+import { mount } from 'svelte';
+import { Settings, SETTINGS } from './settings.svelte';
+import GraphicsSettings from './ui/GraphicsSettings.svelte';
 import { addBridges, addBuildings, addRoadRibbons, addStreetscapeMeshes, addTerrain, addTrees, addWater } from './render/world-meshes';
 import { WINDOW_FRAMES_COARSE_M, WINDOW_FRAMES_M } from './render/window-frames';
 import { type CarType, specFor } from './sim/vehicle-spec';
@@ -125,6 +128,11 @@ const maxAnisotropy = renderer.capabilities.getMaxAnisotropy();
 // code behind a gate is loaded with import(), so with everything off the game runs exactly as without the lab.
 // After the WebGL check, so none starts behind the fail screen; one that fails to load or start should only warn
 const lab = LabFlags.fromSearch(location.search);
+
+// ---------- settings: the player's, saved in the browser (src/game/settings.svelte.ts, #78) ----------
+// localStorage itself throws where site data is blocked; the settings then keep their defaults and aren't saved
+const settings = new Settings((() => { try { return localStorage; } catch { return null; } })());
+const celShaded = settings.get(SETTINGS.CEL_SHADED);   // read once: the houses are built for one look or the other
 if (lab.on('hello')) console.info('Lab: hello is on.'); // the smallest gate, for trying the flags
 
 // ---------- time of day: 05:00 to 19:00, then a short blend into the next morning (src/game/day-cycle.ts, src/game/render/daylight.ts) ----------
@@ -163,7 +171,7 @@ buildings.addBarrier(bridges);   // the bridges' railings stop cars, people and 
 const yard = yardLayout(bPolys, hAt); for (const i of yard.passable) buildings.stopColliding(i);   // Skroten (src/game/skroten-yard.ts): its workshop and carport become walls you can drive between
 for (const p of yard.outlines) buildings.addSolid(p);   // its fence, workshop walls, hut, wrecks and heaps, before any car parks; solids, so crowds and cats don't take them for houses
 floorAt = (x, z) => yardFloorAt(yard, x, z, hAt);   // everyone stands on the even floors of Skroten's workshop and carport
-const windowFrames = addBuildings(scene, D, heightfield, { rnd, pick, maxAnisotropy, skip: [SKROT_HALL, SKROT_CARPORT], flatWalls: true, boardSeams: true, toonWindows: true, windowFramesM: coarse ? WINDOW_FRAMES_COARSE_M : WINDOW_FRAMES_M });   // rolls rnd() for the house colours, before any tree spot
+const windowFrames = addBuildings(scene, D, heightfield, { rnd, pick, maxAnisotropy, skip: [SKROT_HALL, SKROT_CARPORT], flatWalls: celShaded, boardSeams: celShaded, toonWindows: celShaded, windowFramesM: celShaded ? (coarse ? WINDOW_FRAMES_COARSE_M : WINDOW_FRAMES_M) : 0 });   // rolls rnd() for the house colours, before any tree spot
 
 // ---------- trees: spruces and birches, each with its own shade, size and lean ----------
 const TREE_M2_PER_TRY = 110, TREE_ROAD_CLEARANCE_M = 2.5;   // one try at a tree per this much of a wood's bounding box; no trunk closer to a road's edge
@@ -419,7 +427,14 @@ $('go').addEventListener('click', loop.startGame);
 installCaptureHook({ THREE, renderer, camera, game, view, player, cars, keys: input.keys, joy: input.joy, D, R, nodes: roads.junctions, nodeKey, driveable: roads.driveable, hAt,
   action, addCar, removeCar, placeCar, carGeo, sun, SUN_DIR, wanted, places, wallet, TRISS_KR, vehicleVisuals: { state: (c: Car) => vehicleVisuals.state(meshed(c)) },
   followCamera: () => windowFrames?.update(camera.position.x, camera.position.z) }, location.search);
-loop.drawThrough(new ToonStyle(renderer, { coarse }));   // the world is drawn cel-shaded (#206), from the first frame
+// the world is drawn cel-shaded (#206), from the first frame, unless the player turned it off; outlines switch live
+if (celShaded) {
+  const toonStyle = new ToonStyle(renderer, { coarse });
+  toonStyle.ink = settings.get(SETTINGS.OUTLINES);
+  settings.watch(SETTINGS.OUTLINES, on => { toonStyle.ink = on; });
+  loop.drawThrough(toonStyle);
+}
+mount(GraphicsSettings, { target: $('settings'), props: { settings, reload: () => location.reload() } });   // under Start on the intro card
 loop.start();
 
 // ---------- test hook: read-only state for the smoke tests (src/game/test-hook.ts) ----------

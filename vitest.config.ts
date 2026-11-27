@@ -1,4 +1,5 @@
 import { fileURLToPath } from 'node:url';
+import { svelte } from '@sveltejs/vite-plugin-svelte';
 import { defineConfig } from 'vitest/config';
 
 // Separate from vite.config.ts, whose root is src/ and whose single-file plugin the tests don't need.
@@ -10,5 +11,7 @@ export default defineConfig({
   resolve: {
     alias: [{ find: /^#game\//, replacement: fileURLToPath(new URL('./src/game/', import.meta.url)) }],
   },
+  // compiles the runes in .svelte.ts modules (src/game/settings.svelte.ts), as the pages' build does
+  plugins: [svelte()],
   test: { include: ['tests/unit/**/*.test.ts'] },
 });

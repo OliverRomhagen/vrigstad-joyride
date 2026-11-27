@@ -1,4 +1,5 @@
 import { execSync } from 'node:child_process';
+import { svelte } from '@sveltejs/vite-plugin-svelte';
 import { defineConfig, type Plugin } from 'vite';
 import { viteSingleFile } from 'vite-plugin-singlefile';
 
@@ -35,5 +36,6 @@ export default defineConfig({
   define: { __BUILD__: JSON.stringify(buildStamp()) },
   // keep @license comments, so the bundled three.js keeps the MIT notice its licence asks for
   build: { outDir: '../dist', rolldownOptions: { output: { comments: { legal: true } } } },
-  plugins: [viteSingleFile(), fontsAsFiles()],
+  // Svelte for the DOM UI over the canvas (src/game/ui/, #51), never for the scene (ARCHITECTURE.md)
+  plugins: [svelte(), viteSingleFile(), fontsAsFiles()],
 });
