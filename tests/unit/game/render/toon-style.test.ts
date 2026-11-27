@@ -442,3 +442,34 @@ test('a mesh that joins an inked group later, as a car model does once it loads,
   style.render(scene, camera);
   expect(model.children.filter(o => o instanceof THREE.LineSegments)).toHaveLength(1);
 });
+
+test("a far house's piece of the village's ink is drawn when you stand by it, though the village's origin is far off", () => {
+  const scene = new THREE.Scene(),
+    houses = new THREE.BoxGeometry(4, 4, 4).toNonIndexed(),
+    far = houses.clone().translate(800, 0, 0),
+    village = new THREE.Mesh(mergeTwo(houses.clone().translate(-500, 0, 0), far), new THREE.MeshLambertMaterial()), // one mesh, its origin at Torget, as the house shells are
+    eye = new THREE.PerspectiveCamera(),
+    style = new ToonStyle({ render: () => {} });
+  village.userData[INK_FLAG] = true;
+  scene.add(village);
+  eye.position.set(805, 0, 0);
+  eye.updateMatrixWorld();
+  style.render(scene, eye); // builds the lines
+  style.render(scene, eye);
+  const pieces = village.children as THREE.LineSegments[],
+    isNear = (l: THREE.LineSegments) => (l.geometry.boundingSphere?.center.x ?? 0) > 0;
+  expect(pieces.length).toBeGreaterThan(1); // cut into squares, each a small piece
+  for (const l of pieces) expect(l.visible).toBe(isNear(l)); // the far house's 1.3 km off
+});
+
+// two non-indexed geometries' positions as one
+function mergeTwo(a: THREE.BufferGeometry, b: THREE.BufferGeometry) {
+  const pa = a.getAttribute('position').array as Float32Array,
+    pb = b.getAttribute('position').array as Float32Array,
+    out = new Float32Array(pa.length + pb.length);
+  out.set(pa);
+  out.set(pb, pa.length);
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(out, 3));
+  return g;
+}

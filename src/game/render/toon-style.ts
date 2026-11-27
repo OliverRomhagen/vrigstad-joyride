@@ -176,11 +176,15 @@ export class ToonStyle {
       lines.raycast = () => {};
       if ((piece.boundingSphere?.radius ?? 0) < INK_SMALL_M) lines.userData[INK_SMALL_FLAG] = true;
       object.add(lines);
+      lines.updateWorldMatrix(false, false); // placed now, so its first distance isn't from the origin
     }
   }
   private readonly swapIn = (object: THREE.Object3D) => {
     if (object.userData[INK_SMALL_FLAG]) {
-      _v.setFromMatrixPosition(object.matrixWorld);
+      // from where its lines are, not its origin: a piece of the village's shells has its origin at Torget
+      const sphere = (object as THREE.LineSegments).geometry.boundingSphere;
+      if (sphere) _v.copy(sphere.center).applyMatrix4(object.matrixWorld);
+      else _v.setFromMatrixPosition(object.matrixWorld);
       object.visible = _v.distanceTo(this.eye) < this.inkNearM;
       return;
     }

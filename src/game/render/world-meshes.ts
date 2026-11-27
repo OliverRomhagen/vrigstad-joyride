@@ -225,13 +225,22 @@ export function addBuildings(
     x.translate(u(WIN_W / 2 - 1.3), 0); // the window below is drawn for a 2.6 m tile: centred in the wider one
     x.fillStyle = '#f1efe8';
     const top = WINDOW_SILL_M + WINDOW_H_M;
-    x.fillRect(u(1.3 - WINDOW_W_M / 2), y(top), u(WINDOW_W_M), y(WINDOW_SILL_M) - y(top)); // the frame
+    const left = 1.3 - WINDOW_W_M / 2,
+      bar = 0.08, // the frame's width round the glass (m)
+      cross = 0.07, // the cross bars' width (m)
+      crossY = WINDOW_SILL_M + 0.815; // where the cross bar runs across, its middle (m up)
+    x.fillRect(u(left), y(top), u(WINDOW_W_M), y(WINDOW_SILL_M) - y(top)); // the frame
     x.fillStyle = toonWindows ? WINDOW_GLASS : '#26323a';
-    x.fillRect(u(0.88), y(2.07), u(0.84), y(0.98) - y(2.07));
+    x.fillRect(u(left + bar), y(top - bar), u(WINDOW_W_M - 2 * bar), y(WINDOW_SILL_M + bar) - y(top - bar));
     if (!toonWindows) {
       x.fillStyle = '#f1efe8';
-      x.fillRect(u(1.265), y(2.07), u(0.07), y(0.98) - y(2.07));
-      x.fillRect(u(0.88), y(1.75), u(0.84), y(1.68) - y(1.75)); // cross bars
+      x.fillRect(u(1.3 - cross / 2), y(top - bar), u(cross), y(WINDOW_SILL_M + bar) - y(top - bar));
+      x.fillRect(
+        u(left + bar),
+        y(crossY + cross / 2),
+        u(WINDOW_W_M - 2 * bar),
+        y(crossY - cross / 2) - y(crossY + cross / 2),
+      ); // cross bars
     }
     const t = new THREE.CanvasTexture(cv);
     t.wrapS = t.wrapT = THREE.RepeatWrapping;

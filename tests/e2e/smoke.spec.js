@@ -257,7 +257,7 @@ test.describe('game (index.html)', () => {
     // Start and the HUD come before the fleet details, so a fleet failure can't hide a broken Start.
     await page.locator('#go').click();
     await expect(page.locator('#intro')).toBeHidden();
-    expect(await state(page)).toMatchObject({ started: true });
+    expect(await state(page)).toMatchObject({ started: true, styled: true }); // cel-shaded with no flag (#206)
     await expect(page.locator('#toast')).toContainText('Find a car'); // only Start shows this
     await expect(page.locator('#sign')).toBeVisible();
     await expect(page.locator('#street')).toContainText('Torget');
