@@ -1,0 +1,125 @@
+name: Playtest
+
+# Merges every open PR labelled `playtest` into main, oldest first, and deploys the result to pr-preview/playtest/ on
+# gh-pages, next to the PR previews (preview.yml), so PRs from different people can be played together.
+# A PR that conflicts with main or with the ones merged before it is left out and named in the run's summary.
+# PRs from forks are left out too: their code isn't built in this repo's workflows (see preview.yml).
+# Started by hand for now (Actions -> Playtest -> Run workflow).
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One shared link: a second run waits for the first rather than racing it to gh-pages. PR previews deploy to their own
+# folders, and both rebase onto gh-pages instead of force pushing, so they don't clobber each other.
+concurrency:
+  group: preview-playtest
+  cancel-in-progress: false
+
+jobs:
+  # Runs the PRs' code (npm ci, the build), so it gets a read-only token and doesn't keep it in the checkout
+  build:
+    # workflow_dispatch can run from any branch; only main's copy of this workflow decides what is merged
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      merged: ${{ steps.merge.outputs.merged }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+      - id: merge
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          prs="$RUNNER_TEMP/prs.tsv"
+          gh pr list --repo "$GITHUB_REPOSITORY" --label playtest --state open --limit 100 \
+            --json number,title,createdAt,isCrossRepository \
+            --jq 'sort_by(.createdAt)[] | [.number, .isCrossRepository, .title] | @tsv' > "$prs"
+          base=$(git rev-parse --short HEAD)
+          git switch -c playtest
+          merged=0
+          ok=() skipped=()
+          while IFS=$'\t' read -r n cross title; do
+            link="[#$n $title]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/pull/$n)"
+            if [[ $cross == true ]]; then skipped+=("- $link: from a fork"); continue; fi
+            git fetch --no-tags origin "pull/$n/head"
+            if git -c user.name=github-actions -c user.email=github-actions@github.com \
+                merge --no-ff --no-edit -m "playtest: merge #$n" FETCH_HEAD; then
+              ok+=("- $link"); merged=$((merged + 1))
+            else
+              git merge --abort
+              skipped+=("- $link: conflicts with main or a PR above")
+            fi
+          done < "$prs"
+          {
+            echo "## Playtest"
+            echo
+            echo "Built from main at $base."
+            echo
+            if (( ${#ok[@]} )); then echo "Merged, oldest first:"; echo; printf '%s\n' "${ok[@]}"; echo; fi
+            if (( ${#skipped[@]} )); then echo "Left out:"; echo; printf '%s\n' "${skipped[@]}"; echo; fi
+            if (( merged == 0 )); then
+              if [[ -s $prs ]]; then echo "No PR could be merged, so nothing was deployed."
+              else echo "No open PR has the \`playtest\` label, so nothing was deployed."; fi
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "merged=$merged" >> "$GITHUB_OUTPUT"
+      - if: steps.merge.outputs.merged != '0'
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: lts/*
+          # no npm cache: this run installs the labelled PRs' packages, and a cache saved from it would be main's,
+          # which the live site's deploy (pages.yml) restores
+      - if: steps.merge.outputs.merged != '0'
+        run: npm ci && npm run build
+      # As in preview.yml: the wiki goes to wiki/ under the preview, and one that fails to build is left out
+      - if: steps.merge.outputs.merged != '0'
+        id: wiki
+        continue-on-error: true
+        run: npm ci --prefix wiki && npm run build --prefix wiki
+        env:
+          BASE_PATH: /${{ github.event.repository.name }}/pr-preview/playtest/wiki
+      - if: steps.wiki.outcome == 'failure'
+        run: rm -rf dist/wiki
+      - if: steps.merge.outputs.merged != '0'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: playtest
+          path: dist
+          retention-days: 1
+
+  # Writes to gh-pages, so it runs none of the PRs' code: it only copies the built files
+  deploy:
+    needs: build
+    if: needs.build.outputs.merged != '0'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: playtest
+          path: ${{ runner.temp }}/playtest
+      # The deploy pr-preview-action makes for a PR preview, but into pr-preview/playtest/: the action can only name its
+      # folder pr-<number>
+      - uses: JamesIves/github-pages-deploy-action@fa24774553152dd7873cd16ebd8d959b010c5445 # v4.9.0
+        with:
+          folder: ${{ runner.temp }}/playtest
+          branch: gh-pages
+          target-folder: pr-preview/playtest
+          commit-message: Deploy playtest preview
+          # The default force push would drop a preview pushed to gh-pages since the checkout; rebase onto it instead
+          force: false
+      - run: |
+          url="https://${GITHUB_REPOSITORY_OWNER,,}.github.io/${GITHUB_REPOSITORY#*/}/pr-preview/playtest/"
+          echo "Deployed to $url (it serves a minute or so after this run)." >> "$GITHUB_STEP_SUMMARY"
