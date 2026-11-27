@@ -64,6 +64,22 @@ test('cached geometry, queued paint, protected glass and owned material disposal
   expect(assets.definition(a)).toBeUndefined();
 });
 
+test('a respray in the driver’s view recolours its clipped material where it is, so the cut keeps following', async () => {
+  const assets = new VehicleVisuals(false),
+    c = car();
+  assets.attach(c, 'volvo240', c.fallback, '#abcdef');
+  assets.update(focus, 0.01);
+  await settle(assets, [c]);
+  const body = mesh(c.mesh, 'body'),
+    planes = [new THREE.Plane()],
+    clipped = Object.assign(body.material.clone(), { clippingPlanes: planes }); // as Cockpit.enter clips it
+  body.material = clipped;
+  assets.paint(c, '#992233');
+  expect(body.material).toBe(clipped);
+  expect(body.material.clippingPlanes).toBe(planes);
+  expect(body.material.color.equals(new THREE.Color('#992233').convertSRGBToLinear())).toBe(true);
+});
+
 test('wheel travel, reverse steering and teleport reset use rendered motion', async () => {
   const assets = new VehicleVisuals(false),
     c = car();
@@ -105,6 +121,31 @@ test('police retain authored paint and their real beacon meshes flash', async ()
   const lit = beacons[0].emissiveIntensity;
   assets.update(focus, 0.22);
   expect(beacons[0].emissiveIntensity).not.toBe(lit);
+});
+
+test('only the body, the tyres and big parts cast shadows, and none on coarse devices (#405)', async () => {
+  const casters = async (coarse: boolean) => {
+    const assets = new VehicleVisuals(coarse),
+      c = car();
+    assets.attach(c, 'xc70-police', c.fallback);
+    assets.update(focus, 0.01);
+    await settle(assets, [c]);
+    const names: string[] = [];
+    c.mesh.traverse(node => {
+      if (node instanceof THREE.Mesh && node !== c.fallback && node.castShadow) names.push(node.name);
+    });
+    return names.sort();
+  };
+  expect(await casters(false)).toEqual([
+    'body',
+    'parts_charcoal_plastic_rubber', // bumpers, sills, roof rails
+    'parts_satin_alloy', // skid plates, handles, light bar base
+    'wheel_fl',
+    'wheel_fr',
+    'wheel_rl',
+    'wheel_rr',
+  ]);
+  expect(await casters(true)).toEqual([]);
 });
 
 test('failed nearest models leave capacity for the healthy fourth model', async () => {
