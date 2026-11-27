@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { inkEdges } from '../../../../src/game/render/ink-edges';
 import { INK_FLAG, INK_NO_FEET_FLAG } from '../../../../src/game/render/ink-flag';
 import { finishOf } from '../../../../src/game/render/toon-style';
-import { addBuildings } from '../../../../src/game/render/world-meshes';
+import { addBuildings, PLINTH_OUT_M, PLINTH_TOP_M } from '../../../../src/game/render/world-meshes';
 import { BuildingKind, type WorldData } from '../../../../src/world/data';
 import { Heightfield } from '../../../../src/world/heightfield';
 import { makeWorld, square } from '../../world/fixture';
@@ -157,6 +157,56 @@ describe('house trim', () => {
       if (ends.every(e => onWallTop(...e)) && onWallTop(mx, my, mz)) along.push(i);
     }
     expect(along).toEqual([]);
+  });
+
+  it('on a slope, the toon style loses only the feet: in the ground, on the plinth and in the roof (#413)', () => {
+    // the ground rises 10 m every 50 m eastwards, 2 m across the house
+    const world = makeWorld({ elev: [0, 10, 20, 0, 10, 20, 0, 10, 20], b: [pitched] }),
+      heightfield = new Heightfield(world),
+      scene = new THREE.Scene();
+    addBuildings(scene, world, heightfield, { rnd: () => 0.5, pick: a => a[0], maxAnisotropy: 1, flatWalls: true });
+    const shells = scene.children.find(o => o.userData[INK_NO_FEET_FLAG]) as THREE.Mesh;
+    // each segment as its two ends to the mm, in either order
+    const segments = (g: THREE.BufferGeometry) => {
+      const p = g.getAttribute('position'),
+        out = new Map<string, number[]>();
+      for (let i = 0; i < p.count; i += 2) {
+        const ends = [i, i + 1].map(j => [p.getX(j), p.getY(j), p.getZ(j)].map(v => Math.round(v * 1000) / 1000));
+        out.set(
+          ends
+            .map(e => e.join(','))
+            .sort()
+            .join(' '),
+          ends.flat(),
+        );
+      }
+      return out;
+    };
+    const all = segments(new THREE.EdgesGeometry(shells.geometry, 34)),
+      kept = segments(inkEdges(shells.geometry, 34));
+    for (const s of kept.keys()) expect(all.has(s), s).toBe(true); // it only takes lines away
+    const dropped = [...all].filter(([s]) => !kept.has(s)).map(([, e]) => e);
+    for (const e of dropped) expect(e[1], 'every foot is level').toBeCloseTo(e[4], 3);
+    const byHeight = new Map<number, number[][]>();
+    for (const e of dropped) byHeight.set(e[1], [...(byHeight.get(e[1]) ?? []), e]);
+    const [base, plinthTop, chimneyFoot] = [...byHeight.keys()].sort((a, b) => a - b);
+    expect(byHeight.size).toBe(3);
+    // the walls' and the plinth's feet, once round each (the walls' 40 m, and the plinth's longer ring), at the base under the whole house,
+    // its lowest point; how many segments depends on where the walls are split
+    const length = (e: number[]) => Math.hypot(e[0] - e[3], e[2] - e[5]);
+    expect(byHeight.get(base)!.reduce((sum, e) => sum + length(e), 0)).toBeCloseTo(40 + 4 * (10 + 2 * PLINTH_OUT_M), 2);
+    let lowest = Infinity;
+    const pos = shells.geometry.getAttribute('position');
+    for (let i = 0; i < pos.count; i++) lowest = Math.min(lowest, pos.getY(i));
+    expect(base).toBeCloseTo(lowest, 3);
+    // four corner boards, four sides each, standing on the plinth, whose top stands over the highest ground
+    expect(byHeight.get(plinthTop)).toHaveLength(16);
+    const highest = Math.max(...[0, 10].flatMap(x => [0, 10].map(z => heightfield.heightAt(x, z))));
+    expect(plinthTop).toBeCloseTo(highest + PLINTH_TOP_M, 2);
+    // the chimney's four sides, inside the roof, under its ridge
+    const chimney = byHeight.get(chimneyFoot)!;
+    expect(chimney).toHaveLength(4);
+    for (const e of chimney) expect(length(e)).toBeLessThan(1);
   });
 
   it('leaves out the eave of a wall shorter than its mitre, which would come out crossed, and closes the wall instead', () => {
