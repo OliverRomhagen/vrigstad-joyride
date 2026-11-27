@@ -307,12 +307,14 @@ test.describe('game (index.html)', () => {
     // the lab loads behind its flag, and a failure to load only warns: without this, the plain game would pass
     await expect
       .poll(async () => (await state(page)).pickadoll)
-      .toMatchObject({ weapon: 'pickadoll', flavour: 'gegga', holstered: true });
+      .toMatchObject({ weapon: 'hands', flavour: 'gegga', holstered: true });
     await frames(page, 3); // the lab waits a frame after Start, and a pull before it is ready is dropped
-    // you start with the weapon put away: the first pull draws it and fires nothing
+    // you start on Hands, where the trigger does nothing; H takes out the weapon held last, the pickadoll
     await page.keyboard.press('KeyX');
-    await expect.poll(async () => (await state(page)).pickadoll.holstered).toBe(false);
-    expect((await state(page)).pickadoll.fired).toBe(0);
+    await frames(page, 2);
+    expect((await state(page)).pickadoll).toMatchObject({ holstered: true, fired: 0 });
+    await page.keyboard.press('KeyH');
+    await expect.poll(async () => (await state(page)).pickadoll.weapon).toBe('pickadoll');
     await page.keyboard.down('KeyX');
     await expect.poll(async () => (await state(page)).pickadoll.fired).toBeGreaterThan(0);
     await page.keyboard.up('KeyX');
@@ -352,7 +354,7 @@ test.describe('game (index.html)', () => {
       .toBe(true);
     expect((await state(page)).rapier).toMatchObject({ targets: 7, targetsDown: 0 }); // the range's, standing (#545)
     await frames(page, 3);
-    await page.keyboard.press('KeyX'); // the weapon starts put away: the first pull draws it
+    await page.keyboard.press('KeyH'); // you start on Hands: H takes out the pickadoll
     await expect.poll(async () => (await state(page)).pickadoll.holstered).toBe(false);
     await page.keyboard.down('KeyX');
     await expect.poll(async () => (await state(page)).pickadoll.fired).toBeGreaterThan(0);
