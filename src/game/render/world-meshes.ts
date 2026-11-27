@@ -4,7 +4,7 @@
 import * as THREE from 'three';
 import type { BridgeIndex } from '../../world/bridges';
 import { type BuildingShape, HOUSE_MAX_M2, HOUSE_MIN_M2 } from '../../world/buildings';
-import type { WorldData } from '../../world/data';
+import { Surface, type WorldData } from '../../world/data';
 import type { Heightfield } from '../../world/heightfield';
 import { BridgeMesh } from '../../world/mesh/bridge-mesh';
 import { type EmitVertex, PaintedBuildingShells } from '../../world/mesh/building-shells';
@@ -92,8 +92,17 @@ export function addWater(
 }
 
 // ---------- roads: crisp ribbons on the terrain ----------
-const ROAD_COLOURS = [0x4c4f52, 0x55585b, 0x606365, 0x74746d, 0xa08c6c, 0xbcae92] as const,
-  CENTRE_LINE_COLOUR = 0xe9e7da; // sRGB, by road class
+// sRGB, by surface (surfaceOf, #399): every car road one asphalt, whatever its class, so a junction shows no step
+const ROAD_COLOURS: Record<Surface, number> = {
+    [Surface.UNKNOWN]: 0x606365,
+    [Surface.ASPHALT]: 0x606365, // today's street grey: the streetscape's road and the parking lots wear it too
+    [Surface.PAVING]: 0x7a746b, // setts and paving stones: a lighter, warmer grey
+    [Surface.CONCRETE]: 0x8c8c88,
+    [Surface.GRAVEL]: 0xa08c6c,
+    [Surface.UNPAVED]: 0xbcae92,
+    [Surface.GRASS]: 0x8f9e6a,
+  },
+  CENTRE_LINE_COLOUR = 0xe9e7da;
 /** The road ribbons, on a speckled asphalt tile; the streetscape's curbs reuse their materials. */
 export function addRoadRibbons(
   scene: THREE.Scene,
@@ -128,7 +137,7 @@ export function addRoadRibbons(
   })();
   const roadRibbons = new RoadRibbons(roads, heightfield, {
     asphalt,
-    roadColours: ROAD_COLOURS,
+    surfaceColours: ROAD_COLOURS,
     centreLineColour: CENTRE_LINE_COLOUR,
     heightOf: bridges.ribbonHeight.bind(bridges),
     skip: ri => (bridges.bridgeOf(ri)?.archetype ?? 'road-slab') !== 'road-slab',
@@ -482,7 +491,7 @@ export function addStreetscapeMeshes(
   layout: StreetscapeLayout,
   D: WorldData,
   heightfield: Heightfield,
-  roadMaterials: RoadRibbons['materials'],
+  ribbons: Pick<RoadRibbons, 'materials' | 'surfaceColour'>,
   debug: boolean,
 ) {
   const surface = new THREE.MeshLambertMaterial({ vertexColors: true }),
@@ -492,7 +501,13 @@ export function addStreetscapeMeshes(
       polygonOffsetFactor: -2,
       polygonOffsetUnits: -40,
     });
-  const sidewalks = new SidewalkMesh(layout, { surface, markings: paint, debugSources: debug, roadMaterials });
+  const sidewalks = new SidewalkMesh(layout, {
+    surface,
+    markings: paint,
+    debugSources: debug,
+    roadMaterials: ribbons.materials,
+    roadColour: s => ribbons.surfaceColour(s),
+  });
   const parking = new ParkingMesh(layout, D, heightfield, { surface, markings: paint, debugSources: debug });
   const meshes = [...sidewalks.meshes, ...parking.meshes];
   scene.add(...meshes);

@@ -173,7 +173,7 @@ const street = (function () {
   const t0 = performance.now(), sides = classifyStreetscape(D, roads, buildings, STREETSCAPE_OVERRIDES);
   const layout = buildStreetscape({ data: D, roads, heightfield, buildings, water, sides, avoidTrees: forestSpots.filter((_, i) => i % 3 < 2), treeRoadClearanceM: TREE_ROAD_CLEARANCE_M });
   streetIndex = new StreetscapeIndex(layout, D, heightfield);
-  const { meshes, tris } = addStreetscapeMeshes(scene, layout, D, heightfield, roadRibbons.materials, DEBUG_STREETSCAPE);
+  const { meshes, tris } = addStreetscapeMeshes(scene, layout, D, heightfield, roadRibbons, DEBUG_STREETSCAPE);
   return { layout, sides, meshes, tris, ms: performance.now() - t0 };
 })();
 // on a bridge its walkway or inside its railings; else the pavement's centre line where a side has one, else today's walking line on the shoulder

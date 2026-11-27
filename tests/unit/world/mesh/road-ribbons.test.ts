@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 import { BridgeIndex } from '../../../../src/world/bridges';
-import { ROAD_WIDTH_M, RoadClass } from '../../../../src/world/data';
-import { RoadRibbons } from '../../../../src/world/mesh/road-ribbons';
+import { ROAD_WIDTH_M, RoadClass, Surface } from '../../../../src/world/data';
+import { RoadRibbons, TILE_M } from '../../../../src/world/mesh/road-ribbons';
 import { type Point, RoadNetwork, roadLiftM } from '../../../../src/world/roads';
 import { makeWorld } from '../fixture';
 
@@ -10,14 +10,16 @@ const TERRAIN_M = 2;
 const terrainAt = (heightM: number) => ({ heightAt: () => heightM });
 // a primary road along z = 0, from x = -40 to 40
 const MAIN_ROAD = { c: RoadClass.PRIMARY, n: 'Storgatan', p: [-40, 0, 40, 0] };
-const ROAD_COLOURS = [0x101010, 0x202020, 0x303030, 0x404040, 0x505050, 0x606060] as const;
+const SURFACE_COLOURS = [
+  0x101010, 0x202020, 0x303030, 0x404040, 0x505050, 0x606060, 0x707070,
+] as const satisfies Record<Surface, number>;
 
 describe('RoadRibbons', () => {
   const asphalt = new THREE.Texture();
   const roads = new RoadNetwork(makeWorld({ r: [MAIN_ROAD] }), terrainAt(TERRAIN_M));
   const ribbons = new RoadRibbons(roads, terrainAt(TERRAIN_M), {
     asphalt,
-    roadColours: ROAD_COLOURS,
+    surfaceColours: SURFACE_COLOURS,
     centreLineColour: 0xffffff,
   });
 
@@ -120,11 +122,11 @@ describe('RoadRibbons after the move to polyline.ts', () => {
   ];
   const ribbons = new RoadRibbons(new RoadNetwork(makeWorld({ r: lines }), hilly), hilly, {
     asphalt: new THREE.Texture(),
-    roadColours: ROAD_COLOURS,
+    surfaceColours: SURFACE_COLOURS,
     centreLineColour: 0xffffff,
   });
 
-  it('gives exactly the vertices and UVs the old sampling gave', () => {
+  it('gives exactly the vertices the old sampling gave', () => {
     const want: number[][] = [[], [], [], [], [], [], []];
     const wantUv: number[][] = [[], [], [], [], [], [], []];
     for (const l of lines) {
@@ -134,10 +136,8 @@ describe('RoadRibbons after the move to polyline.ts', () => {
       if (l.c < 2) legacyRibbon(want[6], wantUv[6], p, 0.2, 0.3, hilly);
     }
     const got = ribbons.meshes.map(m => Array.from(m.geometry.getAttribute('position').array as Float32Array));
-    const gotUv = ribbons.meshes.map(m => Array.from(m.geometry.getAttribute('uv').array as Float32Array));
     const f32 = (a: number[]) => Array.from(new Float32Array(a));
-    expect(got).toEqual(want.filter(a => a.length).map(f32));
-    expect(gotUv).toEqual(wantUv.filter(a => a.length).map(f32));
+    expect(got).toEqual(want.filter(a => a.length).map(f32)); // the UVs moved to world space on purpose (#399)
   });
 
   it('puts the l edge on the left of the way, as OSM means left', () => {
@@ -147,7 +147,7 @@ describe('RoadRibbons after the move to polyline.ts', () => {
       terrainAt(0),
       {
         asphalt: new THREE.Texture(),
-        roadColours: ROAD_COLOURS,
+        surfaceColours: SURFACE_COLOURS,
         centreLineColour: 0xffffff,
       },
     );
@@ -155,6 +155,47 @@ describe('RoadRibbons after the move to polyline.ts', () => {
     // each quad is pl, l, r, pl, r, pr: vertex 1 is the l edge, vertex 2 the r edge
     expect(pos.getX(1)).toBeCloseTo(-ROAD_WIDTH_M[RoadClass.STREET] / 2, 6);
     expect(pos.getX(2)).toBeCloseTo(ROAD_WIDTH_M[RoadClass.STREET] / 2, 6);
+  });
+});
+
+describe('RoadRibbons by surface (#399)', () => {
+  // two streets in one class mesh: a mapped paving one and an untagged one, which surfaceOf makes asphalt
+  const lines = [
+    { c: RoadClass.STREET, n: '', p: [0, 0, 30, 0], sf: Surface.PAVING },
+    { c: RoadClass.STREET, n: '', p: [30, 0, 30, 30] },
+  ];
+  const ribbons = new RoadRibbons(new RoadNetwork(makeWorld({ r: lines }), terrainAt(0)), terrainAt(0), {
+    asphalt: new THREE.Texture(),
+    surfaceColours: SURFACE_COLOURS,
+    centreLineColour: 0xffffff,
+  });
+  const [street] = ribbons.meshes;
+
+  it('colours each road by its surface, per vertex, on a white material', () => {
+    expect(ribbons.meshes).toHaveLength(1); // still one mesh for the class
+    expect((street.material as THREE.MeshLambertMaterial).vertexColors).toBe(true);
+    expect((street.material as THREE.MeshLambertMaterial).color.getHex()).toBe(0xffffff);
+    const pos = street.geometry.getAttribute('position'),
+      col = street.geometry.getAttribute('color'),
+      paving = ribbons.surfaceColour(Surface.PAVING),
+      asphalt = ribbons.surfaceColour(Surface.ASPHALT);
+    expect(col.count).toBe(pos.count);
+    // the paving street is first in the data, so its vertices lead the buffer: 30 m at 6 m a step, five quads of six
+    const pavingVertices = 5 * 6;
+    for (let i = 0; i < pos.count; i++) {
+      const want = i < pavingVertices ? paving : asphalt;
+      expect([col.getX(i), col.getY(i), col.getZ(i)]).toEqual([want.r, want.g, want.b].map(v => Math.fround(v)));
+    }
+    expect(paving.equals(new THREE.Color(SURFACE_COLOURS[Surface.PAVING]).convertSRGBToLinear())).toBe(true);
+  });
+
+  it('maps the asphalt in world space, so overlapping ribbons show the same speckle', () => {
+    const pos = street.geometry.getAttribute('position'),
+      uv = street.geometry.getAttribute('uv');
+    for (let i = 0; i < pos.count; i++) {
+      expect(uv.getX(i)).toBeCloseTo(pos.getX(i) / TILE_M, 5);
+      expect(uv.getY(i)).toBeCloseTo(pos.getZ(i) / TILE_M, 5);
+    }
   });
 });
 
@@ -168,7 +209,7 @@ describe('RoadRibbons on a bridge (#238)', () => {
     ],
   });
   const roads = new RoadNetwork(world, slope);
-  const options = { asphalt, roadColours: ROAD_COLOURS, centreLineColour: 0xffffff };
+  const options = { asphalt, surfaceColours: SURFACE_COLOURS, centreLineColour: 0xffffff };
   const plain = new RoadRibbons(roads, slope, options);
   const bridges = new BridgeIndex(world, slope);
   const onDeck = new RoadRibbons(roads, slope, { ...options, heightOf: bridges.ribbonHeight.bind(bridges) });
@@ -205,7 +246,7 @@ describe('RoadRibbons skipping a road (#238)', () => {
       makeWorld({ r: [MAIN_ROAD, { c: RoadClass.PATH, n: '', p: [0, -40, 0, 40] }] }),
       terrainAt(0),
     );
-    const options = { asphalt, roadColours: ROAD_COLOURS, centreLineColour: 0xffffff };
+    const options = { asphalt, surfaceColours: SURFACE_COLOURS, centreLineColour: 0xffffff };
     const all = new RoadRibbons(roads, terrainAt(0), options);
     const skipped = new RoadRibbons(roads, terrainAt(0), { ...options, skip: ri => ri === 1 });
     // the path's mesh is gone; the primary road's and its centre line's are the same

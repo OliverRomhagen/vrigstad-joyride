@@ -12,6 +12,7 @@ import {
   RoadUse,
   StreetParking,
   Surface,
+  surfaceOf,
   type WorldData,
 } from './data';
 import type { Heightfield } from './heightfield';
@@ -957,7 +958,7 @@ export function buildStreetscape(inp: StreetscapeInputs): StreetscapeLayout {
       const out = [b.n[0] + a.n[0], 0, b.n[1] + a.n[1]];
       const toward = [-out[0], 0, -out[2]];
       if (a.bay || b.bay)
-        quad(roadPatches[lines[ri].c], a.e, a.b0, b.b0, b.e, [0, 1, 0], Part.ROAD, src, Surface.ASPHALT, tone);
+        quad(roadPatches[lines[ri].c], a.e, a.b0, b.b0, b.e, [0, 1, 0], Part.ROAD, src, surfaceOf(lines[ri]), tone);
       quad(surface, a.b0, a.t0, b.t0, b.b0, toward, Part.CURB_FACE, src, surf, tone);
       quad(surface, a.t0, a.t1, b.t1, b.t0, [0, 1, 0], Part.CURB_TOP, src, surf, tone);
       if (sp.vergeM > 0) quad(surface, a.t1, a.t2, b.t2, b.t1, [0, 1, 0], Part.VERGE, src, Surface.GRASS, tone);
@@ -1109,6 +1110,8 @@ export function buildStreetscape(inp: StreetscapeInputs): StreetscapeLayout {
     }
     const kY = heightfield.heightAt(ka[0], ka[1]) + (plan.liftA + plan.liftB) / 2;
     const kp = [ka[0], kY, ka[1]];
+    // the wedge is drawn as the bigger road, so it wears that road's surface
+    const wedgeSurface = surfaceOf(lines[plan.cls === lines[plan.a.ri].c ? plan.a.ri : plan.b.ri]);
     for (let k = 1; k < pts.length; k++) {
       const a = pts[k - 1];
       const b = pts[k];
@@ -1122,7 +1125,7 @@ export function buildStreetscape(inp: StreetscapeInputs): StreetscapeLayout {
       quad(surface, a.t1, a.t3, b.t3, b.t1, [0, 1, 0], Part.SIDEWALK, src, surf, 0);
       quad(surface, a.t3, a.g3, b.g3, b.t3, out, Part.SKIRT, src, surf, 0);
       // the wedge between the curb's curve and the corner the two ribbons leave open, at road level
-      tri(roadPatches[plan.cls], kp, a.e, b.e, [0, 1, 0], Part.ROAD, src, Surface.ASPHALT, 0);
+      tri(roadPatches[plan.cls], kp, a.e, b.e, [0, 1, 0], Part.ROAD, src, wedgeSurface, 0);
     }
     if (stub) {
       // the stub's end cap, so it never shows an open edge

@@ -3,7 +3,7 @@
 // Moved from src/game/main.ts (#177).
 import * as THREE from 'three';
 import { HOUSE_MAX_M2, HOUSE_MIN_M2 } from '../../world/buildings';
-import { ROAD_WIDTH_M as ROAD_W, type Road, type WorldData } from '../../world/data';
+import { ROAD_WIDTH_M as ROAD_W, type Road, Surface, surfaceOf, type WorldData } from '../../world/data';
 import { polygonArea as polyArea } from '../../world/polygon';
 import { type ShoreLayout, STRETCH_M } from '../../world/shore';
 import { RIVER_HALF_WIDTH_M, STREAM_HALF_WIDTH_M } from '../../world/water-shapes';
@@ -21,7 +21,18 @@ const WATER_PAINT = '#4d7774',
   LAKE_BANK_PAINT_M = 8, // earth inside a lake's mapped shore (m)
   SHORE_BAND_M = 2.6; // the sand or gravel band along a shore stretch (m)
 // each road class's asphalt or gravel, from primary to path
-const ROAD_PAINT = ['#55585a', '#5d6062', '#66696a', '#77776f', '#a08c6c', '#b8ab90'];
+// the road under each ribbon, by its surface (surfaceOf, #399), a shade lighter than the ribbon: one asphalt for every
+// car road, so the paint shows no step at a junction either. The minimap reads the same canvas.
+const ROAD_PAINT: Record<Surface, string> = {
+  [Surface.UNKNOWN]: '#66696a',
+  [Surface.ASPHALT]: '#66696a',
+  [Surface.PAVING]: '#807a71',
+  [Surface.CONCRETE]: '#918f8a',
+  [Surface.GRAVEL]: '#a08c6c',
+  [Surface.UNPAVED]: '#b8ab90',
+  [Surface.GRASS]: '#93a16e',
+};
+const SURFACES = Object.values(Surface);
 
 /** The painted ground; `P` turns a world coordinate into canvas pixels, `K` is pixels per metre. */
 export class GroundTexture {
@@ -161,11 +172,14 @@ export class GroundTexture {
         for (const c of [5, 4, 3, 2, 1, 0]) {
           // 2: soft outer edge of the verge, 1: gravel verge, 0: the road
           if (pass && c > 3) continue;
-          ctx.strokeStyle = pass === 2 ? 'rgba(179,167,140,.35)' : pass ? '#b3a78c' : ROAD_PAINT[c];
           ctx.lineWidth = (ROAD_W[c] + (pass === 2 ? 4.4 : pass ? 2.4 : 0)) * K;
-          ctx.beginPath();
-          for (const r of D.r) if (r.c === c && !r.br) trace(r.p); // not under a bridge: the channel bed shows there
-          ctx.stroke();
+          // the road itself one path per surface, so roads of one surface still join without a seam
+          for (const sf of pass ? [null] : SURFACES) {
+            ctx.strokeStyle = pass === 2 ? 'rgba(179,167,140,.35)' : pass ? '#b3a78c' : ROAD_PAINT[sf as Surface];
+            ctx.beginPath();
+            for (const r of D.r) if (r.c === c && !r.br && (sf === null || surfaceOf(r) === sf)) trace(r.p); // not under a bridge: the channel bed shows there
+            ctx.stroke();
+          }
         }
       ctx.shadowColor = 'rgba(0,0,0,.45)';
       ctx.shadowBlur = 3 * K; // contact shadow around every footprint
@@ -199,7 +213,7 @@ export class GroundTexture {
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     for (const r of this.bridgeRoads) {
-      ctx.strokeStyle = ROAD_PAINT[r.c];
+      ctx.strokeStyle = ROAD_PAINT[surfaceOf(r)];
       ctx.lineWidth = ROAD_W[r.c];
       ctx.beginPath();
       ctx.moveTo(r.p[0], r.p[1]);
