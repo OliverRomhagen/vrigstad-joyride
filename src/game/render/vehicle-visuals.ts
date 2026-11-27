@@ -85,6 +85,12 @@ function castsShadow(node: THREE.Mesh) {
   if (node.name === BODY_NODE || (WHEEL_NODES as readonly string[]).includes(node.name)) return true;
   return !node.name.startsWith('glass_') && surfaceArea(node.geometry) >= SHADOW_MIN_AREA_M2;
 }
+/** How a lamp group looks for state s: headlights dipped or full, tails run or brake, the others on or off. */
+function lookOf(group: LampGroup, s: LampState): LampLook {
+  if (group === 'head') return s.head >= 0.5 ? 'full' : s.head > 0 ? 'run' : 'off';
+  if (group === 'rear') return s.brake ? 'full' : s.rear > 0 ? 'run' : 'off';
+  return s[group] ? 'full' : 'off';
+}
 // Rendering owns resource lifetime; no simulation or gameplay rules are mutated.
 export class VehicleVisuals {
   private readonly loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
@@ -189,23 +195,7 @@ export class VehicleVisuals {
   }
   private light(view: View, s: LampState) {
     for (const lamp of view.lamps) {
-      const g = lamp.group,
-        look: LampLook =
-          g === 'head'
-            ? s.head >= 0.5
-              ? 'full'
-              : s.head > 0
-                ? 'run'
-                : 'off'
-            : g === 'rear'
-              ? s.brake
-                ? 'full'
-                : s.rear > 0
-                  ? 'run'
-                  : 'off'
-              : s[g]
-                ? 'full'
-                : 'off';
+      const look = lookOf(lamp.group, s);
       if (look === lamp.look) continue;
       lamp.look = look;
       lamp.mesh.material = look === 'off' ? lamp.off : lamp.lit[look];
