@@ -70,8 +70,6 @@ const ASSIST_CONE_RAD = 0.3,
   ASSIST_CONE_CAR_RAD = 0.6, // wider from a car: both thumbs are busy driving
   ASSIST_RANGE_M = 45;
 const PULL_KEEP_S = 0.12; // a click this long before the weapon is ready still fires when it is
-// you start with the weapon put away: the trigger (or Q, changing it) draws it, and H or the `holster` command puts it
-// back. Until it is drawn there is no crosshair, no aim and nothing in your hand
 const INTRO_AFTER_S = 5.5; // the lab's own line comes this long after Start, once the start line is gone
 // pang: a hit throws people and shoves cars
 const PANG_THROW_MS = 5, // a person leaves at this, plus PANG_THROW_PER_POWER_MS for each point of the weapon's power
@@ -201,7 +199,9 @@ export class Pickadoll {
   private clockS = 0;
   private introS = INTRO_AFTER_S;
   private aimKept = false; // aiming was switched on with C or the Aim button
-  private holstered = true; // the weapon is put away
+  // you start with the weapon put away: the trigger (or Q, changing it) draws it, and H or the `holster` command puts it
+  // back. Until it is drawn there is no crosshair, no aim and nothing in your hand
+  private holstered = true;
   private drawHeld = false; // the trigger press that drew the weapon is still held: it doesn't also fire
   private aimK = 0; // 0 the game's camera, 1 over the shoulder
   private aimPitch = 0; // rad above level, while aiming
