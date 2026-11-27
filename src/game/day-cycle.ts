@@ -60,18 +60,19 @@ const smoothstep = (a: number, b: number, x: number) => {
   return t * t * (3 - 2 * t);
 };
 const _now: SunPosition = { x: 0, y: 1, z: 0, elevationDeg: 90 };
-// the day's highest sun (°), about 54 on SEASON_DAY: warmth and ambient light run all the way up to it (#376)
+// the day's highest sun (°), about 54 on SEASON_DAY: the light's warmth runs all the way up to it (#376)
 let peak = 0;
 for (let h = DAWN_H; h <= DUSK_H; h += 1 / 60) peak = Math.max(peak, sunAt(SEASON_DAY, h, _now).elevationDeg);
 const PEAK_DEG = peak;
 
 // Direction keeps the sun at least MIN_SUN_Y up; the levels are artistic, picked to keep midday as the game was tuned.
-// warm and light end at the day's peak rather than at 30-40°, where they used to hold still from about 09:30 to 16:30.
+// warm ends at the day's peak rather than at 40°, where it held still from about 10:00 to 16:30; light keeps its old
+// curve, so mornings and evenings stay as bright as they were tuned.
 function skyFor(p: SunPosition, out: Sky) {
   const e = p.elevationDeg;
   out.sun = smoothstep(-1, 30, e);
   out.warm = 1 - smoothstep(8, PEAK_DEG, e);
-  out.light = 0.6 + 0.4 * smoothstep(-4, PEAK_DEG, e);
+  out.light = 0.6 + 0.4 * smoothstep(-4, 30, e);
   return aim(p.x, p.y, p.z, out);
 }
 
