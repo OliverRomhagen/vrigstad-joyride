@@ -52,7 +52,7 @@ const _onC = { x: 0, z: 0 },
 const TRAFFIC_LIMIT_MS = [13.9, 11, 8.3] as const; // speed limit (m/s) on a primary road, a secondary one and a street (RoadClass); traffic drives on no other
 const TRAFFIC_ACC_MS2 = 3,
   TRAFFIC_BRAKE_MS2 = 9; // how fast traffic speeds up to the limit and slows for what's ahead
-// slowing harder than this lights the brake lights (#304): about where a real driver is on the pedal rather than coasting
+// traffic slowing harder than this shows its brake lights (#304): about where a real driver is on the pedal rather than coasting
 const BRAKE_LIGHT_DECEL_MS2 = 2.5;
 const LOOK_CAR_M = 11,
   LOOK_CAR_SIDE_M = 1.7; // a car this far ahead, and this close to the line ahead, stops traffic
@@ -101,7 +101,7 @@ export interface Car extends Point {
   color: string; // the paint (sRGB), one of T.cols
   mods: CarMods; // Plåt-Pelle's upgrades (sim/upgrades.ts)
   limiterOff: boolean; // a tuned EPA-traktor's switch under the wheel is on: it drives as fast as a car
-  brk: boolean; // the brake lights (#304): braking, or slowing harder than BRAKE_LIGHT_DECEL_MS2; written here, read only by lighting.ts
+  brk: boolean; // the brake lights (#304): the pedal, or traffic slowing harder than BRAKE_LIGHT_DECEL_MS2; written here, read only by lighting.ts
 }
 
 /** A new car standing still at (x, z), nose towards h. `color` is the caller's roll from T.cols, so the world's rolls stay in their order. */
@@ -495,7 +495,9 @@ export class Fleet {
     if (c.boost > 0 && c.v < max) c.v = Math.min(max, c.v + DRIVING.TURBO_ACC * dt); // only up to the limit, so it never cancels the overspeed braking below
     if (c.v > max) c.v = Math.max(max, c.v - 14 * dt);
     if (c.v < -7) c.v = -7;
-    c.brk = brake || (v0 > 0 && dt > 0 && (v0 - c.v) / dt > BRAKE_LIGHT_DECEL_MS2); // before any hit, which isn't braking
+    // what the driver asks for: the brake, or reverse throttle while still rolling forwards (as the counter-throttle above);
+    // not the slowing itself, which off-road drag, water and the speed cap do with no foot on the pedal
+    c.brk = brake || (thr < 0 && v0 > 0.5);
     const s = c.drift ? c.drift * (0.6 + 0.4 * c.st * c.drift) : c.st; // in a drift the nose always swings the drift's way; steering tightens or widens it
     c.yr = yawRate(c.v, s, c.T.handling.wheelbaseM) * (c.drift ? DRIVING.DRIFT_YAW : 1); // rad/s
     const h0 = c.h;
