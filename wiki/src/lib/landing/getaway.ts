@@ -134,6 +134,8 @@ export function createGetaway(canvas: HTMLCanvasElement, D: WorldData, hud: Geta
   const HALF = D.size / 2;
   // its own stream, seeded fresh each visit, so the police spawn differently every time
   const rnd = makeRnd(crypto.getRandomValues(new Uint32Array(1))[0]);
+  // read once: nothing blinks by itself for someone who asked for less motion (AGENTS.md, UI and motion)
+  const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const ctx = canvas.getContext('2d')!;
   const listen = new AbortController();
   const { signal } = listen;
@@ -425,7 +427,7 @@ export function createGetaway(canvas: HTMLCanvasElement, D: WorldData, hud: Geta
   }
 
   function draw() {
-    const t = performance.now() / 1000;
+    const t = still ? 0 : performance.now() / 1000; // the light bars and the arrow blink by it: held for reduced motion
     ctx.fillStyle = GRASS;
     ctx.fillRect(0, 0, viewW, viewH);
     ctx.save();
