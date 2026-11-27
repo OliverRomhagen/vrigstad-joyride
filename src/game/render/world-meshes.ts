@@ -181,12 +181,18 @@ export interface BuildingMeshOptions {
   flatWalls?: boolean;
   /** The seams between the panel boards on timber houses, for the toon style (#413). */
   boardSeams?: boolean;
-  /** Painted windows with the 3D windows' glass and no cross bars, so the two match where the frames start (#413). */
+  /**
+   * Painted windows with the 3D windows' glass and no cross bars, so the two match where the frames start, and square
+   * corner posts, as thick as they're wide, as in the art direction mocks (#413).
+   */
   toonWindows?: boolean;
   /** Draw 3D frames over the painted windows within this many metres of the camera (render/window-frames.ts); 0 for none. */
   windowFramesM?: number;
 }
-/** The house shells in their colours with their trim, and one mesh of windows. Rolls rnd() once or twice per house, in data order. */
+/**
+ * The house shells in their colours with their trim, and one mesh of windows. Rolls rnd() once or twice per house, in data
+ * order. Returns the 3D window frames, for the frame loop to `update` with the camera's position, or null without them.
+ */
 export function addBuildings(
   scene: THREE.Scene,
   D: WorldData,
@@ -228,7 +234,8 @@ export function addBuildings(
     t.minFilter = THREE.LinearFilter;
     return t; // mips average the mostly transparent tile below alphaTest, so windows would vanish at a distance
   })();
-  (() => {
+  // the frames hold only their own copy of the windows, so the arrays built here can go once this returns
+  return (() => {
     const c = new THREE.Color(),
       c2 = new THREE.Color(),
       c3 = new THREE.Color(),
@@ -605,15 +612,7 @@ export function addBuildings(
     );
     skin.receiveShadow = true;
     scene.add(skin);
-    if (frames.length) {
-      // refilled before each render, ahead of three uploading the frame's buffers, so a refill is never a frame late
-      const near = new WindowFrames(scene, new Float32Array(frames), { radiusM: windowFramesM }),
-        before = scene.onBeforeRender.bind(scene);
-      scene.onBeforeRender = (renderer, s, camera, geometry, material, group) => {
-        before(renderer, s, camera, geometry, material, group);
-        near.update(camera.position.x, camera.position.z);
-      };
-    }
+    const near = frames.length ? new WindowFrames(scene, new Float32Array(frames), { radiusM: windowFramesM }) : null;
     if (bp.length) {
       // the seams: a dark line at one edge of each board, half transparent so it darkens any wall colour, unlit so the
       // toon style leaves it alone; its mips fade it out with distance instead of shimmering
@@ -648,6 +647,7 @@ export function addBuildings(
       seams.renderOrder = -1;
       scene.add(seams);
     }
+    return near;
   })();
 }
 

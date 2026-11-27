@@ -163,7 +163,7 @@ const yard = yardLayout(bPolys, hAt); for (const i of yard.passable) buildings.s
 for (const p of yard.outlines) buildings.addSolid(p);   // its fence, workshop walls, hut, wrecks and heaps, before any car parks; solids, so crowds and cats don't take them for houses
 floorAt = (x, z) => yardFloorAt(yard, x, z, hAt);   // everyone stands on the even floors of Skroten's workshop and carport
 const toon = lab.on('toon');
-addBuildings(scene, D, heightfield, { rnd, pick, maxAnisotropy, skip: [SKROT_HALL, SKROT_CARPORT], flatWalls: toon, boardSeams: toon, toonWindows: toon, windowFramesM: toon ? (coarse ? WINDOW_FRAMES_COARSE_M : WINDOW_FRAMES_M) : 0 });   // rolls rnd() for the house colours, before any tree spot
+const windowFrames = addBuildings(scene, D, heightfield, { rnd, pick, maxAnisotropy, skip: [SKROT_HALL, SKROT_CARPORT], flatWalls: toon, boardSeams: toon, toonWindows: toon, windowFramesM: toon ? (coarse ? WINDOW_FRAMES_COARSE_M : WINDOW_FRAMES_M) : 0 });   // rolls rnd() for the house colours, before any tree spot
 
 // ---------- trees: spruces and birches, each with its own shade, size and lean ----------
 const TREE_M2_PER_TRY = 110, TREE_ROAD_CLEARANCE_M = 2.5;   // one try at a tree per this much of a wood's bounding box; no trunk closer to a road's edge
@@ -245,6 +245,7 @@ if (lab.on('cockpit')) import('./render/cockpit').then(m => { cockpit = new m.Co
 const sunStreaks = dayQs.get('sunrays') === 'off' ? null : new SunStreaks({ sunDir: SUN_DIR });
 if (sunStreaks) scene.add(sunStreaks.object);
 function placeCamera(T: { x: number; z: number }, now: number, dt: number) { cameraRig.update(T, now, dt); cockpit?.update();
+  windowFrames?.update(camera.position.x, camera.position.z);   // the toon style's 3D window frames near the camera (#413)
   sunStreaks?.update(camera, sky.sun * skyDome.sunFactor, skyDome.sunShade, sun.color);
   if (filmGrain.enabled) { filmGrain.setMoving(cameraMoved(grainPos, grainQuat, camera.position, camera.quaternion)); grainPos.copy(camera.position); grainQuat.copy(camera.quaternion); } }
 

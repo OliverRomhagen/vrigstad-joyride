@@ -3,6 +3,7 @@ import { describe, expect, it, test } from 'vitest';
 import {
   FRAME_TRIANGLES,
   frameGeometry,
+  REFILL_STEP_M,
   WINDOW_STRIDE,
   WINDOW_TILE_M,
   WindowFrames,
@@ -27,25 +28,52 @@ test('a window frame is a ring and a sill with ink rims: under 45 triangles, so 
   expect(g.boundingBox!.min.z).toBeCloseTo(0); // it stands out from the wall, never into it
 });
 
-test('only the windows within the radius are drawn, in one instanced mesh', () => {
+test('only the windows near the camera are drawn, in one instanced mesh', () => {
   const scene = new THREE.Scene(),
     frames = new WindowFrames(scene, placements(10, 50, 100, -70), { radiusM: 80 });
   frames.update(0, 0);
-  expect(frames.mesh.count).toBe(3); // 10, 50 and -70 m; not 100
+  expect(frames.mesh.count).toBe(3); // 10, 50 and -70 m; not 100, beyond the radius and the refill step
   expect(scene.children).toContain(frames.mesh);
   expect(frames.mesh.castShadow).toBe(false); // the shadow pass is the expensive part
-  frames.update(95, 0);
-  expect(frames.mesh.count).toBe(2); // 50 and 100; not 10, now 85 m off, nor -70
+  frames.update(100, 0);
+  expect(frames.mesh.count).toBe(2); // 50 and 100; not 10, now 90 m off, nor -70
 });
 
-test('the list is only refilled when the camera enters a new cell, not every frame', () => {
+/** The x of every window frame drawn now. */
+const drawnXs = (frames: WindowFrames) => {
+  const m = new THREE.Matrix4();
+  return Array.from({ length: frames.mesh.count }, (_, i) => {
+    frames.mesh.getMatrixAt(i, m);
+    return Math.round(m.elements[12]);
+  });
+};
+
+test('every window within the radius has its frame, all the way along a drive', () => {
+  const xs = Array.from({ length: 41 }, (_, i) => i * 10),
+    frames = new WindowFrames(new THREE.Scene(), placements(...xs), { radiusM: 40 });
+  for (let x = 0; x <= 400; x += 0.5) {
+    frames.update(x, 0);
+    const drawn = drawnXs(frames);
+    for (const wx of xs) if (Math.abs(wx - x) <= 40) expect(drawn).toContain(wx);
+  }
+});
+
+test('the list is refilled only after the camera has moved REFILL_STEP_M, not every frame', () => {
   const frames = new WindowFrames(new THREE.Scene(), placements(10, 50), { radiusM: 80 });
   frames.update(1, 1);
   const filled = frames.mesh.instanceMatrix.version;
   frames.update(2, 3);
   expect(frames.mesh.instanceMatrix.version).toBe(filled);
-  frames.update(45, 3);
+  frames.update(1 + REFILL_STEP_M, 1);
   expect(frames.mesh.instanceMatrix.version).toBeGreaterThan(filled);
+});
+
+test('a camera rocking across a grid line at Torget does not refill', () => {
+  const frames = new WindowFrames(new THREE.Scene(), placements(10, 50), { radiusM: 80 });
+  frames.update(0.1, 0.1);
+  const filled = frames.mesh.instanceMatrix.version;
+  for (let i = 0; i < 100; i++) frames.update(i % 2 ? 0.1 : -0.1, i % 2 ? 0.1 : -0.1);
+  expect(frames.mesh.instanceMatrix.version).toBe(filled);
 });
 
 test('a window is placed where it was recorded, facing out of its wall, at its size', () => {

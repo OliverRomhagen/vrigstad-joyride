@@ -3,7 +3,8 @@ import { HOUSE_FRAMES_MATERIAL } from './house-materials';
 
 // 3D window frames near the camera, for the toon style (#413): a ring and a sill standing out from the wall over each
 // painted window, so the frames get the toon style's bands and some depth. The village has ~36 500 windows, ~660 of them
-// within 80 m of Torget, so only those are drawn, as one instanced mesh: one draw call, about 22 000 triangles there. The
+// within 80 m of Torget, so only those are drawn, as one instanced mesh: one draw call, 44 triangles a frame, about
+// 29 000 there. The
 // painted windows stay everywhere, so far houses look as before and a frame appearing doesn't change the window under it.
 
 /** The window tile's width (m): a 1.0 m window centred in it, so along a wall the windows stand about this far apart. */
@@ -30,7 +31,13 @@ export function windowRun(len: number, isBlock: boolean): { count: number; start
 
 /** What addBuildings records per window: centre x, y, z (m, on the window skin), facing (rad, as rotation.y), width, height (m). */
 export const WINDOW_STRIDE = 6;
-const CELL_M = 20; // the list is refilled when the camera enters another cell of this size
+const CELL_M = 20; // the windows are sorted into a grid of this size, so a refill looks only at the cells in reach
+/**
+ * The list is refilled once the camera is this far from where it was last filled (m), with every window within the
+ * radius plus this, so no window within the radius ever lacks its frame between refills. A distance rather than cell
+ * lines, so a camera idling or orbiting on a line (x = 0 and z = 0 run through Torget) doesn't refill every few frames.
+ */
+export const REFILL_STEP_M = 8;
 /** How far from the camera the frames are drawn (m): on desktop, and on a touch screen. */
 export const WINDOW_FRAMES_M = 80,
   WINDOW_FRAMES_COARSE_M = 40;
@@ -224,7 +231,8 @@ export class WindowFrames {
   readonly mesh: THREE.InstancedMesh;
   private readonly cells = new Map<string, number[]>();
   private readonly radiusM: number;
-  private cell = '';
+  private filledX = Infinity; // where the list was last filled: nowhere yet
+  private filledZ = Infinity;
 
   constructor(
     scene: THREE.Scene,
@@ -242,7 +250,7 @@ export class WindowFrames {
       list.push(i);
     }
     // room for the densest spot: every window in the cells a radius can reach, at most
-    const reach = Math.ceil(radiusM / CELL_M) * 2 + 1;
+    const reach = Math.ceil((radiusM + REFILL_STEP_M) / CELL_M) * 2 + 1;
     let densest = 0;
     for (const list of this.cells.values()) densest = Math.max(densest, list.length);
     const capacity = Math.min(windows.length / WINDOW_STRIDE, densest * reach * reach) || 1;
@@ -258,13 +266,13 @@ export class WindowFrames {
     scene.add(this.mesh);
   }
 
-  /** Refills the frames around (x, z) when that's in another cell than last time; a no-op otherwise. */
+  /** Refills the frames around the camera at (x, z) once it's REFILL_STEP_M from the last refill; a no-op otherwise. */
   update(x: number, z: number) {
-    const k = this.cellKey(x, z);
-    if (k === this.cell) return;
-    this.cell = k;
+    if (Math.hypot(x - this.filledX, z - this.filledZ) < REFILL_STEP_M) return;
+    this.filledX = x;
+    this.filledZ = z;
     const w = this.windows,
-      r = this.radiusM,
+      r = this.radiusM + REFILL_STEP_M,
       cx = Math.floor(x / CELL_M),
       cz = Math.floor(z / CELL_M),
       span = Math.ceil(r / CELL_M),
@@ -282,7 +290,11 @@ export class WindowFrames {
           if (n === cap) break;
         }
     this.mesh.count = n;
-    this.mesh.instanceMatrix.needsUpdate = true;
+    if (!n) return; // nothing to upload: an empty range would send the whole buffer (a length of 0 means "to the end")
+    const matrices = this.mesh.instanceMatrix;
+    matrices.clearUpdateRanges();
+    matrices.addUpdateRange(0, n * 16); // upload only the frames in use, not the whole buffer sized for the densest spot
+    matrices.needsUpdate = true;
   }
 
   private cellKey(x: number, z: number) {
