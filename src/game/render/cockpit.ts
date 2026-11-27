@@ -339,8 +339,14 @@ export class Cockpit {
     const painted = (o: THREE.Object3D) => o === car.body || isPaintedPanel(o.name) || o.name === DECAL_NODE;
     body.traverse(o => {
       if (!(o instanceof THREE.Mesh) || !painted(o)) return;
+      // cut only where all three agree; Material.copy drops a shader patch, so the clone takes the paint's flakes along
       const own = (m: THREE.Material) =>
-        Object.assign(m.clone(), { clippingPlanes: this.clips, clipIntersection: true }); // cut only where all three agree
+        Object.assign(m.clone(), {
+          clippingPlanes: this.clips,
+          clipIntersection: true,
+          onBeforeCompile: m.onBeforeCompile,
+          customProgramCacheKey: m.customProgramCacheKey,
+        });
       const clones = Array.isArray(o.material) ? o.material.map(own) : own(o.material);
       this.clipped.push({ mesh: o, material: o.material, clones });
       o.material = clones;
