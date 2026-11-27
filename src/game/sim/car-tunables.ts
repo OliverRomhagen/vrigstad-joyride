@@ -1,9 +1,10 @@
 // The cars' numbers in the tunables registry (#217): the driving model (DRIVING in cars.ts), the steering lock (STEERING
-// in handling.ts) and each car type's speed and response (vehicle-spec.ts). The first slice of #217; other areas follow.
+// in handling.ts), each car type's speed and response (vehicle-spec.ts) and Plåt-Pelle's upgrades (upgrades.ts). The first slice of #217; other areas follow.
 // Pure: no DOM, no three.js.
 import { DRIVING } from '../cars';
 import { STEERING } from './handling';
 import type { TunableSpec, Tunables } from './tunables';
+import { UPGRADES } from './upgrades';
 import { type CarType, specsOfType, tuneResponse, VEHICLE_SPECS } from './vehicle-spec';
 
 /** Adds every car number to the registry. */
@@ -70,6 +71,14 @@ export function registerCarTunables(t: Tunables): void {
     },
     TURBO_ACC: { name: 'turbo-acceleration', unit: 'm/s²', min: 0, max: 60, help: 'the mini-turbo push' },
     TURBO_TOP: { name: 'turbo-top-speed', unit: '×', min: 1, max: 3, help: 'top speed while the mini-turbo lasts' },
+    FLAT_PULL: {
+      name: 'flat-pull',
+      unit: 'share',
+      min: 0,
+      max: 1,
+      help: 'of full lock a flat tyre steers towards its side',
+    },
+    FLAT_TOP: { name: 'flat-top-speed', unit: '×', min: 0.1, max: 1, help: 'top speed with a flat tyre' },
   });
   t.addFields('steering', STEERING, {
     MAX_LOCK_RAD: {
@@ -85,6 +94,26 @@ export function registerCarTunables(t: Tunables): void {
       min: 1,
       max: 60,
       help: 'the speed at which the lock has halved',
+    },
+  });
+  t.addFields('upgrade', UPGRADES, {
+    ENGINE_TOP: { name: 'engine-top-speed', unit: '×', min: 1, max: 2, help: "a tuned engine's top speed" },
+    ENGINE_ACC: { name: 'engine-acceleration', unit: '×', min: 1, max: 3, help: "a tuned engine's acceleration" },
+    SPRINGS_GRIP: { name: 'springs-grip', unit: '×', min: 1, max: 3, help: 'grip on sport springs' },
+    SPRINGS_STEER: {
+      name: 'springs-steer-response',
+      unit: '×',
+      min: 0.1,
+      max: 1,
+      help: 'of the steering response time on sport springs',
+    },
+    EPA_TOP_MS: { name: 'epa-top-speed', unit: 'm/s', min: 8.33, max: 40, help: "a tuned EPA-traktor's top speed" },
+    BODY_DAMAGE: {
+      name: 'body-damage',
+      unit: 'share',
+      min: 0,
+      max: 1,
+      help: 'of the crash damage a reinforced body takes',
     },
   });
   for (const type of Object.keys(VEHICLE_SPECS) as CarType[]) registerType(t, type);

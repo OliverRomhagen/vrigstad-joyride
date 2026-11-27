@@ -34,13 +34,14 @@ const PAGE_ZOOM_CHARS = /^[-+=]$/,
 
 // The game's own keys besides KEYMAP's, and what each one calls in InputDeps. A held key doesn't press again, but R
 // does: holding it respawns again and again. A module's control can't take these.
-const GAME_KEYS: Record<string, 'action' | 'respawn' | 'rain' | 'toggleView'> = {
+const GAME_KEYS: Record<string, 'action' | 'respawn' | 'rain' | 'toggleView' | 'pause'> = {
   KeyE: 'action',
   KeyF: 'action',
   Enter: 'action',
   KeyR: 'respawn',
   KeyL: 'rain',
   KeyV: 'toggleView',
+  Escape: 'pause', // with the mouse free: a locked mouse's Esc only frees it (see lockLost)
 };
 // A module's control can't take the menus' and the dev console's keys either: they name their own (InputDeps.keyTaken).
 // Nor Ctrl, Alt and ⌘ themselves (OS is ⌘ in older browsers): a key pressed with one of them held is the browser's, and
@@ -108,6 +109,7 @@ export interface InputDeps {
   look(dx: number, dy: number): void; // turns the camera by this many pixels: a drag's own, or a locked mouse's scaled by LOCK_K
   zoom(factor: number): void; // multiplies the camera distance: above 1 is further out
   lockLost(): void; // the pointer lock ended while playing with no menu open
+  pause(): void; // Esc with the mouse free (a locked mouse's Esc only frees it: see lockLost)
 }
 
 // A touch button, the game's own or a control's: down with the finger, up when it lifts or leaves the button
@@ -171,6 +173,7 @@ export class Input {
   private lx = 0;
   private ly = 0;
   private joyId: number | null = null;
+  private releaseJoy = () => {}; // centres the joystick; set once its elements are found
   private readonly pinch = new Map<number, { x: number; y: number }>(); // touches on the game, by pointer id
   private pinchD = 0; // the two touches' last distance apart (px); 0 until two are down
   private readonly controls: HeldControl[] = [];
@@ -356,12 +359,14 @@ export class Input {
     joyEl.addEventListener('pointermove', e => {
       if (e.pointerId === this.joyId) joyMove(e);
     });
-    const joyEnd = (e: PointerEvent) => {
-      if (e.pointerId !== this.joyId) return;
+    this.releaseJoy = () => {
       this.joyId = null;
       joy.on = false;
       joy.x = joy.y = 0;
       knob.style.transform = '';
+    };
+    const joyEnd = (e: PointerEvent) => {
+      if (e.pointerId === this.joyId) this.releaseJoy();
     };
     joyEl.addEventListener('pointerup', joyEnd);
     joyEl.addEventListener('pointercancel', joyEnd);
@@ -397,6 +402,7 @@ export class Input {
   /** Lets go of every held key and control, as when the window loses focus or the dev console takes the keys. */
   releaseKeys() {
     for (const k in this.keys) this.keys[k as Key] = false;
+    this.releaseJoy(); // a menu over the joystick (the pause) can keep its finger's pointerup from ever reaching it
     this.eachControl(c => c.dropAll());
   }
 

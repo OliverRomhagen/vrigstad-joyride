@@ -48,7 +48,7 @@ function actions(
     screens: string[] = [];
   const game = { ...newGameState(), started: true },
     view = newViewState(0, 0);
-  const player = { x: 0, z: 0, y: 1, vy: 2, h: 0, speed: 0, phase: 0 },
+  const player = { x: 0, z: 0, y: 1, vy: 2, floor: 0, h: 0, speed: 0, phase: 0 },
     mesh = { visible: true };
   const wanted = {
     stars: o.stars ?? 0,
