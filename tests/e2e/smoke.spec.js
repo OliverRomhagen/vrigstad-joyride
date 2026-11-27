@@ -305,8 +305,14 @@ test.describe('game (index.html)', () => {
     await page.goto('/index.html?lab=pickadoll');
     await page.locator('#go').click();
     // the lab loads behind its flag, and a failure to load only warns: without this, the plain game would pass
-    await expect.poll(async () => (await state(page)).pickadoll).toMatchObject({ weapon: 'pickadoll', ammo: 'gegga' });
+    await expect
+      .poll(async () => (await state(page)).pickadoll)
+      .toMatchObject({ weapon: 'pickadoll', ammo: 'gegga', holstered: true });
     await frames(page, 3); // the lab waits a frame after Start, and a pull before it is ready is dropped
+    // you start with the weapon put away: the first pull draws it and fires nothing
+    await page.keyboard.press('KeyX');
+    await expect.poll(async () => (await state(page)).pickadoll.holstered).toBe(false);
+    expect((await state(page)).pickadoll.fired).toBe(0);
     await page.keyboard.down('KeyX');
     await expect.poll(async () => (await state(page)).pickadoll.fired).toBeGreaterThan(0);
     await page.keyboard.up('KeyX');

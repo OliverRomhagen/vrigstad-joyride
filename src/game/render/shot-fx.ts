@@ -239,6 +239,11 @@ export class ShotFx {
     arm.add(this.gun);
   }
 
+  /** Puts the gun away, out of sight, or draws it again. */
+  holsterGun(away: boolean) {
+    this.gun.visible = !away;
+  }
+
   /** The gun's length and thickness (m), for the weapon held. */
   sizeGun(lengthM: number, thickM: number) {
     this.gun.scale.set(thickM, lengthM, thickM);
