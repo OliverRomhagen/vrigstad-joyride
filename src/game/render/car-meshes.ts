@@ -11,15 +11,21 @@ import { INK_FLAG } from './ink-flag';
 import { pickVariant, type VehicleId } from './vehicle-registry';
 import type { VehicleVisuals } from './vehicle-visuals';
 
-// lit rear lamps on the procedural body (#304), shared by every car: braking, backing up, or a wreck's hazards. Untone-mapped,
-// as the models' lit lamps are, so a brake light stays red rather than bleaching pink.
+// lit lamps on the procedural body (#304), shared by every car: braking, backing up, a wreck's hazards, and head and tail
+// lights in the dark. Untone-mapped, as the models' lit lamps are, so a brake light stays red rather than bleaching pink.
 const litLamp = (srgb: number) => new THREE.MeshBasicMaterial({ color: col(srgb), toneMapped: false }),
   BRAKE_LAMP = litLamp(0xff2418),
+  TAIL_LAMP = litLamp(0x9c0d10),
   REVERSE_LAMP = litLamp(0xfff8f0),
-  HAZARD_LAMP = litLamp(0xff9a1f);
-/** What a procedural car's rear lamps show over their baked colour: nothing by day unless braking, backing or wrecked. */
+  HAZARD_LAMP = litLamp(0xff9a1f),
+  HEAD_LAMP = litLamp(0xffe7c2);
+/** What a procedural car's rear lamps show over their baked colour: by day nothing unless braking, backing or wrecked. */
 function rearLook(s: LampState) {
-  return s.hazard ? HAZARD_LAMP : s.brake ? BRAKE_LAMP : s.reverse ? REVERSE_LAMP : null;
+  return s.hazard ? HAZARD_LAMP : s.brake ? BRAKE_LAMP : s.reverse ? REVERSE_LAMP : s.head >= 0.5 ? TAIL_LAMP : null;
+}
+/** Its headlamps: lit only in the dark (lampState's full beam); by day the baked cream reads as dipped lights. */
+function headLook(s: LampState) {
+  return s.head >= 0.5 ? HEAD_LAMP : s.hazard ? HAZARD_LAMP : null;
 }
 
 const _f = new THREE.Vector3(),
@@ -42,7 +48,7 @@ export interface CarMeshesDeps {
   groundAt: (x: number, z: number) => number;
   normalAt: (x: number, z: number) => THREE.Vector3;
   carGeo: (type: CarType, color: string) => THREE.BufferGeometry; // the procedural body, cached by type and colour
-  rearLampGeo: (type: CarType) => THREE.BufferGeometry | null; // its rear lamps, to light over it; null when it has none
+  lampGeo: (type: CarType, end: 1 | -1) => THREE.BufferGeometry | null; // its rear (1) or head (-1) lamps, to light over it; null when it has none
   carMat: THREE.Material;
   blob: (parent: THREE.Object3D, w: number, l: number) => THREE.Mesh; // the soft shadow under it
   barGeo: THREE.BufferGeometry; // the police light bar; loop.ts blinks barMat
@@ -56,9 +62,10 @@ export class CarMeshes {
   private readonly g: CarMeshesDeps;
   private readonly looks = new Map<Car, Look>();
   private readonly modelRnd = makeRnd(240); // own stream: which model a car wears doesn't shift the world's rolls
-  // each procedural car's lit rear lamps, made the first time they light: a parked car never gets one, and a hidden one
-  // costs no draw call, so only cars braking, backing or wrecked pay one
+  // each procedural car's lit rear and head lamps, each made the first time it lights: a parked car never gets one, and a
+  // hidden one costs no draw call, so only cars braking, backing, wrecked or driving in the dark pay one
   private readonly rearLamps = new Map<Car, THREE.Mesh>();
+  private readonly headLamps = new Map<Car, THREE.Mesh>();
 
   constructor(g: CarMeshesDeps) {
     this.g = g;
@@ -90,22 +97,26 @@ export class CarMeshes {
    */
   updateLamps(cars: readonly RenderedCar[], lampsOf: (c: Car) => LampState) {
     for (const c of cars) {
-      const look = c.body.visible ? rearLook(lampsOf(c)) : null;
-      let lamp = this.rearLamps.get(c);
-      if (!look) {
-        if (lamp) lamp.visible = false;
-        continue;
-      }
-      if (!lamp) {
-        const geo = this.g.rearLampGeo(c.type);
-        if (!geo) continue;
-        lamp = new THREE.Mesh(geo, look);
-        c.body.add(lamp); // on the sprung body, so it rolls and pitches with it
-        this.rearLamps.set(c, lamp);
-      }
-      lamp.material = look;
-      lamp.visible = true;
+      const s = c.body.visible ? lampsOf(c) : null;
+      this.light(c, this.rearLamps, 1, s && rearLook(s));
+      this.light(c, this.headLamps, -1, s && headLook(s));
     }
+  }
+  private light(c: RenderedCar, lamps: Map<Car, THREE.Mesh>, end: 1 | -1, look: THREE.Material | null) {
+    let lamp = lamps.get(c);
+    if (!look) {
+      if (lamp) lamp.visible = false;
+      return;
+    }
+    if (!lamp) {
+      const geo = this.g.lampGeo(c.type, end);
+      if (!geo) return;
+      lamp = new THREE.Mesh(geo, look);
+      c.body.add(lamp); // on the sprung body, so it rolls and pitches with it
+      lamps.set(c, lamp);
+    }
+    lamp.material = look;
+    lamp.visible = true;
   }
   /** Which model a new car of this type wears, if one: rolled from the meshes' own stream. */
   pickModel(type: CarType): VehicleId | undefined {
@@ -141,7 +152,8 @@ export class CarMeshes {
     const { scene, vehicleVisuals, bodyMotion } = this.g;
     vehicleVisuals.dispose(c);
     this.looks.delete(c);
-    this.rearLamps.delete(c); // its mesh goes with the car's; the geometry and materials are shared
+    this.rearLamps.delete(c); // its meshes go with the car's; the geometry and materials are shared
+    this.headLamps.delete(c);
     bodyMotion.remove(c);
     scene.remove(c.mesh);
   }

@@ -36,7 +36,8 @@ import { layoutShore } from '../world/shore';
 import { Water } from '../world/water';
 import { WaterBodies } from '../world/water-shapes';
 import { type Car, type CarMode, Fleet, newCar, TURBO_AT } from './cars';
-import { lampState, lampsOff } from './lighting';
+import { lampState, lampsOff, lightLevel, lightsModeOf } from './lighting';
+import { CarGlow } from './render/car-glow';
 import { CatColony } from './cats';
 import { Hud } from './hud';
 import { Input } from './input';
@@ -68,7 +69,7 @@ import { Ragdolls } from './ragdolls';
 import { RagdollMeshes } from './render/ragdoll-meshes';
 import { PlaceMeshes } from './render/places';
 import { GroundTexture } from './render/ground-texture';
-import { BAR_BLUE, BAR_RED, barGeo, barMat, blob, blobTex, boxGeo, carGeo, carMat, GLASS, geoCache, PROFILES, paintMat, personParts, rearLampGeo, TRACTOR_CAB } from './render/models';
+import { BAR_BLUE, BAR_RED, barGeo, barMat, blob, blobTex, boxGeo, carGeo, carMat, GLASS, geoCache, PROFILES, paintMat, personParts, lampGeo, TRACTOR_CAB } from './render/models';
 import { buildStage, SUN_DIR, setUpRenderer } from './render/stage';
 import { addBridges, addBuildings, addRoadRibbons, addStreetscapeMeshes, addTerrain, addTrees, addWater } from './render/world-meshes';
 import { type CarType, specFor } from './sim/vehicle-spec';
@@ -191,9 +192,12 @@ ground.bakeTreeShadows(allTreeSpots, blobTex);
 // the getters are read when they are used, so they can name things declared further down
 const bodyMotion = new BodyMotion();
 // car lights (#304, src/game/lighting.ts): brake, reversing and dipped lights by day, hazards on a wreck; dark is 0 until the dusk glow
-const lamps = lampsOff(), lampsOf = (c: Car) => lampState(c, 0, game.clockS, lamps);
+// ?lights=on|off forces the dark or the day for the lamps; dark is lightLevel's, set once a frame in updateVehicles
+const lightsMode = lightsModeOf(dayQs.get('lights'));
+let dark = 0;
+const lamps = lampsOff(), lampsOf = (c: Car) => lampState(c, dark, game.clockS, lamps), carGlow = new CarGlow({ scene, doc: document });
 const vehicleVisuals = new VehicleVisuals(coarse, (c, body) => bodyMotion.addNode(c as RenderedCar, body), c => lampsOf(c as RenderedCar));
-const carMeshes = new CarMeshes({ scene, groundAt, normalAt, carGeo, rearLampGeo, carMat, blob, barGeo, barMat, vehicleVisuals, bodyMotion });
+const carMeshes = new CarMeshes({ scene, groundAt, normalAt, carGeo, lampGeo, carMat, blob, barGeo, barMat, vehicleVisuals, bodyMotion });
 const placeCar = carMeshes.placeCar.bind(carMeshes);
 // every car has its meshes: addCar attaches them before the Fleet holds it, so the sim's Car is a RenderedCar here
 const meshed = (c: Car) => c as RenderedCar;
@@ -409,7 +413,7 @@ const prompt = new ActionPrompt({ $, game, places, wanted, get menuOpen() { retu
 // ---------- main loop (src/game/loop.ts) ----------
 const loop = new GameLoop({ $, renderer, scene, camera, canvas, coarse, half: HALF, game, view, player, health, input, places, wanted, cars, startCam: START_CAM, barMat, barColours: [BAR_BLUE, BAR_RED], cameraRig: { update: placeCamera },
   get toasting() { return hud.toasting; }, inWater, collide, groundAt, drive, updateTraffic, knockedOut, hurtPlayer, shake, toast, hideTitleCard: () => hud.hideTitleCard(),
-  updateTrisslott: dt => trisslott.update(dt), updatePlaces: dt => { placeMeshes.update(dt); skrotenMeshes.update(dt, player); }, updateDriftFx, updateVehicles: (T, dt) => { vehicleVisuals.update(T, dt); carMeshes.updateLamps(cars, lampsOf); priceTags.update(); }, updateSmoke, updateBanknotes: dt => banknotes.update(dt), updateConfetti: dt => confetti.update(dt), updateNpcs: (T, dt) => { updateNpcs(T, dt); ragdolls.update(dt); ragdollMeshes.update(); }, updateCats,
+  updateTrisslott: dt => trisslott.update(dt), updatePlaces: dt => { placeMeshes.update(dt); skrotenMeshes.update(dt, player); }, updateDriftFx, updateVehicles: (T, dt) => { dark = lightLevel(dayClock, lightsMode); vehicleVisuals.update(T, dt); carMeshes.updateLamps(cars, lampsOf); carGlow.update(cars, dark, lampsOf, T); priceTags.update(); }, updateSmoke, updateBanknotes: dt => banknotes.update(dt), updateConfetti: dt => confetti.update(dt), updateNpcs: (T, dt) => { updateNpcs(T, dt); ragdolls.update(dt); ragdollMeshes.update(); }, updateCats,
   updateDrivers: (T, dt) => drivers.update(T, dt), updateBodies: (T, dt) => bodyMotion.update(T, dt), updateDaylight, drawHearts, updateHud: dt => hud.update(dt), drawMini,
   updateSign, catRideLines: () => crashes.catRideLines(), closeMenuIfLeft: () => menuPlate.closeIfLeft(), updatePrompt: () => prompt.update(), drawHealth,
   timeFrame: workStart => { if (!debugOverlay) return; const t = performance.now(); debugOverlay.frame(t, t - workStart, renderer.info); } });
@@ -425,5 +429,5 @@ loop.start();
 // ---------- test hook: read-only state for the smoke tests (src/game/test-hook.ts) ----------
 installTestHook({ game, view, player, health, cars, labs: lab.list(), get styled() { return loop.styled; }, get cockpit() { return !!cockpit?.inside; }, get ragdolls() { return ragdolls.count; }, get stars() { return wanted.stars; }, get cats() { return cats.length; }, get ownCat() { return !!colony.owned; }, get displayCar() { return displayCar; }, lift: yard.workshop?.bay ?? null,
   vehicleVisuals: { state: c => vehicleVisuals.state(meshed(c)) }, crackShown: c => carDamage.crackShown(meshed(c)), bodyMotion: { state: c => bodyMotion.state(meshed(c)) }, skyDome, street, debugStreetscape: DEBUG_STREETSCAPE, bridges: { index: bridges, draw: bridgeMeshes, groundAt }, furniture, water: { bodies: waterBodies, surface: waterLook.surface, props: waterLook.props, shore, terrainTriangles: terrainMesh.triangles, refinedCells: heightfield.refinedCells, buildMs: waterCutMs + waterMeshMs, inWater, hAt }, debugFurniture: DEBUG_FURNITURE, nearestCar,
-  get kr() { return wallet.kr; }, get banknotes() { return banknotes.live; }, get confetti() { return confetti.live; }, get devcon() { return devcon.isOpen; }, build: __BUILD__, get fps() { return !!debugOverlay?.shown; }, day: { get hour() { return dayClock.hour; }, get night() { return dayClock.night; }, get sunLight() { return sky.sun; } }, sunStreaks });
+  get kr() { return wallet.kr; }, get banknotes() { return banknotes.live; }, get confetti() { return confetti.live; }, get devcon() { return devcon.isOpen; }, build: __BUILD__, get fps() { return !!debugOverlay?.shown; }, day: { get hour() { return dayClock.hour; }, get night() { return dayClock.night; }, get sunLight() { return sky.sun; } }, lights: { mode: lightsMode, get dark() { return dark; }, get glow() { return carGlow.count; } }, sunStreaks });
 })();
