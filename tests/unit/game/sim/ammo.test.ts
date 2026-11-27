@@ -46,6 +46,24 @@ describe('what an ammo does', () => {
     expect(effectOf(dans, EffectKind.THROW)).toBeUndefined();
   });
 
+  // the numbers the hit flavours had before they became ammo (#611), so the split changed no hit
+  it('keeps what gegga, pang and dans did as hit flavours', () => {
+    expect(AMMOS[index(AmmoId.GEGGA)].effects).toEqual([
+      { kind: EffectKind.SPLAT, sizeK: 1, onPeople: true },
+      { kind: EffectKind.STARE, s: 2.5 },
+      { kind: EffectKind.SPATTER, drops: 7 },
+    ]);
+    expect(AMMOS[index(AmmoId.PANG)].effects).toEqual([
+      { kind: EffectKind.SPLAT, sizeK: 0.45, onPeople: false },
+      { kind: EffectKind.THROW },
+      { kind: EffectKind.SHOVE },
+    ]);
+    expect(AMMOS[index(AmmoId.DANS)].effects).toEqual([
+      { kind: EffectKind.SPLAT, sizeK: 0.45, onPeople: false },
+      { kind: EffectKind.DANCE, s: 6 },
+    ]);
+  });
+
   it('names each ammo once', () => {
     expect(new Set(AMMOS.map(a => a.id)).size).toBe(AMMOS.length);
   });

@@ -310,8 +310,9 @@ export class Pickadoll {
     this.drawHud();
   }
 
+  // an ammo only its own weapon fires is never kept as the pick: the next weapon goes back to the ammo picked before
   private pickAmmo(index: number) {
-    this.chosenAmmo = index;
+    if (AMMOS[index].anyWeapon) this.chosenAmmo = index;
     this.drawHud();
   }
 
@@ -363,7 +364,14 @@ export class Pickadoll {
         run: ({ ammo }) => {
           const weapon = WEAPONS[this.weapon];
           if (ammo !== undefined && !accepts(weapon, ammo))
-            throw new UsageError(weapon.name + ' fires ' + AMMOS[this.ammo].name + ', not that.');
+            throw new UsageError(
+              weapon.name +
+                ' fires ' +
+                AMMOS.filter(a => accepts(weapon, a.id))
+                  .map(a => a.name)
+                  .join(', ') +
+                ', not that.',
+            );
           this.pickAmmo(ammo === undefined ? nextAmmo(weapon, this.ammo) : AMMOS.findIndex(a => a.id === ammo));
           return 'Ammo: ' + AMMOS[this.ammo].name + '.';
         },
