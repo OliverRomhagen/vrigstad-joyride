@@ -9,6 +9,7 @@ import {
   type Spike,
   type SpikeWorld,
   stepSpikes,
+  tyreHit,
   wheelOver,
 } from '../../../../src/game/sim/spikes';
 
@@ -97,6 +98,27 @@ describe('stepSpikes', () => {
     stepSpikes(spikes, 0.1, world({ people: [{ x: 0, z: 0 }], walker: { x: 0, z: 0 } }), out);
     stepSpikes(spikes, 0.1, world(), out);
     expect(out).toEqual(newSpikeStep());
+  });
+});
+
+describe('tyreHit', () => {
+  // a 4.8 m car facing north: its axles are 1.4 m ahead of and behind its middle
+  const car = { x: 0, z: 0, h: 0, T: { lengthM: 4.8 } };
+
+  it('names the tyre a low hit by an axle lands on', () => {
+    expect(tyreHit(car, { x: -0.9, z: -1.4 }, 0.3)).toBe(0); // front left
+    expect(tyreHit(car, { x: 0.9, z: 1.6 }, 0.4)).toBe(3); // rear right
+  });
+
+  it('is none for a hit on the body: too high, or between the axles', () => {
+    expect(tyreHit(car, { x: -0.9, z: -1.4 }, 1)).toBeNull();
+    expect(tyreHit(car, { x: -0.9, z: 0 }, 0.3)).toBeNull();
+  });
+
+  it("follows the body's middle when the body sits ahead of the car's", () => {
+    const ahead = { ...car, T: { lengthM: 4.8, bodyAheadM: 1 } }; // the axles at 2.4 m ahead and 0.4 m behind
+    expect(tyreHit(ahead, { x: 0.9, z: -2.4 }, 0.3)).toBe(1);
+    expect(tyreHit(ahead, { x: 0.9, z: -1.4 }, 0.3)).toBeNull();
   });
 });
 

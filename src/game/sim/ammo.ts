@@ -16,6 +16,7 @@ export const EffectKind = {
   DANCE: 'dance',
   SPIKES: 'spikes',
   SPATTER: 'spatter',
+  PUNCTURE: 'puncture',
 } as const;
 export type EffectKind = (typeof EffectKind)[keyof typeof EffectKind];
 
@@ -36,7 +37,9 @@ export type Effect =
   // it lands as a fotangel, which lies on the ground (./spikes.ts) and does nothing else where it lands
   | { kind: typeof EffectKind.SPIKES }
   // a blast leaves this many more splats around where it went off
-  | { kind: typeof EffectKind.SPATTER; drops: number };
+  | { kind: typeof EffectKind.SPATTER; drops: number }
+  // a hit on a car's tyre bursts it (Car.flat), as a fotangel does
+  | { kind: typeof EffectKind.PUNCTURE };
 
 export interface Ammo {
   id: AmmoId;
@@ -79,6 +82,7 @@ export const AMMOS = [
       { kind: EffectKind.THROW },
       { kind: EffectKind.SHOVE },
       { kind: EffectKind.DAMAGE },
+      { kind: EffectKind.PUNCTURE },
     ],
   },
   // a prank: who is hit dances for a while

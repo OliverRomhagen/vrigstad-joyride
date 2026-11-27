@@ -10,6 +10,7 @@ import {
   knockbackOf,
   MUZZLE_M,
   newHit,
+  onHead,
   type Shot,
   ShotStep,
   type ShotWorld,
@@ -399,7 +400,7 @@ describe('sight', () => {
 
 describe('aimAt', () => {
   it('sends a shot through the point it is aimed at, drop and all', () => {
-    for (const weapon of [PICKADOLL, WEAPONS.findIndex(w => w.id === WeaponId.POTATISKANON)]) {
+    for (const weapon of [PICKADOLL, WEAPONS.findIndex(w => w.id === WeaponId.GULDARTPUFFRA)]) {
       // a point on the house's south wall, 3 m up and a little to the east
       const { yaw, pitch } = aimAt(WEAPONS[weapon].speedMs, 0, MUZZLE_M, 0, 2, 3, -20, { yaw: 0, pitch: 0 });
       const hit = fly(
@@ -432,7 +433,7 @@ describe('aimAt', () => {
   });
 
   it("doesn't jump as the point crosses the edge of reach", () => {
-    // 26 m/s (the potatiskanon) reaches about 69 m on level ground; the pitch changes little either side of it
+    // 26 m/s reaches about 69 m on level ground; the pitch changes little either side of it
     const pitchAt = (m: number) => aimAt(26, 0, 0, 0, 0, 0, -m, { yaw: 0, pitch: 0 }).pitch,
       edgeM = (26 * 26) / 9.8;
     expect(Math.abs(pitchAt(edgeM + 0.5) - pitchAt(edgeM - 0.5))).toBeLessThan(0.1);
@@ -461,6 +462,14 @@ describe('assistTarget', () => {
   });
 });
 
+describe('onHead', () => {
+  it('takes the top of a person for their head, by their size', () => {
+    expect(onHead(1.6, 1)).toBe(true);
+    expect(onHead(1.4, 1)).toBe(false);
+    expect(onHead(1.6, 1.1)).toBe(false); // a tall person's head is higher up
+  });
+});
+
 describe('knockbackOf', () => {
   it('pushes by what the shot weighs times its speed, so a faster weapon pushes harder', () => {
     expect(knockbackOf({ shotMassKg: 0.5, speedMs: 80 })).toBe(40);
@@ -470,7 +479,6 @@ describe('knockbackOf', () => {
   it("keeps the pushes the weapons' power gave: 40 N·s a point", () => {
     const by = (id: WeaponId) => knockbackOf(WEAPONS.find(w => w.id === id)!);
     expect(by(WeaponId.PICKADOLL)).toBeCloseTo(40, 0);
-    expect(by(WeaponId.POTATISKANON)).toBeCloseTo(160, 0);
     expect(by(WeaponId.ALGSTUDSARE)).toBeCloseTo(200, 0);
   });
 });

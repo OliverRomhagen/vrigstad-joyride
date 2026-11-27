@@ -12,7 +12,6 @@ export const WeaponId = {
   PICKADOLL: 'pickadoll',
   PEPPRAPUFFRA: 'pepprapuffra',
   HAGELBOSSA: 'hagelbossa',
-  POTATISKANON: 'potatiskanon',
   MINIGUN: 'minigun',
   GULDARTPUFFRA: 'guldartpuffra',
   PUFFRA: 'puffra',
@@ -121,26 +120,6 @@ export const WEAPONS = [
     damage: 1.2,
     splatM: 0.4,
     blastM: 0,
-    bounces: 0,
-    thrown: false,
-    fuseS: 0,
-    shotM: 0.07,
-    tracerM: 0,
-    scope: 0,
-    ammo: null,
-  },
-  {
-    id: WeaponId.POTATISKANON,
-    name: 'Potatiskanon',
-    speedMs: 26,
-    coolS: 1.2,
-    auto: false,
-    pellets: 1,
-    spreadRad: 0.01,
-    shotMassKg: 6.15,
-    damage: 8,
-    splatM: 2.2,
-    blastM: 4,
     bounces: 0,
     thrown: false,
     fuseS: 0,
@@ -308,6 +287,7 @@ const CAST_STEP_M = 2; // with a world's ray cast, a shot's path is cast in stra
 const WALL_MAX_M = 9; // houses are taken to be this tall: a shot above it flies over
 const PERSON_TALL_M = 1.85; // a standard person, to the top of the head
 const CAR_TALL_M = 1.5;
+const HEAD_FROM_K = 0.83; // a hit this share of a person's height up, or higher, is on the head: from 1.54 m on a 1.85 m person
 const WALL_PROBE_M = 0.05; // the radius of the circle that feels for a wall
 const SLOPE_STEP_M = 0.5; // the ground's slope where a shot lands is read over this distance
 const AIM_ROUNDS = 4; // aimAtMoving: the drift and the time in the air settle each other in this many rounds
@@ -400,6 +380,11 @@ export const knockbackOf = (w: Pick<Weapon, 'shotMassKg' | 'speedMs'>) => w.shot
 
 const CAR_HOLD_NS = 60, // a parked car's brakes hold against a smaller push: a pistol's shot marks it, a potato shoves it
   CAR_SLIDE_M_PER_NS = 0.0035; // past that, it slides this far for each N·s of the push
+
+/** A hit `upM` above a person's feet is on their head; `scale` is their size, 1 for the standard person. */
+export function onHead(upM: number, scale: number): boolean {
+  return upM >= HEAD_FROM_K * PERSON_TALL_M * scale;
+}
 
 /**
  * A parked car pushed along (dx, dz) by `knockbackNs`: it slides when the push beats its brakes. A car that drives stays

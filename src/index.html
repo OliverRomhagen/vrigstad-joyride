@@ -123,13 +123,20 @@ body { isolation: isolate; }
 #fail { position: absolute; inset: 0; display: grid; place-items: center; padding: 24px; text-align: center; font-size: 15px; color: #16201c; }
 /* the pickadoll lab's crosshair: 35% down is 0.3 of half the height above the middle (CROSSHAIR_NDC_Y); gold over a person or a car */
 #lab-crosshair { position: absolute; left: 50%; top: 35%; width: 16px; height: 16px; margin: -10px 0 0 -10px; border: 2px solid rgba(255, 255, 255, .9); border-radius: 50%; box-shadow: 0 0 0 1.5px rgba(16, 20, 15, .45), inset 0 0 0 1.5px rgba(16, 20, 15, .45); pointer-events: none; }
+#lab-crosshair { --tick: rgba(255, 255, 255, .95); }
 #lab-crosshair.on { border-color: var(--gold); }
 /* a hit on a person or a car: four ticks around the ring, there at once and fading out. Each bar is two ticks, with the ring in its gap */
 #lab-crosshair::before, #lab-crosshair::after { content: ""; position: absolute; left: 50%; top: 50%; width: 2px; height: 36px; margin: -18px 0 0 -1px; opacity: 0;
-  background: linear-gradient(rgba(255, 255, 255, .95) 0 6px, transparent 6px 30px, rgba(255, 255, 255, .95) 30px); filter: drop-shadow(0 0 1px rgba(16, 20, 15, .7)); transform: rotate(45deg); }
+  background: linear-gradient(var(--tick) 0 6px, transparent 6px 30px, var(--tick) 30px); filter: drop-shadow(0 0 1px rgba(16, 20, 15, .7)); transform: rotate(45deg); }
 #lab-crosshair::after { transform: rotate(-45deg); }
 @media (prefers-reduced-motion: no-preference) { #lab-crosshair::before, #lab-crosshair::after { transition: opacity .22s ease-out; } }
 #lab-crosshair.hit::before, #lab-crosshair.hit::after { opacity: 1; transition: none; }
+/* a headshot: the ring and its ticks go red, and the ring gives a short kick outwards */
+#lab-crosshair.head { --tick: #ff4d6d; border-color: #ff4d6d; }
+@media (prefers-reduced-motion: no-preference) {
+  #lab-crosshair.head { animation: lab-headshot .28s ease-out; }
+  @keyframes lab-headshot { from { scale: 1.45; } to { scale: 1; } }
+}
 /* a scope: the view through a round glass with a fine cross, dark around it. The ring and its hit ticks stay on top */
 #lab-scope { position: absolute; inset: 0; pointer-events: none; opacity: 0; transition: opacity .08s ease-in;
   background:

@@ -23,7 +23,7 @@ export const DEFAULT_SLOTS: readonly Loadout[] = [
   { weapon: WeaponId.PICKADOLL, ammo: AmmoId.DANS },
   { weapon: WeaponId.HAGELBOSSA, ammo: AmmoId.PANG },
   { weapon: WeaponId.MINIGUN, ammo: AmmoId.GEGGA },
-  { weapon: WeaponId.POTATISKANON, ammo: AmmoId.PANG },
+  { weapon: WeaponId.HAGELBOSSA, ammo: AmmoId.GEGGA },
   { weapon: WeaponId.ALGSTUDSARE, ammo: AmmoId.GEGGA },
   { weapon: WeaponId.GRANAT, ammo: AmmoId.PANG },
   { weapon: WeaponId.FOTANGLAR, ammo: AmmoId.FOTANGLAR },

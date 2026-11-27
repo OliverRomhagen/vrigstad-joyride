@@ -8,7 +8,7 @@
 import { createElement, Egg, Hand, type IconNode, Music, Triangle, Zap } from 'lucide';
 import { clamp, wrap } from '../world/math';
 import type { Rnd } from '../world/random';
-import { NO_FLAT } from './cars';
+import { NO_FLAT, type Wheel } from './cars';
 import { choice, command, optional, toggle } from './command-args';
 import { type Commands, UsageError } from './commands';
 import { damageCar } from './health';
@@ -43,6 +43,7 @@ import {
   knockbackOf,
   MUZZLE_M,
   newHit,
+  onHead,
   SHOTS_MAX,
   type Shot,
   type ShotHit,
@@ -54,7 +55,7 @@ import {
   WEAPONS,
   WeaponId,
 } from './sim/shots';
-import { dropSpike, newSpikeStep, type Spike, type SpikeWorld, stepSpikes } from './sim/spikes';
+import { dropSpike, newSpikeStep, type Spike, type SpikeWorld, stepSpikes, tyreHit } from './sim/spikes';
 import type { GameState, ViewState } from './state';
 import { WeaponWheel } from './weapon-wheel';
 
@@ -143,7 +144,6 @@ const GUN_M: Record<WeaponId, readonly [number, number]> = {
   [WeaponId.PICKADOLL]: [0.3, 0.08],
   [WeaponId.PEPPRAPUFFRA]: [0.4, 0.1],
   [WeaponId.HAGELBOSSA]: [0.65, 0.09],
-  [WeaponId.POTATISKANON]: [0.85, 0.2],
   [WeaponId.MINIGUN]: [0.75, 0.17],
   [WeaponId.GULDARTPUFFRA]: [0.5, 0.05],
   [WeaponId.PUFFRA]: [0.28, 0.07],
@@ -153,6 +153,11 @@ const GUN_M: Record<WeaponId, readonly [number, number]> = {
   [WeaponId.FOTANGLAR]: [0.12, 0.16],
 };
 const HIT_MARK_S = 0.1; // the crosshair's ticks stay this long after a hit on a person or a car, then fade (index.html)
+// a headshot (onHead): the crosshair stays red this long, and the hit does more: a harder throw, a longer stare or dance
+const HEAD_MARK_S = 0.35,
+  HEAD_THROW_K = 1.5,
+  HEAD_STARE_K = 2,
+  HEAD_DANCE_K = 1.5;
 // fotanglar: they lie where they land for a while (./sim/spikes.ts). Someone who steps on one hops on and walks
 // slowly; a car that drives over one gets a flat tyre (Car.flat); you are hurt, unless you jump over
 const FLAT_LINES = ['”PANG! Dä va däcket, dä.”', '”Punka! Klart dä skulle hända nu.”', '”Nu small dä i ett däck.”'],
@@ -211,6 +216,9 @@ export class Pickadoll {
   private armPitch = 0; // rad: the arm's pitch, easing after the aim's
   private markS = 0; // s the crosshair's hit ticks stay on
   private markedHits = 0; // hits on a person or a car, for the test hook
+  private headMarkS = 0; // s the crosshair stays red after a headshot
+  private headshots = 0; // for the test hook
+  private punctures = 0; // tyres a shot burst, for the test hook
   private readonly hit = newHit();
   private readonly aimHit = newHit();
   private readonly line = { x: 0, y: 0, z: 0, dx: 0, dy: 0, dz: -1 };
@@ -609,6 +617,8 @@ export class Pickadoll {
       fired: this.fired,
       hits: this.hits,
       markedHits: this.markedHits,
+      headshots: this.headshots,
+      punctures: this.punctures,
       splats: this.g.fx.splatted,
       weapon: this.holstered ? HANDS : WEAPONS[this.weapon].id,
       ammo: AMMOS[this.ammo].id,
@@ -752,6 +762,8 @@ export class Pickadoll {
     this.crosshair.classList.toggle('on', onTarget);
     this.markS -= dt;
     this.crosshair.classList.toggle('hit', this.markS > 0);
+    this.headMarkS -= dt;
+    this.crosshair.classList.toggle('head', this.headMarkS > 0);
     // a click a moment before the weapon is ready still fires; an older one is dropped, so clicks never queue up
     if (this.pulledS >= 0) this.pulledS += dt;
     if (!armed || this.pulledS > PULL_KEEP_S + dt) this.pulledS = -1;
@@ -958,9 +970,14 @@ export class Pickadoll {
     const person = hit.kind === HitKind.PERSON ? crowd.npcs[hit.target] : null,
       car = hit.kind === HitKind.CAR ? this.world.cars[hit.target] : null,
       knockbackNs = knockbackOf(weapon);
-    if (person) this.hitPerson(person, ammo, hit.dx, hit.dz, hit.y, knockbackNs, weapon.splatM, colour, s.seed);
+    const isHead = !!person && onHead(hit.y - this.g.world.groundAt(person.x, person.z), person.scale);
+    if (person) this.hitPerson(person, ammo, hit.dx, hit.dz, hit.y, knockbackNs, weapon.splatM, colour, s.seed, isHead);
     else if (car) {
       this.hitCar(car, ammo, hit.dx, hit.dz, knockbackNs, weapon.damage);
+      if (effectOf(ammo, EffectKind.PUNCTURE)) {
+        const wheel = tyreHit(car, hit, hit.y - this.g.world.groundAt(hit.x, hit.z));
+        if (wheel !== null && this.burst(car, wheel)) this.punctures++;
+      }
       if (splat) fx.splatOn(car.mesh, hit, splatM, colour, s.seed);
     } else if (hit.kind === HitKind.PROP) {
       // knocked over, whatever the ammo, with no splat: a mark left in the air where it stood would hang there
@@ -974,7 +991,7 @@ export class Pickadoll {
         hit.dz * knockbackNs,
       );
     } else if (splat) fx.splat(hit, splatM, colour, s.seed);
-    if (person || car) this.mark();
+    if (person || car) this.mark(isHead);
     if (!weapon.blastM) return;
     const { push } = this;
     for (const n of crowd.npcs) {
@@ -1001,9 +1018,21 @@ export class Pickadoll {
   }
 
   // tells you a shot landed on someone or something that counts, however far off it was
-  private mark() {
+  private mark(isHead = false) {
     this.markedHits++;
     this.markS = HIT_MARK_S;
+    if (!isHead) return;
+    this.headshots++;
+    this.headMarkS = HEAD_MARK_S;
+  }
+
+  // a burst tyre, from a shot or a fotangel: one flat per car, and your own says so. True when it burst
+  private burst(c: RenderedCar, wheel: Wheel) {
+    if (c.flat !== NO_FLAT || this.spared(c)) return false;
+    c.flat = wheel;
+    if (c === this.g.game.pcar)
+      this.g.toast(FLAT_LINES[Math.floor(this.g.rnd() * FLAT_LINES.length)] + ' A tyre is flat.', 3);
+    return true;
   }
 
   // the ammo's effects on a person; (dx, dz): the way the hit pushes them, a unit vector along the ground
@@ -1017,6 +1046,7 @@ export class Pickadoll {
     splatM: number,
     colour: string,
     turn: number,
+    isHead = false, // a headshot: more of each effect (HEAD_*_K)
   ) {
     const { fx, crowd, ragdolls } = this.g;
     for (const e of ammo.effects)
@@ -1025,19 +1055,26 @@ export class Pickadoll {
           if (e.onPeople) fx.splatOnPerson(n.mesh, dx, dz, y, splatM * e.sizeK, colour, turn);
           break;
         case EffectKind.STARE:
-          crowd.stare(n, 0.1, e.s);
+          crowd.stare(n, 0.1, e.s * (isHead ? HEAD_STARE_K : 1));
           break;
         case EffectKind.THROW:
           // too many down already: they are only knocked a step back
-          if (!ragdolls.push(n, dx, dz, PANG_THROW_MS + knockbackNs * PANG_THROW_MS_PER_NS)) {
+          if (
+            !ragdolls.push(
+              n,
+              dx,
+              dz,
+              (PANG_THROW_MS + knockbackNs * PANG_THROW_MS_PER_NS) * (isHead ? HEAD_THROW_K : 1),
+            )
+          ) {
             n.x += dx * 0.5;
             n.z += dz * 0.5;
           }
           break;
         case EffectKind.DANCE:
           if (this.dancers.some(d => d.npc === n)) break;
-          crowd.stare(n, 0.1, e.s); // stops them where they are
-          this.dancers.push({ npc: n, leftS: e.s });
+          crowd.stare(n, 0.1, e.s * (isHead ? HEAD_DANCE_K : 1)); // stops them where they are
+          this.dancers.push({ npc: n, leftS: e.s * (isHead ? HEAD_DANCE_K : 1) });
           break;
       }
   }
@@ -1058,19 +1095,14 @@ export class Pickadoll {
 
   // what the fotanglar on the ground do to who comes by
   private stepSpikes(dt: number) {
-    const { game, player, crowd, fx, cars, rnd } = this.g,
+    const { game, player, crowd, fx, cars } = this.g,
       { spikes, limping, spikeWorld } = this;
     this.spikeHurtS -= dt;
     // you, on foot and on the ground: a jump clears them
     spikeWorld.walker = !game.inCar && player.y <= 0 ? player : null;
     const step = stepSpikes(spikes, dt, spikeWorld, this.spikeStep);
     // a car that rolls over one gets a flat tyre, the police's and your own too; one flat per car
-    for (let n = 0; n < step.cars.length; n++) {
-      const c = cars[step.cars[n]];
-      if (c.flat !== NO_FLAT || this.spared(c)) continue;
-      c.flat = step.wheels[n];
-      if (c === game.pcar) this.g.toast(FLAT_LINES[Math.floor(rnd() * FLAT_LINES.length)] + ' A tyre is flat.', 3);
-    }
+    for (let n = 0; n < step.cars.length; n++) this.burst(cars[step.cars[n]], step.wheels[n]);
     for (const i of step.people) {
       const n = crowd.npcs[i];
       if (limping.some(l => l.npc === n)) continue;
