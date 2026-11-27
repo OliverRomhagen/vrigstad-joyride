@@ -115,3 +115,13 @@ describe('where a wall gets its windows (#413)', () => {
     expect(block.count).toBeGreaterThanOrEqual(house.count);
   });
 });
+
+test('the buffer has room for the busiest spot a refill can reach, not for every window', () => {
+  const xs = [...Array.from({ length: 10 }, (_, i) => i), ...Array.from({ length: 4 }, (_, i) => 1000 + i)],
+    frames = new WindowFrames(new THREE.Scene(), placements(...xs), { radiusM: 80 });
+  expect(frames.capacity).toBe(10); // the ten at Torget; the four 1 km off are never in reach at the same time
+  frames.update(0, 0);
+  expect(frames.mesh.count).toBe(10);
+  frames.update(1000, 0);
+  expect(frames.mesh.count).toBe(4);
+});

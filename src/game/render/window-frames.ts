@@ -229,7 +229,15 @@ const _m = new THREE.Matrix4(),
 /** The window frames within `radiusM` of the camera, in one instanced mesh it adds to the scene. */
 export class WindowFrames {
   readonly mesh: THREE.InstancedMesh;
-  private readonly cells = new Map<string, number[]>();
+  // the windows sorted by grid cell, as flat arrays, so a refill allocates nothing: cell c's windows are
+  // cellWindows[cellStart[c]] up to cellWindows[cellStart[c + 1]], for c = (cz - z0) * cols + (cx - x0)
+  private readonly cellStart: Int32Array;
+  private readonly cellWindows: Int32Array;
+  private readonly x0: number;
+  private readonly z0: number;
+  private readonly cols: number;
+  private readonly rows: number;
+  private readonly span: number; // the cells a refill looks at either side of the camera's
   private readonly radiusM: number;
   private filledX = Infinity; // where the list was last filled: nowhere yet
   private filledZ = Infinity;
@@ -240,30 +248,50 @@ export class WindowFrames {
     { radiusM }: { radiusM: number },
   ) {
     this.radiusM = radiusM;
-    for (let i = 0; i < windows.length / WINDOW_STRIDE; i++) {
-      const k = this.cellKey(windows[i * WINDOW_STRIDE], windows[i * WINDOW_STRIDE + 2]);
-      let list = this.cells.get(k);
-      if (!list) {
-        list = [];
-        this.cells.set(k, list);
-      }
-      list.push(i);
+    const count = windows.length / WINDOW_STRIDE,
+      cxOf = (i: number) => Math.floor(windows[i * WINDOW_STRIDE] / CELL_M),
+      czOf = (i: number) => Math.floor(windows[i * WINDOW_STRIDE + 2] / CELL_M);
+    let x0 = 0,
+      z0 = 0,
+      x1 = 0,
+      z1 = 0;
+    for (let i = 0; i < count; i++) {
+      const cx = cxOf(i),
+        cz = czOf(i);
+      if (i === 0 || cx < x0) x0 = cx;
+      if (i === 0 || cz < z0) z0 = cz;
+      if (i === 0 || cx > x1) x1 = cx;
+      if (i === 0 || cz > z1) z1 = cz;
     }
-    // room for the densest spot: every window in the cells a radius can reach, at most
-    const reach = Math.ceil((radiusM + REFILL_STEP_M) / CELL_M) * 2 + 1;
-    let densest = 0;
-    for (const list of this.cells.values()) densest = Math.max(densest, list.length);
-    const capacity = Math.min(windows.length / WINDOW_STRIDE, densest * reach * reach) || 1;
+    this.x0 = x0;
+    this.z0 = z0;
+    this.cols = x1 - x0 + 1;
+    this.rows = z1 - z0 + 1;
+    const cellOf = (i: number) => (czOf(i) - z0) * this.cols + (cxOf(i) - x0);
+    this.cellStart = new Int32Array(this.cols * this.rows + 1);
+    for (let i = 0; i < count; i++) this.cellStart[cellOf(i) + 1]++;
+    for (let c = 0; c < this.cols * this.rows; c++) this.cellStart[c + 1] += this.cellStart[c];
+    this.cellWindows = new Int32Array(count);
+    const next = this.cellStart.slice(0, -1);
+    for (let i = 0; i < count; i++) this.cellWindows[next[cellOf(i)]++] = i;
+    this.span = Math.ceil((radiusM + REFILL_STEP_M) / CELL_M);
+    const capacity = this.mostInReach() || 1;
     this.mesh = new THREE.InstancedMesh(
       frameGeometry(),
       new THREE.MeshLambertMaterial({ vertexColors: true, name: HOUSE_FRAMES_MATERIAL }), // the name gives it the toon style's house ramp
       capacity,
     );
+    this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage); // rewritten at every refill
     this.mesh.count = 0;
     this.mesh.castShadow = false;
     this.mesh.receiveShadow = true;
     this.mesh.frustumCulled = false; // its bounds change with every refill
     scene.add(this.mesh);
+  }
+
+  /** How many frames the mesh has room for. */
+  get capacity() {
+    return this.mesh.instanceMatrix.count;
   }
 
   /** Refills the frames around the camera at (x, z) once it's REFILL_STEP_M from the last refill; a no-op otherwise. */
@@ -273,31 +301,51 @@ export class WindowFrames {
     this.filledZ = z;
     const w = this.windows,
       r = this.radiusM + REFILL_STEP_M,
-      cx = Math.floor(x / CELL_M),
-      cz = Math.floor(z / CELL_M),
-      span = Math.ceil(r / CELL_M),
-      cap = this.mesh.instanceMatrix.count;
+      cx = Math.floor(x / CELL_M) - this.x0,
+      cz = Math.floor(z / CELL_M) - this.z0,
+      cap = this.capacity;
     let n = 0;
-    for (let i = cx - span; i <= cx + span && n < cap; i++)
-      for (let j = cz - span; j <= cz + span && n < cap; j++)
-        for (const wi of this.cells.get(i + ',' + j) ?? []) {
-          const o = wi * WINDOW_STRIDE;
+    for (let j = Math.max(0, cz - this.span); j <= Math.min(this.rows - 1, cz + this.span); j++)
+      for (let i = Math.max(0, cx - this.span); i <= Math.min(this.cols - 1, cx + this.span); i++) {
+        const c = j * this.cols + i;
+        for (let k = this.cellStart[c]; k < this.cellStart[c + 1] && n < cap; k++) {
+          const o = this.cellWindows[k] * WINDOW_STRIDE;
           if (Math.hypot(w[o] - x, w[o + 2] - z) > r) continue;
           _p.set(w[o], w[o + 1], w[o + 2]);
           _q.setFromAxisAngle(_up, w[o + 3]);
           _s.set(w[o + 4], w[o + 5], 1);
           this.mesh.setMatrixAt(n++, _m.compose(_p, _q, _s));
-          if (n === cap) break;
         }
+      }
     this.mesh.count = n;
     if (!n) return; // nothing to upload: an empty range would send the whole buffer (a length of 0 means "to the end")
     const matrices = this.mesh.instanceMatrix;
     matrices.clearUpdateRanges();
-    matrices.addUpdateRange(0, n * 16); // upload only the frames in use, not the whole buffer sized for the densest spot
+    matrices.addUpdateRange(0, n * 16); // upload only the frames in use, not the whole buffer
     matrices.needsUpdate = true;
   }
 
-  private cellKey(x: number, z: number) {
-    return Math.floor(x / CELL_M) + ',' + Math.floor(z / CELL_M);
+  // the most windows a refill can look at, wherever the camera is: the busiest square of cells it reaches, summed
+  // over a table of running totals, so the buffer is as big as the densest spot needs and no bigger
+  private mostInReach() {
+    const { cols, rows, span } = this,
+      sums = new Int32Array((cols + 1) * (rows + 1)),
+      at = (i: number, j: number) => sums[j * (cols + 1) + i];
+    for (let j = 0; j < rows; j++)
+      for (let i = 0; i < cols; i++) {
+        const c = j * cols + i;
+        sums[(j + 1) * (cols + 1) + i + 1] =
+          this.cellStart[c + 1] - this.cellStart[c] + at(i, j + 1) + at(i + 1, j) - at(i, j);
+      }
+    let most = 0;
+    for (let j = 0; j < rows; j++)
+      for (let i = 0; i < cols; i++) {
+        const a = Math.max(0, i - span),
+          b = Math.max(0, j - span),
+          c = Math.min(cols, i + span + 1),
+          d = Math.min(rows, j + span + 1);
+        most = Math.max(most, at(c, d) - at(a, d) - at(c, b) + at(a, b));
+      }
+    return most;
   }
 }
