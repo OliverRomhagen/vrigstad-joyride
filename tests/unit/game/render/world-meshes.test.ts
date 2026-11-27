@@ -3,7 +3,13 @@ import { describe, expect, it, vi } from 'vitest';
 import { inkEdges } from '../../../../src/game/render/ink-edges';
 import { INK_FLAG, INK_NO_FEET_FLAG } from '../../../../src/game/render/ink-flag';
 import { finishOf } from '../../../../src/game/render/toon-style';
-import { addBuildings, PLINTH_OUT_M, PLINTH_TOP_M } from '../../../../src/game/render/world-meshes';
+import {
+  addBuildings,
+  PLINTH_OUT_M,
+  PLINTH_TOP_M,
+  WINDOW_H_M,
+  WINDOW_SILL_M,
+} from '../../../../src/game/render/world-meshes';
 import { BuildingKind, type WorldData } from '../../../../src/world/data';
 import { Heightfield } from '../../../../src/world/heightfield';
 import { makeWorld, square } from '../../world/fixture';
@@ -320,5 +326,59 @@ describe('board seams', () => {
     ['a house over 450 m²', { p: square(0, 0, 25), h: 8, k: BuildingKind.OTHER }],
   ])('leaves %s without seams', (_, b) => {
     expect(seamsOf(b)).toBeUndefined();
+  });
+});
+
+describe('3D window frames', () => {
+  it("sit over the painted windows: in the middle of a tile across, and at the window's middle up a storey", () => {
+    const world = makeWorld({ b: [{ p: square(0, 0, 12), h: 6, k: BuildingKind.OTHER }] }),
+      scene = new THREE.Scene(),
+      frames = addBuildings(scene, world, new Heightfield(world), {
+        rnd: () => 0.5,
+        pick: a => a[0],
+        maxAnisotropy: 1,
+        toonWindows: true,
+        windowFramesM: 80,
+      });
+    expect(frames).not.toBeNull();
+    frames?.update(6, 6);
+    const skin = scene.children.find(
+      o => o instanceof THREE.Mesh && (o.material as THREE.MeshLambertMaterial).alphaTest === 0.5,
+    ) as THREE.Mesh;
+    const pos = skin.geometry.getAttribute('position'),
+      uv = skin.geometry.getAttribute('uv'),
+      tri = new THREE.Triangle(),
+      plane = new THREE.Plane(),
+      m = new THREE.Matrix4(),
+      p = new THREE.Vector3(),
+      onPlane = new THREE.Vector3(),
+      bary = new THREE.Vector3();
+    // where on the painted texture a point of the skin is: its uv, from the triangle it lies in
+    const uvAt = (point: THREE.Vector3) => {
+      for (let i = 0; i < pos.count; i += 3) {
+        tri.setFromAttributeAndIndices(pos, i, i + 1, i + 2);
+        tri.getPlane(plane);
+        if (Math.abs(plane.distanceToPoint(point)) > 1e-3) continue;
+        plane.projectPoint(point, onPlane);
+        if (!tri.containsPoint(onPlane)) continue;
+        tri.getBarycoord(onPlane, bary);
+        return [
+          uv.getX(i) * bary.x + uv.getX(i + 1) * bary.y + uv.getX(i + 2) * bary.z,
+          uv.getY(i) * bary.x + uv.getY(i + 1) * bary.y + uv.getY(i + 2) * bary.z,
+        ];
+      }
+      return null;
+    };
+    const count = frames?.mesh.count ?? 0;
+    expect(count).toBe(4 * 3 * 2); // four 12 m walls, three windows each, two storeys
+    for (let i = 0; i < count; i++) {
+      frames?.mesh.getMatrixAt(i, m);
+      p.setFromMatrixPosition(m);
+      const at = uvAt(p);
+      expect(at).not.toBeNull();
+      const [u, v] = at as number[];
+      expect(u - Math.floor(u)).toBeCloseTo(0.5, 3); // the tile's middle, where the window is painted
+      expect(v - Math.floor(v)).toBeCloseTo((WINDOW_SILL_M + WINDOW_H_M / 2) / 2.8, 3); // its middle up a 2.8 m storey
+    }
   });
 });
