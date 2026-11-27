@@ -87,8 +87,9 @@ export function refuse(code: string, reason: string): Outcome {
 /**
  * Wraps every run, for logging, recording or refusing: return `next()` to run the command (and the hooks inside this
  * one), or a line of your own to stop it, which counts as a refusal (`hook`). `next()` gives the Outcome, so a hook
- * can keep only the runs that were done. A hook that ran the command and returns a line changes only what is shown:
- * whether it was done stays what `next()` said. The first hook added is the outermost.
+ * can keep only the runs that were done. A hook that ran the command and returns a line, or an Outcome, changes only
+ * what is shown: whether it was done, and its refusal's name, stay what `next()` said. The first hook added is the
+ * outermost.
  */
 export type Hook = (call: Call, next: () => Outcome) => Outcome | string;
 
@@ -204,8 +205,10 @@ export class Commands {
           inside = next();
           return inside;
         });
-        if (typeof answer !== 'string') return answer;
-        return inside ? { ...inside, text: answer } : refuse(REFUSAL.HOOK, answer);
+        const text = typeof answer === 'string' ? answer : answer.text;
+        // whatever a hook returns, whether the command was done is what next() said, so only the text can change
+        if (inside) return { ...inside, text };
+        return typeof answer === 'string' ? refuse(REFUSAL.HOOK, answer) : answer;
       },
       inner,
     );
