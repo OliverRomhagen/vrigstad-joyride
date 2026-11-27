@@ -54,7 +54,7 @@ export function baleCandidates(placer: Placer): Candidate[] {
             modelId,
             x: x + dx * i,
             z: z + dz * i,
-            rotationY: h, // lying across the row, flat ends to the neighbours
+            rotationY: h, // the model's +z along the row, so its axis (x) lies across it: round sides to the neighbours
             scale: 1,
             source: 'procedural',
             rank: 0,
