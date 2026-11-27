@@ -16,6 +16,7 @@ import {
   TRISS_KR,
   TRISS_PLAN,
   TRISS_TICKETS,
+  TYRE_KR,
   trissPrize,
 } from '../../../src/game/economy';
 import { DMG_MAX } from '../../../src/game/health';
@@ -147,5 +148,11 @@ describe('what Plåt-Pelle asks to mend a car', () => {
     expect(repairPrice('volvo', 'volvo240', 0)).toBe(0);
     expect(repairPrice('volvo', 'volvo240', 1)).toBe(REPAIR_MIN_KR);
     expect(repairPrice('polis', 'xc70-police', 50)).toBeNull();
+  });
+
+  it('adds a tyre for a flat, alone or on top of the damage, and still never mends a police car', () => {
+    expect(repairPrice('volvo', 'volvo240', 0, true)).toBe(TYRE_KR);
+    expect(repairPrice('volvo', 'volvo240', DMG_MAX / 2, true)).toBe(200 + TYRE_KR);
+    expect(repairPrice('polis', 'xc70-police', 0, true)).toBeNull();
   });
 });

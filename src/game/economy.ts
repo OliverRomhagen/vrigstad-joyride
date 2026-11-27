@@ -34,6 +34,7 @@ const SALE_MARKUP = 2.5; // Plåt-Pelle sells a car on his lot for this many tim
 // Plåt-Pelle mends a car on the workshop's lift for a share of what he pays for one whole, by how damaged it is
 const REPAIR_SHARE = 0.5; // what mending a wreck costs, as a share of the car's whole price
 export const REPAIR_MIN_KR = 50; // he picks up a spanner for no less
+export const TYRE_KR = 100; // and a flat tyre (fotanglar, in the pickadoll lab) costs this on top: cheap next to limping home on a rim
 
 /** How many tickets the trisslott vinstplan counts its wins in. */
 export const TRISS_TICKETS = 100_000;
@@ -98,13 +99,13 @@ export function salePrice(type: string, model: string | undefined): number | nul
   return base ? Math.round((base * SALE_MARKUP) / 100) * 100 : null;
 }
 
-/** What Plåt-Pelle asks to mend a car of this type and model with this much damage, in round tens: 0 for a car with none, null for a police car. */
-export function repairPrice(type: string, model: string | undefined, dmg: number): number | null {
+/** What Plåt-Pelle asks to mend a car of this type and model with this much damage, and a flat tyre if it has one, in round tens: 0 for a car with neither, null for a police car. */
+export function repairPrice(type: string, model: string | undefined, dmg: number, flat = false): number | null {
   const base = wholeKr(type, model);
   if (!base) return null;
   const share = Math.min(Math.max(dmg, 0), DMG_MAX) / DMG_MAX;
-  if (!share) return 0;
-  return Math.max(REPAIR_MIN_KR, Math.round((base * REPAIR_SHARE * share) / 10) * 10);
+  const dmgKr = share ? Math.max(REPAIR_MIN_KR, Math.round((base * REPAIR_SHARE * share) / 10) * 10) : 0;
+  return dmgKr + (flat ? TYRE_KR : 0);
 }
 
 // what Skroten pays for an undamaged car: by its model, else by its type; undefined for a police car

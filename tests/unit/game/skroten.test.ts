@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Car } from '../../../src/game/cars';
-import { fmtKr } from '../../../src/game/economy';
+import { fmtKr, TYRE_KR } from '../../../src/game/economy';
 import type { MenuItem } from '../../../src/game/pets';
 import { carsForSale, OWNER_LINES, Skroten, type SkrotenDeps } from '../../../src/game/skroten';
 import { OWNER_UV, type YardCar, yardHeading, yardToWorld } from '../../../src/game/skroten-yard';
@@ -161,7 +161,7 @@ describe('Skroten', () => {
 
 describe('Plåt-Pelle mends the car on the lift', () => {
   it('names his price for the damage, and mends the car once you pay', () => {
-    const t = skroten({ model: 'volvo240', car: { dmg: 50, flat: 2 }, kr: 500 });
+    const t = skroten({ model: 'volvo240', car: { dmg: 50 }, kr: 500 });
     t.driveOntoLift();
     expect(t.s.repairKr()).toBe(200);
     expect(t.s.open()).toBe(true);
@@ -169,9 +169,26 @@ describe('Plåt-Pelle mends the car on the lift', () => {
     expect(t.menu()!.title).toContain(fmtKr(200));
     t.choose('fix');
     expect(t.g.game.pcar!.dmg).toBe(0);
-    expect(t.g.game.pcar!.flat).toBe(-1);
     expect(t.wallet.kr).toBe(300);
     expect(t.game.inCar).toBe(true);
+  });
+
+  it('puts a new tyre on a flat, with or without damage, and the car drives straight again', () => {
+    const t = skroten({ model: 'volvo240', car: { dmg: 0, flat: 1 }, kr: 500 });
+    t.driveOntoLift();
+    expect(t.s.repairKr()).toBe(TYRE_KR);
+    expect(t.s.open()).toBe(true);
+    expect(t.menu()!.title).toContain('däck');
+    t.choose('fix');
+    expect(t.g.game.pcar!.flat).toBe(-1);
+    expect(t.wallet.kr).toBe(500 - TYRE_KR);
+    const both = skroten({ model: 'volvo240', car: { dmg: 50, flat: 2 }, kr: 1000 });
+    both.driveOntoLift();
+    expect(both.s.repairKr()).toBe(200 + TYRE_KR);
+    both.s.open();
+    both.choose('fix');
+    expect(both.g.game.pcar).toMatchObject({ dmg: 0, flat: -1 });
+    expect(both.wallet.kr).toBe(1000 - 200 - TYRE_KR);
   });
 
   it('keeps the damage and your money when you say no, or cannot pay', () => {

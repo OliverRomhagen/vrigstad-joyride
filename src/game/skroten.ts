@@ -63,11 +63,12 @@ export class Skroten {
     return carPrice(c.type, this.g.modelId(c), c.dmg) ?? NO_POLICE;
   }
 
-  // what Plåt-Pelle asks to mend c, or the reason he won't; 0 for a car with no damage, before any reason, so a whole car on the lift gets no word
+  // what Plåt-Pelle asks to mend c, or the reason he won't; 0 for a car with no damage and no flat, before any reason, so a whole car on the lift gets no word
   private repairQuote(c: Car): number | string {
-    if (c.dmg <= 0) return 0;
+    const flat = c.flat >= 0;
+    if (c.dmg <= 0 && !flat) return 0;
     if (this.g.stars) return CHASED;
-    return repairPrice(c.type, this.g.modelId(c), c.dmg) ?? NO_POLICE;
+    return repairPrice(c.type, this.g.modelId(c), c.dmg, flat) ?? NO_POLICE;
   }
 
   // the car you drive stands on the lift
@@ -135,7 +136,10 @@ export class Skroten {
     }
     openMenu(
       'skrot-fix',
-      OWNER_SAYS + '”Den där ' + carName(c) + ' ä allt tilltufsad. ' + fmtKr(kr) + ', så blir den som ny.”',
+      OWNER_SAYS +
+        (c.dmg <= 0
+          ? '”Punka, va? ' + fmtKr(kr) + ' för ett nytt däck, så rullar den rakt igen.”'
+          : '”Den där ' + carName(c) + ' ä allt tilltufsad. ' + fmtKr(kr) + ', så blir den som ny.”'),
       [
         ['fix', 'Laga <small>' + fmtKr(kr) + '</small>'],
         ['no', 'Nä, dä får va'],
@@ -164,7 +168,7 @@ export class Skroten {
     }
   }
 
-  /** The car you drive stands on the lift and has damage Plåt-Pelle would mend: his price, else null. */
+  /** The car you drive stands on the lift and has damage or a flat tyre Plåt-Pelle would mend: his price, else null. */
   repairKr(): number | null {
     const c = this.g.game.pcar;
     if (!this.onLift(c)) return null;
