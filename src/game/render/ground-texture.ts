@@ -32,7 +32,6 @@ const ROAD_PAINT: Record<Surface, string> = {
   [Surface.UNPAVED]: '#b8ab90',
   [Surface.GRASS]: '#93a16e',
 };
-const SURFACES = Object.values(Surface);
 
 /** The painted ground; `P` turns a world coordinate into canvas pixels, `K` is pixels per metre. */
 export class GroundTexture {
@@ -168,18 +167,24 @@ export class GroundTexture {
       ctx.lineWidth = 2 * LAKE_BANK_PAINT_M * K;
       shoreLines();
       ctx.restore();
+      const surfaces = D.r.map(r => surfaceOf(r)),
+        used = [...new Set(surfaces)];
       for (const pass of [2, 1, 0])
         for (const c of [5, 4, 3, 2, 1, 0]) {
           // 2: soft outer edge of the verge, 1: gravel verge, 0: the road
           if (pass && c > 3) continue;
           ctx.lineWidth = (ROAD_W[c] + (pass === 2 ? 4.4 : pass ? 2.4 : 0)) * K;
-          // the road itself one path per surface, so roads of one surface still join without a seam
-          for (const sf of pass ? [null] : SURFACES) {
-            ctx.strokeStyle = pass === 2 ? 'rgba(179,167,140,.35)' : pass ? '#b3a78c' : ROAD_PAINT[sf as Surface];
+          const stroke = (style: string, keep: (ri: number) => boolean) => {
+            ctx.strokeStyle = style;
             ctx.beginPath();
-            for (const r of D.r) if (r.c === c && !r.br && (sf === null || surfaceOf(r) === sf)) trace(r.p); // not under a bridge: the channel bed shows there
+            D.r.forEach((r, ri) => {
+              if (r.c === c && !r.br && keep(ri)) trace(r.p); // not under a bridge: the channel bed shows there
+            });
             ctx.stroke();
-          }
+          };
+          if (pass) stroke(pass === 2 ? 'rgba(179,167,140,.35)' : '#b3a78c', () => true);
+          // the road one path per surface, so roads of one surface still join without a seam
+          else for (const sf of used) stroke(ROAD_PAINT[sf], ri => surfaces[ri] === sf);
         }
       ctx.shadowColor = 'rgba(0,0,0,.45)';
       ctx.shadowBlur = 3 * K; // contact shadow around every footprint

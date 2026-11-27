@@ -1,7 +1,9 @@
 import * as THREE from 'three';
 import { describe, expect, it, vi } from 'vitest';
+import { inkEdges } from '../../../../src/game/render/ink-edges';
+import { INK_FLAG, INK_NO_FEET_FLAG } from '../../../../src/game/render/ink-flag';
 import { finishOf } from '../../../../src/game/render/toon-style';
-import { addBuildings } from '../../../../src/game/render/world-meshes';
+import { addBuildings, PLINTH_OUT_M, PLINTH_TOP_M } from '../../../../src/game/render/world-meshes';
 import { BuildingKind, type WorldData } from '../../../../src/world/data';
 import { Heightfield } from '../../../../src/world/heightfield';
 import { makeWorld, square } from '../../world/fixture';
@@ -133,8 +135,16 @@ describe('house trim', () => {
   });
 
   it("leaves the toon style no line along the roof's edge at the walls, only at the fascia", () => {
-    // the toon style's lines, as it draws them (INK_CREASE_DEG): every crease, and every edge that only one face has
-    const lines = new THREE.EdgesGeometry(shellsOf(pitched).geometry, 34).getAttribute('position');
+    // the toon style's lines, as it draws them for the shells (INK_CREASE_DEG, and no feet, as the shells ask for): every
+    // crease, and every edge that only one face has but the walls' feet
+    const shells = shellsOf(pitched);
+    expect(shells.userData).toMatchObject({ [INK_FLAG]: true, [INK_NO_FEET_FLAG]: true });
+    const lines = inkEdges(shells.geometry, 34).getAttribute('position');
+    // the feet are gone: the lowest line left is no level one along the ground
+    let lowest = Infinity;
+    for (let i = 0; i < lines.count; i++) lowest = Math.min(lowest, lines.getY(i));
+    for (let i = 0; i < lines.count; i += 2)
+      expect(lines.getY(i) - lowest < 0.001 && lines.getY(i + 1) - lowest < 0.001, `segment ${i / 2}`).toBe(false);
     // the walls stand from x 0 to 10 and z 0 to 10, and the roof's edge runs along their tops, from 5 m up to 8.5 at the ridge
     const onWallTop = (x: number, y: number, z: number) =>
       Math.min(Math.abs(x), Math.abs(x - 10), Math.abs(z), Math.abs(z - 10)) < 0.01 &&
@@ -147,6 +157,56 @@ describe('house trim', () => {
       if (ends.every(e => onWallTop(...e)) && onWallTop(mx, my, mz)) along.push(i);
     }
     expect(along).toEqual([]);
+  });
+
+  it('on a slope, the toon style loses only the feet: in the ground, on the plinth and in the roof (#413)', () => {
+    // the ground rises 10 m every 50 m eastwards, 2 m across the house
+    const world = makeWorld({ elev: [0, 10, 20, 0, 10, 20, 0, 10, 20], b: [pitched] }),
+      heightfield = new Heightfield(world),
+      scene = new THREE.Scene();
+    addBuildings(scene, world, heightfield, { rnd: () => 0.5, pick: a => a[0], maxAnisotropy: 1, flatWalls: true });
+    const shells = scene.children.find(o => o.userData[INK_NO_FEET_FLAG]) as THREE.Mesh;
+    // each segment as its two ends to the mm, in either order
+    const segments = (g: THREE.BufferGeometry) => {
+      const p = g.getAttribute('position'),
+        out = new Map<string, number[]>();
+      for (let i = 0; i < p.count; i += 2) {
+        const ends = [i, i + 1].map(j => [p.getX(j), p.getY(j), p.getZ(j)].map(v => Math.round(v * 1000) / 1000));
+        out.set(
+          ends
+            .map(e => e.join(','))
+            .sort()
+            .join(' '),
+          ends.flat(),
+        );
+      }
+      return out;
+    };
+    const all = segments(new THREE.EdgesGeometry(shells.geometry, 34)),
+      kept = segments(inkEdges(shells.geometry, 34));
+    for (const s of kept.keys()) expect(all.has(s), s).toBe(true); // it only takes lines away
+    const dropped = [...all].filter(([s]) => !kept.has(s)).map(([, e]) => e);
+    for (const e of dropped) expect(e[1], 'every foot is level').toBeCloseTo(e[4], 3);
+    const byHeight = new Map<number, number[][]>();
+    for (const e of dropped) byHeight.set(e[1], [...(byHeight.get(e[1]) ?? []), e]);
+    const [base, plinthTop, chimneyFoot] = [...byHeight.keys()].sort((a, b) => a - b);
+    expect(byHeight.size).toBe(3);
+    // the walls' and the plinth's feet, once round each (the walls' 40 m, and the plinth's longer ring), at the base under the whole house,
+    // its lowest point; how many segments depends on where the walls are split
+    const length = (e: number[]) => Math.hypot(e[0] - e[3], e[2] - e[5]);
+    expect(byHeight.get(base)!.reduce((sum, e) => sum + length(e), 0)).toBeCloseTo(40 + 4 * (10 + 2 * PLINTH_OUT_M), 2);
+    let lowest = Infinity;
+    const pos = shells.geometry.getAttribute('position');
+    for (let i = 0; i < pos.count; i++) lowest = Math.min(lowest, pos.getY(i));
+    expect(base).toBeCloseTo(lowest, 3);
+    // four corner boards, four sides each, standing on the plinth, whose top stands over the highest ground
+    expect(byHeight.get(plinthTop)).toHaveLength(16);
+    const highest = Math.max(...[0, 10].flatMap(x => [0, 10].map(z => heightfield.heightAt(x, z))));
+    expect(plinthTop).toBeCloseTo(highest + PLINTH_TOP_M, 2);
+    // the chimney's four sides, inside the roof, under its ridge
+    const chimney = byHeight.get(chimneyFoot)!;
+    expect(chimney).toHaveLength(4);
+    for (const e of chimney) expect(length(e)).toBeLessThan(1);
   });
 
   it('leaves out the eave of a wall shorter than its mitre, which would come out crossed, and closes the wall instead', () => {
@@ -212,5 +272,53 @@ describe('house trim', () => {
         expect(n.x * cx + n.z * cz, `triangle ${i / 3}`).toBeGreaterThan(0);
       }
     }
+  });
+});
+
+describe('board seams', () => {
+  // the seams' mesh of a world with this building alone, built with boardSeams, or undefined when it has none
+  const seamsOf = (b: Building) => {
+    const world = makeWorld({ b: [b] }),
+      scene = new THREE.Scene();
+    addBuildings(scene, world, new Heightfield(world), {
+      rnd: () => 0.5,
+      pick: a => a[0],
+      maxAnisotropy: 1,
+      boardSeams: true,
+    });
+    return scene.children.find(
+      o => o instanceof THREE.Mesh && o.renderOrder === -1 && (o.material as THREE.MeshBasicMaterial).map,
+    ) as THREE.Mesh | undefined;
+  };
+  // where each wall's boards start, in boards: one quad of six vertices per wall, its first vertex at the wall's start
+  const boardStarts = (mesh: THREE.Mesh) => {
+    const uv = mesh.geometry.getAttribute('uv'),
+      out: number[] = [];
+    for (let i = 0; i < uv.count; i += 6) out.push(Math.round(uv.getX(i) * 1000) / 1000);
+    return out.sort((p, q) => p - q);
+  };
+
+  it('keeps the boards running along a straight wall that the outline starts partway along', () => {
+    // a 10 m square that starts in the middle of its north wall: that wall comes in two halves, the last and the first
+    const mesh = seamsOf({ p: [5, 0, 10, 0, 10, 10, 0, 10, 0, 0], h: 5, k: BuildingKind.OTHER });
+    expect(mesh).toBeDefined();
+    // four corners start a run at 0; the north wall's second half goes on from the first's 25 boards (5 m / 0.2 m)
+    expect(boardStarts(mesh as THREE.Mesh)).toEqual([0, 0, 0, 0, 25]);
+  });
+
+  it('boards a house too small for trim, from its foot', () => {
+    const mesh = seamsOf({ p: square(0, 0, 5), h: 3, k: BuildingKind.OTHER }) as THREE.Mesh;
+    expect(mesh).toBeDefined();
+    expect(boardStarts(mesh)).toEqual([0, 0, 0, 0]);
+    mesh.geometry.computeBoundingBox();
+    expect(mesh.geometry.boundingBox?.min.y).toBeLessThanOrEqual(0);
+  });
+
+  it.each([
+    ['a hotel', { p: square(0, 0, 10), h: 5, k: BuildingKind.HOTEL }],
+    ['the church', { p: square(0, 0, 10), h: 5, k: BuildingKind.CHURCH }],
+    ['a house over 450 m²', { p: square(0, 0, 25), h: 8, k: BuildingKind.OTHER }],
+  ])('leaves %s without seams', (_, b) => {
+    expect(seamsOf(b)).toBeUndefined();
   });
 });
