@@ -260,6 +260,21 @@ function softCar(t: string, c: string) {
   for (const p of [...lamps(P.len / 2 + 0.07), ...(P.extra ? P.extra(c) : [])]) parts.push(boxPart(p));
   return mergeGeo(parts);
 }
+/**
+ * The procedural car's two rear lamps, a hair proud of the ones baked into its body, so they can be lit over them (#304):
+ * shared by type. Null for the tractor, which has none.
+ */
+export const rearLampGeo = (t: string) => {
+  const P = PROFILES[t];
+  if (t === 'traktor' || !P) return null;
+  const z = P.len / 2 + 0.105; // just behind the baked lamps' faces, at len / 2 + 0.07 + 0.03
+  return cached('rear-lamps:' + t, () =>
+    boxGeo([
+      [0.36, 0.18, 0.01, -0.6, 0.72, z, '#ffffff'],
+      [0.36, 0.18, 0.01, 0.6, 0.72, z, '#ffffff'],
+    ]),
+  );
+};
 export const geoCache: Record<string, THREE.BufferGeometry> = {};
 // the geometry under `key`, made the first time it is asked for
 const cached = (key: string, make: () => THREE.BufferGeometry) => {
