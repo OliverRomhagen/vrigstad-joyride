@@ -4,6 +4,8 @@
 import type { BridgeIndex } from '../world/bridges';
 import { FURNITURE } from '../world/furniture/definitions';
 import type { FurnitureLayout } from '../world/furniture/placement';
+import type { BoundaryRun } from '../world/plot-boundaries';
+import type { Plot } from '../world/plots';
 import type { ShoreLayout } from '../world/shore';
 import type { StreetscapeLayout } from '../world/streetscape';
 import type { WaterBodies } from '../world/water-shapes';
@@ -44,6 +46,13 @@ export interface TestHookDeps {
   };
   furniture: { layout: FurnitureLayout; draw: { meshes: readonly unknown[]; triangles: number }; ms: number };
   debugFurniture: boolean;
+  plots: {
+    layout: readonly Pick<Plot, 'driveway'>[];
+    runs: readonly Pick<BoundaryRun, 'kind' | 'p'>[];
+    draw: { meshes: readonly unknown[]; triangles: number };
+    ms: number;
+  };
+  debugPlots: boolean;
   water: {
     bodies: Pick<WaterBodies, 'lakes' | 'courses' | 'levelAt'>;
     surface: { meshes: readonly unknown[]; triangles: number };
@@ -91,6 +100,26 @@ export function installTestHook(g: TestHookDeps) {
       triangles: draw.triangles,
       buildMs: Math.round(ms),
       debug: g.debugFurniture,
+    };
+  }
+  function plotsState() {
+    const { layout, runs, draw, ms } = g.plots;
+    const boundaryM = [0, 0, 0, 0, 0];
+    for (const r of runs)
+      for (let i = 2; i < r.p.length; i += 2)
+        boundaryM[r.kind] += Math.hypot(r.p[i] - r.p[i - 2], r.p[i + 1] - r.p[i - 1]);
+    const [hedge, picket, board, wall, mesh] = boundaryM.map(Math.round);
+    return {
+      plots: layout.length,
+      driveways: {
+        mapped: layout.filter(p => p.driveway?.source === 'mapped').length,
+        generated: layout.filter(p => p.driveway?.source === 'inferred').length,
+      },
+      boundaryM: { hedge, picket, board, wall, mesh },
+      meshes: draw.meshes.length,
+      triangles: draw.triangles,
+      buildMs: Math.round(ms),
+      debug: g.debugPlots,
     };
   }
   function streetscapeState() {
@@ -216,6 +245,7 @@ export function installTestHook(g: TestHookDeps) {
         sunStreaks: g.sunStreaks?.state() ?? null,
         streetscape: streetscapeState(),
         furniture: furnitureState(),
+        plots: plotsState(),
         water: waterState(),
         bridges: bridgeState(),
       };

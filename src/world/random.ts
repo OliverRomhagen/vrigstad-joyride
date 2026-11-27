@@ -27,3 +27,14 @@ export function fnv1a(...parts: (number | string)[]) {
 
 /** fnv1a scaled to [0, 1) */
 export const hash01 = (...parts: (number | string)[]) => fnv1a(...parts) / 4294967296;
+
+/**
+ * A hash of two integers in [0, 1), without building a string: for choices made by the thousand, such as each piece
+ * of a hedge. The same integers always give the same number.
+ */
+export function hashInts(a: number, b: number) {
+  let h = Math.imul(a | 0, 0x27d4eb2d) ^ Math.imul(b | 0, 0x165667b1);
+  h = Math.imul(h ^ (h >>> 15), 0x85ebca6b);
+  h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35);
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+}

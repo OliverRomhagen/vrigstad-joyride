@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { fnv1a, hash01, makeRnd } from '../../../src/world/random';
+import { fnv1a, hash01, hashInts, makeRnd } from '../../../src/world/random';
 
 const take = (seed: number, count: number) => {
   const rnd = makeRnd(seed);
@@ -39,5 +39,16 @@ describe('fnv1a', () => {
     expect(fnv1a(12, 'verge')).toBe(fnv1a('12:verge'));
     expect(hash01(12, 'verge')).toBeGreaterThanOrEqual(0);
     expect(hash01(12, 'verge')).toBeLessThan(1);
+  });
+});
+
+describe('hashInts', () => {
+  it('gives the same number for the same integers, in [0, 1), and spreads neighbours apart', () => {
+    expect(hashInts(12, -7)).toBe(hashInts(12, -7));
+    const values = Array.from({ length: 1000 }, (_, i) => hashInts(i, 3));
+    expect(Math.min(...values)).toBeGreaterThanOrEqual(0);
+    expect(Math.max(...values)).toBeLessThan(1);
+    expect(values.filter(v => v < 0.5).length).toBeGreaterThan(450);
+    expect(values.filter(v => v < 0.5).length).toBeLessThan(550);
   });
 });

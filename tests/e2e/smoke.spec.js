@@ -156,7 +156,7 @@ test.describe('game (index.html)', () => {
     expect(errors).toEqual([]);
   });
 
-  test('places street lamps, benches and bins and reports them on the hook, also in the debug view', async ({
+  test('places street lamps, benches and bins, and hedges, fences and walls round the plots, also in the debug view', async ({
     page,
   }, testInfo) => {
     const errors = watchErrors(page);
@@ -173,6 +173,14 @@ test.describe('game (index.html)', () => {
     expect(f.meshes).toBeGreaterThan(0);
     expect(f.meshes).toBeLessThanOrEqual(16 * 36); // per 400 m cell at most one per model (14, FurnitureModelId; raise this with the next model) and per lamp glass (2), and the 2200 m world spans 6 × 6 cells
     expect(f.debug).toBe(true);
+    // every house that fronts a street has a plot (#401), most a driveway, and some edges are closed
+    const { plots: p } = await state(page);
+    expect(p.plots).toBeGreaterThan(400);
+    expect(p.driveways.mapped + p.driveways.generated).toBeGreaterThan(0.95 * p.plots);
+    for (const k of ['hedge', 'picket', 'board', 'wall', 'mesh']) expect(p.boundaryM[k]).toBeGreaterThan(0); // mesh: round industrial land
+    expect(p.meshes).toBeGreaterThan(0);
+    expect(p.meshes).toBeLessThanOrEqual(2 * 81); // boxes and fence panels per 250 m chunk of the 2200 m world, 9 × 9
+    expect(p.debug).toBe(false);
     await page.locator('#go').click();
     await frames(page, 5);
     await page.screenshot({ path: testInfo.outputPath('game-furniture-debug.png') });
