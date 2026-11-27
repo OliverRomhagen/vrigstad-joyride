@@ -125,14 +125,15 @@ export function skyAt(c: DayClock, out: Sky): Sky {
 const NOON_H = 12;
 const NIGHT_MID = 0.5; // halfway through the skip, where the light is dimmest
 // the words `time` takes in place of an hour, and where each puts the clock
-const MOMENTS = {
-  dawn: { hour: DAWN_H, night: 0 },
-  noon: { hour: NOON_H, night: 0 },
-  dusk: { hour: DUSK_H, night: 0 },
-  night: { hour: DUSK_H, night: NIGHT_MID },
-} as const;
-type Moment = keyof typeof MOMENTS;
-const MOMENT_NAMES = Object.keys(MOMENTS) as Moment[];
+const MOMENTS = { DAWN: 'dawn', NOON: 'noon', DUSK: 'dusk', NIGHT: 'night' } as const;
+type Moment = (typeof MOMENTS)[keyof typeof MOMENTS];
+const MOMENT_NAMES: readonly Moment[] = Object.values(MOMENTS);
+const MOMENT_AT: Readonly<Record<Moment, { hour: number; night: number }>> = {
+  [MOMENTS.DAWN]: { hour: DAWN_H, night: 0 },
+  [MOMENTS.NOON]: { hour: NOON_H, night: 0 },
+  [MOMENTS.DUSK]: { hour: DUSK_H, night: 0 },
+  [MOMENTS.NIGHT]: { hour: DUSK_H, night: NIGHT_MID },
+};
 
 /** An hour inside the day, as 16.5, 16,5 or 16:30. */
 function clockTime<N extends string>(name: N) {
@@ -185,7 +186,7 @@ export function registerDayCommands(
       ],
       run: ({ when }) => {
         if (when !== undefined) {
-          const at = typeof when === 'number' ? { hour: when, night: 0 } : MOMENTS[when];
+          const at = typeof when === 'number' ? { hour: when, night: 0 } : MOMENT_AT[when];
           c.hour = at.hour;
           c.night = at.night;
           applyLight();
