@@ -255,8 +255,10 @@ nav {
   text-decoration: none;
   text-shadow: 0 1px 6px rgba(0, 0, 0, 0.5);
 }
-.links a:hover {
-  color: var(--gold);
+@media (hover: hover) {
+  .links a:hover {
+    color: var(--gold);
+  }
 }
 .links .icon {
   display: inline-grid;

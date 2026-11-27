@@ -77,8 +77,10 @@
     background-color 0.12s,
     color 0.12s;
 }
-.landing .btn:hover {
-  transform: translateY(-2px);
+@media (hover: hover) {
+  .landing .btn:hover {
+    transform: translateY(-2px);
+  }
 }
 .landing .btn:active {
   transform: translateY(1px);
