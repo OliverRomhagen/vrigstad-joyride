@@ -251,7 +251,13 @@ export class Pickadoll {
         }
       },
     });
-    this.aimHold = g.input.addControl({ mouseButton: MouseButton.RIGHT });
+    // holding it aims, so with the weapon put away it draws it, as C does
+    this.aimHold = g.input.addControl({
+      mouseButton: MouseButton.RIGHT,
+      press: () => {
+        if (this.holstered && this.ready) this.runFromInput(LAB_COMMANDS.HOLSTER, 'off');
+      },
+    });
     g.input.addControl({ codes: [LAB_KEYS.AIM.code], press: () => this.runFromInput(LAB_COMMANDS.AIM) });
     g.input.addControl({ codes: [LAB_KEYS.WEAPON.code], press: () => this.runFromInput(LAB_COMMANDS.WEAPON) });
     g.input.addControl({ codes: [LAB_KEYS.FLAVOUR.code], press: () => this.runFromInput(LAB_COMMANDS.FLAVOUR) });
@@ -337,6 +343,7 @@ export class Pickadoll {
     this.keepAim(false);
     this.isWindingUp = false;
     this.pulledS = -1;
+    this.raisedS = 0; // the arm a last shot raised goes down with it
   }
 
   private pickFlavour(index: number) {
