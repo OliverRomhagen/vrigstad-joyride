@@ -33,6 +33,8 @@ export type VehicleSpec = {
   /** The body's length and width (m, no mirrors): its hitbox (sim/car-body.ts). */
   lengthM: number;
   widthM: number;
+  /** How far the body's middle lies ahead of the car's origin, where its wheels are measured from (m); 0 if left out. */
+  bodyAheadM?: number;
   /**
    * What you can stand on (#451), in m above the ground: the body's top at its ends (bonnet, boot or load bed), and its
    * roof, which runs from `roofRearM` to `roofFrontM` along the car, in m ahead of its middle (behind it is negative).
@@ -180,6 +182,7 @@ export type ModelOverrides = {
   rearAxle?: number;
   length?: number;
   width?: number;
+  bodyAhead?: number;
   height?: number; // the roof's height (m), from the car's spec sheet: what you stand on up there (#451)
   // where its roof runs, in m ahead of its middle (behind it is negative), measured on the model: a model needn't have its type's shape
   roofRear?: number;
@@ -206,6 +209,7 @@ export function specFor(type: CarType, model?: ModelOverrides): VehicleSpec {
     !model?.rearAxle &&
     !model?.length &&
     !model?.width &&
+    !model?.bodyAhead &&
     !model?.height &&
     model?.roofRear === undefined &&
     model?.roofFront === undefined &&
@@ -246,6 +250,7 @@ function mergeModel(type: CarType, base: VehicleSpec, model: ModelOverrides): Ve
     ...base,
     lengthM: model.length ?? base.lengthM,
     widthM: model.width ?? base.widthM,
+    bodyAheadM: model.bodyAhead ?? base.bodyAheadM,
     roofM: model.height ?? base.roofM,
     // the model's own roof, else the type's, kept in its place on a model of another length
     roofRearM: model.roofRear ?? (base.roofRearM * (model.length ?? base.lengthM)) / base.lengthM,

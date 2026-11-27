@@ -2,6 +2,7 @@ import type { CarType } from '../sim/vehicle-spec';
 
 // Metres, +Y up, -Z forward; normalized exports share these node names. rearAxle is metres behind the model's centre.
 // length is the model's, measured along Z; width is the body's without mirrors, from the car's spec sheet: the hitbox (#201).
+// bodyAhead is how far the middle of the model's length lies ahead of its origin (toward -Z), where the wheels sit off it.
 // height is the roof's, from the spec sheet too: what you stand on up there (#451). roofRear and roofFront are where the roof
 // runs, in m ahead of the model's centre, measured on its mesh (the top of the body along the middle, to 0.1 m).
 export const BODY_NODE = 'body';
@@ -58,11 +59,12 @@ export const VEHICLES = [
     radius: 0.345,
     wheelbase: 2.763,
     rearAxle: 1.393,
-    length: 4.74,
+    length: 4.72,
+    bodyAhead: -0.058,
     width: 1.86,
     height: 1.56,
     roofRear: -2.2,
-    roofFront: 0.2,
+    roofFront: 0.3, // the redrawn body's roof reaches further forward (#471)
     // a tall, heavy estate on the Saab's type: slower to answer, softer and leaning more
     handling: { steerResponseS: 0.14, throttleResponseS: 0.25 },
     suspension: {
@@ -84,11 +86,12 @@ export const VEHICLES = [
     radius: 0.345,
     wheelbase: 2.763,
     rearAxle: 1.393,
-    length: 4.74,
+    length: 4.905,
+    bodyAhead: 0.0347, // its bull bar
     width: 1.86,
     height: 1.56,
     roofRear: -2.2,
-    roofFront: 0.2,
+    roofFront: 0.3, // the redrawn body's roof reaches further forward (#471)
     police: true,
   },
   {
@@ -135,6 +138,7 @@ export const VEHICLES = [
     wheelbase: 2.6,
     rearAxle: 1.5,
     length: 4.1,
+    bodyAhead: -0.2575,
     width: 1.6,
     height: 1.55,
     roofRear: -0.85,
