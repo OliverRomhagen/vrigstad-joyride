@@ -453,7 +453,7 @@ export function addBuildings(
       wallDrop,
     }).mesh;
     shells.userData[INK_FLAG] = true; // the toon style inks the houses' corners and roof edges too
-    shells.userData[INK_NO_FEET_FLAG] = true; // but not the walls' feet, which the ground buries
+    shells.userData[INK_NO_FEET_FLAG] = true; // but not their feet: the walls' in the ground, the corner boards' on the plinth
     scene.add(shells);
     // the window skin: the trim is in the shells now (#413)
     const sg = new THREE.BufferGeometry();

@@ -203,7 +203,7 @@ test('two meshes that share a geometry each get their own lines, with and withou
   expect([segments(prop), segments(shells), segments(child)]).toEqual([4, 3, 4]);
 });
 
-test('ink lines stay on far-off parts of a mesh, and are pulled towards the camera to show over the corner boards', () => {
+test('ink lines stay on far-off parts of a mesh, and are pulled towards the camera to show over the faces beside them', () => {
   // the village shells are one mesh at the origin with world-coordinate vertices: scaling lines about it moved them
   const scene = new THREE.Scene(),
     shells = new THREE.Mesh(box.clone().translate(900, 0, 0), new THREE.MeshLambertMaterial());

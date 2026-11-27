@@ -115,7 +115,9 @@ export class ToonStyle {
       cache = dropFeet ? this.footlessInkGeometries : this.inkGeometries;
     let edges = cache.get(object.geometry);
     if (!edges) {
-      edges = inkEdges(object.geometry, INK_CREASE_DEG, { dropFeet });
+      edges = dropFeet
+        ? inkEdges(object.geometry, INK_CREASE_DEG)
+        : new THREE.EdgesGeometry(object.geometry, INK_CREASE_DEG);
       cache.set(object.geometry, edges);
       this.disposeWith(cache, object.geometry, edges);
     }

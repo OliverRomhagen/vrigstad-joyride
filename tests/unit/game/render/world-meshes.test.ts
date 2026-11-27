@@ -139,7 +139,7 @@ describe('house trim', () => {
     // crease, and every edge that only one face has but the walls' feet
     const shells = shellsOf(pitched);
     expect(shells.userData).toMatchObject({ [INK_FLAG]: true, [INK_NO_FEET_FLAG]: true });
-    const lines = inkEdges(shells.geometry, 34, { dropFeet: true }).getAttribute('position');
+    const lines = inkEdges(shells.geometry, 34).getAttribute('position');
     // the feet are gone: the lowest line left is no level one along the ground
     let lowest = Infinity;
     for (let i = 0; i < lines.count; i++) lowest = Math.min(lowest, lines.getY(i));
