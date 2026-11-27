@@ -2,7 +2,7 @@
 // Moved from src/game/main.ts (#177); main.ts makes the renderer, since it shows the fail screen when WebGL is missing, and passes it in.
 import * as THREE from 'three';
 import { parseCloudConfig } from '../../world/clouds';
-import { col, LEGACY_LIGHT } from '../../world/three-legacy';
+import { col, LEGACY_LIGHT, srgb } from '../../world/three-legacy';
 import { Sky } from './sky';
 
 // filmic tone mapping on an sRGB pipeline: colours below are written in sRGB and converted to linear with col()
@@ -46,7 +46,7 @@ export function gameLights(shadowHalfM: number) {
 /** The scene with its fog, lights and sky dome, and the camera; `search` is the page's query string, for the clouds. The time of day (render/daylight.ts) drives the lights, the sky and the fog. */
 export function buildStage(coarse: boolean, search: string) {
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(HORIZON);
+  scene.background = srgb(HORIZON);
   scene.fog = new THREE.FogExp2(HORIZON, FOG_PER_M);
   const camera = new THREE.PerspectiveCamera(58, 1, 0.8, 4200);
   const { hemi, sun } = gameLights(GAME_SHADOW_M);

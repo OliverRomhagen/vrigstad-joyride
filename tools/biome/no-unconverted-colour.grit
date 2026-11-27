@@ -1,0 +1,17 @@
+// Colour management is off (src/world/three-legacy.ts), so three uses a colour exactly as written, and the game's output
+// is sRGB: a material or vertex colour written in sRGB, as every colour in this code is, has to be converted to linear
+// by hand, or it comes out too light. Not in the map (biome.jsonc), whose output isn't converted, so its colours are
+// right as written. It happened twice in a day (#422, #598). So a colour made with a value goes through col()
+// (material and vertex colours) or srgb() (the fog, the clear colour, the sky, and colours for the page's CSS), which
+// say which it is; or converts on the spot. An empty `new THREE.Color()` is a scratch colour, set later, and passes.
+// Turning colour management on instead is #600.
+language js
+
+or {
+  `new THREE.Color($a)`,
+  `new THREE.Color($a, $b, $c)`
+} as $colour where {
+  $a <: not ., // an empty new THREE.Color() is a scratch colour
+  $colour <: not within `$_.convertSRGBToLinear()`,
+  register_diagnostic(span=$colour, message="Colour management is off: make this colour with col() (materials, vertex colours) or srgb() (fog, background, sky, CSS) from src/world/three-legacy.ts, or new THREE.Color(…).convertSRGBToLinear(). As written, three would use the sRGB value as linear, too light (#600).", severity="error")
+}
