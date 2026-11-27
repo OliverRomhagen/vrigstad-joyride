@@ -5,6 +5,7 @@ describe('newGameState', () => {
   it('starts before Start, on foot, with nothing taken and no timer running', () => {
     expect(newGameState()).toMatchObject({
       started: false,
+      paused: false,
       inCar: false,
       pcar: null,
       jumpQ: false,

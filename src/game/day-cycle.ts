@@ -3,6 +3,8 @@
 // Plain data and functions: src/game/render/daylight.ts turns a Sky into lights and sky colours.
 import { clamp } from '../world/math';
 import { type SunPosition, sunAt } from '../world/sun';
+import { arg, choice, command, described, either, group, num, optional } from './command-args';
+import type { Commands } from './commands';
 
 export const DAWN_H = 5,
   DUSK_H = 19; // local clock hours the day runs between
@@ -33,6 +35,25 @@ export interface Sky {
 
 export function makeClock(hour = START_H): DayClock {
   return { hour: clamp(Number.isFinite(hour) ? hour : START_H, DAWN_H, DUSK_H), night: 0 };
+}
+
+/** How the clock moves: whether it runs, and how many times faster than DAY_S. Apart from the clock, which is only the time. */
+export interface DayPace {
+  running: boolean;
+  speed: number;
+}
+const MIN_SPEED = 0.1,
+  MAX_SPEED = 200; // × the normal pace; at 200 a day and its night pass in under 4 s
+
+export function makePace(running = true): DayPace {
+  return { running, speed: 1 };
+}
+
+/** One frame of the clock at its pace. Returns whether the time moved, so the light is only worked out when it did. */
+export function stepClock(c: DayClock, pace: DayPace, dt: number): boolean {
+  if (!pace.running) return false;
+  tickClock(c, dt * pace.speed);
+  return true;
 }
 
 /** Advances the clock by dt real seconds. Time past dusk or past the skip carries on, so a long step lands where it should. */
@@ -98,4 +119,93 @@ export function skyAt(c: DayClock, out: Sky): Sky {
   out.warm = mix(a.warm, b.warm);
   out.light = mix(a.light, b.light) * (1 - NIGHT_DIM * mid);
   return out;
+}
+
+// ---------- the dev console's `time` (#575) ----------
+const NOON_H = 12;
+const NIGHT_MID = 0.5; // halfway through the skip, where the light is dimmest
+// the words `time` takes in place of an hour, and where each puts the clock
+const MOMENTS = { DAWN: 'dawn', NOON: 'noon', DUSK: 'dusk', NIGHT: 'night' } as const;
+type Moment = (typeof MOMENTS)[keyof typeof MOMENTS];
+const MOMENT_NAMES: readonly Moment[] = Object.values(MOMENTS);
+const MOMENT_AT: Readonly<Record<Moment, { hour: number; night: number }>> = {
+  [MOMENTS.DAWN]: { hour: DAWN_H, night: 0 },
+  [MOMENTS.NOON]: { hour: NOON_H, night: 0 },
+  [MOMENTS.DUSK]: { hour: DUSK_H, night: 0 },
+  [MOMENTS.NIGHT]: { hour: DUSK_H, night: NIGHT_MID },
+};
+
+/** An hour inside the day, as 16.5, 16,5 or 16:30. */
+function clockTime<N extends string>(name: N) {
+  const hour = num(name, { min: DAWN_H, max: DUSK_H }); // for its parsing and its range error
+  return arg(name, w => {
+    const clock = /^(\d{1,2}):([0-5]\d)$/.exec(w);
+    return hour.parse(clock ? String(Number(clock[1]) + Number(clock[2]) / 60) : w);
+  });
+}
+
+const twoDigits = (n: number) => String(n).padStart(2, '0');
+function clockLine(c: DayClock, pace: DayPace): string {
+  const mins = Math.floor(c.hour * 60 + 1e-6); // the minute it is, not the nearest: 18:59:59 isn't dusk yet
+  const at =
+    c.night > 0
+      ? `night, ${Math.round(c.night * 100)}% through`
+      : `${twoDigits(Math.floor(mins / 60))}:${twoDigits(mins % 60)}`;
+  // the speed shows while held too, so `time speed 20` on a held clock says it was taken
+  return `Time: ${at}, ${pace.running ? 'running' : 'held'} at ${pace.speed}×.`;
+}
+
+/**
+ * The dev console's `time`: `time 16:30` jumps to an hour of the day, `time night` to the middle of the night skip,
+ * `time hold` and `time run` stop and start the clock, and `time speed 20` runs it that many times faster. `applyLight` runs
+ * after a jump, so the light follows while the clock is held.
+ */
+export function registerDayCommands(
+  commands: Pick<Commands, 'register'>,
+  c: DayClock,
+  pace: DayPace,
+  applyLight: () => void,
+) {
+  const setRunning = (running: boolean) => {
+    pace.running = running;
+    return clockLine(c, pace);
+  };
+  commands.register(
+    'time',
+    group({
+      help: 'show or set the time of day, hold the clock, or speed it up',
+      details: `The night is a ${NIGHT_S} s skip from dusk to dawn: night jumps to its middle.`,
+      examples: ['time', 'time 16:30', 'time dusk', 'time hold', 'time speed 20'],
+      args: [
+        optional(
+          described(
+            either('when', clockTime('hour'), choice('moment', MOMENT_NAMES)),
+            `an hour from ${DAWN_H} to ${DUSK_H}, as 16.5 or 16:30, or ${MOMENT_NAMES.join(', ')}`,
+          ),
+        ),
+      ],
+      run: ({ when }) => {
+        if (when !== undefined) {
+          const at = typeof when === 'number' ? { hour: when, night: 0 } : MOMENT_AT[when];
+          c.hour = at.hour;
+          c.night = at.night;
+          applyLight();
+        }
+        return clockLine(c, pace);
+      },
+      subcommands: {
+        hold: command({ help: 'stop the clock where it is', args: [], run: () => setRunning(false) }),
+        run: command({ help: 'let the clock run again', args: [], run: () => setRunning(true) }),
+        speed: command({
+          help: 'run the clock this many times faster',
+          examples: ['time speed 20', 'time speed 1'],
+          args: [num('factor', { min: MIN_SPEED, max: MAX_SPEED })],
+          run: ({ factor }) => {
+            pace.speed = factor;
+            return clockLine(c, pace);
+          },
+        }),
+      },
+    }),
+  );
 }

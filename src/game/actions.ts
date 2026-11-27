@@ -205,7 +205,7 @@ export class Actions {
     c.slip = c.drift = c.boost = c.loose = c.thr = c.st = 0;
     game.pcar = c;
     game.inCar = true;
-    player.y = player.vy = 0;
+    player.y = player.vy = player.floor = 0;
     showPlayer(false);
     view.lookOff = 0;
     view.camYaw = c.h;

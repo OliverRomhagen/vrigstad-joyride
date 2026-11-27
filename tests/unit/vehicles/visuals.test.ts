@@ -64,6 +64,22 @@ test('cached geometry, queued paint, protected glass and owned material disposal
   expect(assets.definition(a)).toBeUndefined();
 });
 
+test('a respray in the driver’s view recolours its clipped material where it is, so the cut keeps following', async () => {
+  const assets = new VehicleVisuals(false),
+    c = car();
+  assets.attach(c, 'volvo240', c.fallback, '#abcdef');
+  assets.update(focus, 0.01);
+  await settle(assets, [c]);
+  const body = mesh(c.mesh, 'body'),
+    planes = [new THREE.Plane()],
+    clipped = Object.assign(body.material.clone(), { clippingPlanes: planes }); // as Cockpit.enter clips it
+  body.material = clipped;
+  assets.paint(c, '#992233');
+  expect(body.material).toBe(clipped);
+  expect(body.material.clippingPlanes).toBe(planes);
+  expect(body.material.color.equals(new THREE.Color('#992233').convertSRGBToLinear())).toBe(true);
+});
+
 test('wheel travel, reverse steering and teleport reset use rendered motion', async () => {
   const assets = new VehicleVisuals(false),
     c = car();
@@ -192,6 +208,20 @@ test('reparenting preserves inherited uniform wheel scale', async () => {
   const bounds = new THREE.Box3().setFromObject(c.mesh.children.find(node => node !== c.fallback)!);
   expect(bounds.min.distanceTo(expected.min)).toBeLessThan(1e-8);
   expect(bounds.max.distanceTo(expected.max)).toBeLessThan(1e-8);
+});
+
+test('a flat tyre is drawn squashed, still on the ground', async () => {
+  const assets = new VehicleVisuals(false),
+    c = { ...car(), flat: 1 }; // front right
+  assets.attach(c, 'volvo240', c.fallback);
+  assets.update(focus, 0.4);
+  await settle(assets, [c]);
+  assets.sync(c);
+  c.mesh.updateMatrixWorld(true);
+  const whole = new THREE.Box3().setFromObject(c.mesh.getObjectByName('wheel_fl')!),
+    flat = new THREE.Box3().setFromObject(c.mesh.getObjectByName('wheel_fr')!);
+  expect(flat.min.y).toBeCloseTo(whole.min.y, 2);
+  expect(flat.max.y - flat.min.y).toBeLessThan((whole.max.y - whole.min.y) * 0.8);
 });
 
 test('disposing an instance during loading cannot resurrect its visual', async () => {

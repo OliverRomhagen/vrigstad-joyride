@@ -2,6 +2,7 @@
 // Selling cars, repairs and paying off a star build on pay / earn. Nothing here draws: the HUD shows whatever the wallet holds.
 import { type Commands, parseKr } from './commands';
 import { DMG_MAX } from './health';
+import type { Upgrade } from './sim/upgrades';
 
 export const START_KR = 200; // what you have in your pocket at the start
 /** A trisslott at the kiosk, in kr. */
@@ -34,6 +35,10 @@ const SALE_MARKUP = 2.5; // Plåt-Pelle sells a car on his lot for this many tim
 // Plåt-Pelle mends a car on the workshop's lift for a share of what he pays for one whole, by how damaged it is
 const REPAIR_SHARE = 0.5; // what mending a wreck costs, as a share of the car's whole price
 export const REPAIR_MIN_KR = 50; // he picks up a spanner for no less
+export const TYRE_KR = 100; // and a flat tyre (fotanglar, in the pickadoll lab) costs this on top: cheap next to limping home on a rim
+// His upgrades on the lift, the same price for every car: cheaper than a car, dearer than a few trisslotter
+export const UPGRADE_KR: Readonly<Record<Upgrade, number>> = { engine: 600, springs: 400, body: 500 };
+export const RESPRAY_KR = 150;
 
 /** How many tickets the trisslott vinstplan counts its wins in. */
 export const TRISS_TICKETS = 100_000;
@@ -84,12 +89,13 @@ export function trissPrize(r: number): number {
   return 0;
 }
 
-/** What Skroten pays for a car of this type and model at this much damage, in round tens; null when it won't buy it. */
-export function carPrice(type: string, model: string | undefined, dmg: number): number | null {
+/** What Skroten pays for a car of this type and model at this much damage, less a tyre for a flat one, in round tens; never below scrap; null when it won't buy it. */
+export function carPrice(type: string, model: string | undefined, dmg: number, flat = false): number | null {
   const base = wholeKr(type, model);
   if (!base) return null;
-  const whole = 1 - Math.min(Math.max(dmg, 0), DMG_MAX) / DMG_MAX;
-  return Math.round((SCRAP_KR + (base - SCRAP_KR) * whole) / 10) * 10;
+  const whole = 1 - Math.min(Math.max(dmg, 0), DMG_MAX) / DMG_MAX,
+    kr = Math.round((SCRAP_KR + (base - SCRAP_KR) * whole) / 10) * 10;
+  return Math.max(SCRAP_KR, kr - (flat ? TYRE_KR : 0));
 }
 
 /** What Plåt-Pelle asks for a car of this type and model on Skroten's lot, in round hundreds; null for one he would never buy. */
@@ -98,13 +104,13 @@ export function salePrice(type: string, model: string | undefined): number | nul
   return base ? Math.round((base * SALE_MARKUP) / 100) * 100 : null;
 }
 
-/** What Plåt-Pelle asks to mend a car of this type and model with this much damage, in round tens: 0 for a car with none, null for a police car. */
-export function repairPrice(type: string, model: string | undefined, dmg: number): number | null {
+/** What Plåt-Pelle asks to mend a car of this type and model with this much damage, and a flat tyre if it has one, in round tens: 0 for a car with neither, null for a police car. */
+export function repairPrice(type: string, model: string | undefined, dmg: number, flat = false): number | null {
   const base = wholeKr(type, model);
   if (!base) return null;
   const share = Math.min(Math.max(dmg, 0), DMG_MAX) / DMG_MAX;
-  if (!share) return 0;
-  return Math.max(REPAIR_MIN_KR, Math.round((base * REPAIR_SHARE * share) / 10) * 10);
+  const dmgKr = share ? Math.max(REPAIR_MIN_KR, Math.round((base * REPAIR_SHARE * share) / 10) * 10) : 0;
+  return dmgKr + (flat ? TYRE_KR : 0);
 }
 
 // what Skroten pays for an undamaged car: by its model, else by its type; undefined for a police car
