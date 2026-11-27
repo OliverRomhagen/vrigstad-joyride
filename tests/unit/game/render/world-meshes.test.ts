@@ -274,3 +274,51 @@ describe('house trim', () => {
     }
   });
 });
+
+describe('board seams', () => {
+  // the seams' mesh of a world with this building alone, built with boardSeams, or undefined when it has none
+  const seamsOf = (b: Building) => {
+    const world = makeWorld({ b: [b] }),
+      scene = new THREE.Scene();
+    addBuildings(scene, world, new Heightfield(world), {
+      rnd: () => 0.5,
+      pick: a => a[0],
+      maxAnisotropy: 1,
+      boardSeams: true,
+    });
+    return scene.children.find(
+      o => o instanceof THREE.Mesh && o.renderOrder === -1 && (o.material as THREE.MeshBasicMaterial).map,
+    ) as THREE.Mesh | undefined;
+  };
+  // where each wall's boards start, in boards: one quad of six vertices per wall, its first vertex at the wall's start
+  const boardStarts = (mesh: THREE.Mesh) => {
+    const uv = mesh.geometry.getAttribute('uv'),
+      out: number[] = [];
+    for (let i = 0; i < uv.count; i += 6) out.push(Math.round(uv.getX(i) * 1000) / 1000);
+    return out.sort((p, q) => p - q);
+  };
+
+  it('keeps the boards running along a straight wall that the outline starts partway along', () => {
+    // a 10 m square that starts in the middle of its north wall: that wall comes in two halves, the last and the first
+    const mesh = seamsOf({ p: [5, 0, 10, 0, 10, 10, 0, 10, 0, 0], h: 5, k: BuildingKind.OTHER });
+    expect(mesh).toBeDefined();
+    // four corners start a run at 0; the north wall's second half goes on from the first's 25 boards (5 m / 0.2 m)
+    expect(boardStarts(mesh as THREE.Mesh)).toEqual([0, 0, 0, 0, 25]);
+  });
+
+  it('boards a house too small for trim, from its foot', () => {
+    const mesh = seamsOf({ p: square(0, 0, 5), h: 3, k: BuildingKind.OTHER }) as THREE.Mesh;
+    expect(mesh).toBeDefined();
+    expect(boardStarts(mesh)).toEqual([0, 0, 0, 0]);
+    mesh.geometry.computeBoundingBox();
+    expect(mesh.geometry.boundingBox?.min.y).toBeLessThanOrEqual(0);
+  });
+
+  it.each([
+    ['a hotel', { p: square(0, 0, 10), h: 5, k: BuildingKind.HOTEL }],
+    ['the church', { p: square(0, 0, 10), h: 5, k: BuildingKind.CHURCH }],
+    ['a house over 450 m²', { p: square(0, 0, 25), h: 8, k: BuildingKind.OTHER }],
+  ])('leaves %s without seams', (_, b) => {
+    expect(seamsOf(b)).toBeUndefined();
+  });
+});

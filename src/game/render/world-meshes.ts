@@ -3,7 +3,7 @@
 // Moved from src/game/main.ts (#177); main.ts calls these in the same order as before, since the house colours roll rnd().
 import * as THREE from 'three';
 import type { BridgeIndex } from '../../world/bridges';
-import { type BuildingShape, HOUSE_MAX_M2, HOUSE_MIN_M2 } from '../../world/buildings';
+import { type BuildingShape, HOUSE_MAX_M2, HOUSE_MIN_M2, type PointXZ } from '../../world/buildings';
 import type { WorldData } from '../../world/data';
 import type { Heightfield } from '../../world/heightfield';
 import { BridgeMesh } from '../../world/mesh/bridge-mesh';
@@ -296,9 +296,81 @@ export function addBuildings(
     // a trimmed gabled house's walls stop at its soffit, which closes them under the eave, so the roof's edge along the
     // walls is shared only with the eave, in its own plane, and the toon style draws no line 0.35 m in from the fascia's
     const wallDrop = (shape: BuildingShape) => (shape.building.g && trimmed(shape) ? FASCIA_M : 0);
+    // the timber houses, which get board seams in the toon style; the ones too small for trim too
+    const boarded = ({ building: b, area }: BuildingShape) =>
+      boardSeams && !b.k && area <= TIMBER_MAX_M2 && !isSkipped(b.p);
+    // where each wall's boards start (in boards), counted on from a corner, so a straight wall stays one run of boards
+    // where the outline splits it at the ridge (roofParts) or starts partway along it
+    const boardStarts = (ring: readonly PointXZ[]) => {
+      const m = ring.length,
+        starts = new Array<number>(m).fill(0),
+        walls = ring.map((a, i) => {
+          const d = ring[(i + 1) % m],
+            len = Math.hypot(d.x - a.x, d.z - a.z);
+          return len < 1e-3 ? null : { ux: (d.x - a.x) / len, uz: (d.z - a.z) / len, len };
+        });
+      type Wall = NonNullable<(typeof walls)[number]>;
+      const straightOn = (p: Wall, q: Wall) => p.ux * q.ux + p.uz * q.uz > 0.999;
+      const before = (i: number) => {
+        for (let k = 1; k < m; k++) {
+          const w = walls[(i - k + m) % m];
+          if (w) return w;
+        }
+        return null;
+      };
+      const first = Math.max(
+        0,
+        walls.findIndex((w, i) => {
+          const p = before(i);
+          return w && p && !straightOn(w, p);
+        }),
+      );
+      let run = 0,
+        prev: Wall | null = null;
+      for (let k = 0; k < m; k++) {
+        const i = (first + k) % m,
+          w = walls[i];
+        if (!w) continue;
+        starts[i] = prev && straightOn(w, prev) ? run : 0;
+        run = starts[i] + w.len / BOARD_M;
+        prev = w;
+      }
+      return starts;
+    };
+    // the seams on the wall from a to d (outward normal o, length len), just outside it, from y0 up to ta at a and td at d,
+    // between the wall and the windows' skin; u counts boards along the wall, from u0
+    const seamWall = (
+      a: PointXZ,
+      d: PointXZ,
+      ox: number,
+      oz: number,
+      len: number,
+      u0: number,
+      y0: number,
+      ta: number,
+      td: number,
+    ) => {
+      const u1 = u0 + len / BOARD_M;
+      quad(bp, a.x + ox * 0.02, a.z + oz * 0.02, d.x + ox * 0.02, d.z + oz * 0.02, y0, ta, y0, td);
+      bu.push(u0, 0, u1, 0, u1, 1, u0, 0, u1, 1, u0, 1);
+    };
+    // a house too small for trim has no plinth or eaves: its boards run from its foot to its roof
+    const untrimmedSeams = ({ ring, yAt, base, winding: wind }: BuildingShape) => {
+      const starts = boardStarts(ring);
+      for (let i = 0; i < ring.length; i++) {
+        const a = ring[i],
+          d = ring[(i + 1) % ring.length],
+          len = Math.hypot(d.x - a.x, d.z - a.z);
+        if (len < 1e-3) continue;
+        seamWall(a, d, (wind * (d.z - a.z)) / len, (-wind * (d.x - a.x)) / len, len, starts[i], base, yAt(a), yAt(d));
+      }
+    };
     const details = (shape: BuildingShape, emit: EmitVertex) => {
-      if (!trimmed(shape)) return;
-      const { building: b, area, ring, yAt, roofY, base, top, hi, winding: wind } = shape;
+      if (!trimmed(shape)) {
+        if (boarded(shape)) untrimmedSeams(shape);
+        return;
+      }
+      const { building: b, ring, yAt, roofY, base, top, hi, winding: wind } = shape;
       const m = ring.length,
         yb = hi + 0.2,
         yt = top - 0.25,
@@ -308,10 +380,7 @@ export function addBuildings(
         const l = Math.hypot(q.x - p.x, q.z - p.z) || 1;
         return [(wind * (q.z - p.z)) / l, (-wind * (q.x - p.x)) / l];
       };
-      let seamTo = -1, // the boards run on along a straight wall that roofParts split at the ridge: where the last seams ended
-        seamU = 0,
-        seamUx = 0,
-        seamUz = 0;
+      const seamStarts = boarded(shape) ? boardStarts(ring) : null;
       for (let i = 0; i < m; i++) {
         const a = ring[i],
           d = ring[(i + 1) % m],
@@ -354,17 +423,10 @@ export function addBuildings(
           py = hi + PLINTH_TOP_M,
           [p1x, p1z, p2x, p2z] = o(PLINTH_OUT_M),
           OUT: Corner = [ox, 0, oz];
-        if (boardSeams && !b.k && area <= TIMBER_MAX_M2) {
-          // between the wall and the windows' skin, from the plinth up to the eaves; u counts boards along the wall
-          const under = b.g ? FASCIA_M : 0.22,
-            u0 = seamTo === i && ux * seamUx + uz * seamUz > 0.999 ? seamU : 0,
-            u1 = u0 + len / BOARD_M;
-          quad(bp, ...o(0.02, false), py, ya - under, py, yd - under);
-          bu.push(u0, 0, u1, 0, u1, 1, u0, 0, u1, 1, u0, 1);
-          seamTo = i + 1;
-          seamU = u1;
-          seamUx = ux;
-          seamUz = uz;
+        if (seamStarts) {
+          // from the plinth up to the soffit or the flat roof's board, or the roof itself where a gabled wall has no eave
+          const under = !b.g ? 0.22 : forwards(EAVE_M) ? FASCIA_M : 0;
+          seamWall(a, d, ox, oz, len, seamStarts[i], py, ya - under, yd - under);
         }
         face(emit, PLINTH, OUT, [p1x, base, p1z], [p2x, base, p2z], [p2x, py, p2z], [p1x, py, p1z]);
         face(emit, PLINTH, UP, [a.x, py, a.z], [d.x, py, d.z], [p2x, py, p2z], [p1x, py, p1z]);
