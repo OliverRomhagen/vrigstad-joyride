@@ -1,6 +1,7 @@
 <!-- The getaway on the marketing page: the canvas, the HUD over it, and the start and end cards. The chase itself is in
      getaway.ts; this only shows what it writes into `hud`. -->
 <script lang="ts">
+import { MAX_STARS } from '#game/police';
 import { GAME_URL } from '#lib/site';
 import type { WorldData } from '#world/data';
 import { CAR_NAME, createGetaway, type GetawayHud } from './getaway';
@@ -46,9 +47,9 @@ const focus = (el: HTMLElement) => el.focus({ preventScroll: true });
       <div
         class={['plate', 'stars', { evading: hud.evading }]}
         role="img"
-        aria-label="Wanted level, {hud.stars} of 3 stars"
+        aria-label="Wanted level, {hud.stars} of {MAX_STARS} stars"
       >
-        <b>{'★'.repeat(hud.stars)}</b>{'☆'.repeat(3 - hud.stars)}
+        <b>{'★'.repeat(hud.stars)}</b>{'☆'.repeat(MAX_STARS - hud.stars)}
       </div>
       <div class="time">{hud.time}</div>
     </div>

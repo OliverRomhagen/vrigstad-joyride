@@ -1,13 +1,14 @@
 // The marketing page's getaway: a small top-down chase on the real map. It reads the same processed map data as the game,
 // and borrows the game's Volvo numbers, evade rule and street lookup, but none of its driving: this is a toy, not the
 // simulation. Browser only: it paints into a canvas and reads the keyboard and the pointer.
-import { EVADE_DIST_M, EVADE_S } from '#game/police';
+import { EVADE_S } from '#game/police';
 import { VEHICLE_SPECS } from '#game/sim/vehicle-spec';
 import { ROAD_WIDTH_M as ROAD_W, type WorldData } from '#world/data';
 import { clamp } from '#world/math';
 import { segmentDistance } from '#world/polygon';
 import { makeRnd } from '#world/random';
 import { RoadNetwork } from '#world/roads';
+import { type ChaseTimers, stepChase } from './chase';
 
 /** What the page shows around the canvas. The getaway writes it; the page only reads it. */
 export interface GetawayHud {
@@ -31,11 +32,25 @@ const MASK_PX_PER_M = 0.5; // resolution of the road/building lookup
 const ZOOM_PX_PER_M = 5; // CSS pixels per metre on screen (less on phones)
 const CAR_LEN_M = 4.6,
   CAR_W_M = 1.9;
+// the player's car: the Volvo's own top speed and acceleration, with this toy's own feel on top
+const STEER_RAD_S = 2.6; // how fast full lock turns the car at its best grip
+const BRAKE_SHARE = 1.8; // braking and reversing, as a share of the acceleration
+const REVERSE_SHARE = 0.3; // top speed backwards, as a share of forwards
+const COAST_DRAG_PER_S = 1.2; // the share of its speed the car loses each second off the throttle
+const BOG_DOWN_MS2 = 20; // how fast a car over the off-road limit slows to it
+const GRIP_FULL_MS = 5; // below this the steering fades towards a standstill
+const GRIP_HALF_MS = 30; // the steering halves again at this speed, so a fast car doesn't turn on a coin
 const POLICE_MAX_MS = 35; // a little slower than a Volvo flat out, so a clean line gets away
+const POLICE_ACC_MS2 = 9;
+const POLICE_LEAD_MAX_S = 1.2; // police aim this far ahead of you, in seconds of your speed, at most
+const POLICE_LEAD_PER_M = 1 / 40; // and this much lead per metre of distance, so a near one goes for you, not ahead
+const POLICE_PROBE_M = 9; // how far ahead the police look for a house in the way
+const POLICE_SPAWN_SPEED_MS = 10;
+const SPAWN_TRIES = 400; // tries at a spawn spot, the first SPAWN_ROAD_TRIES on a road only
+const SPAWN_ROAD_TRIES = 200;
+const SPAWN_EDGE_M = 20; // police don't spawn this close to the map's edge
 const POLICE_OFFROAD = 0.6;
 const POLICE_TURN_RAD_S = 1.6;
-const CATCH_DIST_M = 4.5;
-const STAR_UP_S = 12; // a new star (and police car) every this many seconds while they can see you
 const SPAWN_DIST_M = [110, 160];
 const STREET_REACH_M = 20; // the street sign names the nearest named road this close
 const TORGET = { x: 0, z: 0 };
@@ -249,12 +264,11 @@ export function createGetaway(canvas: HTMLCanvasElement, D: WorldData, hud: Geta
 
   const player: Mover = { x: TORGET.x, z: TORGET.z, heading: -0.6, speed: 0 };
   const police: Mover[] = [];
+  const chase: ChaseTimers = { evadeS: 0, starS: 0 }; // the rules in chase.ts
   const keys = new Set<string>();
   let pointer: { x: number; y: number } | null = null; // CSS px inside the canvas while held
   let running = false,
     visible = true,
-    starTimer = 0,
-    evadeTimer = 0,
     elapsed = 0,
     streetTimer = 0,
     lastFrame = 0,
@@ -276,13 +290,18 @@ export function createGetaway(canvas: HTMLCanvasElement, D: WorldData, hud: Geta
 
   // on a road at the spawn distance if one is there, else anywhere outside a house; false when not even that (then no car)
   function spawnPolice() {
-    for (let tries = 0; tries < 400; tries++) {
+    for (let tries = 0; tries < SPAWN_TRIES; tries++) {
       const a = rnd() * Math.PI * 2;
       const d = SPAWN_DIST_M[0] + rnd() * (SPAWN_DIST_M[1] - SPAWN_DIST_M[0]);
       const x = player.x + Math.cos(a) * d,
         z = player.z + Math.sin(a) * d;
-      if (Math.abs(x) < HALF - 20 && Math.abs(z) < HALF - 20 && (tries >= 200 || onRoad(x, z)) && !inBuilding(x, z)) {
-        police.push({ x, z, heading: Math.atan2(player.z - z, player.x - x), speed: 10 });
+      if (
+        Math.abs(x) < HALF - SPAWN_EDGE_M &&
+        Math.abs(z) < HALF - SPAWN_EDGE_M &&
+        (tries >= SPAWN_ROAD_TRIES || onRoad(x, z)) &&
+        !inBuilding(x, z)
+      ) {
+        police.push({ x, z, heading: Math.atan2(player.z - z, player.x - x), speed: POLICE_SPAWN_SPEED_MS });
         return true;
       }
     }
@@ -297,7 +316,7 @@ export function createGetaway(canvas: HTMLCanvasElement, D: WorldData, hud: Geta
   function start() {
     Object.assign(player, { x: TORGET.x, z: TORGET.z, heading: -0.6, speed: 0 });
     police.length = 0;
-    starTimer = evadeTimer = elapsed = streetTimer = 0;
+    chase.evadeS = chase.starS = elapsed = streetTimer = 0;
     setStars(1);
     hud.phase = 'running';
     hud.evading = false;
@@ -352,32 +371,32 @@ export function createGetaway(canvas: HTMLCanvasElement, D: WorldData, hud: Geta
     }
     const max = VOLVO.max * (onRoad(player.x, player.z) ? 1 : VOLVO.off);
     if (throttle > 0) player.speed = Math.min(max, player.speed + VOLVO.acc * dt);
-    else if (throttle < 0) player.speed = Math.max(-max * 0.3, player.speed - VOLVO.acc * 1.8 * dt);
-    else player.speed *= Math.max(0, 1 - 1.2 * dt);
-    if (player.speed > max) player.speed = Math.max(max, player.speed - 20 * dt); // left the road: bog down
-    const grip = Math.min(1, Math.abs(player.speed) / 5) / (1 + Math.abs(player.speed) / 30);
-    player.heading += steer * 2.6 * grip * dt * Math.sign(player.speed || 1);
+    else if (throttle < 0) player.speed = Math.max(-max * REVERSE_SHARE, player.speed - VOLVO.acc * BRAKE_SHARE * dt);
+    else player.speed *= Math.max(0, 1 - COAST_DRAG_PER_S * dt);
+    if (player.speed > max) player.speed = Math.max(max, player.speed - BOG_DOWN_MS2 * dt); // left the road: bog down
+    const grip = Math.min(1, Math.abs(player.speed) / GRIP_FULL_MS) / (1 + Math.abs(player.speed) / GRIP_HALF_MS);
+    player.heading += steer * STEER_RAD_S * grip * dt * Math.sign(player.speed || 1);
     move(player, dt);
   }
 
   function updatePolice(p: Mover, dt: number) {
     // aim a little ahead of the player, then take the first heading that isn't straight into a house
-    const lead = Math.min(1.2, Math.hypot(player.x - p.x, player.z - p.z) / 40);
+    const lead = Math.min(POLICE_LEAD_MAX_S, Math.hypot(player.x - p.x, player.z - p.z) * POLICE_LEAD_PER_M);
     const tx = player.x + Math.cos(player.heading) * player.speed * lead,
       tz = player.z + Math.sin(player.heading) * player.speed * lead;
     const want = Math.atan2(tz - p.z, tx - p.x);
     let aim = want;
     for (const off of PROBES) {
       const a = want + off;
-      if (!inBuilding(p.x + Math.cos(a) * 9, p.z + Math.sin(a) * 9)) {
+      if (!inBuilding(p.x + Math.cos(a) * POLICE_PROBE_M, p.z + Math.sin(a) * POLICE_PROBE_M)) {
         aim = a;
         break;
       }
     }
     p.heading = turnToward(p.heading, aim, POLICE_TURN_RAD_S * dt);
     const max = POLICE_MAX_MS * (onRoad(p.x, p.z) ? 1 : POLICE_OFFROAD);
-    p.speed = Math.min(max, p.speed + 9 * dt);
-    if (p.speed > max) p.speed = Math.max(max, p.speed - 20 * dt);
+    p.speed = Math.min(max, p.speed + POLICE_ACC_MS2 * dt);
+    if (p.speed > max) p.speed = Math.max(max, p.speed - BOG_DOWN_MS2 * dt);
     move(p, dt);
   }
 
@@ -393,29 +412,16 @@ export function createGetaway(canvas: HTMLCanvasElement, D: WorldData, hud: Geta
         updatePolice(p, dt);
         nearest = Math.min(nearest, Math.hypot(p.x - player.x, p.z - player.z));
       }
-      if (nearest < CATCH_DIST_M) {
+      const step = stepChase(chase, nearest, hud.stars, dt);
+      if (step === 'caught' || step === 'free') {
         draw();
-        end(true);
+        end(step === 'caught');
         return;
       }
-      if (nearest > EVADE_DIST_M) {
-        evadeTimer += dt;
-        if (evadeTimer > EVADE_S) {
-          draw();
-          end(false);
-          return;
-        }
-      } else {
-        evadeTimer = 0;
-        starTimer += dt;
-        if (starTimer > STAR_UP_S && hud.stars < 3) {
-          starTimer = 0;
-          setStars(hud.stars + 1);
-        }
-      }
-      hud.evading = evadeTimer > 0;
+      if (step === 'star') setStars(hud.stars + 1);
+      hud.evading = chase.evadeS > 0;
       hud.kmh = Math.round(Math.abs(player.speed) * 3.6);
-      hud.time = evadeTimer > 0 ? `Out of sight ${Math.ceil(EVADE_S - evadeTimer)} s` : formatTime(elapsed);
+      hud.time = chase.evadeS > 0 ? `Out of sight ${Math.ceil(EVADE_S - chase.evadeS)} s` : formatTime(elapsed);
       streetTimer -= dt;
       if (streetTimer < 0) {
         streetTimer = 0.3;
