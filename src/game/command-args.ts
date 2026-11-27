@@ -122,7 +122,9 @@ export function either<N extends string, const A extends readonly [AnyArg, AnyAr
   const flagged = kinds.find(a => a.optional || a.rest);
   if (flagged)
     throw new Error(
-      `${flagged.name}: an either's kinds can't be optional or take the rest; wrap the whole either in optional()`,
+      flagged.rest
+        ? `${flagged.name}: an either's kinds can't take the rest`
+        : `${flagged.name}: an either's kinds can't be optional; wrap the whole either in optional()`,
     );
   const lists = kinds.flatMap(a => (a.choices ? [a.choices.bind(a)] : []));
   // the usage line names each kind, or lists its words when they are few: the console on a phone has no Tab

@@ -181,7 +181,8 @@ commands.register('go', command({
   night, noon.`). In the usage line it lists a kind's words when they are few, and names the others
   (`[hour|dawn|noon|dusk|night]`), since the console on a phone has no Tab. That line is made when the command is
   built, so a list read from a function shows as it was then, or by its name if it wasn't ready. `optional()` goes
-  round the whole `either`, not one of its kinds, and a `rest()` can't be one of them.
+  round the whole `either`, not one of its kinds, and a `rest()` can't be one of them. A required `either` left out
+  says `An argument is missing.`, since its usage line shows its kinds, not its name.
 - **`arg(name, parse, choices?)`** builds an argument of a type of your own, beside the code that owns the value: the
   clock time `16:30` lives in `day-cycle.ts`, not in the console. `parse` throws a `UsageError` that starts with the
   name; everything else (usage, Tab, `optional()`, `described()`) works as for the built-in ones.

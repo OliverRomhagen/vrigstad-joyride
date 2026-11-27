@@ -418,10 +418,10 @@ describe('either', () => {
   });
 
   it('refuses a kind that is optional or takes the rest: those go round the whole either', () => {
-    expect(() => either('x', int('n'), optional(word('w')))).toThrow("w: an either's kinds can't be optional");
-    expect(() => either('x', rest('words'), int('n'))).toThrow(
-      "words: an either's kinds can't be optional or take the rest",
+    expect(() => either('x', int('n'), optional(word('w')))).toThrow(
+      "w: an either's kinds can't be optional; wrap the whole either in optional()",
     );
+    expect(() => either('x', rest('words'), int('n'))).toThrow(/^words: an either's kinds can't take the rest$/);
     expect(optional(either('x', int('n'), word('w'))).optional).toBe(true);
   });
 
