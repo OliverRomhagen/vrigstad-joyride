@@ -48,6 +48,7 @@ function skroten(o: { car?: Partial<Car>; model?: string; stars?: number; kr?: n
     liftAt: LIFT,
     modelId: () => o.model,
     carName: () => 'Volvo 240',
+    warmPaint: c => void calls.push('warm ' + c.type),
     wallet,
     sellCar: c => {
       calls.push('sold ' + c.type);
@@ -380,6 +381,7 @@ describe("Plåt-Pelle's limited paint jobs", () => {
   it('sprays one of his special paints, which no car comes in', () => {
     const t = onLift(1000);
     t.choose('special');
+    expect(t.calls).toContain('warm volvo'); // the drawing gets ready while he offers them
     expect(t.menu()!.kind).toBe('skrot-special');
     expect(t.menu()!.items.map(([, label]) => label.replace(/<[^>]+>/g, ''))).toEqual([
       ...WORKSHOP_PAINTS.map(p => p.name),

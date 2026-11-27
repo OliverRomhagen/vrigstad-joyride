@@ -67,6 +67,7 @@ import { Ragdolls } from './ragdolls';
 import { RagdollMeshes } from './render/ragdoll-meshes';
 import { PlaceMeshes } from './render/places';
 import { GroundTexture } from './render/ground-texture';
+import { FlakeWarmer } from './render/paint-flakes';
 import { BAR_BLUE, BAR_RED, barGeo, barMat, blob, blobTex, boxGeo, carGeo, carMatFor, GLASS, geoCache, PROFILES, paintMat, personParts, TRACTOR_CAB } from './render/models';
 import { buildStage, SUN_DIR, setUpRenderer } from './render/stage';
 import { addBridges, addBuildings, addRoadRibbons, addStreetscapeMeshes, addTerrain, addTrees, addWater } from './render/world-meshes';
@@ -191,6 +192,7 @@ ground.bakeTreeShadows(allTreeSpots, blobTex);
 const bodyMotion = new BodyMotion();
 const vehicleVisuals = new VehicleVisuals(coarse, (c, body) => bodyMotion.addNode(c as RenderedCar, body));
 const carMeshes = new CarMeshes({ scene, groundAt, normalAt, carGeo, carMat: carMatFor, blob, barGeo, barMat, vehicleVisuals, bodyMotion });
+const flakeWarmer = new FlakeWarmer({ renderer, scene, camera, standInGeo: carGeo, standInMat: carMatFor });   // compiles the metallic paint's shader while Skroten offers it
 const placeCar = carMeshes.placeCar.bind(carMeshes);
 // every car has its meshes: addCar attaches them before the Fleet holds it, so the sim's Car is a RenderedCar here
 const meshed = (c: Car) => c as RenderedCar;
@@ -320,7 +322,7 @@ const { openKiosk, petCat, openOwnCat } = kioskCatMenus;
 // Skroten, which buys the car you drive in (src/game/skroten.ts); actions is declared further down
 const atSkroten = () => !!(game.inCar && game.pcar && places.skrotenAt(game.pcar.x, game.pcar.z));
 const skroten = new Skroten({ game, player, get stars() { return wanted.stars; }, openMenu, toast, atSkroten, liftAt: yard.workshop?.bay ?? null,
-  modelId: c => vehicleVisuals.definition(meshed(c))?.id, carName, wallet,
+  modelId: c => vehicleVisuals.definition(meshed(c))?.id, carName, wallet, warmPaint: c => flakeWarmer.warm(c.type, meshed(c).mesh),
   sellCar: c => { colony.hopOffCar(meshed(c)); actions.getOut(); removeCar(c); fleet.replaceSold(c, player); }, getOut: () => actions.getOut() });
 function nearPlace() { return game.inCar ? null : places.nearest(player.x, player.z); }
 function enterHouse(p: Place) { if (places.enter(p, player)) player.mesh.visible = false; }

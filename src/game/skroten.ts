@@ -76,6 +76,7 @@ export interface SkrotenDeps {
   liftAt: { readonly x: number; readonly z: number } | null; // the middle of the workshop's lift bay; null with no workshop
   modelId(c: Car): string | undefined; // the model the car wears, if it has one
   carName(c: Car): string;
+  warmPaint(c: Car): void; // gets the drawing ready for his special paints on c, while he offers them, so buying one doesn't stall
   wallet: Wallet; // the HUD shows whatever it holds
   sellCar(c: Car): void; // puts you on foot beside the car, and takes the car away
   getOut(): void; // puts you on foot beside the car you drive
@@ -228,6 +229,7 @@ export class Skroten {
 
   // his special paints, which only this lift sells
   private openSpecialPaint(c: Car) {
+    this.g.warmPaint(c);
     this.openChoices(
       c,
       'skrot-special',

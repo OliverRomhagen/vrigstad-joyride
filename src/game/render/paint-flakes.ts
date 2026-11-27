@@ -2,6 +2,8 @@
 // angle and glint as the car or the camera moves. The car models have no UVs, so the flakes are cells of the body's own space,
 // worked out in the paint's shader: a patch on the model's material, which VehicleVisuals.paint puts on and takes off.
 import * as THREE from 'three';
+import { WORKSHOP_PAINTS } from '../sim/paint-jobs';
+import { isPaintedPanel } from './vehicle-registry';
 
 /** A metallic paint's finish: the scene has no environment map, so a real metal has nothing to reflect and draws black; a
  * little metalness and a low roughness give the sheen, from the sun's highlight (as #450 found). */
@@ -55,4 +57,85 @@ export function setFlakes(material: THREE.MeshStandardMaterial, on: boolean) {
   material.onBeforeCompile = on ? patchFlakes : THREE.Material.prototype.onBeforeCompile;
   material.customProgramCacheKey = on ? flakesKey : THREE.Material.prototype.customProgramCacheKey;
   material.needsUpdate = true;
+}
+
+/** What the warm-up needs: the renderer that compiles, and the scene and camera it draws with, so the lights and fog match. */
+export interface FlakeWarmerDeps {
+  renderer: Pick<THREE.WebGLRenderer, 'compileAsync'>;
+  scene: THREE.Scene;
+  camera: THREE.Camera;
+  standInGeo(type: string, paint: string): THREE.BufferGeometry; // the stand-in's body in that paint (models.ts carGeo)
+  standInMat(paint: string): THREE.Material | THREE.Material[]; // and its materials (models.ts carMatFor)
+}
+
+/**
+ * Compiles the flakes' shader before a metallic paint is first drawn, when his special paints are offered: compiled on the first
+ * draw, it stalls that frame. A flaked copy of the car's own body material, and the stand-in's metallic material, compile in
+ * the background; one copy of each kind is kept, as three frees a compiled program once no material uses it.
+ */
+export class FlakeWarmer {
+  private readonly g: FlakeWarmerDeps;
+  private readonly kept = new Map<string, THREE.Material>(); // by what decides the program: the material's type, maps and the geometry's attributes
+  private standInWarm = false; // every stand-in shares one metallic material and the same attributes: one program
+
+  constructor(g: FlakeWarmerDeps) {
+    this.g = g;
+  }
+
+  /** Compiles what a metallic paint on this car would draw with: `body` is the car's mesh, with its model's body if loaded. */
+  warm(type: string, body: THREE.Object3D) {
+    const meshes: THREE.Mesh[] = [];
+    body.traverse(node => {
+      if (!(node instanceof THREE.Mesh) || !isPaintedPanel(node.name)) return;
+      for (const m of [node.material].flat()) {
+        if (
+          !(m instanceof THREE.MeshStandardMaterial) ||
+          m.onBeforeCompile !== THREE.Material.prototype.onBeforeCompile
+        )
+          continue;
+        const { attributes } = node.geometry,
+          maps = [
+            m.map,
+            m.normalMap,
+            m.roughnessMap,
+            m.metalnessMap,
+            m.aoMap,
+            m.emissiveMap,
+            m.alphaMap,
+            m.bumpMap,
+            m.lightMap,
+          ],
+          key = [
+            m.type,
+            m.vertexColors,
+            m.alphaTest > 0,
+            m.flatShading,
+            m.transparent,
+            m.side,
+            ...maps.map(Boolean),
+            attributes.color?.itemSize ?? 0,
+            !!attributes.uv,
+            !!attributes.tangent,
+          ].join();
+        if (this.kept.has(key)) continue;
+        const copy = m.clone();
+        setFlakes(copy, true);
+        this.kept.set(key, copy);
+        meshes.push(new THREE.Mesh(node.geometry, copy));
+      }
+    });
+    if (!this.standInWarm)
+      for (const { paint, metallic } of WORKSHOP_PAINTS)
+        if (metallic) meshes.push(new THREE.Mesh(this.g.standInGeo(type, paint), this.g.standInMat(paint)));
+    this.standInWarm = true;
+    if (!meshes.length) return;
+    const group = new THREE.Group();
+    group.add(...meshes);
+    const failed = (err: unknown) => console.warn('Paint flakes: warm-up failed', err); // the paint still compiles when first drawn
+    try {
+      this.g.renderer.compileAsync(group, this.g.camera, this.g.scene).catch(failed);
+    } catch (err) {
+      failed(err); // compileAsync starts compiling before it hands back its promise: a lost context throws here, not in it
+    }
+  }
 }
