@@ -5,12 +5,16 @@ import {
   type CarMode,
   DRIVING,
   Fleet,
+  NO_FLAT,
   newCar,
+  registerFlatTyreCommand,
   type TrafficCar,
   TURBO_AT,
+  WHEEL,
 } from '../../../src/game/cars';
 import { Commands } from '../../../src/game/commands';
 import { CRASH_COOL_S, DMG_MAX } from '../../../src/game/health';
+import { WHEEL_NODES } from '../../../src/game/render/vehicle-registry';
 import { type CarType, specFor } from '../../../src/game/sim/vehicle-spec';
 import { BuildingIndex } from '../../../src/world/buildings';
 import { BuildingKind, ROAD_WIDTH_M, RoadClass, type WorldData } from '../../../src/world/data';
@@ -184,19 +188,29 @@ describe('drive', () => {
     expect(c.thr).toBe(0);
   });
 
-  it('with a flat tyre, pulls to its side and is slower', () => {
+  it('with a flat tyre on any wheel, pulls to its side and is slower', () => {
     const { cars } = fleet();
-    const whole = car('volvo', 0, 800, 0, 'player'),
-      right = car('volvo', 0, 800, 0, 'player'),
-      left = car('volvo', 0, 800, 0, 'player');
-    right.flat = 1; // front right
-    left.flat = 2; // rear left
-    for (const c of [whole, right, left]) driveFor(cars, c, 10, 1, 0, false);
+    const whole = car('volvo', 0, 800, 0, 'player');
+    driveFor(cars, whole, 10, 1, 0, false);
     expect(whole.h).toBe(0);
-    expect(right.x).toBeGreaterThan(whole.x + 1); // drifted east, to the right of north
-    expect(left.x).toBeLessThan(whole.x - 1);
-    expect(Math.abs(right.v)).toBeLessThanOrEqual(whole.T.max * DRIVING.FLAT_TOP);
     expect(whole.v).toBeGreaterThan(whole.T.max * DRIVING.FLAT_TOP);
+    for (const wheel of Object.values(WHEEL)) {
+      const c = car('volvo', 0, 800, 0, 'player');
+      c.flat = wheel;
+      driveFor(cars, c, 10, 1, 0, false);
+      const right = wheel === WHEEL.FRONT_RIGHT || wheel === WHEEL.REAR_RIGHT;
+      if (right)
+        expect(c.x).toBeGreaterThan(whole.x + 1); // drifted east, to the right of north
+      else expect(c.x).toBeLessThan(whole.x - 1);
+      expect(Math.abs(c.v)).toBeLessThanOrEqual(c.T.max * DRIVING.FLAT_TOP);
+    }
+  });
+
+  it('names its wheels in the order of the models’ wheel nodes', () => {
+    expect(WHEEL_NODES.indexOf('wheel_fl')).toBe(WHEEL.FRONT_LEFT);
+    expect(WHEEL_NODES.indexOf('wheel_fr')).toBe(WHEEL.FRONT_RIGHT);
+    expect(WHEEL_NODES.indexOf('wheel_rl')).toBe(WHEEL.REAR_LEFT);
+    expect(WHEEL_NODES.indexOf('wheel_rr')).toBe(WHEEL.REAR_RIGHT);
   });
 
   it('crashes into a car it hits and pushes a parked one away', () => {
@@ -437,5 +451,20 @@ describe("Skroten's lot", () => {
     const sold = cars.cars.pop()!;
     cars.replaceSold(sold, { x: 0, z: 0 });
     expect(cars.cars.length).toBe(1);
+  });
+});
+
+describe('the flat command', () => {
+  it('bursts a tyre of the car you drive, mends it with off, and asks you to get in a car on foot', () => {
+    const c = new Commands(),
+      driven = car('volvo', 0, 800, 0, 'player');
+    registerFlatTyreCommand(c, () => driven);
+    expect(c.run('flat rear-left')).toBe('Flat tyre: rear-left.');
+    expect(driven.flat).toBe(WHEEL.REAR_LEFT);
+    expect(c.run('flat off')).toBe('Tyres whole.');
+    expect(driven.flat).toBe(NO_FLAT);
+    const onFoot = new Commands();
+    registerFlatTyreCommand(onFoot, () => null);
+    expect(onFoot.run('flat front-left')).toBe('Get in a car first.');
   });
 });

@@ -1,6 +1,7 @@
 // Fotanglar (#17, lab: pickadoll): spikes that lie where they were thrown for a while. This file says where one comes
 // to lie and who is on one each step; what that does to them (a limp, a puncture, a hurt foot) is decided by the page
 // module, ../pickadoll.ts. Plain data, metres and seconds.
+import { WHEEL, type Wheel } from '../cars';
 import type { ShotHit } from './shots';
 
 export const SPIKES_MAX = 140, // on the ground at once; the oldest go first
@@ -30,7 +31,7 @@ export interface SpikeWorld {
 /** What a step found. The lists are indices in the world's, and one can be named twice, by two spikes. */
 export interface SpikeStep {
   cars: number[]; // drove over one: it is used up
-  wheels: number[]; // for each of those, the wheel that went over it: 0–3 front left, front right, rear left, rear right (Car.flat)
+  wheels: Wheel[]; // for each of those, the wheel that went over it (Car.flat)
   people: number[]; // stand on one
   walker: boolean; // you stand on one
   changed: boolean; // spikes were used up or ran out of time: draw the list again
@@ -39,12 +40,13 @@ export interface SpikeStep {
 export const newSpikeStep = (): SpikeStep => ({ cars: [], wheels: [], people: [], walker: false, changed: false });
 
 /** The wheel of a car nearest a point: front or rear by which side of the middle it is, left or right likewise. */
-export function wheelOver(c: { x: number; z: number; h: number }, p: { x: number; z: number }) {
+export function wheelOver(c: { x: number; z: number; h: number }, p: { x: number; z: number }): Wheel {
   const dx = p.x - c.x,
     dz = p.z - c.z,
     front = dx * Math.sin(c.h) - dz * Math.cos(c.h) >= 0,
     right = dx * Math.cos(c.h) + dz * Math.sin(c.h) >= 0;
-  return (front ? 0 : 2) + (right ? 1 : 0);
+  if (front) return right ? WHEEL.FRONT_RIGHT : WHEEL.FRONT_LEFT;
+  return right ? WHEEL.REAR_RIGHT : WHEEL.REAR_LEFT;
 }
 
 /**

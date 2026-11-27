@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Car } from '../../../src/game/cars';
+import { type Car, NO_FLAT, WHEEL } from '../../../src/game/cars';
 import { fmtKr, TYRE_KR } from '../../../src/game/economy';
 import type { MenuItem } from '../../../src/game/pets';
 import { carsForSale, OWNER_LINES, Skroten, type SkrotenDeps } from '../../../src/game/skroten';
@@ -18,7 +18,7 @@ function skroten(o: { car?: Partial<Car>; model?: string; stars?: number; kr?: n
     pick: (k: string) => void;
     stay?: (() => boolean) | null;
   } | null = null;
-  const car = { type: 'volvo', dmg: 0, x: 0, z: 0, v: 0, ...o.car } as Car;
+  const car = { type: 'volvo', dmg: 0, flat: NO_FLAT, x: 0, z: 0, v: 0, ...o.car } as Car;
   const game = { ...newGameState(), inCar: true, pcar: car as Car | null },
     wallet = { kr: o.kr ?? 0 };
   let onRing = true;
@@ -69,6 +69,14 @@ describe('Skroten', () => {
     expect(t.wallet.kr).toBe(450);
     expect(t.calls[0]).toBe('sold volvo');
     expect(t.game.inCar).toBe(false);
+  });
+
+  it('offers a tyre less for a car with a flat', () => {
+    const t = skroten({ model: 'volvo240', car: { dmg: 50, flat: WHEEL.REAR_LEFT } });
+    t.s.open();
+    expect(t.menu()!.title).toContain(fmtKr(450 - TYRE_KR));
+    t.choose('sell');
+    expect(t.wallet.kr).toBe(450 - TYRE_KR);
   });
 
   it('keeps the car when you say no', () => {
@@ -180,14 +188,15 @@ describe('Plåt-Pelle mends the car on the lift', () => {
     expect(t.s.open()).toBe(true);
     expect(t.menu()!.title).toContain('däck');
     t.choose('fix');
-    expect(t.g.game.pcar!.flat).toBe(-1);
+    expect(t.g.game.pcar!.flat).toBe(NO_FLAT);
     expect(t.wallet.kr).toBe(500 - TYRE_KR);
     const both = skroten({ model: 'volvo240', car: { dmg: 50, flat: 2 }, kr: 1000 });
     both.driveOntoLift();
     expect(both.s.repairKr()).toBe(200 + TYRE_KR);
     both.s.open();
+    expect(both.menu()!.title).toContain('tilltufsad, å punka på köpet');
     both.choose('fix');
-    expect(both.g.game.pcar).toMatchObject({ dmg: 0, flat: -1 });
+    expect(both.g.game.pcar).toMatchObject({ dmg: 0, flat: NO_FLAT });
     expect(both.wallet.kr).toBe(1000 - 200 - TYRE_KR);
   });
 
@@ -276,7 +285,7 @@ describe('Skroten sells the cars on its lot', () => {
   // you stand on foot `away` m from a Volvo on the lot that costs 2 000, with `kr` in your pocket
   function lot(o: { kr?: number; stars?: number; away?: number } = {}) {
     const t = skroten({ kr: o.kr ?? 5000, stars: o.stars }),
-      car = { type: 'volvo', x: 0, z: 0, saleKr: 2000, owned: false, dmg: 0 } as Car;
+      car = { type: 'volvo', x: 0, z: 0, saleKr: 2000, owned: false, dmg: 0, flat: NO_FLAT } as Car;
     t.game.inCar = false;
     t.game.pcar = null;
     Object.assign(t.g.player, { x: o.away ?? 2, z: 0 });

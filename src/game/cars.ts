@@ -46,7 +46,20 @@ export const DRIVING = {
 export const TURBO_AT = [1, 2.2] as const; // s of sliding for a blue / an orange spark
 const TURBO_S = [0.7, 1.3]; // s each of those boosts lasts
 // a flat tyre (c.flat) takes off top speed, for the player, the police and traffic alike
-const flatTop = (c: Car) => (c.flat < 0 ? 1 : DRIVING.FLAT_TOP);
+const flatTop = (c: Car) => (c.flat === NO_FLAT ? 1 : DRIVING.FLAT_TOP);
+/** A car's wheels, in the order of its model's wheel nodes (WHEEL_NODES, render/vehicle-registry.ts; a test checks): Car.flat names one. */
+export const WHEEL = { FRONT_LEFT: 0, FRONT_RIGHT: 1, REAR_LEFT: 2, REAR_RIGHT: 3 } as const;
+export type Wheel = (typeof WHEEL)[keyof typeof WHEEL];
+export const NO_FLAT = -1; // Car.flat when every tyre is whole
+const RIGHT_WHEELS: readonly number[] = [WHEEL.FRONT_RIGHT, WHEEL.REAR_RIGHT];
+// the dev console's names for them (`flat front-left`), and `off` for none
+const FLAT_NAMES = {
+  'front-left': WHEEL.FRONT_LEFT,
+  'front-right': WHEEL.FRONT_RIGHT,
+  'rear-left': WHEEL.REAR_LEFT,
+  'rear-right': WHEEL.REAR_RIGHT,
+  off: NO_FLAT,
+} as const;
 const _pivot = { dx: 0, dz: 0 }; // rearPivotShift writes here: no allocation per car per frame
 const _onC = { x: 0, z: 0 },
   _onO = { x: 0, z: 0 }; // nearestBetweenSpines writes the nearest points of two cars here
@@ -99,7 +112,7 @@ export interface Car extends Point {
   revSteer: number;
   dmg: number; // damage, and the clock (s) of the last hit (health.ts)
   hitAt: number;
-  flat: number; // the burst tyre: 0–3 front left, front right, rear left, rear right (fotanglar burst one, in the pickadoll lab); -1 for none
+  flat: Wheel | typeof NO_FLAT; // the burst tyre (fotanglar burst one, in the pickadoll lab)
   color: string; // the paint (sRGB), one of T.cols
 }
 
@@ -144,7 +157,7 @@ export function newCar(
     revSteer: 1,
     dmg: 0,
     hitAt: -9,
-    flat: -1,
+    flat: NO_FLAT,
     color,
   };
 }
@@ -195,6 +208,24 @@ export interface CarForSale extends Point {
   model: string;
   colour: string;
   kr: number;
+}
+
+/** The dev console's `flat <wheel|off>`: bursts a tyre of the car you drive, or mends it, to try the pull and Plåt-Pelle's tyre without fotanglar. */
+export function registerFlatTyreCommand(commands: Pick<Commands, 'register'>, car: () => Car | null): void {
+  commands.register(
+    'flat',
+    command({
+      help: 'burst a tyre of the car you drive, or mend it with off',
+      examples: ['flat front-right', 'flat off'],
+      args: [choice('wheel', Object.keys(FLAT_NAMES) as (keyof typeof FLAT_NAMES)[])],
+      run: ({ wheel }) => {
+        const c = car();
+        if (!c) return 'Get in a car first.';
+        c.flat = FLAT_NAMES[wheel];
+        return c.flat === NO_FLAT ? 'Tyres whole.' : `Flat tyre: ${wheel}.`;
+      },
+    }),
+  );
 }
 
 /** Every car in the village: parked, in traffic, the police's and yours. */
@@ -431,7 +462,7 @@ export class Fleet {
     const { roads, water, half: HALF, crash, rammed, placeCar } = this.g,
       cars = this.cars;
     c.thr = thr = Math.abs(thr - c.thr) < 0.02 ? thr : approach(c.thr, thr, c.T.handling.throttleResponseS, dt);
-    const pull = c.flat < 0 ? 0 : (c.flat % 2 ? 1 : -1) * DRIVING.FLAT_PULL; // a flat tyre drags the car towards its side
+    const pull = c.flat === NO_FLAT ? 0 : (RIGHT_WHEELS.includes(c.flat) ? 1 : -1) * DRIVING.FLAT_PULL; // a flat tyre drags the car towards its side
     c.st = approach(c.st, clamp(steer + pull, -1, 1), c.T.handling.steerResponseS, dt); // weight: speed and heading answer a little late
     if (wrecked(c)) {
       thr = c.thr = 0;

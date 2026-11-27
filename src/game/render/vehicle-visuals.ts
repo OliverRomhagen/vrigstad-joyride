@@ -196,7 +196,7 @@ export class VehicleVisuals {
     if (distance < 20) view.travel += advance;
     for (let i = 0; i < view.wheels.length; i++) {
       const w = view.wheels[i]!,
-        squash = i === car.flat ? FLAT_SQUASH : 1; // wheels are in WHEEL_NODES' order, the same as Car.flat's
+        squash = i === car.flat ? FLAT_SQUASH : 1; // wheels are in WHEEL_NODES' order, the same as Car.flat's WHEEL
       w.pivot.rotation.y = w.front ? steering : 0;
       w.pivot.scale.y = squash;
       w.pivot.position.y = w.y - (1 - squash) * view.definition.radius;

@@ -85,12 +85,13 @@ export function trissPrize(r: number): number {
   return 0;
 }
 
-/** What Skroten pays for a car of this type and model at this much damage, in round tens; null when it won't buy it. */
-export function carPrice(type: string, model: string | undefined, dmg: number): number | null {
+/** What Skroten pays for a car of this type and model at this much damage, less a tyre for a flat one, in round tens; never below scrap; null when it won't buy it. */
+export function carPrice(type: string, model: string | undefined, dmg: number, flat = false): number | null {
   const base = wholeKr(type, model);
   if (!base) return null;
-  const whole = 1 - Math.min(Math.max(dmg, 0), DMG_MAX) / DMG_MAX;
-  return Math.round((SCRAP_KR + (base - SCRAP_KR) * whole) / 10) * 10;
+  const whole = 1 - Math.min(Math.max(dmg, 0), DMG_MAX) / DMG_MAX,
+    kr = Math.round((SCRAP_KR + (base - SCRAP_KR) * whole) / 10) * 10;
+  return Math.max(SCRAP_KR, kr - (flat ? TYRE_KR : 0));
 }
 
 /** What Plåt-Pelle asks for a car of this type and model on Skroten's lot, in round hundreds; null for one he would never buy. */

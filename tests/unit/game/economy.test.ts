@@ -120,6 +120,11 @@ describe('what Skroten pays for a car', () => {
     expect(carPrice('volvo', 'volvo240', DMG_MAX)).toBe(SCRAP_KR);
   });
 
+  it('takes a tyre off for a flat, never below the scrap price', () => {
+    expect(carPrice('volvo', 'volvo240', DMG_MAX / 2, true)).toBe(450 - TYRE_KR);
+    expect(carPrice('volvo', 'volvo240', DMG_MAX, true)).toBe(SCRAP_KR);
+  });
+
   it('never buys a police car', () => {
     expect(carPrice('polis', 'xc70-police', 0)).toBeNull();
     expect(carPrice('polis', undefined, 0)).toBeNull();

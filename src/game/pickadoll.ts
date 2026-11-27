@@ -6,6 +6,7 @@
 // controls, shows the two HUD buttons and decides what each hit does to the world. A page module: it uses the DOM.
 import { clamp, wrap } from '../world/math';
 import type { Rnd } from '../world/random';
+import { NO_FLAT } from './cars';
 import { choice, command, optional, toggle } from './command-args';
 import type { Commands } from './commands';
 import { damageCar } from './health';
@@ -722,7 +723,7 @@ export class Pickadoll {
     // a car that rolls over one gets a flat tyre, the police's and your own too; one flat per car
     for (let n = 0; n < step.cars.length; n++) {
       const c = cars[step.cars[n]];
-      if (c.flat >= 0 || this.spared(c)) continue;
+      if (c.flat !== NO_FLAT || this.spared(c)) continue;
       c.flat = step.wheels[n];
       if (c === game.pcar) this.g.toast(FLAT_LINES[Math.floor(rnd() * FLAT_LINES.length)] + ' A tyre is flat.', 3);
     }
