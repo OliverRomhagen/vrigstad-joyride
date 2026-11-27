@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { expect, test, vi } from 'vitest';
 import { HOUSE_SHELLS_MATERIAL } from '../../../../src/game/render/house-materials';
-import { INK_FLAG } from '../../../../src/game/render/ink-flag';
+import { INK_FLAG, INK_NO_FEET_FLAG } from '../../../../src/game/render/ink-flag';
 import {
   FINISH_LEVELS,
   finishOf,
@@ -155,6 +155,30 @@ test('inked objects get crease lines on opaque meshes, once, sharing edges per g
   expect(ink(body)[0].geometry.getAttribute('position').count).toBe(24); // a box's twelve edges (ink-edges.test.ts)
   expect(ink(glass)).toHaveLength(0);
   expect(ink(house)).toHaveLength(0);
+});
+
+test('only a mesh that asks for it loses the line along its open feet', () => {
+  // a 4 m wall with no floor, from y = 0 to 3: top, two sides and a foot
+  const wall = () => {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute(
+      'position',
+      new THREE.Float32BufferAttribute([0, 0, 0, 4, 0, 0, 4, 3, 0, 0, 0, 0, 4, 3, 0, 0, 3, 0], 3),
+    );
+    return new THREE.Mesh(g, new THREE.MeshLambertMaterial());
+  };
+  const scene = new THREE.Scene(),
+    prop = wall(),
+    shells = wall();
+  prop.userData[INK_FLAG] = true;
+  shells.userData[INK_FLAG] = true;
+  shells.userData[INK_NO_FEET_FLAG] = true;
+  scene.add(prop, shells);
+  new ToonStyle({ render: () => {} }).render(scene, camera);
+  const segments = (mesh: THREE.Mesh) =>
+    (mesh.children[0] as THREE.LineSegments).geometry.getAttribute('position').count / 2;
+  expect(segments(prop)).toBe(4);
+  expect(segments(shells)).toBe(3);
 });
 
 test('ink lines stay on far-off parts of a mesh, and are pulled towards the camera to show over the corner boards', () => {

@@ -23,7 +23,7 @@ import { col } from '../../world/three-legacy';
 import { GAME_WATER } from '../../world/water-palette';
 import type { WaterBodies } from '../../world/water-shapes';
 import { HOUSE_SHELLS_MATERIAL } from './house-materials';
-import { INK_FLAG } from './ink-flag';
+import { INK_FLAG, INK_NO_FEET_FLAG } from './ink-flag';
 import { mergeGeo } from './models';
 
 // ---------- terrain ----------
@@ -453,6 +453,7 @@ export function addBuildings(
       wallDrop,
     }).mesh;
     shells.userData[INK_FLAG] = true; // the toon style inks the houses' corners and roof edges too
+    shells.userData[INK_NO_FEET_FLAG] = true; // but not the walls' feet, which the ground buries
     scene.add(shells);
     // the window skin: the trim is in the shells now (#413)
     const sg = new THREE.BufferGeometry();

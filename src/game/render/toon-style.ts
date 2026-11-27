@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { HOUSE_SHELLS_MATERIAL } from './house-materials';
 import { inkEdges } from './ink-edges';
-import { INK_FLAG } from './ink-flag';
+import { INK_FLAG, INK_NO_FEET_FLAG } from './ink-flag';
 
 // The look follows the "Kraftig" (bold) cel shading of the art direction lab (v20).
 // Light per quarter of MeshToonMaterial's ramp, which it samples at `dot * 0.5 + 0.5` (dot of normal and light
@@ -31,12 +31,14 @@ const INK_CREASE_DEG = 34;
 const INK_COLOR = 0x10151c;
 const INK_OPACITY = 0.67;
 // Lines are drawn this fraction of their distance closer to the camera, along the line of sight: the same place on
-// screen, but in front of the surface they sit on, so they don't flicker into it. It only has to beat the depth
-// buffer's step, which is 7 mm at 300 m with the camera's 0.8 m near plane: 6 cm here. It was 0.001 to clear the
-// corner boards in the window skin, but those are in the shells now (#413), and every line within that much of a
-// surface showed through it. Scaling the lines about the mesh's origin instead moved them off meshes whose origin is
-// far away, such as the village's shells (one mesh at Torget).
-export const INK_PULL = 0.0002;
+// screen, but in front of the surface they sit on, so they don't flicker into it. It has to beat more than the depth
+// buffer's step: a 1 px line covers pixel centres up to half a pixel off its edge, where the face beside it can be
+// nearer than the line, and half a pixel is about 0.08% of the distance at 720p. At 0.0002 the lines lost a fifth to a
+// third of their pixels, as dots along the corner boards and eaves. Every line within the pull of a surface shows
+// through it, which is why the houses' buried feet get no line at all (INK_NO_FEET_FLAG), not a smaller pull.
+// Scaling the lines about the mesh's origin instead moved them off meshes whose origin is far away, such as the
+// village's shells (one mesh at Torget).
+export const INK_PULL = 0.001;
 
 type LitMaterial = THREE.MeshLambertMaterial | THREE.MeshPhongMaterial | THREE.MeshStandardMaterial;
 type MeshMaterial = THREE.Material | THREE.Material[];
@@ -108,7 +110,7 @@ export class ToonStyle {
     if (!isOpaque(object.material)) return; // no lines across glass
     let edges = this.inkGeometries.get(object.geometry);
     if (!edges) {
-      edges = inkEdges(object.geometry, INK_CREASE_DEG);
+      edges = inkEdges(object.geometry, INK_CREASE_DEG, { dropFeet: !!object.userData[INK_NO_FEET_FLAG] });
       this.inkGeometries.set(object.geometry, edges);
       this.disposeWith(object.geometry, edges);
     }

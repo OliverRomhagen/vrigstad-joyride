@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import { describe, expect, it, vi } from 'vitest';
+import { inkEdges } from '../../../../src/game/render/ink-edges';
+import { INK_FLAG, INK_NO_FEET_FLAG } from '../../../../src/game/render/ink-flag';
 import { finishOf } from '../../../../src/game/render/toon-style';
 import { addBuildings } from '../../../../src/game/render/world-meshes';
 import { BuildingKind, type WorldData } from '../../../../src/world/data';
@@ -133,8 +135,16 @@ describe('house trim', () => {
   });
 
   it("leaves the toon style no line along the roof's edge at the walls, only at the fascia", () => {
-    // the toon style's lines, as it draws them (INK_CREASE_DEG): every crease, and every edge that only one face has
-    const lines = new THREE.EdgesGeometry(shellsOf(pitched).geometry, 34).getAttribute('position');
+    // the toon style's lines, as it draws them for the shells (INK_CREASE_DEG, and no feet, as the shells ask for): every
+    // crease, and every edge that only one face has but the walls' feet
+    const shells = shellsOf(pitched);
+    expect(shells.userData).toMatchObject({ [INK_FLAG]: true, [INK_NO_FEET_FLAG]: true });
+    const lines = inkEdges(shells.geometry, 34, { dropFeet: true }).getAttribute('position');
+    // the feet are gone: the lowest line left is no level one along the ground
+    let lowest = Infinity;
+    for (let i = 0; i < lines.count; i++) lowest = Math.min(lowest, lines.getY(i));
+    for (let i = 0; i < lines.count; i += 2)
+      expect(lines.getY(i) - lowest < 0.001 && lines.getY(i + 1) - lowest < 0.001, `segment ${i / 2}`).toBe(false);
     // the walls stand from x 0 to 10 and z 0 to 10, and the roof's edge runs along their tops, from 5 m up to 8.5 at the ridge
     const onWallTop = (x: number, y: number, z: number) =>
       Math.min(Math.abs(x), Math.abs(x - 10), Math.abs(z), Math.abs(z - 10)) < 0.01 &&
