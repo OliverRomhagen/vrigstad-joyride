@@ -170,7 +170,7 @@ export interface PickadollDeps {
   canvas: Pick<HTMLCanvasElement, 'focus' | 'after'>;
   $(id: string): HTMLElement;
   coarse: boolean;
-  game: Pick<GameState, 'started' | 'inCar' | 'pcar' | 'titleCardT'>;
+  game: Pick<GameState, 'started' | 'paused' | 'inCar' | 'pcar' | 'titleCardT'>;
   view: Pick<ViewState, 'camYaw' | 'camPitch'>;
   calmMotion: { readonly matches: boolean }; // prefers-reduced-motion: the camera changes place at once
   player: PlayerState & { mesh: Person };
@@ -182,6 +182,7 @@ export interface PickadollDeps {
   fx: ShotFx;
   rnd: Rnd; // its own stream: the spread and the colours
   readonly menuOpen: boolean;
+  readonly consoleOpen: boolean; // the dev console: Q let go as it opens picks nothing from the wheel
   readonly inside: boolean; // in a safehouse
   toast(msg: string, secs?: number): void;
   hurtPlayer(n: number): void;
@@ -266,6 +267,7 @@ export class Pickadoll {
   private wheelDownMs = -1; // performance.now() when Q or the weapon button went down, -1 while neither is held
   private readonly wheelPointer = { x: 0, y: 0 };
   private wheelFinger = { id: -1, x: 0, y: 0 }; // the touch or click on the weapon button that holds it
+  private isTriggerSpent = false; // the trigger was down while the wheel was open: it fires again only after a fresh pull
 
   constructor(g: PickadollDeps) {
     this.g = g;
@@ -323,7 +325,9 @@ export class Pickadoll {
   }
 
   // the weapon button: a tap steps on to the next weapon, and a hold opens the wheel, which a drag then points into.
-  // A click from the keyboard (Enter or Space on the focused button) has no pointer, and steps on
+  // A click from the keyboard (Enter or Space on the focused button) has no pointer, and steps on. The button takes
+  // the touch whole (touch-action in index.html), so a drag isn't taken for a pan and cancelled; a cancel, or the
+  // capture lost some other way, closes the wheel and picks nothing
   private wheelButton() {
     const { $, canvas } = this.g,
       button = document.createElement('button'),
@@ -333,7 +337,7 @@ export class Pickadoll {
     button.setAttribute('aria-keyshortcuts', LAB_KEYS.WEAPON.label);
     button.addEventListener('pointerdown', e => {
       e.preventDefault();
-      if (finger.id !== -1) return;
+      if (finger.id !== -1 || e.button !== 0) return; // the left button or a finger: a right click opens no wheel
       Object.assign(finger, { id: e.pointerId, x: e.clientX, y: e.clientY });
       button.setPointerCapture(e.pointerId);
       this.holdWheel();
@@ -344,11 +348,11 @@ export class Pickadoll {
       finger.x = e.clientX;
       finger.y = e.clientY;
     });
-    for (const t of ['pointerup', 'pointercancel'])
+    for (const t of ['pointerup', 'pointercancel', 'lostpointercapture'])
       button.addEventListener(t, e => {
         if ((e as PointerEvent).pointerId !== finger.id) return;
         finger.id = -1;
-        this.letGoWheel();
+        this.letGoWheel(t === 'pointerup');
         canvas.focus();
       });
     button.addEventListener('click', e => {
@@ -375,6 +379,15 @@ export class Pickadoll {
     });
     this.wheel.show(views, heldSlot(this.slots, this.loadout));
     this.pulledS = -1; // a pull while it opens doesn't fire once it closes
+    this.isTriggerSpent = true;
+  }
+
+  /** The look with the wheel open: true when it took the mouse or the drag, so the camera doesn't turn. Raw, before
+   * the look speed and invert Y, so up on the mouse is always up on the wheel. */
+  wheelLook(dx: number, dy: number): boolean {
+    if (!this.wheel.open) return false;
+    this.pointWheel(dx, dy);
+    return true;
   }
 
   // the look or a drag on the weapon button, while the wheel is open, moves its pointer
@@ -384,17 +397,20 @@ export class Pickadoll {
     this.wheel.point(pointedSlot(this.wheelPointer.x, this.wheelPointer.y, this.slots.length, WHEEL_DEAD_PX));
   }
 
-  // Q or the weapon button let go: from the open wheel, the slot pointed at; after a tap, the next weapon
-  private letGoWheel() {
-    const downMs = this.wheelDownMs;
+  // Q or the weapon button let go: from the open wheel, the slot pointed at; after a tap, the next weapon. Not when
+  // the game let go of it (the pause, the console, the window losing focus, a cancelled touch): that only closes it
+  private letGoWheel(byPlayer = true) {
+    const downMs = this.wheelDownMs,
+      { game, menuOpen, consoleOpen } = this.g,
+      picks = byPlayer && !game.paused && !menuOpen && !consoleOpen && document.hasFocus();
     this.wheelDownMs = -1;
     if (downMs < 0) return;
     if (this.wheel.open) {
       const { x, y } = this.wheelPointer,
         index = pointedSlot(x, y, this.slots.length, WHEEL_DEAD_PX);
       this.wheel.hide();
-      if (index >= 0) this.runFromInput(LAB_COMMANDS.SLOT, String(index + 1));
-    } else if (!this.g.menuOpen) this.runFromInput(LAB_COMMANDS.WEAPON);
+      if (picks && index >= 0) this.runFromInput(LAB_COMMANDS.SLOT, String(index + 1));
+    } else if (picks) this.runFromInput(LAB_COMMANDS.WEAPON);
   }
 
   // what is in your hand, as a slot would hold it
@@ -652,7 +668,8 @@ export class Pickadoll {
     }
     const armed = ready && !this.holstered && !this.wheel.open, // the weapon is out and can be used
       aiming = this.aiming;
-    const pulling = this.trigger.held;
+    if (!this.trigger.held) this.isTriggerSpent = false;
+    const pulling = this.trigger.held && !this.isTriggerSpent;
     // going over to the shoulder: the crosshair moves to the middle of the screen with the camera
     if (aiming && this.aimK === 0) this.aimPitch = clamp(Math.asin(this.line.dy), -AIM_PITCH_MAX, AIM_PITCH_MAX); // keep looking where you looked
     this.aimK = this.g.calmMotion.matches
@@ -799,12 +816,8 @@ export class Pickadoll {
     return this.ready && !this.holstered && !this.g.game.inCar && (this.aimHold.held || this.aimKept);
   }
 
-  /** The look while aiming or with the wheel open: true when it took the mouse or the drag, so the game's camera doesn't. */
+  /** The look while aiming: true when it took the mouse or the drag, so the game's camera doesn't. */
   aimLook(dx: number, dy: number): boolean {
-    if (this.wheel.open) {
-      this.pointWheel(dx, dy);
-      return true;
-    }
     if (!this.aiming) return false;
     const { view, fx } = this.g,
       scope = WEAPONS[this.weapon].scope,

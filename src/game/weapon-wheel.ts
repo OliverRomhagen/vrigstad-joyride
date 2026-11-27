@@ -73,6 +73,7 @@ export class WeaponWheel {
 
   /** Hides the wheel. */
   hide() {
+    this.point(-1); // and the middle's label goes quiet, so a screen reader doesn't find it later
     this.isOpen = false;
     this.el.classList.remove('open');
     this.label.classList.remove('open');
