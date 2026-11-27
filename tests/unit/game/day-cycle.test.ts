@@ -49,8 +49,22 @@ describe('skyAt', () => {
   it('gives the midday look the game was tuned with', () => {
     const s = skyAt(makeClock(13), blank());
     expect(s.sun).toBeCloseTo(1, 2);
-    expect(s.warm).toBe(0);
-    expect(s.light).toBe(1);
+    expect(s.warm).toBeCloseTo(0, 3);
+    expect(s.light).toBeCloseTo(1, 3);
+  });
+
+  it('keeps changing through the middle of the day, from the 10:00 start to the peak and down again (#376)', () => {
+    const at = (h: number) => skyAt(makeClock(h), blank());
+    for (const [a, b] of [
+      [10, 11],
+      [11, 12],
+      [15, 14],
+      [16, 15],
+    ]) {
+      expect(at(a).warm - at(b).warm).toBeGreaterThan(0.004);
+      expect(at(b).light - at(a).light).toBeGreaterThan(0.001);
+    }
+    expect(at(10).warm).toBeLessThan(0.3); // the start is only a little warmer than midday
   });
 
   it('is warmer and weaker than midday at both ends of the day', () => {
