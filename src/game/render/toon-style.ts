@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { HOUSE_FRAMES_MATERIAL, HOUSE_SHELLS_MATERIAL } from './house-materials';
+import { HOUSE_SHELLS_MATERIAL } from './house-materials';
 import { inkEdges } from './ink-edges';
 import { INK_COLOR, INK_FLAG, INK_NO_FEET_FLAG } from './ink-flag';
 
@@ -54,7 +54,7 @@ const isOpaque = (material: MeshMaterial) =>
 
 export function finishOf(material: THREE.Material): Finish {
   const name = material.name.toLowerCase();
-  if (name === HOUSE_SHELLS_MATERIAL || name === HOUSE_FRAMES_MATERIAL) return 'house'; // the shells and the window frames (#413)
+  if (name === HOUSE_SHELLS_MATERIAL) return 'house'; // the window frames stay on the paint ramp, as the painted windows do (#413)
   if (/glass|glazing|window/.test(name)) return 'glass';
   if (/lamp|lens|beam|indicator|reflector/.test(name)) return 'lamp';
   if (/rubber|tire|tyre|weatherstrip/.test(name)) return 'rubber';

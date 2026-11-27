@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { col } from '../../world/three-legacy';
 import { HOUSE_FRAMES_MATERIAL } from './house-materials';
 
 // 3D window frames near the camera, for the toon style (#413): a ring and a sill standing out from the wall over each
@@ -45,9 +46,9 @@ const DEPTH_M = 0.06; // how far the ring stands out
 /** The glass of the 3D windows, and of the painted ones in the toon style, so a frame appearing doesn't change it (#413). */
 export const WINDOW_GLASS = '#304d61';
 const SILL_DEPTH_M = 0.1;
-const FRAME = new THREE.Color('#f1efe8'),
-  INK = new THREE.Color('#10151c'), // the toon style's line colour (toon-style.ts)
-  GLASS = new THREE.Color(WINDOW_GLASS); // as the art direction mocks' windows
+const FRAME = col('#f1efe8'), // col(): the vertex colours are linear, and colour management is off (world/three-legacy.ts)
+  INK = col('#10151c'), // the toon style's line colour (toon-style.ts)
+  GLASS = col(WINDOW_GLASS); // as the art direction mocks' windows
 const GLASS_Z_M = 0.03; // the pane sits back in the frame
 
 // in the window's own units: x and y from -0.5 to 0.5 across the painted frame, z in metres out from the wall; the bars
@@ -278,7 +279,7 @@ export class WindowFrames {
     const capacity = this.mostInReach() || 1;
     this.mesh = new THREE.InstancedMesh(
       frameGeometry(),
-      new THREE.MeshLambertMaterial({ vertexColors: true, name: HOUSE_FRAMES_MATERIAL }), // the name gives it the toon style's house ramp
+      new THREE.MeshLambertMaterial({ vertexColors: true, name: HOUSE_FRAMES_MATERIAL }), // the paint ramp, as the painted windows have
       capacity,
     );
     this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage); // rewritten at every refill

@@ -47,7 +47,8 @@ test('vehicle finishes come from the GLB material names, or metalness', () => {
   expect(finishOf(named('period wheel covers', 0.5))).toBe('metal');
   expect(finishOf(new THREE.MeshLambertMaterial())).toBe('paint');
   expect(finishOf(new THREE.MeshLambertMaterial({ name: HOUSE_SHELLS_MATERIAL }))).toBe('house');
-  expect(finishOf(new THREE.MeshLambertMaterial({ name: HOUSE_FRAMES_MATERIAL }))).toBe('house');
+  // the 3D window frames match the painted windows under them, which the house ramp would light as a pale wall
+  expect(finishOf(new THREE.MeshLambertMaterial({ name: HOUSE_FRAMES_MATERIAL }))).toBe('paint');
 });
 
 test('each finish draws with its own ramp, shared between materials', () => {
