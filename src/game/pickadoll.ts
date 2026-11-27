@@ -77,9 +77,10 @@ const LAB_KEYS = {
   AIM: { code: 'KeyC', label: 'C' },
   WEAPON: { code: 'KeyQ', label: 'Q' },
   FLAVOUR: { code: 'KeyG', label: 'G' },
+  HOLSTER: { code: 'KeyH', label: 'H' },
 } as const;
 // the lab's commands, by the name typed in the console: what its keys and buttons run
-const LAB_COMMANDS = { AIM: 'aim', WEAPON: 'weapon', FLAVOUR: 'hit' } as const;
+const LAB_COMMANDS = { AIM: 'aim', WEAPON: 'weapon', FLAVOUR: 'hit', HOLSTER: 'holster' } as const;
 type LabCommand = (typeof LAB_COMMANDS)[keyof typeof LAB_COMMANDS];
 // the soft lock on a touch screen, where there is no fine aim: the shot goes to the nearest person or car near where you look
 const ASSIST_CONE_RAD = 0.3,
@@ -219,6 +220,10 @@ export class Pickadoll {
   private clockS = 0;
   private introS = INTRO_AFTER_S;
   private aimKept = false; // aiming was switched on with C or the Aim button
+  // you start with the weapon put away: the trigger (or Q, changing it) draws it, and H or the `holster` command puts it
+  // back. Until it is drawn there is no crosshair, no aim and nothing in your hand
+  private holstered = true;
+  private drawHeld = false; // the trigger press that drew the weapon is still held: it doesn't also fire
   private aimK = 0; // 0 the game's camera, 1 over the shoulder
   private aimPitch = 0; // rad above level, while aiming
   private ready = false;
@@ -233,18 +238,24 @@ export class Pickadoll {
     this.world = { groundAt: g.world.groundAt, collide: g.world.collide, people: g.crowd.npcs, cars: [] };
     this.spikeWorld = { cars: g.cars, people: g.crowd.npcs, walker: null };
     // The controls, through the game's input: the left mouse button or X fires, the right one aims while held, C keeps
-    // aiming on, Q changes the weapon and G the hit. A press of the trigger is kept a moment (pulledS)
+    // aiming on, Q changes the weapon, G the hit and H puts the weapon away. A press of the trigger is kept a moment
+    // (pulledS); with the weapon put away, it draws it instead
     this.trigger = g.input.addControl({
       codes: [LAB_KEYS.FIRE.code],
       mouseButton: MouseButton.LEFT,
       press: () => {
-        this.pulledS = 0;
+        if (!this.holstered) this.pulledS = 0;
+        else if (this.ready) {
+          this.drawHeld = true;
+          this.runFromInput(LAB_COMMANDS.HOLSTER, 'off');
+        }
       },
     });
     this.aimHold = g.input.addControl({ mouseButton: MouseButton.RIGHT });
     g.input.addControl({ codes: [LAB_KEYS.AIM.code], press: () => this.runFromInput(LAB_COMMANDS.AIM) });
     g.input.addControl({ codes: [LAB_KEYS.WEAPON.code], press: () => this.runFromInput(LAB_COMMANDS.WEAPON) });
     g.input.addControl({ codes: [LAB_KEYS.FLAVOUR.code], press: () => this.runFromInput(LAB_COMMANDS.FLAVOUR) });
+    g.input.addControl({ codes: [LAB_KEYS.HOLSTER.code], press: () => this.runFromInput(LAB_COMMANDS.HOLSTER) });
     const fire = document.createElement('button');
     fire.type = 'button';
     fire.id = 'p-fire';
@@ -269,6 +280,7 @@ export class Pickadoll {
     g.canvas.after(this.scope); // over the view and under the HUD, which stays readable
     g.$('stage').append(this.crosshair);
     if (g.player.mesh.arms) g.fx.giveGun(g.player.mesh.arms[1]);
+    g.fx.holsterGun(true);
     this.weaponButton = this.hudButton(LAB_KEYS.WEAPON.label, LAB_COMMANDS.WEAPON);
     this.flavourButton = this.hudButton(LAB_KEYS.FLAVOUR.label, LAB_COMMANDS.FLAVOUR);
     this.drawHud();
@@ -312,8 +324,19 @@ export class Pickadoll {
 
   private pickWeapon(index: number) {
     this.weapon = index;
+    this.holster(false); // changing the weapon takes it out
     this.coolS = Math.min(this.coolS, WEAPONS[this.weapon].coolS); // the wait left, at most the new weapon's own
     this.drawHud();
+  }
+
+  // puts the weapon away, which also stops aiming and a throw held back, or draws it
+  private holster(away: boolean) {
+    this.holstered = away;
+    this.g.fx.holsterGun(away);
+    if (!away) return;
+    this.keepAim(false);
+    this.isWindingUp = false;
+    this.pulledS = -1;
   }
 
   private pickFlavour(index: number) {
@@ -378,7 +401,21 @@ export class Pickadoll {
         args: [optional(toggle('kept'))],
         run: ({ kept }) => {
           this.keepAim(kept ?? !this.aimKept);
+          if (this.aimKept) this.holster(false); // aiming takes the weapon out
           return this.aimKept ? 'Aiming.' : 'Not aiming.';
+        },
+      }),
+    );
+    commands.register(
+      LAB_COMMANDS.HOLSTER,
+      command({
+        help: 'put the weapon away, or draw it with off: switches when you say neither',
+        examples: ['holster', 'holster off'],
+        access: 'player',
+        args: [optional(toggle('away'))],
+        run: ({ away }) => {
+          this.holster(away ?? !this.holstered);
+          return this.holstered ? 'Weapon away.' : 'Weapon drawn.';
         },
       }),
     );
@@ -386,8 +423,8 @@ export class Pickadoll {
 
   // a key or a button runs its command through the registry, as a typed line does, so the hooks see it too. The line
   // that comes back is for the console: here the HUD shows what changed
-  private runFromInput(command: LabCommand) {
-    this.g.commands.run(command, 'input');
+  private runFromInput(command: LabCommand, word?: string) {
+    this.g.commands.run(word ? command + ' ' + word : command, 'input');
   }
 
   /** What the test hook shows. */
@@ -401,6 +438,7 @@ export class Pickadoll {
       flavour: HIT_FLAVOURS[this.flavour].id,
       aiming: this.aimK > 0.5,
       scoped: this.isScoped,
+      holstered: this.holstered,
       spikes: this.spikes.length,
       limping: this.limping.length,
       throughPhysics: !!this.world.cast, // ?lab=rapier's ray casts find the hits
@@ -420,8 +458,8 @@ export class Pickadoll {
       if (this.introS <= 0)
         this.g.toast(
           coarse
-            ? 'Lab: pickadoll. Fire fires, Aim aims; tap the weapon and the hit at the top to change them.'
-            : 'Lab: pickadoll. Click or X fires, right button or C aims, Q changes the weapon, G the hit.',
+            ? 'Lab: pickadoll. Fire draws your weapon and fires, Aim aims; tap the weapon and the hit at the top to change them.'
+            : 'Lab: pickadoll. Click or X draws your weapon and fires, right button or C aims, Q changes the weapon, G the hit, H puts it away.',
           6,
         );
     }
@@ -442,7 +480,10 @@ export class Pickadoll {
     this.startedFrames = game.started ? Math.min(2, this.startedFrames + 1) : 0;
     const ready = this.startedFrames > 1 && !this.g.menuOpen && !this.g.inside && game.titleCardT <= 0;
     this.ready = ready;
-    const aiming = this.aiming;
+    const armed = ready && !this.holstered, // the weapon is out and can be used
+      aiming = this.aiming;
+    if (this.drawHeld && !this.trigger.held) this.drawHeld = false;
+    const pulling = this.trigger.held && !this.drawHeld;
     // going over to the shoulder: the crosshair moves to the middle of the screen with the camera
     if (aiming && this.aimK === 0) this.aimPitch = clamp(Math.asin(this.line.dy), -AIM_PITCH_MAX, AIM_PITCH_MAX); // keep looking where you looked
     this.aimK = this.g.calmMotion.matches
@@ -470,7 +511,7 @@ export class Pickadoll {
     const line = fx.sightLine(crossY, this.line),
       pastM = Math.hypot(muzzle.x - line.x, muzzle.y - line.y, muzzle.z - line.z),
       seen =
-        ready &&
+        armed &&
         sight(
           line.x,
           line.y,
@@ -519,18 +560,18 @@ export class Pickadoll {
       this.carVz,
       this.aim,
     );
-    this.crosshair.hidden = !ready;
+    this.crosshair.hidden = !armed;
     this.crosshair.classList.toggle('on', onTarget);
     this.markS -= dt;
     this.crosshair.classList.toggle('hit', this.markS > 0);
     // a click a moment before the weapon is ready still fires; an older one is dropped, so clicks never queue up
     if (this.pulledS >= 0) this.pulledS += dt;
-    if (!ready || this.pulledS > PULL_KEEP_S + dt) this.pulledS = -1;
+    if (!armed || this.pulledS > PULL_KEEP_S + dt) this.pulledS = -1;
     // a throwable is held back while the trigger is down, with its arc showing, and thrown when you let go
     let thrown = false;
-    if (weapon.thrown && ready && this.trigger.held && this.coolS <= 0) this.isWindingUp = true;
+    if (weapon.thrown && armed && pulling && this.coolS <= 0) this.isWindingUp = true;
     else if (this.isWindingUp) {
-      thrown = weapon.thrown && ready && !this.trigger.held;
+      thrown = weapon.thrown && armed && !this.trigger.held;
       this.isWindingUp = false;
     }
     if (this.isWindingUp) {
@@ -547,7 +588,7 @@ export class Pickadoll {
         weapon.blastM || ARC_RING_M,
       );
     } else fx.drawArc(this.arc, 0, 0);
-    if (ready && this.coolS <= 0 && (weapon.thrown ? thrown : weapon.auto ? this.trigger.held : this.pulledS >= 0)) {
+    if (armed && this.coolS <= 0 && (weapon.thrown ? thrown : weapon.auto ? pulling : this.pulledS >= 0)) {
       this.pulledS = -1;
       this.coolS = Math.max(this.coolS, -dt) + weapon.coolS; // what this frame overshot comes off the next wait
       this.raisedS = RAISED_S;
@@ -556,10 +597,9 @@ export class Pickadoll {
     // the stance, drawn over the walk's arm swing: the right arm along the aim, or back for a throw
     this.raisedS -= dt;
     const arms = player.mesh.arms;
-    if (arms && !car && ready) {
+    if (arms && !car && armed) {
       if (this.isWindingUp) arms[1].rotation.x = WIND_UP_RAD;
-      else if (aiming || this.raisedS > 0 || (this.trigger.held && !weapon.thrown))
-        arms[1].rotation.x = Math.PI / 2 + pitch;
+      else if (aiming || this.raisedS > 0 || (pulling && !weapon.thrown)) arms[1].rotation.x = Math.PI / 2 + pitch;
     }
 
     for (let i = this.shots.length - 1; i >= 0; i--) {
@@ -587,7 +627,7 @@ export class Pickadoll {
 
   // on foot only: from a car you aim with the car's own camera
   private get aiming() {
-    return this.ready && !this.g.game.inCar && (this.aimHold.held || this.aimKept);
+    return this.ready && !this.holstered && !this.g.game.inCar && (this.aimHold.held || this.aimKept);
   }
 
   /** The look while aiming: true when it took the mouse or the drag, so the game's camera doesn't. */
