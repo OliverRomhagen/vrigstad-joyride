@@ -8,6 +8,7 @@ import {
   pickVariant,
   VEHICLE_VARIANTS,
   VEHICLES,
+  type VehicleLamps,
   WHEEL_NODES,
 } from '../../../src/game/render/vehicle-registry';
 import { type Gltf, staticPartGroups } from '../../../tools/vehicle-parts';
@@ -44,6 +45,17 @@ test.each(VEHICLES)('$id has one static part per material on its body (#408)', a
   const bytes = readFileSync('src/public/' + spec.url);
   const json = JSON.parse(bytes.subarray(20, 20 + bytes.readUInt32LE(12)).toString()) as Gltf;
   expect(staticPartGroups(json)).toEqual([]); // exactly the compression tool's eligibility and material identity
+});
+test.each(VEHICLES)('$id has head and rear lamps, and every lamp it names is one of its meshes (#304)', spec => {
+  const bytes = readFileSync('src/public/' + spec.url);
+  const json = JSON.parse(bytes.subarray(20, 20 + bytes.readUInt32LE(12)).toString()) as {
+    nodes: { name?: string; mesh?: number }[];
+  };
+  const meshes = new Set(json.nodes.filter(n => n.mesh !== undefined).map(n => n.name));
+  const lamps: VehicleLamps = spec.lamps;
+  expect(lamps.head.length).toBeGreaterThan(0);
+  expect(lamps.rear.length).toBeGreaterThan(0);
+  for (const name of Object.values(lamps).flat()) expect(meshes, name).toContain(name);
 });
 test('every model is in the world, worn only by its own simulation type', () => {
   const used = Object.entries(VEHICLE_VARIANTS).flatMap(([archetype, variants]) =>
