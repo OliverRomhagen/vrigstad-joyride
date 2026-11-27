@@ -30,7 +30,10 @@ import { STREETSCAPE_OVERRIDES } from '../world/streetscape-overrides';
 import { FURNITURE_OVERRIDES } from '../world/furniture/overrides';
 import { furnitureExclusions, placeFurniture } from '../world/furniture/placement';
 import { StreetFurniture } from '../world/mesh/street-furniture';
-import { classifyStreetscape } from '../world/streetscape-rules';
+import { classifyStreetscape, sideSpecOf } from '../world/streetscape-rules';
+import { houseFronts } from '../world/furniture/houses';
+import { layoutPlots, propertyLineM } from '../world/plots';
+import { PlotOutlines } from '../world/mesh/plot-outlines';
 import { treeSpots } from '../world/trees';
 import { layoutShore } from '../world/shore';
 import { Water } from '../world/water';
@@ -187,6 +190,14 @@ const bridgeMeshes = addBridges(scene, bridges, heightfield);
 // the forests' trees and the street trees, with a soft shadow under each baked into the ground texture (the minimap shows them too)
 const allTreeSpots = addTrees(scene, forestSpots, street.layout.trees, heightfield, HALF);   // every tree drawn, [x, z, scale, ...]: the street furniture keeps clear of them too
 ground.bakeTreeShadows(allTreeSpots, blobTex);
+
+// ---------- plots: the ground each house owns and its driveway, inferred (#401); only drawn by ?debug=plots so far ----------
+if (new URLSearchParams(location.search).get('debug') === 'plots') {
+  const t0 = performance.now(), fronts = houseFronts(D, roads, () => true);
+  const plots = layoutPlots({ data: D, roads, buildings, fronts, inWater, frontEdgeM: (ri, side) => propertyLineM(sideSpecOf(street.sides[ri], side), R[ri].c) });
+  scene.add(new PlotOutlines(plots, groundAt).mesh);
+  console.info(`Plots: ${plots.length} for ${fronts.length} houses, ${plots.filter(p => p.driveway?.source === 'mapped').length} mapped driveways, ${(performance.now() - t0).toFixed(0)} ms`);
+}
 
 // ---------- cars ----------
 // the rules (driving, traffic, the parked cars) are in src/game/cars.ts; the meshes in src/game/render/car-meshes.ts

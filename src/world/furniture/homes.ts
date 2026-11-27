@@ -9,9 +9,9 @@ import { type HouseFront, houseFronts } from './houses';
 import { byOrder, type Candidate, heading, jitterRad, type Placer } from './placer';
 
 /** the property line, where the mailbox stands: this far past a sidewalk's outer edge (m) */
-const HOUSE_PAST_SIDEWALK_M = 0.3;
+export const HOUSE_PAST_SIDEWALK_M = 0.3;
 /** ... or, without a sidewalk, this far past the carriageway's edge (m) */
-const HOUSE_LINE_M = 1.4;
+export const HOUSE_LINE_M = 1.4;
 /** without a mapped driveway, the mailbox stands this far along the street from the point opposite the house (m) */
 const HOUSE_SPLIT_M = 1.2;
 /** a driveway opening this close along the street to a house's front is that house's (m) */

@@ -34,6 +34,8 @@ export interface HouseFront {
   alongM: number;
   /** `alongM` is where a mapped driveway meets the street, rather than opposite the house's middle */
   atDriveway: boolean;
+  /** that driveway's road index, when `atDriveway` */
+  drivewayRi?: number;
 }
 
 /** The point on a road nearest a given point: how far along the road (m), how far from it (m), and which side. */
@@ -44,7 +46,7 @@ interface StreetMatch {
 }
 
 /** The point on road `p` nearest (x, z) (x east, z south). */
-function project(p: readonly (readonly [number, number])[], x: number, z: number): StreetMatch {
+export function project(p: readonly (readonly [number, number])[], x: number, z: number): StreetMatch {
   let best: StreetMatch = { s: 0, d: Infinity, side: 1 };
   let along = 0;
   for (let i = 1; i < p.length; i++) {
@@ -121,7 +123,8 @@ export function houseFronts(
   roads: FurnitureInput['roads'],
   eligible: (ri: number) => boolean,
 ): HouseFront[] {
-  const driveways = roads.lines.flatMap((l, ri) => (data.r[ri].s === RoadUse.DRIVEWAY && l.p.length > 1 ? [l] : []));
+  const drivewayRis = roads.lines.flatMap((l, ri) => (data.r[ri].s === RoadUse.DRIVEWAY && l.p.length > 1 ? [ri] : []));
+  const driveways = drivewayRis.map(ri => roads.lines[ri]);
   const found: { front: HouseFront; driveway: DrivewayMatch | null }[] = [];
   for (const b of data.b) {
     const area = polygonArea(b.p);
@@ -146,6 +149,8 @@ export function houseFronts(
   for (const { driveway: m } of found)
     if (m && m.toHouseM < (nearestM.get(m.di) ?? Infinity)) nearestM.set(m.di, m.toHouseM);
   return found.map(({ front, driveway: m }) =>
-    m && nearestM.get(m.di) === m.toHouseM ? { ...front, alongM: m.alongM, atDriveway: true } : front,
+    m && nearestM.get(m.di) === m.toHouseM
+      ? { ...front, alongM: m.alongM, atDriveway: true, drivewayRi: drivewayRis[m.di] }
+      : front,
   );
 }

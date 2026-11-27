@@ -50,6 +50,14 @@ data/vrigstad.json ──► streetscape-rules.ts ──► StreetSides per road
 - **By the houses (#305):** `houses.ts` ties each house (a 40–400 m² building) to the street it fronts, the side it's on and its driveway when one is mapped; `homes.ts` places what the house has there, after the lamps, benches and bins. Each house gets a mailbox at the property line beside its front, past any sidewalk, and one or two wheelie bins against the wall that faces the street; a street cabinet stands in the verge after every few houses. In the outskirts, a few houses along a road share a mailbox stand. Mapped `man_made=street_cabinet` nodes come first, as `fu` code 4.
 - **Drawing:** one `InstancedMesh` per model body and per lamp glass in each 400 m cell, as the trees are, so the main and shadow passes cull whole cells; set once, at `groundAt`. The lamp glass is one shared material, and `lampEmitters()` gives each lamp's light position, both for the night (#99). No collision yet: cars and people pass through furniture. `?debug=furniture` tints by source, and `npm run data:report` sums it.
 
+### Plots and driveways (#401)
+
+- `src/world/plots.ts` (pure) gives each house from `houses.ts` its plot and its driveway; the hedges, fences and walls on the plots' edges, and the features that read them (gardens #145, bins and mailboxes #305, parked cars #344), come later. OSM has no property boundaries, so every plot is inferred, and only drawn by `?debug=plots` so far (`mesh/plot-outlines.ts`).
+- **The shape:** a rectangle in the coordinates of the stretch of street the house fronts (along it, and out from it), between the street's sharp bends and carried on straight past them. It grows from the house: forward to the property line (where the mailboxes stand), to the sides by up to 12 m, and back to at most 40 m from its front. Each edge stops at ground nearer another building than its own house, so neighbours meet halfway; at another road, a parking lot or water; and at the edge of the house's residential area.
+- **Sheds and garages** (under 70 m² within 8 m of a building twice their size) get no plot, claim no ground and join the plot they stand on; a mapped driveway to one goes to that plot.
+- **Driveways:** a mapped one is kept; else one is generated, 3.2 m wide, from the carriageway beside the house on the side with more room, or straight to its front.
+- **Limits:** a plot never shrinks below its house's own rectangle, so where a house stands within a couple of metres of a road a corner can reach into it (about 2 % of plots); houses more than 35 m from a street get none (`houses.ts`). Choices hash the house's key, never data order.
+
 ### Water: lakes, rivers in their channels, shores (#263)
 
 ```
