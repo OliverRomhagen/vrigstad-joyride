@@ -7,7 +7,8 @@
 # Loaded in ways Fallow can't follow:
 # - src/map/main.ts is map.html's script, and tools/build.mjs builds map.html, but Fallow's Vite plugin finds only index.html.
 # - tools/trailer/rig.js reads inpage.js with fs.readFileSync and runs it in the page.
-entry = ["src/map/main.ts", "tools/trailer/inpage.js"]
+# - wiki/src/lib/Page.svelte: mdsvex wraps every Markdown page in it (templates in wiki/vite.config.ts).
+entry = ["src/map/main.ts", "tools/trailer/inpage.js", "wiki/src/lib/Page.svelte"]
 
 # Exceptions: exported, but only used in their own file. Un-export them, or use them in a test, then drop the entry.
 # tools/streetscape-report.mjs loads these through Vite's runnerImport, which Fallow can't follow.
@@ -43,7 +44,7 @@ patterns = ["src/world/**"]
 # The page modules in src/game/, which would otherwise fall into sim below. They are page code (see the last zone).
 [[boundaries.zones]]
 name = "page"
-patterns = ["src/game/main.ts", "src/game/hud.ts", "src/game/input.ts", "src/game/menu.ts", "src/game/loop.ts", "src/game/prompt.ts", "src/game/test-hook.ts", "src/game/capture-hook.ts", "src/game/devconsole.ts", "src/game/confetti.ts"]
+patterns = ["src/game/main.ts", "src/game/hud.ts", "src/game/input.ts", "src/game/menu.ts", "src/game/pause-menu.ts", "src/game/loop.ts", "src/game/prompt.ts", "src/game/test-hook.ts", "src/game/capture-hook.ts", "src/game/devconsole.ts", "src/game/confetti.ts"]
 
 [[boundaries.zones]]
 name = "render"
@@ -55,6 +56,17 @@ patterns = ["src/game/render/**", "src/game/presentation/**"]
 [[boundaries.zones]]
 name = "sim"
 patterns = ["src/game/**"]
+
+# The game's self-hosted fonts (#389), which the wiki loads too.
+[[boundaries.zones]]
+name = "fonts"
+patterns = ["src/fonts/**"]
+
+# The wiki (wiki/), a SvelteKit app that shows the game's own code: it may import the world, the rules, the rendering and the
+# fonts, never the game's page code. No other zone may import it but the page zone, which has no rule.
+[[boundaries.zones]]
+name = "wiki"
+patterns = ["wiki/**"]
 
 # Everything else in src/: the map page and the lab flags, with the page modules listed above. It may import anything (it
 # has no rule), but the other zones may not import it, so a lab gate stays in page code (#323).
@@ -77,3 +89,11 @@ allow = ["sim", "world"]
 [[boundaries.rules]]
 from = "render"
 allow = ["render", "sim", "world", "world-mesh"]
+
+[[boundaries.rules]]
+from = "wiki"
+allow = ["wiki", "world", "world-mesh", "sim", "render", "fonts"]
+
+[[boundaries.rules]]
+from = "fonts"
+allow = ["fonts"]

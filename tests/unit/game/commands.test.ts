@@ -413,6 +413,26 @@ describe('commands', () => {
       expect(runs()).toBe(2);
     });
 
+    it('keeps whether the run was done when a hook that ran the command returns an outcome that says otherwise', () => {
+      const { c, park, runs } = garage();
+      c.use((_call, next) => {
+        const outcome = next();
+        return outcome.ok ? refuse('changed-mind', 'No.') : { ok: true, text: 'Fine.' };
+      });
+      expect(c.execute('enter')).toEqual({ ...NO_CAR, text: 'Fine.' });
+      park();
+      expect(c.execute('enter')).toEqual({ ok: true, text: 'No.' });
+      expect(runs()).toBe(2);
+    });
+
+    it('lets a hook that never ran the command refuse with an outcome of its own', () => {
+      const { c, park, runs } = garage();
+      park();
+      c.use(() => refuse('paused', 'The game is paused.'));
+      expect(c.execute('enter')).toEqual({ ok: false, text: 'The game is paused.', code: 'paused' });
+      expect(runs()).toBe(0);
+    });
+
     it('gives a hook that calls next twice the same outcome, from one run', () => {
       const { c, runs } = garage();
       const seen: Outcome[] = [];

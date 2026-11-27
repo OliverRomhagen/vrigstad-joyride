@@ -1,5 +1,7 @@
 import * as THREE from 'three';
-import { INK_FLAG } from './ink-flag';
+import { HOUSE_SHELLS_MATERIAL } from './house-materials';
+import { inkEdges } from './ink-edges';
+import { INK_COLOR, INK_FLAG, INK_NO_FEET_FLAG } from './ink-flag';
 
 // The look follows the "Kraftig" (bold) cel shading of the art direction lab (v20).
 // Light per quarter of MeshToonMaterial's ramp, which it samples at `dot * 0.5 + 0.5` (dot of normal and light
@@ -13,21 +15,28 @@ export const FINISH_LEVELS = {
   metal: [30, 200, 70, 255], // chrome's stripes: a bright band before a dark one, as a reflection gives
   glass: [12, 28, 50, 165], // dark, with one hard highlight facing the sun
   lamp: [110, 130, 150, 180], // lenses barely shade, so they read as lamps from any side
+  // the houses' shells (walls, roofs and trim): under a high sun every wall's dot is below 0.5, so the paint ramp gives
+  // most walls one band and their corners vanish; six levels split them by how far each turns from the sun (#413). The
+  // windows on the walls stay on the paint ramp: on this one, white frames are lit as the wall and sink into a pale one
+  house: [9, 32, 72, 125, 185, 255],
 } as const;
 export type Finish = keyof typeof FINISH_LEVELS;
 // Toon bands only shape direct light; the hemisphere fill is smooth and washes them out, so it gives way to the sun.
 export const TOON_SUN_SCALE = 1.22;
-export const TOON_FILL_SCALE = 0.52;
+export const TOON_FILL_SCALE = 0.4; // 0.52 in the lab; lower, so the walls turned from the sun fall a band darker (#413)
 // Ink lines, as the lab draws them: along the edges where faces meet at more than this angle, so boxes and car
 // panels get lines and smooth curves don't. Only under objects flagged with INK_FLAG: rigid things, not terrain,
 // roads or trees.
 const INK_CREASE_DEG = 34;
-const INK_COLOR = 0x10151c;
 const INK_OPACITY = 0.67;
 // Lines are drawn this fraction of their distance closer to the camera, along the line of sight: the same place on
-// screen, but in front of the surface they sit on and of the houses' corner boards, which are pulled forward with
-// polygonOffset. Scaling the lines about the mesh's origin instead moved them off meshes whose origin is far away, such
-// as the village's shells (one mesh at Torget).
+// screen, but in front of the surface they sit on, so they don't flicker into it. It has to beat more than the depth
+// buffer's step: a 1 px line covers pixel centres up to half a pixel off its edge, where the face beside it can be
+// nearer than the line, and half a pixel is about 0.08% of the distance at 720p. At 0.0002 the lines lost a fifth to a
+// third of their pixels, as dots along the corner boards and eaves. Every line within the pull of a surface shows
+// through it, which is why the houses' buried feet get no line at all (INK_NO_FEET_FLAG), not a smaller pull.
+// Scaling the lines about the mesh's origin instead moved them off meshes whose origin is far away, such as the
+// village's shells (one mesh at Torget).
 export const INK_PULL = 0.001;
 
 type LitMaterial = THREE.MeshLambertMaterial | THREE.MeshPhongMaterial | THREE.MeshStandardMaterial;
@@ -45,6 +54,7 @@ const isOpaque = (material: MeshMaterial) =>
 
 export function finishOf(material: THREE.Material): Finish {
   const name = material.name.toLowerCase();
+  if (name === HOUSE_SHELLS_MATERIAL) return 'house'; // the window frames stay on the paint ramp, as the painted windows do (#413)
   if (/glass|glazing|window/.test(name)) return 'glass';
   if (/lamp|lens|beam|indicator|reflector/.test(name)) return 'lamp';
   if (/rubber|tire|tyre|weatherstrip/.test(name)) return 'rubber';
@@ -75,7 +85,9 @@ export class ToonStyle {
   private readonly gradients = new Map<Finish, THREE.DataTexture>();
   private readonly toons = new WeakMap<THREE.Material, THREE.MeshToonMaterial>();
   private readonly toonArrays = new WeakMap<THREE.Material[], THREE.Material[]>();
-  private readonly inkGeometries = new WeakMap<THREE.BufferGeometry, THREE.EdgesGeometry>();
+  private readonly inkGeometries = new WeakMap<THREE.BufferGeometry, THREE.BufferGeometry>();
+  // apart, so a geometry two meshes share gets each its own lines, whichever is inked first
+  private readonly footlessInkGeometries = new WeakMap<THREE.BufferGeometry, THREE.BufferGeometry>();
   private readonly inked = new WeakSet<THREE.Mesh>();
   private readonly inkMaterial = new THREE.LineBasicMaterial({
     color: INK_COLOR,
@@ -97,11 +109,16 @@ export class ToonStyle {
     if (!(object instanceof THREE.Mesh) || this.inked.has(object)) return;
     this.inked.add(object);
     if (!isOpaque(object.material)) return; // no lines across glass
-    let edges = this.inkGeometries.get(object.geometry);
+    // read on the mesh itself, not inherited as INK_FLAG is: it says how this mesh is built
+    const footless = !!object.userData[INK_NO_FEET_FLAG],
+      cache = footless ? this.footlessInkGeometries : this.inkGeometries;
+    let edges = cache.get(object.geometry);
     if (!edges) {
-      edges = new THREE.EdgesGeometry(object.geometry, INK_CREASE_DEG);
-      this.inkGeometries.set(object.geometry, edges);
-      this.disposeWith(object.geometry, edges);
+      edges = footless
+        ? inkEdges(object.geometry, INK_CREASE_DEG)
+        : new THREE.EdgesGeometry(object.geometry, INK_CREASE_DEG);
+      cache.set(object.geometry, edges);
+      this.disposeWith(cache, object.geometry, edges);
     }
     const lines = new THREE.LineSegments(edges, this.inkMaterial);
     lines.renderOrder = 10;
@@ -140,10 +157,14 @@ export class ToonStyle {
   }
 
   /** Frees a geometry's ink lines with it, so line buffers don't build up as meshes come and go. */
-  private disposeWith(source: THREE.BufferGeometry, edges: THREE.BufferGeometry) {
+  private disposeWith(
+    cache: WeakMap<THREE.BufferGeometry, THREE.BufferGeometry>,
+    source: THREE.BufferGeometry,
+    edges: THREE.BufferGeometry,
+  ) {
     const dispose = () => {
       source.removeEventListener('dispose', dispose);
-      this.inkGeometries.delete(source);
+      cache.delete(source);
       edges.dispose();
     };
     source.addEventListener('dispose', dispose);
@@ -207,6 +228,9 @@ export class ToonStyle {
       polygonOffsetFactor: source.polygonOffsetFactor,
       polygonOffsetUnits: source.polygonOffsetUnits,
       fog: source.fog,
+      clippingPlanes: source.clippingPlanes,
+      clipIntersection: source.clipIntersection,
+      clipShadows: source.clipShadows,
     });
     // not a MeshToonMaterial property in three's types, but the renderer reads it off any material and the toon shader
     // has the define: faceted meshes (the shore stones) stay faceted

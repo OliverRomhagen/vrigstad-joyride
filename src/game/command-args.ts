@@ -9,9 +9,12 @@ export interface Arg<N extends string, T> {
   /** takes every word left, joined by spaces */
   readonly rest: boolean;
   parse(word: string): T;
+  /** the words Tab offers; never throws: a list that isn't ready yet gives none */
   choices?(): readonly string[];
   /** what it is, for `help <command>`: `km/h`, `a place on the map` */
   readonly help?: string;
+  /** what the usage line shows in place of the name: an either() lists its few words, `hour|dawn|noon|dusk|night` */
+  readonly usage?: string;
 }
 
 // biome-ignore lint/suspicious/noExplicitAny: the value type varies by argument; ArgValues reads each one back
@@ -26,7 +29,11 @@ export type ArgValues<A extends readonly AnyArg[]> = {
     : never;
 };
 
-const arg = <N extends string, T>(name: N, parse: (word: string) => T, choices?: () => readonly string[]) => ({
+/**
+ * An argument of a type of your own, beside the code that owns the value: `arg('hour', w => …)` reads `16:30`. `parse`
+ * throws a UsageError, starting with the name, for a word it can't use; `choices` are the words Tab offers.
+ */
+export const arg = <N extends string, T>(name: N, parse: (word: string) => T, choices?: () => readonly string[]) => ({
   name,
   optional: false as const,
   rest: false,
@@ -77,10 +84,9 @@ export function toggle<N extends string>(name: N): Arg<N, boolean> {
 
 // a choice with this many options or fewer lists them when a word doesn't match: the console on a phone has no Tab
 const CHOICES_LISTED = 8;
-const pickOneOf = (all: readonly string[]) =>
-  all.length > 0 && all.length <= CHOICES_LISTED
-    ? ` Pick one of: ${[...all].sort((a, b) => a.localeCompare(b, 'sv')).join(', ')}.`
-    : '';
+const sorted = (all: readonly string[]) => [...all].sort((a, b) => a.localeCompare(b, 'sv'));
+const fewEnough = (all: readonly string[]) => all.length > 0 && all.length <= CHOICES_LISTED;
+const pickOneOf = (all: readonly string[]) => (fewEnough(all) ? ` Pick one of: ${sorted(all).join(', ')}.` : '');
 
 /**
  * One of a set of words, in any case: `choice('place', () => [...places.keys()])`. A function is read on every use, so
@@ -101,6 +107,57 @@ export function choice<N extends string, C extends string>(
     },
     list,
   );
+}
+
+/**
+ * One argument that is one of several kinds: `either('when', num('hour'), choice('moment', ['dawn', 'dusk']))` reads
+ * `16.5` as a number and `dusk` as a word. The first that parses the word wins, so put the stricter one first. Tab offers
+ * the choices of all. A word none takes gets the first one's error, then each later one's: its words in one "Or one of"
+ * list when they are few enough, else its own error.
+ */
+export function either<N extends string, const A extends readonly [AnyArg, AnyArg, ...AnyArg[]]>(
+  name: N,
+  ...kinds: A
+): Arg<N, ReturnType<A[number]['parse']>> {
+  // optional() goes round the whole either, where command() reads it; a rest argument can't be one of its kinds
+  const flagged = kinds.find(a => a.optional || a.rest);
+  if (flagged)
+    throw new Error(
+      flagged.rest
+        ? `${flagged.name}: an either's kinds can't take the rest`
+        : `${flagged.name}: an either's kinds can't be optional; wrap the whole either in optional()`,
+    );
+  const lists = kinds.flatMap(a => (a.choices ? [a.choices.bind(a)] : []));
+  // the usage line names each kind, or lists its words when they are few: the console on a phone has no Tab
+  const usage = kinds.map(a => a.usage ?? listedWords(a)?.join('|') ?? a.name).join('|');
+  const parsed = arg(
+    name,
+    w => {
+      const said: string[] = [],
+        listed: string[] = [];
+      for (const a of kinds) {
+        try {
+          return a.parse(w);
+        } catch (err) {
+          if (!(err instanceof UsageError)) throw err;
+          const all = a.choices?.() ?? [];
+          // the first kind always says what it wants; a later one with few words only adds them to one list
+          if (said.length > 0 && fewEnough(all)) listed.push(...all);
+          else said.push(err.message);
+        }
+      }
+      throw new UsageError([...said, ...(listed.length ? [`Or one of: ${sorted(listed).join(', ')}.`] : [])].join(' '));
+    },
+    lists.length ? () => lists.flatMap(list => list()) : undefined,
+  );
+  return { ...parsed, usage };
+}
+
+// an argument's words when there are few enough to list and they are known now; else undefined
+function listedWords(a: AnyArg): readonly string[] | undefined {
+  // a list that isn't ready yet is empty, and the name stands in for it
+  const all = a.choices?.() ?? [];
+  return fewEnough(all) ? all : undefined;
 }
 
 /** The rest of the line, as one string: `say <words>`. Only the last argument can be one. */
@@ -156,7 +213,8 @@ export function command<const A extends readonly AnyArg[]>(spec: TypedCommand<A>
     if (!a.optional && i > 0 && args[i - 1].optional) throw new Error('optional arguments go last: ' + a.name);
   });
   const shown = (a: AnyArg) => {
-    const n = a.rest ? a.name + '…' : a.name;
+    const label = a.usage ?? a.name,
+      n = a.rest ? label + '…' : label;
     return a.optional ? `[${n}]` : `<${n}>`;
   };
   const usage = args.map(shown).join(' ');
@@ -180,7 +238,8 @@ export function command<const A extends readonly AnyArg[]>(spec: TypedCommand<A>
         const a = args[i];
         const w = a.rest ? words.slice(i).join(' ') : words[i];
         if (w === undefined || w === '') {
-          if (!a.optional) throw new UsageError();
+          // an either's usage line lists its kinds, not its name, so its name would be a word the line never shows
+          if (!a.optional) throw new UsageError(a.usage ? 'An argument is missing.' : `${a.name} is missing.`);
           values[a.name] = undefined;
         } else values[a.name] = a.parse(w);
       }
@@ -191,7 +250,7 @@ export function command<const A extends readonly AnyArg[]>(spec: TypedCommand<A>
   };
 }
 
-export interface GroupSpec {
+export interface GroupSpec<A extends readonly AnyArg[] = readonly []> {
   help: string;
   details?: string;
   examples?: readonly string[];
@@ -199,24 +258,71 @@ export interface GroupSpec {
   aliases?: readonly string[];
   /** the commands under it, by the word that picks one: `{ set: command({ … }) }` */
   subcommands: Readonly<Record<string, Command>>;
+  /** with `run`: the group's own arguments, for a line whose first word names no subcommand */
+  args?: A;
+  /** with `args`: what the group does by itself, as a command()'s run: `time` and `time 16:30` beside `time hold` */
+  run?(values: ArgValues<A>, call: Call): string | Outcome;
 }
 
 /**
- * A command that only holds others: `tune set driving.grip 8` runs the `set` under `tune`. Typed on its own, or with a
- * word that names none of them, it shows its usage line, which lists them.
+ * A command that holds others: `tune set driving.grip 8` runs the `set` under `tune`. Typed on its own, or with a word
+ * that names none of them, it shows its usage line, which lists them. Given `args` and `run`, it runs by itself then
+ * instead: `time` and `time 16:30` beside `time hold`. A word that names a subcommand always picks it, so the group's
+ * first argument can't have one of those names among its choices.
  */
-export function group(spec: GroupSpec): Command {
+export function group<const A extends readonly AnyArg[] = readonly []>(spec: GroupSpec<A>): Command {
   const names = Object.keys(spec.subcommands).sort();
-  return {
+  const below = `<${names.join('|')}> …`;
+  const shared = {
     help: spec.help,
     details: spec.details,
     examples: spec.examples,
     access: spec.access,
     aliases: spec.aliases,
     subcommands: spec.subcommands,
-    usage: `<${names.join('|')}> …`,
-    run: words => {
-      throw new UsageError(words[0] ? `No subcommand called ${words[0]}.` : '');
+  };
+  const noSubcommand = (word: string) => new UsageError(`No subcommand called ${word}.`);
+  if (!spec.args || !spec.run) {
+    if (spec.args || spec.run) throw new Error('a group that runs by itself needs both args and run');
+    return {
+      ...shared,
+      usage: below,
+      run: words => {
+        throw words[0] ? noSubcommand(words[0]) : new UsageError('');
+      },
+    };
+  }
+  // Catches the mistake in a list that is known now. One that isn't ready yet, or grows later, isn't checked: the
+  // subcommand wins then too, which is the rule.
+  const known = spec.args[0]?.choices?.() ?? [];
+  const hidden = known.find(c => names.includes(c.toLowerCase()));
+  if (hidden !== undefined) throw new Error(`${hidden} names a subcommand, so the group's own argument never gets it`);
+  const own = command({ help: spec.help, args: spec.args, run: spec.run });
+  const first = spec.args[0];
+  return {
+    ...shared,
+    usage: own.usage ? `${own.usage} | ${below}` : below,
+    params: own.params,
+    complete: own.complete,
+    run: (words, call) => {
+      // with no arguments of its own, a first word can only have been meant for a subcommand
+      if (!first && words[0] !== undefined) throw noSubcommand(words[0]);
+      try {
+        return own.run(words, call);
+      } catch (err) {
+        // a first word the group's own argument can't take may have been meant for a subcommand: name them too
+        if (!(err instanceof UsageError) || !first || words[0] === undefined || takes(first, words[0])) throw err;
+        throw new UsageError(`${err.message ? err.message + ' ' : ''}Or a subcommand: ${names.join(', ')}.`);
+      }
     },
   };
+}
+
+function takes(a: AnyArg, w: string) {
+  try {
+    a.parse(w);
+    return true;
+  } catch {
+    return false;
+  }
 }

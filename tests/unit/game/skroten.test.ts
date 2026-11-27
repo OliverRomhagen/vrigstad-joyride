@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import type { Car } from '../../../src/game/cars';
-import { fmtKr } from '../../../src/game/economy';
+import { fmtKr, RESPRAY_KR, UPGRADE_KR } from '../../../src/game/economy';
 import type { MenuItem } from '../../../src/game/pets';
-import { carsForSale, OWNER_LINES, Skroten, type SkrotenDeps } from '../../../src/game/skroten';
+import { noMods } from '../../../src/game/sim/upgrades';
+import { specFor } from '../../../src/game/sim/vehicle-spec';
+import { carsForSale, OWNER_LINES, paintName, Skroten, type SkrotenDeps } from '../../../src/game/skroten';
 import { OWNER_UV, type YardCar, yardHeading, yardToWorld } from '../../../src/game/skroten-yard';
 import { newGameState } from '../../../src/game/state';
 
@@ -18,7 +20,17 @@ function skroten(o: { car?: Partial<Car>; model?: string; stars?: number; kr?: n
     pick: (k: string) => void;
     stay?: (() => boolean) | null;
   } | null = null;
-  const car = { type: 'volvo', dmg: 0, x: 0, z: 0, v: 0, ...o.car } as Car;
+  const car = {
+    type: 'volvo',
+    T: specFor('volvo'),
+    color: specFor('volvo').cols[0]!,
+    mods: noMods(),
+    dmg: 0,
+    x: 0,
+    z: 0,
+    v: 0,
+    ...o.car,
+  } as Car;
   const game = { ...newGameState(), inCar: true, pcar: car as Car | null },
     wallet = { kr: o.kr ?? 0 };
   let onRing = true;
@@ -39,6 +51,10 @@ function skroten(o: { car?: Partial<Car>; model?: string; stars?: number; kr?: n
       calls.push('sold ' + c.type);
       game.inCar = false;
       game.pcar = null;
+    },
+    getOut: () => {
+      calls.push('out');
+      game.inCar = false;
     },
   };
   return {
@@ -163,41 +179,15 @@ describe('Plåt-Pelle mends the car on the lift', () => {
   it('names his price for the damage, and mends the car once you pay', () => {
     const t = skroten({ model: 'volvo240', car: { dmg: 50 }, kr: 500 });
     t.driveOntoLift();
-    expect(t.s.repairKr()).toBe(200);
+    expect(t.s.liftRepairKr()).toBe(200);
     expect(t.s.open()).toBe(true);
-    expect(t.menu()!.kind).toBe('skrot-fix');
+    expect(t.menu()!.kind).toBe('skrot-lift');
     expect(t.menu()!.title).toContain(fmtKr(200));
     t.choose('fix');
     expect(t.g.game.pcar!.dmg).toBe(0);
     expect(t.wallet.kr).toBe(300);
     expect(t.game.inCar).toBe(true);
-  });
-
-  it('keeps the damage and your money when you say no, or cannot pay', () => {
-    const no = skroten({ car: { dmg: 50 }, kr: 500 });
-    no.driveOntoLift();
-    no.s.open();
-    no.choose('no');
-    expect(no.g.game.pcar!.dmg).toBe(50);
-    expect(no.wallet.kr).toBe(500);
-    const broke = skroten({ car: { dmg: 50 }, kr: 10 });
-    broke.driveOntoLift();
-    broke.s.open();
-    broke.choose('fix');
-    expect(broke.g.game.pcar!.dmg).toBe(50);
-    expect(broke.wallet.kr).toBe(10);
-    expect(broke.calls.at(-1)).toContain('Kom tebaks när du har pengarna');
-  });
-
-  it('opens nothing and says nothing for a whole car, so E gets you out, even a police car or with the police after you', () => {
-    for (const o of [{}, { car: { type: 'polis' } }, { stars: 1 }] as const) {
-      const t = skroten({ ...o, car: { dmg: 0, ...('car' in o ? o.car : {}) }, kr: 1000 });
-      t.driveOntoLift();
-      expect(t.s.repairKr()).toBeNull();
-      expect(t.s.open()).toBe(false);
-      expect(t.menu()).toBeNull();
-      expect(t.calls).toEqual([]);
-    }
+    expect(t.menu()!.items.map(([k]) => k)).not.toContain('fix'); // the menu comes back, for an upgrade
   });
 
   it('names the new price instead of taking it when the car took more damage with the menu open', () => {
@@ -224,14 +214,30 @@ describe('Plåt-Pelle mends the car on the lift', () => {
     expect(t.g.game.pcar!.dmg).toBe(50);
   });
 
-  it('mends nothing for the police or with them after you', () => {
+  it('keeps the damage and your money when you say no, or cannot pay', () => {
+    const no = skroten({ car: { dmg: 50 }, kr: 500 });
+    no.driveOntoLift();
+    no.s.open();
+    no.choose('no');
+    expect(no.g.game.pcar!.dmg).toBe(50);
+    expect(no.wallet.kr).toBe(500);
+    const broke = skroten({ car: { dmg: 50 }, kr: 10 });
+    broke.driveOntoLift();
+    broke.s.open();
+    broke.choose('fix');
+    expect(broke.g.game.pcar!.dmg).toBe(50);
+    expect(broke.wallet.kr).toBe(10);
+    expect(broke.calls.at(-1)).toContain('Kom tebaks när du har pengarna');
+  });
+
+  it('works on nothing for the police or with them after you', () => {
     for (const [o, says] of [
       [{ car: { dmg: 50, type: 'polis' } }, 'En polisbil?'],
       [{ car: { dmg: 50 }, stars: 1 }, 'Inte mä snuten i hälarna!'],
     ] as const) {
       const t = skroten({ ...o, kr: 1000 } as Parameters<typeof skroten>[0]);
       t.driveOntoLift();
-      expect(t.s.repairKr()).toBeNull();
+      expect(t.s.liftRepairKr()).toBeNull();
       expect(t.s.open()).toBe(false);
       expect(t.menu()).toBeNull();
       expect(t.calls.at(-1)).toContain(says);
@@ -241,7 +247,7 @@ describe('Plåt-Pelle mends the car on the lift', () => {
   it('offers nothing off the lift, keeps the menu only while the car stands on it, and mends none that left', () => {
     const t = skroten({ car: { dmg: 50 }, kr: 500 });
     t.leaveRing();
-    expect(t.s.repairKr()).toBeNull();
+    expect(t.s.liftRepairKr()).toBeNull();
     expect(t.s.open()).toBe(false);
     t.driveOntoLift();
     t.s.open();
@@ -251,6 +257,137 @@ describe('Plåt-Pelle mends the car on the lift', () => {
     t.choose('fix');
     expect(t.g.game.pcar!.dmg).toBe(50);
     expect(t.wallet.kr).toBe(500);
+  });
+});
+
+describe('Plåt-Pelle upgrades the car on the lift', () => {
+  const keys = (t: ReturnType<typeof skroten>) => t.menu()!.items.map(([k]) => k);
+
+  it('lists the upgrades and a respray for a whole car, and nothing to mend', () => {
+    const t = skroten({ kr: 0 });
+    t.driveOntoLift();
+    expect(t.s.liftRepairKr()).toBe(0);
+    expect(t.s.open()).toBe(true);
+    expect(t.menu()!.title).toBe('Plåt-Pelle: ”Fin Volvo 240! Va ska ja göra mä den?”');
+    expect(keys(t)).toEqual(['engine', 'springs', 'body', 'paint', 'out', 'no']);
+  });
+
+  it('opens nothing and says nothing for a whole police car or with the police after you, so E gets you out', () => {
+    for (const o of [{ car: { type: 'polis' } }, { stars: 1 }] as const) {
+      const t = skroten({ ...o, car: { dmg: 0, ...('car' in o ? o.car : {}) }, kr: 1000 });
+      t.driveOntoLift();
+      expect(t.s.liftRepairKr()).toBeNull();
+      expect(t.s.open()).toBe(false);
+      expect(t.menu()).toBeNull();
+      expect(t.calls).toEqual([]);
+    }
+  });
+
+  it('gets you out from the menu, since E on the lift opens it instead', () => {
+    const t = skroten({ kr: 0 });
+    t.driveOntoLift();
+    t.s.open();
+    t.choose('out');
+    expect(t.calls).toEqual(['out']);
+    expect(t.game.inCar).toBe(false);
+    const rolling = skroten({ kr: 0 });
+    rolling.driveOntoLift();
+    rolling.s.open();
+    rolling.g.game.pcar!.v = 10; // picked before the menu noticed the car moving
+    rolling.choose('out');
+    expect(rolling.calls).toEqual([]);
+  });
+
+  it('fits an upgrade once you pay, and leaves it off the menu after', () => {
+    const t = skroten({ kr: 2000 });
+    t.driveOntoLift();
+    t.s.open();
+    t.choose('engine');
+    expect(t.g.game.pcar!.mods).toEqual({ engine: true, springs: false, body: false });
+    expect(t.wallet.kr).toBe(2000 - UPGRADE_KR.engine);
+    expect(t.calls.at(-1)).toContain('Nu går ho!');
+    expect(keys(t)).toEqual(['springs', 'body', 'paint', 'out', 'no']);
+    t.choose('body');
+    t.choose('springs');
+    expect(t.g.game.pcar!.mods).toEqual({ engine: true, springs: true, body: true });
+    expect(keys(t)).toEqual(['paint', 'out', 'no']);
+  });
+
+  it('fits nothing once the police are after you, and closes the menu after a refused job', () => {
+    const t = skroten({ kr: 2000 });
+    t.driveOntoLift();
+    t.s.open();
+    (t.g as { stars: number }).stars = 1; // they come while the menu is open
+    t.choose('engine');
+    expect(t.g.game.pcar!.mods.engine).toBe(false);
+    expect(t.wallet.kr).toBe(2000);
+    expect(t.calls.at(-1)).toContain('Inte mä snuten i hälarna!');
+    const before = t.menu();
+    t.choose('springs'); // the same, stale menu: nothing reopened it
+    expect(t.menu()).toBe(before);
+  });
+
+  it('goes back to the lift menu when you say no to a respray', () => {
+    const t = skroten({ kr: 500 });
+    t.driveOntoLift();
+    t.s.open();
+    t.choose('paint');
+    t.choose('no');
+    expect(t.menu()!.kind).toBe('skrot-lift');
+    expect(t.wallet.kr).toBe(500);
+  });
+
+  it('has a word for tuning an EPA-traktor', () => {
+    const t = skroten({ car: { type: 'epa', T: specFor('epa'), color: specFor('epa').cols[0]! }, kr: 2000 });
+    t.driveOntoLift();
+    t.s.open();
+    t.choose('engine');
+    expect(t.calls.at(-1)).toContain('En trimmad EPA?');
+  });
+
+  it('fits nothing you cannot pay for, nor on a car that left the lift', () => {
+    const broke = skroten({ kr: 100 });
+    broke.driveOntoLift();
+    broke.s.open();
+    broke.choose('engine');
+    expect(broke.g.game.pcar!.mods.engine).toBe(false);
+    expect(broke.wallet.kr).toBe(100);
+    const gone = skroten({ kr: 2000 });
+    gone.driveOntoLift();
+    gone.s.open();
+    gone.g.game.pcar!.x = LIFT.x + 10;
+    gone.choose('engine');
+    expect(gone.g.game.pcar!.mods.engine).toBe(false);
+    expect(gone.wallet.kr).toBe(2000);
+  });
+
+  it("resprays the car in one of its type's other colours", () => {
+    const t = skroten({ kr: 500 }),
+      cols = specFor('volvo').cols;
+    t.driveOntoLift();
+    t.s.open();
+    t.choose('paint');
+    expect(t.menu()!.kind).toBe('skrot-paint');
+    expect(t.menu()!.items).toHaveLength(cols.length); // every other colour, and no
+    expect(t.menu()!.items[0]![1]).toContain(cols[1]!);
+    t.choose('p0');
+    expect(t.g.game.pcar!.color).toBe(cols[1]);
+    expect(t.wallet.kr).toBe(500 - RESPRAY_KR);
+    expect(t.menu()!.kind).toBe('skrot-lift');
+  });
+});
+
+describe('paintName', () => {
+  it('names the paints as Plåt-Pelle would', () => {
+    expect(['#27406b', '#7a2530', '#c9bd9c', '#e6e4dc', '#2f5a41', '#8a8f93'].map(paintName)).toEqual([
+      'Mörkblå',
+      'Vinröd',
+      'Beige',
+      'Vit',
+      'Mörkgrön',
+      'Grå',
+    ]);
+    expect(['#1d1d1f', '#e8a020', '#c8372d', '#2a5fa0'].map(paintName)).toEqual(['Svart', 'Orange', 'Röd', 'Blå']);
   });
 });
 

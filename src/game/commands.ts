@@ -39,7 +39,7 @@ export interface Command {
   aliases?: readonly string[];
   /**
    * Commands under this one, by name: `tune set …` runs `set` with the words after it. A word that names none runs this
-   * command's own `run` (group() refuses it). They share its access; help, `--help`, Tab and the usage line reach them.
+   * command's own `run` (a group() without one refuses it). They share its access; help, `--help`, Tab and the usage line reach them.
    */
   subcommands?: Readonly<Record<string, Command>>;
   /** The words that fit at argument `index` (0 is the first after the name), given the arguments before it. */
@@ -87,8 +87,9 @@ export function refuse(code: string, reason: string): Outcome {
 /**
  * Wraps every run, for logging, recording or refusing: return `next()` to run the command (and the hooks inside this
  * one), or a line of your own to stop it, which counts as a refusal (`hook`). `next()` gives the Outcome, so a hook
- * can keep only the runs that were done. A hook that ran the command and returns a line changes only what is shown:
- * whether it was done stays what `next()` said. The first hook added is the outermost.
+ * can keep only the runs that were done. A hook that ran the command and returns a line, or an Outcome, changes only
+ * what is shown: whether it was done, and its refusal's name, stay what `next()` said. The first hook added is the
+ * outermost.
  */
 export type Hook = (call: Call, next: () => Outcome) => Outcome | string;
 
@@ -204,8 +205,10 @@ export class Commands {
           inside = next();
           return inside;
         });
-        if (typeof answer !== 'string') return answer;
-        return inside ? { ...inside, text: answer } : refuse(REFUSAL.HOOK, answer);
+        const text = typeof answer === 'string' ? answer : answer.text;
+        // whatever a hook returns, whether the command was done is what next() said, so only the text can change
+        if (inside) return { ...inside, text };
+        return typeof answer === 'string' ? refuse(REFUSAL.HOOK, answer) : answer;
       },
       inner,
     );
@@ -226,9 +229,10 @@ export class Commands {
     if (!cmd || name === undefined || !this.canRun(cmd)) return [];
     // the words before the cursor that name a subcommand lead to it; the cursor's word may be one
     const found = descend(name, cmd, words.slice(1));
-    if (found.cmd.subcommands) return found.args.length ? [] : fits(Object.keys(found.cmd.subcommands)).sort();
+    // a group offers its subcommands for the first word, and what its own arguments offer when it runs by itself
     const before = found.args;
-    return fits(found.cmd.complete?.(before.length, before) ?? []).sort();
+    const below = found.cmd.subcommands && before.length === 0 ? Object.keys(found.cmd.subcommands) : [];
+    return fits([...below, ...(found.cmd.complete?.(before.length, before) ?? [])]).sort();
   }
 
   /** The usage line of the command a line starts with (`go <place> [speed]`), for the hint under the input. */
@@ -315,9 +319,12 @@ function usage({ path, cmd }: Pick<Found, 'path' | 'cmd'>) {
 function descend(path: string, cmd: Command, args: string[]): Found {
   let found: Found = { path, cmd, args };
   for (;;) {
-    const sub = found.args[0] && found.cmd.subcommands?.[found.args[0].toLowerCase()];
+    // its own names only: `constructor` and `__proto__` are on every object, and are no subcommands
+    const word = found.args[0]?.toLowerCase(),
+      subs = found.cmd.subcommands;
+    const sub = word !== undefined && subs && Object.hasOwn(subs, word) ? subs[word] : undefined;
     if (!sub) return found;
-    found = { path: `${found.path} ${found.args[0].toLowerCase()}`, cmd: sub, args: found.args.slice(1) };
+    found = { path: `${found.path} ${word}`, cmd: sub, args: found.args.slice(1) };
   }
 }
 

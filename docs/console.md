@@ -175,11 +175,12 @@ commands.register('go', command({
 - `command()` (`src/game/command-args.ts`) builds a `Command` from typed arguments: `int`, `num` (a Swedish comma
   works), `word`, `toggle` (on/off, ja/nej), `choice` and `rest`, each `optional()` at the end. From that one list come
   the parsing, the usage line (`<place> [speed]`), the error lines (`No place called gnosjö. Usage: go <place>
-  [speed]`) and Tab completion. `run` gets the values by name, typed: a choice is its own union of words. A choice of
-  up to 8 words lists them in its error (`Pick one of: kiosk, skroten, torget.`), since the console on a phone has no
-  Tab; a longer one, such as the tunables' keys, keeps the short line.
+  [speed]`, and `place is missing.` for a word left out) and Tab completion. `run` gets the values by name, typed: a
+  choice is its own union of words. A choice of up to 8 words lists them in its error (`Pick one of: kiosk, skroten,
+  torget.`), since the console on a phone has no Tab; a longer one, such as the tunables' keys, keeps the short line.
 - A `choice` given a function reads it on every use, so a list that grows while the game runs (car models, unlocked
-  places) completes and parses without registering again.
+  places) completes and parses without registering again. Until its list is ready it returns `[]`, never throws: the
+  console reads it when the command is built, and a throw there would stop the page.
 - The plain shape still works: `register(name, { usage, help, run(words) })`, throwing `UsageError` for bad
   arguments. The existing commands (`kr`, `mynt`, `adopt`, `clear`) use it, and move over when someone touches them.
 - **A group** holds commands under one name: `group({ help, subcommands: { set, get } })` registers `tune`, and
@@ -187,6 +188,25 @@ commands.register('go', command({
   (`list`, `reset`). The registry follows the subcommands for help, `--help`, Tab and the usage line, so
   `tune set --help` and `help tune set` both work; hooks see the group's name, with the subcommand as the first
   argument. A subcommand's examples start with the whole path (`tune set …`).
+- **A group can run by itself too.** Given `args` and `run`, as a `command()` takes them, it runs when the first word
+  names no subcommand: `time` shows the clock and `time 16:30` sets it, beside `time hold` and `time speed 20`
+  (`registerDayCommands` in `src/game/day-cycle.ts`). The usage line shows both (`time [hour|dawn|noon|dusk|night] | <hold|run|speed> …`),
+  and Tab offers the subcommands together with the words of the group's own first argument. A word that names a
+  subcommand always picks it, so `group()` refuses a first argument with such a word among its choices; a list that
+  isn't ready when the group is built, or grows later, isn't checked, and the subcommand wins there too. A first word
+  the group's own argument can't take adds the subcommands to its error (`Or a subcommand: hold, run, speed.`).
+- **`either(name, a, b, …)`** is one argument that is one of several kinds: `either('when', clockTime('hour'),
+  choice('moment', …))` reads `16.5` as a number and `dusk` as a word, and `run` tells them apart by type. The first
+  that parses the word wins, so the stricter one goes first. A word none takes gets the first one's error, then each
+  later one's: its words in one list when they are few, else its error (`hour is from 5 to 19. Or one of: dawn, dusk,
+  night, noon.`). In the usage line it lists a kind's words when they are few, and names the others
+  (`[hour|dawn|noon|dusk|night]`), since the console on a phone has no Tab. That line is made when the command is
+  built, so a list read from a function shows as it was then, or by its name if it wasn't ready. `optional()` goes
+  round the whole `either`, not one of its kinds, and a `rest()` can't be one of them. A required `either` left out
+  says `An argument is missing.`, since its usage line shows its kinds, not its name.
+- **`arg(name, parse, choices?)`** builds an argument of a type of your own, beside the code that owns the value: the
+  clock time `16:30` lives in `day-cycle.ts`, not in the console. `parse` throws a `UsageError` that starts with the
+  name; everything else (usage, Tab, `optional()`, `described()`) works as for the built-in ones.
 - **Every command explains itself.** `help` is required: one line of up to 80 characters (`HELP_MAX`) saying what it
   does, and `register` refuses a command without it. Commands register at start-up, so a refused one stops the whole
   page: a module that registers commands calls its register function in a unit test (`registerWalletCommands` in
