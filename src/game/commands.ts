@@ -70,7 +70,7 @@ export const REFUSAL = {
   NOT_ALLOWED: 'not-allowed',
   /** arguments the command can't use: the text is its usage line */
   USAGE: 'usage',
-  /** a hook answered with a line of its own without running the command */
+  /** a hook answered without running the command, with a line or an Outcome that named no refusal of its own */
   HOOK: 'hook',
 } as const;
 
@@ -86,10 +86,10 @@ export function refuse(code: string, reason: string): Outcome {
 
 /**
  * Wraps every run, for logging, recording or refusing: return `next()` to run the command (and the hooks inside this
- * one), or a line of your own to stop it, which counts as a refusal (`hook`). `next()` gives the Outcome, so a hook
- * can keep only the runs that were done. A hook that ran the command and returns a line, or an Outcome, changes only
- * what is shown: whether it was done, and its refusal's name, stay what `next()` said. The first hook added is the
- * outermost.
+ * one), or a line or `refuse(…)` of your own to stop it, which counts as a refusal (`hook`, or the name you gave).
+ * `next()` gives the Outcome, so a hook can keep only the runs that were done. A hook that ran the command and returns
+ * a line, or an Outcome, changes only what is shown: whether it was done, and its refusal's name, stay what `next()`
+ * said. The first hook added is the outermost.
  */
 export type Hook = (call: Call, next: () => Outcome) => Outcome | string;
 
@@ -192,9 +192,10 @@ export class Commands {
   }
 
   /**
-   * Runs `inner` inside every hook; the first hook added is the outermost. A line from a hook that never called next()
-   * stopped the command, so it is a refusal. A line from one that did call it only changes what is shown: the command
-   * ran, and saying it didn't would have E tell you "no" after it got you into the car.
+   * Runs `inner` inside every hook; the first hook added is the outermost. What a hook that never called next()
+   * returns, a line or an Outcome, stopped the command, so it is a refusal. What one that did call it returns only
+   * changes what is shown: the command ran, and saying it didn't would have E tell you "no" after it got you into the
+   * car.
    */
   private throughHooks(call: Call, inner: () => Outcome): Outcome {
     // fold from the last hook in, so the first is the outermost
@@ -208,7 +209,10 @@ export class Commands {
         const text = typeof answer === 'string' ? answer : answer.text;
         // whatever a hook returns, whether the command was done is what next() said, so only the text can change
         if (inside) return { ...inside, text };
-        return typeof answer === 'string' ? refuse(REFUSAL.HOOK, answer) : answer;
+        // one that never called next() stopped the command, so it refused, whatever it says: its own refusal's name, if
+        // it gave one, else `hook`
+        const code = typeof answer !== 'string' && !answer.ok ? answer.code : undefined;
+        return refuse(code ?? REFUSAL.HOOK, text);
       },
       inner,
     );

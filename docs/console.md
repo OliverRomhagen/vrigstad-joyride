@@ -249,9 +249,12 @@ const stop = commands.use((call, next) => {    // call: { name, args, source }
 
 A hook wraps every command that runs: it can look at the call, refuse it, change or record the result. Its type is
 `Hook = (call: Call, next: () => Outcome) => Outcome | string`. `next()` gives the run's `Outcome`, and a hook that
-lets the command run returns it. A plain string from a hook that never called `next()` stopped the command, so it counts as a
-refusal: the short form above. A string from a hook that did call `next()` only changes the line shown; whether the
-run was done stays what `next()` said, as with `return { ...outcome, text }`. The first one added is the outermost. This is where cross-cutting work goes, so no command has to know about it:
+lets the command run returns it. Whatever a hook that never called `next()` returns stopped the command, so it counts
+as a refusal: a plain string is the short form above (`hook`), and `refuse(code, reason)` names its own refusal. An
+Outcome that says it was done is a `hook` refusal too, since the command never ran. A string or an Outcome from a hook
+that did call `next()` only changes the line shown; whether the run was done, and its refusal's name, stay what
+`next()` said. The first one added is the outermost. This is where cross-cutting work goes, so no command has to know
+about it:
 
 | Hook | What it does | Issue |
 |---|---|---|
