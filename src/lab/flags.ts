@@ -23,7 +23,7 @@ export const LAB_EXPERIMENTS = [
   {
     id: 'toon',
     name: 'Cel-shaded style',
-    cost: 'Every lit material swapped each frame, and an extra line draw per inked mesh, the village shells included',
+    cost: 'Every lit material swapped each frame, an extra line draw per inked mesh, the village shells included, and the timber houses drawn again, blended, for their board seams',
   },
 ] as const satisfies readonly LabExperiment[];
 

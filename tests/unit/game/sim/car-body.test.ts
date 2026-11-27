@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   bodyRadius,
+  bodyReach,
   type CarBody,
   nearestBetweenSpines,
   nearestOnSpine,
@@ -60,5 +61,23 @@ describe('the car body', () => {
     const clear = car(0, -8, Math.PI / 2); // along the wall, 1.1 m off it
     expect(pushBodyOut(clear, collide)).toBe(false);
     expect(clear).toMatchObject({ x: 0, z: -8 });
+  });
+
+  it("follows a body that lies off the car's origin, as a model with its wheels off its middle (#471)", () => {
+    // the same car with its body 0.3 m behind its origin: the nose 2.1 m ahead, the tail 2.7 m behind
+    const back = (x: number, z: number, h: number): CarBody => ({
+      ...car(x, z, h),
+      T: { lengthM: 4.8, widthM: 1.8, bodyAheadM: -0.3 },
+    });
+    expect(bodyReach(back(0, 0, 0))).toBeCloseTo(2.7);
+    expect(nearestOnSpine(back(0, 0, 0), 0, -10, p())).toEqual({ x: 0, z: -1.2 });
+    expect(nearestOnSpine(back(0, 0, 0), 0, 10, p())).toEqual({ x: 0, z: 1.8 });
+    expect(gap(back(0, 0, 0), car(0, -4.5, 0))).toBeCloseTo(0); // its nose meets the other's tail 0.3 m nearer
+    expect(gap(car(0, -4.5, 0), back(0, 0, 0))).toBeCloseTo(0); // whichever car asks
+    expect(gap(back(0, 0, 0), car(3.3, 1.8, Math.PI / 2))).toBeCloseTo(0); // a T at the end of its spine, 0.3 m further back
+    const buildings = new BuildingIndex(makeWorld({ b: [{ p: square(-10, -30, 20), h: 5, k: BuildingKind.OTHER }] }));
+    const nose = back(0, -8, 0); // its nose 2.1 m ahead, 0.1 m into the wall
+    expect(pushBodyOut(nose, buildings.collide.bind(buildings))).toBe(true);
+    expect(nose.z - 2.1).toBeCloseTo(-10, 1);
   });
 });
