@@ -16,6 +16,9 @@ const GLINT_STRENGTH = 0.2; // how bright a glint is, times the sun's colour
 const GLINT_TINT = 0.9; // how far a glint takes the paint's hue: 0 is white, 1 the paint's own colour at full brightness
 const SUNLIT_FADE = 0.15; // cos of the sun's angle over a panel below which its flakes fade out: none glint on the side away from it
 
+// a number as a GLSL float literal: a whole number written plainly is an int, and mix(vec3, vec3, 1) or vec3 * 0 won't compile
+const glsl = (n: number) => (Number.isInteger(n) ? n.toFixed(1) : String(n));
+
 const VERTEX_HEAD = '\nvarying vec3 vFlakeAt;';
 const FRAGMENT_HEAD = `
 varying vec3 vFlakeAt;
@@ -31,12 +34,12 @@ vec3 flakeHash(vec3 p) {
 const FRAGMENT_FLAKE = `#include <lights_fragment_begin>
 #if NUM_DIR_LIGHTS > 0
 {
-  vec3 tilt = flakeHash(floor(vFlakeAt * ${FLAKE_CELLS_PER_M.toFixed(1)})) * 2.0 - 1.0;
-  vec3 flake = normalize(normal + tilt * ${FLAKE_TILT});
+  vec3 tilt = flakeHash(floor(vFlakeAt * ${glsl(FLAKE_CELLS_PER_M)})) * 2.0 - 1.0;
+  vec3 flake = normalize(normal + tilt * ${glsl(FLAKE_TILT)});
   vec3 halfway = normalize(directLight.direction + normalize(vViewPosition));
-  float facing = smoothstep(0.0, ${SUNLIT_FADE.toFixed(2)}, dot(normal, directLight.direction));
-  vec3 glint = mix(vec3(1.0), diffuseColor.rgb / max(max(diffuseColor.r, diffuseColor.g), diffuseColor.b), ${GLINT_TINT}); // warm in the paint's own hue, as real flakes are
-  reflectedLight.directSpecular += glint * directLight.color * facing * ${GLINT_STRENGTH.toFixed(1)} * pow(max(dot(flake, halfway), 0.0), ${GLINT_SHARPNESS.toFixed(1)});
+  float facing = smoothstep(0.0, ${glsl(SUNLIT_FADE)}, dot(normal, directLight.direction));
+  vec3 glint = mix(vec3(1.0), diffuseColor.rgb / max(max(diffuseColor.r, diffuseColor.g), diffuseColor.b), ${glsl(GLINT_TINT)}); // warm in the paint's own hue, as real flakes are
+  reflectedLight.directSpecular += glint * directLight.color * facing * ${glsl(GLINT_STRENGTH)} * pow(max(dot(flake, halfway), 0.0), ${glsl(GLINT_SHARPNESS)});
 }
 #endif`;
 
