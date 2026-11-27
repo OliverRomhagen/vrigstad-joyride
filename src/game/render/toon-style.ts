@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { HOUSE_SHELLS_MATERIAL } from './house-materials';
 import { inkEdges } from './ink-edges';
-import { INK_FLAG, INK_NO_FEET_FLAG } from './ink-flag';
+import { INK_COLOR, INK_FLAG, INK_NO_FEET_FLAG } from './ink-flag';
 
 // The look follows the "Kraftig" (bold) cel shading of the art direction lab (v20).
 // Light per quarter of MeshToonMaterial's ramp, which it samples at `dot * 0.5 + 0.5` (dot of normal and light
@@ -28,7 +28,6 @@ export const TOON_FILL_SCALE = 0.4; // 0.52 in the lab; lower, so the walls turn
 // panels get lines and smooth curves don't. Only under objects flagged with INK_FLAG: rigid things, not terrain,
 // roads or trees.
 const INK_CREASE_DEG = 34;
-const INK_COLOR = 0x10151c;
 const INK_OPACITY = 0.67;
 // Lines are drawn this fraction of their distance closer to the camera, along the line of sight: the same place on
 // screen, but in front of the surface they sit on, so they don't flicker into it. It has to beat more than the depth

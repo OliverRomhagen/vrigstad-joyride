@@ -3,7 +3,7 @@
 // Moved from src/game/main.ts (#177); main.ts calls these in the same order as before, since the house colours roll rnd().
 import * as THREE from 'three';
 import type { BridgeIndex } from '../../world/bridges';
-import { type BuildingShape, HOUSE_MAX_M2, HOUSE_MIN_M2 } from '../../world/buildings';
+import { type BuildingShape, HOUSE_MAX_M2, HOUSE_MIN_M2, type PointXZ } from '../../world/buildings';
 import type { WorldData } from '../../world/data';
 import type { Heightfield } from '../../world/heightfield';
 import { BridgeMesh } from '../../world/mesh/bridge-mesh';
@@ -23,7 +23,7 @@ import { col } from '../../world/three-legacy';
 import { GAME_WATER } from '../../world/water-palette';
 import type { WaterBodies } from '../../world/water-shapes';
 import { HOUSE_SHELLS_MATERIAL } from './house-materials';
-import { INK_FLAG, INK_NO_FEET_FLAG } from './ink-flag';
+import { INK_COLOR, INK_FLAG, INK_NO_FEET_FLAG } from './ink-flag';
 import { mergeGeo } from './models';
 
 // ---------- terrain ----------
@@ -157,6 +157,9 @@ export function addBridges(scene: THREE.Scene, bridges: BridgeIndex, heightfield
 // walls of gabled roofs, ending in a white fascia board, a white board under flat roofs, and a chimney on gabled roofs
 const WIN_W = 2.6,
   STOREY = 2.8; // window spacing and storey height (m)
+const BOARD_M = 0.2, // the width of a timber house's panel boards in the toon style (m)
+  BOARD_SEAM_ALPHA = 0.28,
+  TIMBER_MAX_M2 = 450; // the same size that gives a house the big buildings' plaster colours
 /** how far the plinth stands out from a house's wall (m); the safehouse doors stand clear of it (render/places.ts) */
 export const PLINTH_OUT_M = 0.08;
 /** how high the plinth's top stands over the highest ground under a house (m) */
@@ -174,13 +177,15 @@ export interface BuildingMeshOptions {
   skip?: readonly { x: number; z: number }[];
   /** Walls in one colour, without darkening towards the ground: the toon style's bands read better on them (#413). */
   flatWalls?: boolean;
+  /** The seams between the panel boards on timber houses, for the toon style (#413). */
+  boardSeams?: boolean;
 }
 /** The house shells in their colours with their trim, and one mesh of windows. Rolls rnd() once or twice per house, in data order. */
 export function addBuildings(
   scene: THREE.Scene,
   D: WorldData,
   heightfield: Heightfield,
-  { rnd, pick, maxAnisotropy, skip = [], flatWalls = false }: BuildingMeshOptions,
+  { rnd, pick, maxAnisotropy, skip = [], flatWalls = false, boardSeams = false }: BuildingMeshOptions,
 ) {
   const isSkipped = (p: readonly number[]) => skip.some(s => inPoly(p as number[], s.x, s.z));
   const hAt = (x: number, z: number) => heightfield.heightAt(x, z);
@@ -212,6 +217,8 @@ export function addBuildings(
       paint = { wall: c, wallFoot: c3, roof: c2 };
     const wp: number[] = [],
       wu: number[] = [],
+      bp: number[] = [], // the board seams' skin, its positions and uvs
+      bu: number[] = [],
       WHITE = col('#f1efe8'),
       PLINTH = col('#5b5d5b');
     const house = ['#9c3a2c', '#9c3a2c', '#a8452f', '#e8e2d2', '#e8e2d2', '#d9b65a', '#cfc8b8', '#8d9a8f'],
@@ -275,7 +282,9 @@ export function addBuildings(
     };
     // the colours roll rnd() once or twice per house, in data order, before any tree spot
     const colours = ({ building: b, area }: BuildingShape) => {
-      c.set(b.k === 2 ? '#9c3a2c' : b.k ? '#efece3' : area > 450 ? pick(big) : pick(house)).convertSRGBToLinear();
+      c.set(
+        b.k === 2 ? '#9c3a2c' : b.k ? '#efece3' : area > TIMBER_MAX_M2 ? pick(big) : pick(house),
+      ).convertSRGBToLinear();
       c2.set(b.k === 2 ? '#a8573f' : b.k ? '#3f4447' : rnd() < 0.35 ? '#4d4a48' : '#a8573f').convertSRGBToLinear();
       if (isSkipped(b.p)) return null; // after the rolls above, so the houses after it keep their colours
       c3.copy(c).multiplyScalar(flatWalls ? 1 : 0.62); // walls darken towards the ground, unless flat for the toon style's bands
@@ -287,8 +296,80 @@ export function addBuildings(
     // a trimmed gabled house's walls stop at its soffit, which closes them under the eave, so the roof's edge along the
     // walls is shared only with the eave, in its own plane, and the toon style draws no line 0.35 m in from the fascia's
     const wallDrop = (shape: BuildingShape) => (shape.building.g && trimmed(shape) ? FASCIA_M : 0);
+    // the timber houses, which get board seams in the toon style; the ones too small for trim too
+    const boarded = ({ building: b, area }: BuildingShape) =>
+      boardSeams && !b.k && area <= TIMBER_MAX_M2 && !isSkipped(b.p);
+    // where each wall's boards start (in boards), counted on from a corner, so a straight wall stays one run of boards
+    // where the outline splits it at the ridge (roofParts) or starts partway along it
+    const boardStarts = (ring: readonly PointXZ[]) => {
+      const m = ring.length,
+        starts = new Array<number>(m).fill(0),
+        walls = ring.map((a, i) => {
+          const d = ring[(i + 1) % m],
+            len = Math.hypot(d.x - a.x, d.z - a.z);
+          return len < 1e-3 ? null : { ux: (d.x - a.x) / len, uz: (d.z - a.z) / len, len };
+        });
+      type Wall = NonNullable<(typeof walls)[number]>;
+      const straightOn = (p: Wall, q: Wall) => p.ux * q.ux + p.uz * q.uz > 0.999;
+      const before = (i: number) => {
+        for (let k = 1; k < m; k++) {
+          const w = walls[(i - k + m) % m];
+          if (w) return w;
+        }
+        return null;
+      };
+      const first = Math.max(
+        0,
+        walls.findIndex((w, i) => {
+          const p = before(i);
+          return w && p && !straightOn(w, p);
+        }),
+      );
+      let run = 0,
+        prev: Wall | null = null;
+      for (let k = 0; k < m; k++) {
+        const i = (first + k) % m,
+          w = walls[i];
+        if (!w) continue;
+        starts[i] = prev && straightOn(w, prev) ? run : 0;
+        run = starts[i] + w.len / BOARD_M;
+        prev = w;
+      }
+      return starts;
+    };
+    // the seams on the wall from a to d (outward normal o, length len), just outside it, from y0 up to ta at a and td at d,
+    // between the wall and the windows' skin; u counts boards along the wall, from u0
+    const seamWall = (
+      a: PointXZ,
+      d: PointXZ,
+      ox: number,
+      oz: number,
+      len: number,
+      u0: number,
+      y0: number,
+      ta: number,
+      td: number,
+    ) => {
+      const u1 = u0 + len / BOARD_M;
+      quad(bp, a.x + ox * 0.02, a.z + oz * 0.02, d.x + ox * 0.02, d.z + oz * 0.02, y0, ta, y0, td);
+      bu.push(u0, 0, u1, 0, u1, 1, u0, 0, u1, 1, u0, 1);
+    };
+    // a house too small for trim has no plinth or eaves: its boards run from its foot to its roof
+    const untrimmedSeams = ({ ring, yAt, base, winding: wind }: BuildingShape) => {
+      const starts = boardStarts(ring);
+      for (let i = 0; i < ring.length; i++) {
+        const a = ring[i],
+          d = ring[(i + 1) % ring.length],
+          len = Math.hypot(d.x - a.x, d.z - a.z);
+        if (len < 1e-3) continue;
+        seamWall(a, d, (wind * (d.z - a.z)) / len, (-wind * (d.x - a.x)) / len, len, starts[i], base, yAt(a), yAt(d));
+      }
+    };
     const details = (shape: BuildingShape, emit: EmitVertex) => {
-      if (!trimmed(shape)) return;
+      if (!trimmed(shape)) {
+        if (boarded(shape)) untrimmedSeams(shape);
+        return;
+      }
       const { building: b, ring, yAt, roofY, base, top, hi, winding: wind } = shape;
       const m = ring.length,
         yb = hi + 0.2,
@@ -299,6 +380,7 @@ export function addBuildings(
         const l = Math.hypot(q.x - p.x, q.z - p.z) || 1;
         return [(wind * (q.z - p.z)) / l, (-wind * (q.x - p.x)) / l];
       };
+      const seamStarts = boarded(shape) ? boardStarts(ring) : null;
       for (let i = 0; i < m; i++) {
         const a = ring[i],
           d = ring[(i + 1) % m],
@@ -341,6 +423,11 @@ export function addBuildings(
           py = hi + PLINTH_TOP_M,
           [p1x, p1z, p2x, p2z] = o(PLINTH_OUT_M),
           OUT: Corner = [ox, 0, oz];
+        if (seamStarts) {
+          // from the plinth up to the soffit or the flat roof's board, or the roof itself where a gabled wall has no eave
+          const under = !b.g ? 0.22 : forwards(EAVE_M) ? FASCIA_M : 0;
+          seamWall(a, d, ox, oz, len, seamStarts[i], py, ya - under, yd - under);
+        }
         face(emit, PLINTH, OUT, [p1x, base, p1z], [p2x, base, p2z], [p2x, py, p2z], [p1x, py, p1z]);
         face(emit, PLINTH, UP, [a.x, py, a.z], [d.x, py, d.z], [p2x, py, p2z], [p1x, py, p1z]);
         // no eave on a wall too short for its mitres, whose eave line would run backwards and come out crossed
@@ -475,6 +562,40 @@ export function addBuildings(
     );
     skin.receiveShadow = true;
     scene.add(skin);
+    if (bp.length) {
+      // the seams: a dark line at one edge of each board, half transparent so it darkens any wall colour, unlit so the
+      // toon style leaves it alone; its mips fade it out with distance instead of shimmering
+      const cv = document.createElement('canvas');
+      cv.width = 32;
+      cv.height = 4;
+      const x = cv.getContext('2d')!;
+      x.globalAlpha = BOARD_SEAM_ALPHA;
+      x.fillStyle = `#${INK_COLOR.toString(16).padStart(6, '0')}`; // the ink lines' colour
+      x.fillRect(0, 0, 2, 4);
+      const t = new THREE.CanvasTexture(cv);
+      t.colorSpace = THREE.SRGBColorSpace;
+      t.wrapS = t.wrapT = THREE.RepeatWrapping;
+      t.anisotropy = maxAnisotropy;
+      const bg = new THREE.BufferGeometry();
+      bg.setAttribute('position', new THREE.Float32BufferAttribute(bp, 3));
+      bg.setAttribute('uv', new THREE.Float32BufferAttribute(bu, 2));
+      // one mesh for the village, sorted by its origin at Torget: drawn first among the transparent things instead, so
+      // smoke, drift sprites and the place markers in front of a house stay in front of its seams
+      const seams = new THREE.Mesh(
+        bg,
+        new THREE.MeshBasicMaterial({
+          map: t,
+          transparent: true,
+          depthWrite: false,
+          side: THREE.DoubleSide,
+          polygonOffset: true,
+          polygonOffsetFactor: -1,
+          polygonOffsetUnits: -1,
+        }),
+      );
+      seams.renderOrder = -1;
+      scene.add(seams);
+    }
   })();
 }
 
