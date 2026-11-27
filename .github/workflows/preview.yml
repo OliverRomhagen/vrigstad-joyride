@@ -57,12 +57,25 @@ jobs:
         with:
           node-version: lts/*
           cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            wiki/package-lock.json
       # The checkout is GitHub's temporary merge commit, which no one can look up: stamp the build with the PR's head
       # commit instead (vite.config.ts)
       - if: steps.decide.outputs.action == 'deploy'
         env:
           BUILD_SHA: ${{ github.event.pull_request.head.sha }}
         run: npm ci && npm run build
+      # the wiki is part of the preview, at wiki/ under it, next to the game and its map. One that fails to build is left out,
+      # so the game's preview still deploys; wiki.yml fails the PR for it.
+      - if: steps.decide.outputs.action == 'deploy'
+        id: wiki
+        continue-on-error: true
+        run: npm ci --prefix wiki && npm run build --prefix wiki
+        env:
+          BASE_PATH: /${{ github.event.repository.name }}/pr-preview/pr-${{ github.event.number }}/wiki
+      - if: steps.wiki.outcome == 'failure'
+        run: rm -rf dist/wiki
       # No wait-for-pages-deployment: it needs pages: read, and it times out until Pages serves gh-pages.
       # The link then works a minute or so after the comment.
       - if: steps.decide.outputs.action != 'none'

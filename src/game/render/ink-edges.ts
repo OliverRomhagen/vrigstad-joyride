@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 
-// Ink lines for the toon style (#206): three's EdgesGeometry, less the open edges that lie under their face. EdgesGeometry
+// Ink lines for the toon style (#206): three's EdgesGeometry, less, when asked, the open edges that lie under their face. EdgesGeometry
 // draws every edge only one triangle has, and the house shells, plinths and corner boards have no floor, so it drew their
 // feet: lines at the lowest ground under a house, buried on a slope, which the lines' pull towards the camera then showed
 // through the grass (#413). An open edge with its face above it is a foot; the rest, like a roof's or a ledge's, stays.
@@ -17,8 +17,17 @@ const key = (v: THREE.Vector3) =>
 
 type OpenEdge = { a: THREE.Vector3; b: THREE.Vector3; nx: number; ny: number; nz: number; apexY: number };
 
-/** Line segments along the creases sharper than `creaseDeg` and the open edges that aren't a foot, for LineSegments. */
-export function inkEdges(geometry: THREE.BufferGeometry, creaseDeg: number): THREE.BufferGeometry {
+/**
+ * Line segments along the creases sharper than `creaseDeg` and the open edges, for LineSegments: what EdgesGeometry
+ * gives. With `dropFeet`, less the open edges that are a foot. That is for a mesh that stands in the ground with no
+ * floor (the house shells); on any other, "above" is only the geometry's own y, and an open edge under its face may
+ * be in plain sight, as a car's window seals are.
+ */
+export function inkEdges(
+  geometry: THREE.BufferGeometry,
+  creaseDeg: number,
+  { dropFeet = false }: { dropFeet?: boolean } = {},
+): THREE.BufferGeometry {
   const pos = geometry.getAttribute('position'),
     index = geometry.getIndex(),
     count = index ? index.count : pos.count,
@@ -58,7 +67,7 @@ export function inkEdges(geometry: THREE.BufferGeometry, creaseDeg: number): THR
     }
   }
   for (const e of open.values())
-    if (e.apexY <= Math.max(e.a.y, e.b.y) + ABOVE_M) out.push(...e.a.toArray(), ...e.b.toArray());
+    if (!dropFeet || e.apexY <= Math.max(e.a.y, e.b.y) + ABOVE_M) out.push(...e.a.toArray(), ...e.b.toArray());
   const lines = new THREE.BufferGeometry();
   lines.setAttribute('position', new THREE.Float32BufferAttribute(out, 3));
   return lines;

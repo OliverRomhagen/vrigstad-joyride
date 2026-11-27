@@ -41,11 +41,25 @@ test('a wall with no floor keeps its top and sides, and loses its foot, which th
         [0, 3, 0],
       ]),
       34,
+      { dropFeet: true },
     ),
   );
   expect(s).toHaveLength(3);
   expect(s.filter(e => level(e) && lowestY(e) === 0)).toHaveLength(0);
   expect(s.filter(e => level(e) && lowestY(e) === 3)).toHaveLength(1);
+});
+
+test('without dropFeet the same wall keeps its foot, as EdgesGeometry draws it: a car part or a prop has no ground to hide it', () => {
+  const wall = quads([
+    [0, 0, 0],
+    [4, 0, 0],
+    [4, 3, 0],
+    [0, 3, 0],
+  ]);
+  const s = segments(inkEdges(wall, 34));
+  expect(s).toHaveLength(4);
+  expect(s.filter(e => level(e) && lowestY(e) === 0)).toHaveLength(1);
+  expect(s).toHaveLength(new THREE.EdgesGeometry(wall, 34).getAttribute('position').count / 2);
 });
 
 test('a ledge keeps the edge where it meets the wall, and its open foot goes', () => {
@@ -67,11 +81,20 @@ test('a ledge keeps the edge where it meets the wall, and its open foot goes', (
         ],
       ),
       34,
+      { dropFeet: true },
     ),
   );
   expect(s.some(e => level(e) && e[1] === 0.5 && e[2] === 0 && e[5] === 0)).toBe(true); // the inner edge, against the wall
   expect(s.some(e => level(e) && e[1] === 0.5 && e[2] === 0.1)).toBe(true); // the front crease
   expect(s.some(e => level(e) && lowestY(e) === 0)).toBe(false); // the foot, in the ground
+});
+
+test('a triangle with no area gives no line and takes none away', () => {
+  // the wall again, with a sliver along its top whose three corners are two points
+  const pos = [0, 0, 0, 4, 0, 0, 4, 3, 0, 0, 0, 0, 4, 3, 0, 0, 3, 0, 0, 3, 0, 4, 3, 0, 4, 3, 0];
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  expect(segments(inkEdges(g, 34))).toHaveLength(4);
 });
 
 test('the same corners in an indexed geometry give the same lines', () => {

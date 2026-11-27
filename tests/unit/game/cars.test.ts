@@ -10,6 +10,7 @@ import {
 } from '../../../src/game/cars';
 import { Commands } from '../../../src/game/commands';
 import { CRASH_COOL_S, DMG_MAX } from '../../../src/game/health';
+import { UPGRADES } from '../../../src/game/sim/upgrades';
 import { type CarType, specFor } from '../../../src/game/sim/vehicle-spec';
 import { BuildingIndex } from '../../../src/world/buildings';
 import { BuildingKind, ROAD_WIDTH_M, RoadClass, type WorldData } from '../../../src/world/data';
@@ -124,6 +125,29 @@ describe('drive', () => {
     expect(c.v).toBeGreaterThan(c.T.max * 0.8);
     expect(fastest).toBeLessThanOrEqual(c.T.max);
     expect(c.z).toBeLessThan(800); // heading 0 is north, towards -z
+  });
+
+  it("goes faster with Plåt-Pelle's engine tune, up to the tuned top speed", () => {
+    const { cars } = fleet();
+    const tuned = car('volvo', 0, 800, 0, 'player'),
+      stock = car('volvo', 0, 800, 0, 'player');
+    tuned.mods.engine = true;
+    driveFor(cars, tuned, 3, 1, 0, false);
+    driveFor(cars, stock, 3, 1, 0, false);
+    expect(tuned.v).toBeGreaterThan(stock.v * 1.15); // quicker off the mark
+    driveFor(cars, tuned, 30, 1, 0, false);
+    expect(tuned.v).toBeGreaterThan(tuned.T.max);
+    expect(tuned.v).toBeLessThanOrEqual(tuned.T.max * UPGRADES.ENGINE_TOP);
+  });
+
+  it('steers sooner on sport springs', () => {
+    const { cars } = fleet();
+    const sprung = car('volvo', 0, 800, 0, 'player'),
+      stock = car('volvo', 0, 800, 0, 'player');
+    sprung.mods.springs = true;
+    driveFor(cars, sprung, 0.05, 0, 1, false);
+    driveFor(cars, stock, 0.05, 0, 1, false);
+    expect(sprung.st).toBeGreaterThan(stock.st);
   });
 
   it('stops with its nose at a wall, not inside it (#201)', () => {
