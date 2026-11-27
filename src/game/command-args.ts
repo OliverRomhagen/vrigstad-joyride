@@ -12,6 +12,8 @@ export interface Arg<N extends string, T> {
   choices?(): readonly string[];
   /** what it is, for `help <command>`: `km/h`, `a place on the map` */
   readonly help?: string;
+  /** what the usage line shows in place of the name: an either() lists its few words, `hour|dawn|noon|dusk|night` */
+  readonly usage?: string;
 }
 
 // biome-ignore lint/suspicious/noExplicitAny: the value type varies by argument; ArgValues reads each one back
@@ -120,7 +122,9 @@ export function either<N extends string, const A extends readonly [AnyArg, AnyAr
   const flagged = kinds.find(a => a.optional || a.rest);
   if (flagged) throw new Error(`${flagged.name}: wrap the either in optional() or rest(), not one of its kinds`);
   const lists = kinds.flatMap(a => (a.choices ? [a.choices.bind(a)] : []));
-  return arg(
+  // the usage line names each kind, or lists its words when they are few: the console on a phone has no Tab
+  const usage = kinds.map(a => a.usage ?? listedWords(a)?.join('|') ?? a.name).join('|');
+  const parsed = arg(
     name,
     w => {
       const said: string[] = [],
@@ -140,6 +144,17 @@ export function either<N extends string, const A extends readonly [AnyArg, AnyAr
     },
     lists.length ? () => lists.flatMap(list => list()) : undefined,
   );
+  return { ...parsed, usage };
+}
+
+// an argument's words when there are few enough to list and they are known now; else undefined
+function listedWords(a: AnyArg): readonly string[] | undefined {
+  try {
+    const all = a.choices?.() ?? [];
+    return all.length > 0 && all.length <= CHOICES_LISTED ? all : undefined;
+  } catch {
+    return undefined; // a list that isn't ready yet: the name stands in for it
+  }
 }
 
 /** The rest of the line, as one string: `say <words>`. Only the last argument can be one. */
@@ -194,7 +209,8 @@ export function command<const A extends readonly AnyArg[]>(spec: TypedCommand<A>
     if (!a.optional && i > 0 && args[i - 1].optional) throw new Error('optional arguments go last: ' + a.name);
   });
   const shown = (a: AnyArg) => {
-    const n = a.rest ? a.name + '…' : a.name;
+    const label = a.usage ?? a.name,
+      n = a.rest ? label + '…' : label;
     return a.optional ? `[${n}]` : `<${n}>`;
   };
   const usage = args.map(shown).join(' ');
@@ -218,7 +234,7 @@ export function command<const A extends readonly AnyArg[]>(spec: TypedCommand<A>
         const a = args[i];
         const w = a.rest ? words.slice(i).join(' ') : words[i];
         if (w === undefined || w === '') {
-          if (!a.optional) throw new UsageError();
+          if (!a.optional) throw new UsageError(`${a.name} is missing.`);
           values[a.name] = undefined;
         } else values[a.name] = a.parse(w);
       }
@@ -278,11 +294,29 @@ export function group<const A extends readonly AnyArg[] = readonly []>(spec: Gro
   const hidden = known.find(c => names.includes(c.toLowerCase()));
   if (hidden !== undefined) throw new Error(`${hidden} names a subcommand, so the group's own argument never gets it`);
   const own = command({ help: spec.help, args: spec.args, run: spec.run });
+  const first = spec.args[0];
   return {
     ...shared,
     usage: own.usage ? `${own.usage} | ${below}` : below,
     params: own.params,
     complete: own.complete,
-    run: own.run,
+    run: (words, call) => {
+      try {
+        return own.run(words, call);
+      } catch (err) {
+        // a first word the group's own argument can't take may have been meant for a subcommand: name them too
+        if (!(err instanceof UsageError) || !first || words[0] === undefined || takes(first, words[0])) throw err;
+        throw new UsageError(`${err.message} Or a subcommand: ${names.join(', ')}.`);
+      }
+    },
   };
+}
+
+function takes(a: AnyArg, w: string) {
+  try {
+    a.parse(w);
+    return true;
+  } catch {
+    return false;
+  }
 }

@@ -155,7 +155,7 @@ commands.register('go', command({
 - `command()` (`src/game/command-args.ts`) builds a `Command` from typed arguments: `int`, `num` (a Swedish comma
   works), `word`, `toggle` (on/off, ja/nej), `choice` and `rest`, each `optional()` at the end. From that one list come
   the parsing, the usage line (`<place> [speed]`), the error lines (`No place called gnosjö. Usage: go <place>
-  [speed]`) and Tab completion. `run` gets the values by name, typed: a choice is its own union of words. A choice of
+  [speed]`, and `place is missing.` for a word left out) and Tab completion. `run` gets the values by name, typed: a choice is its own union of words. A choice of
   up to 8 words lists them in its error (`Pick one of: kiosk, skroten, torget.`), since the console on a phone has no
   Tab; a longer one, such as the tunables' keys, keeps the short line.
 - A `choice` given a function reads it on every use, so a list that grows while the game runs (car models, unlocked
@@ -169,15 +169,18 @@ commands.register('go', command({
   argument. A subcommand's examples start with the whole path (`tune set …`).
 - **A group can run by itself too.** Given `args` and `run`, as a `command()` takes them, it runs when the first word
   names no subcommand: `time` shows the clock and `time 16:30` sets it, beside `time hold` and `time speed 20`
-  (`registerDayCommands` in `src/game/day-cycle.ts`). The usage line shows both (`time [when] | <hold|run|speed> …`),
+  (`registerDayCommands` in `src/game/day-cycle.ts`). The usage line shows both (`time [hour|dawn|noon|dusk|night] | <hold|run|speed> …`),
   and Tab offers the subcommands together with the words of the group's own first argument. A word that names a
   subcommand always picks it, so `group()` refuses a first argument with such a word among its choices; a list that
-  isn't ready when the group is built, or grows later, isn't checked, and the subcommand wins there too.
+  isn't ready when the group is built, or grows later, isn't checked, and the subcommand wins there too. A first word
+  the group's own argument can't take adds the subcommands to its error (`Or a subcommand: hold, run, speed.`).
 - **`either(name, a, b, …)`** is one argument that is one of several kinds: `either('when', clockTime('hour'),
   choice('moment', …))` reads `16.5` as a number and `dusk` as a word, and `run` tells them apart by type. The first
   that parses the word wins, so the stricter one goes first. A word none takes gets the first one's error, then each
   later one's: its words in one list when they are few, else its error (`hour is from 5 to 19. Or one of: dawn, dusk,
-  night, noon.`). `optional()` and `rest()` go round the whole `either`, not one of its kinds.
+  night, noon.`). In the usage line it lists a kind's words when they are few, and names the others
+  (`[hour|dawn|noon|dusk|night]`), since the console on a phone has no Tab. `optional()` and `rest()` go round the
+  whole `either`, not one of its kinds.
 - **`arg(name, parse, choices?)`** builds an argument of a type of your own, beside the code that owns the value: the
   clock time `16:30` lives in `day-cycle.ts`, not in the console. `parse` throws a `UsageError` that starts with the
   name; everything else (usage, Tab, `optional()`, `described()`) works as for the built-in ones.

@@ -115,6 +115,11 @@ describe('the console time command', () => {
     return { commands, c, pace, applyLight };
   };
 
+  it('lists the times of day and the subcommands in the hint under the input', () => {
+    const { commands } = setup();
+    expect(commands.usageFor('time ')).toBe('time [hour|dawn|noon|dusk|night] | <hold|run|speed> …');
+  });
+
   it('says where the clock is', () => {
     const { commands } = setup(16.5);
     expect(commands.run('time')).toBe('Time: 16:30, running at 1×.');
@@ -182,14 +187,16 @@ describe('the console time command', () => {
     const { commands, c, pace, applyLight } = setup();
     for (const line of ['time 3', 'time 4.99', 'time 19.01', 'time 19:01', 'time 25:00', 'time -6'])
       expect(commands.run(line), line).toMatch(
-        /^hour is from 5 to 19\. Or one of: dawn, dusk, night, noon\. Usage: time /,
+        /^hour is from 5 to 19\. Or one of: dawn, dusk, night, noon\. Or a subcommand: hold, run, speed\. Usage: time /,
       );
     for (const line of ['time lunch', 'time 16:60', 'time 16:5'])
-      expect(commands.run(line), line).toMatch(/^hour is a number\. Or one of: dawn, dusk, night, noon\. Usage: time /);
+      expect(commands.run(line), line).toMatch(
+        /^hour is a number\. Or one of: dawn, dusk, night, noon\. Or a subcommand: hold, run, speed\. Usage: time /,
+      );
     for (const line of ['time speed 0', 'time speed 0.09', 'time speed 200.01', 'time speed 500'])
       expect(commands.run(line), line).toBe('factor is from 0.1 to 200. Usage: time speed <factor>');
     expect(commands.run('time speed fast')).toBe('factor is a number. Usage: time speed <factor>');
-    expect(commands.run('time speed')).toBe('Usage: time speed <factor>');
+    expect(commands.run('time speed')).toBe('factor is missing. Usage: time speed <factor>');
     expect(commands.run('time 12 13')).toMatch(/^Too many words\. Usage: time /);
     expect(commands.run('time speed 2 3')).toMatch(/^Too many words\. Usage: time /);
     expect(commands.run('time hold 5')).toBe('Too many words. Usage: time hold');

@@ -61,7 +61,7 @@ describe('command', () => {
 
   it('shows the usage line for a missing argument, a bad word and extra words', () => {
     const c = withCommand(command({ help: 'x', args: [choice('place', PLACES)], run: ({ place }) => place }));
-    expect(c.run('t')).toBe('Usage: t <place>');
+    expect(c.run('t')).toBe('place is missing. Usage: t <place>');
     expect(c.run('t gnosjö')).toBe('No place called gnosjö. Pick one of: skroten, Slättsjön, torget. Usage: t <place>');
     expect(c.run('t torget skroten')).toBe('Too many words. Usage: t <place>');
   });
@@ -219,7 +219,7 @@ describe('group', () => {
 
   it('shows the usage line of the subcommand, or of the group for a word that names none', () => {
     const { c } = tune();
-    expect(c.run('tune set grip')).toBe('Usage: tune set <key> <value>');
+    expect(c.run('tune set grip')).toBe('value is missing. Usage: tune set <key> <value>');
     expect(c.run('tune')).toBe('Usage: tune <get|set> …');
     expect(c.run('tune fly')).toBe('No subcommand called fly. Usage: tune <get|set> …');
     expect(c.usageFor('tune se')).toBe('tune <get|set> …');
@@ -304,12 +304,14 @@ describe('a group that runs by itself', () => {
 
   it('shows both in its usage line and its help', () => {
     const c = fuel();
-    expect(c.run('fuel 99')).toBe('litres is from 0 to 60. Or one of: half. Usage: fuel [amount] | <fill> …');
-    expect(c.run('fuel 1 2')).toBe('Too many words. Usage: fuel [amount] | <fill> …');
+    expect(c.run('fuel 99')).toBe(
+      'litres is from 0 to 60. Or one of: half. Or a subcommand: fill. Usage: fuel [litres|half] | <fill> …',
+    );
+    expect(c.run('fuel 1 2')).toBe('Too many words. Usage: fuel [litres|half] | <fill> …');
     expect(c.run('fuel fill 2')).toBe('Too many words. Usage: fuel fill');
-    expect(c.usageFor('fuel ')).toBe('fuel [amount] | <fill> …');
+    expect(c.usageFor('fuel ')).toBe('fuel [litres|half] | <fill> …');
     expect(c.run('help fuel')).toBe(
-      'fuel [amount] | <fill> …: show or set the fuel\n  [amount]: L\n  fuel fill: fill the tank\nExamples:\n  fuel\n  fuel 30\n  fuel fill',
+      'fuel [litres|half] | <fill> …: show or set the fuel\n  [litres|half]: L\n  fuel fill: fill the tank\nExamples:\n  fuel\n  fuel 30\n  fuel fill',
     );
   });
 
@@ -353,7 +355,9 @@ describe('a group that runs by itself', () => {
   it("takes only its own subcommands' names, not the keys every object has", () => {
     const c = fuel();
     for (const word of ['constructor', '__proto__', 'toString', 'hasOwnProperty']) {
-      expect(c.run(`fuel ${word}`), word).toMatch(/^litres is a number\. Or one of: half\. Usage: fuel /);
+      expect(c.run(`fuel ${word}`), word).toMatch(
+        /^litres is a number\. Or one of: half\. Or a subcommand: fill\. Usage: fuel /,
+      );
       expect(c.run(`help fuel ${word}`), word).toBe(`No command called fuel ${word}. Usage: help [command]`);
     }
     const tune = new Commands();
