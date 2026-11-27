@@ -12,7 +12,7 @@
 		<link href="./_app/immutable/chunks/Dvw2AewF.js" rel="modulepreload">
 		<link href="./_app/immutable/chunks/VB8bjvnm.js" rel="modulepreload">
 		<link href="./_app/immutable/chunks/BR3TPESo.js" rel="modulepreload">
-		<link href="./_app/immutable/entry/app.DeOirFo1.js" rel="modulepreload">
+		<link href="./_app/immutable/entry/app.CNCpOCBi.js" rel="modulepreload">
 		<link href="./_app/immutable/nodes/0.DAqmZO52.js" rel="modulepreload">
 		<link href="./_app/immutable/chunks/DoSZN0Ix.js" rel="modulepreload">
 		<link href="./_app/immutable/chunks/Dy6EPMvK.js" rel="modulepreload">
@@ -38,8 +38,10 @@
       white-space: nowrap;
     }
     /* "Play" alone beside the tag: with "the game" too, a 320px phone has no room for both */
-    .top.top.top .play-long {
-      display: none;
+    @media (width <= 47.5em) {
+      .top.top.top .play-long {
+        display: none;
+      }
     }
     /* and the header scrolls away with the page: nothing would give it its dark ground */
     .top.top.top {
@@ -57,17 +59,17 @@
 			
 			<script>
 				{
-					__sveltekit_1u9c6rh = {
+					__sveltekit_cc27gf = {
 						base: new URL(".", location).pathname.slice(0, -1),
-						version: "1795789091084",
+						version: "1795816796698",
 						assets: "/vrigstad-joyride/pr-preview/pr-573/wiki"
 					};
 
 					const element = document.currentScript.parentElement;
 
 					import("./_app/immutable/entry/start.OtbQW_No.js").then(async (kit) => {
-						kit.init(__sveltekit_1u9c6rh);
-						const app = await import("./_app/immutable/entry/app.DeOirFo1.js");
+						kit.init(__sveltekit_cc27gf);
+						const app = await import("./_app/immutable/entry/app.CNCpOCBi.js");
 						kit.start(app, element, {
 							node_ids: [0, 4],
 							data: [{type:"data",data:{sections:[{folder:"places",label:"Places",entries:[{slug:"places/kiosken",title:"Kiosken",summary:"The kiosk on Torget. Korv me brö, cat treats and trisslotter."},{slug:"places/slattsjon",title:"Slättsjön",summary:"The lake by the village. Cars don't float."},{slug:"places/torget",title:"Torget",summary:"The village square, where every run starts and every arrest ends."},{slug:"places/vrigstadsan",title:"Vrigstadsån",summary:"The river through the village, from the north-east past Torget and out west to Lundholmssjön."}]},{folder:"characters",label:"People",entries:[{slug:"characters/plat-pelle",title:"Plåt-Pelle",summary:"Runs Skroten, the scrapyard on Stockarydsvägen. Buys anything that rolls, and most things that don't."}]},{folder:"wildlife",label:"Wildlife",entries:[{slug:"wildlife/cats",title:"Cats",summary:"Vrigstad's cats sit by the houses and watch the traffic. Some of them like you."}]}]},uses:{}},null],
