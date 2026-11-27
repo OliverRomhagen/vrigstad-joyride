@@ -63,6 +63,7 @@ export interface TestHookDeps {
   build: string; // the commit the page was built from (vite.config.ts)
   readonly fps: boolean; // the console's frame times show
   readonly day: { readonly hour: number; readonly night: number; readonly sunLight: number }; // the clock (src/game/day-cycle.ts) and the sun's share of its light
+  readonly lights: { readonly mode: string; readonly dark: number; readonly glow: number }; // car lights (lighting.ts): ?lights=, lightLevel's dark, glowing lamps
   sunStreaks: Pick<SunStreaks, 'state'> | null; // null with ?sunrays=off
 }
 
@@ -212,6 +213,7 @@ export function installTestHook(g: TestHookDeps) {
         hour: g.day.hour,
         night: g.day.night,
         sunLight: g.day.sunLight,
+        lights: { mode: g.lights.mode, dark: g.lights.dark, glow: g.lights.glow },
         sunStreaks: g.sunStreaks?.state() ?? null,
         streetscape: streetscapeState(),
         furniture: furnitureState(),

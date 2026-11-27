@@ -11,7 +11,7 @@ export const NIGHT_S = 10; // real seconds the light takes to blend from dusk in
 export const START_H = 10;
 // 15 July: the sun is up from about 04:15 to 21:45, so both ends of the day are low, warm sun rather than darkness.
 // The date doesn't advance; in winter 05:00 and 19:00 are black night.
-const SEASON_DAY = 196;
+export const SEASON_DAY = 196;
 const NIGHT_DIM = 0.35; // how far the ambient light dips halfway through the skip, as a hint of night
 const MIN_SUN_Y = 0.1; // about 6°: a lower sun smears its shadows across the whole shadow map
 

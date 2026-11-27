@@ -479,6 +479,17 @@ test.describe('game (index.html)', () => {
     expect(errors).toEqual([]);
   });
 
+  test('with ?lights=on the cars light up and glow, as at night (#304)', async ({ page }, testInfo) => {
+    await page.setViewportSize({ width: 640, height: 360 });
+    const errors = watchErrors(page);
+    await page.goto('/index.html?lights=on');
+    await page.locator('#go').click();
+    await expect.poll(async () => (await state(page)).lights).toMatchObject({ mode: 'on', dark: 1 });
+    await expect.poll(async () => (await state(page)).lights.glow).toBeGreaterThan(0); // traffic driving near Torget
+    await page.screenshot({ path: testInfo.outputPath('game-lights-on.png') });
+    expect(errors).toEqual([]);
+  });
+
   test('Space jumps once per press, a tap between two frames still jumps, and R mid-jump lands at Torget', async ({
     page,
   }) => {

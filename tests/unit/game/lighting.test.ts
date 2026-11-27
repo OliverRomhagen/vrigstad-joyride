@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { DMG_MAX } from '../../../src/game/health';
-import { DRL_SHARE, HAZARD_HZ, lampState, lampsOff, REAR_RUN } from '../../../src/game/lighting';
+import {
+  DRL_SHARE,
+  HAZARD_HZ,
+  lampState,
+  lampsOff,
+  lightLevel,
+  lightsModeOf,
+  REAR_RUN,
+} from '../../../src/game/lighting';
 
 const car = (o: Partial<Parameters<typeof lampState>[0]> = {}) => ({
   mode: 'player' as const,
@@ -48,5 +56,28 @@ describe('lampState', () => {
     expect(at(3 + 1 / HAZARD_HZ + 0.01).hazard).toBe(1);
     const other = car({ dmg: DMG_MAX, hitAt: 3 - 0.5 / HAZARD_HZ });
     expect(lampState(other, 0, 3.01, lampsOff()).hazard).not.toBe(at(3.01).hazard); // wrecked at another moment, out of step
+  });
+});
+
+describe('lightLevel', () => {
+  it('is day at midday and through the evening the clock runs to, in July', () => {
+    for (const hour of [6, 13, 19]) expect(lightLevel({ hour, night: 0 }, 'auto')).toBe(0);
+  });
+
+  it('gets nearly dark midway through the night skip, and back to day at its ends', () => {
+    expect(lightLevel({ hour: 19, night: 0.5 }, 'auto')).toBeCloseTo(0.85, 5);
+    expect(lightLevel({ hour: 19, night: 0.25 }, 'auto')).toBeGreaterThan(0.5);
+    expect(lightLevel({ hour: 19, night: 0.01 }, 'auto')).toBeLessThan(0.1);
+  });
+
+  it('forces the dark or the day with ?lights=on or off, and ignores anything else', () => {
+    expect(lightLevel({ hour: 13, night: 0 }, 'on')).toBe(1);
+    expect(lightLevel({ hour: 19, night: 0.5 }, 'off')).toBe(0);
+    expect([lightsModeOf('on'), lightsModeOf('off'), lightsModeOf('bright'), lightsModeOf(null)]).toEqual([
+      'on',
+      'off',
+      'auto',
+      'auto',
+    ]);
   });
 });

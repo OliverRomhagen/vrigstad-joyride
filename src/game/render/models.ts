@@ -261,14 +261,14 @@ function softCar(t: string, c: string) {
   return mergeGeo(parts);
 }
 /**
- * The procedural car's two rear lamps, a hair proud of the ones baked into its body, so they can be lit over them (#304):
- * shared by type. Null for the tractor, which has none.
+ * The procedural car's two rear (`end` 1) or head (`end` -1) lamps, a hair proud of the ones baked into its body, so they
+ * can be lit over them (#304): shared by type. Null for the tractor, which has none.
  */
-export const rearLampGeo = (t: string) => {
+export const lampGeo = (t: string, end: 1 | -1) => {
   const P = PROFILES[t];
   if (t === 'traktor' || !P) return null;
-  const z = P.len / 2 + 0.105; // just behind the baked lamps' faces, at len / 2 + 0.07 + 0.03
-  return cached('rear-lamps:' + t, () =>
+  const z = end * (P.len / 2 + 0.105); // just outside the baked lamps' faces, at len / 2 + 0.07 + 0.03
+  return cached('lamps:' + t + end, () =>
     boxGeo([
       [0.36, 0.18, 0.01, -0.6, 0.72, z, '#ffffff'],
       [0.36, 0.18, 0.01, 0.6, 0.72, z, '#ffffff'],
