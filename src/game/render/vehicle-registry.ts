@@ -5,6 +5,8 @@ import type { CarType } from '../sim/vehicle-spec';
 // bodyAhead is how far the middle of the model's length lies ahead of its origin (toward -Z), where the wheels sit off it.
 // height is the roof's, from the spec sheet too: what you stand on up there (#451). roofRear and roofFront are where the roof
 // runs, in m ahead of the model's centre, measured on its mesh (the top of the body along the middle, to 0.1 m).
+// rallyNumber moves Plåt-Pelle's rally number on a model whose door has a handle or a curve where it usually goes: `at` along
+// the car (share of its length from the nose), `lift` up (m).
 export const BODY_NODE = 'body';
 export const WHEEL_NODES = ['wheel_fl', 'wheel_fr', 'wheel_rl', 'wheel_rr'] as const;
 export const GLASS_PREFIX = 'glass_';
@@ -33,6 +35,7 @@ export const VEHICLES = [
     height: 1.46,
     roofRear: -1.0,
     roofFront: 0.45,
+    rallyNumber: { at: 0.36 }, // on the front door, ahead of its handle, which the usual spot runs into
     police: false,
   },
   {
@@ -110,6 +113,7 @@ export const VEHICLES = [
     roofRear: -1.1,
     roofFront: 0.75,
     suspension: { freqHz: 1.0, damping: 0.45, rollPerAcc: 0.006, maxRollRad: 0.09 }, // a soft American barge
+    rallyNumber: { at: 0.36 }, // on the front door, ahead of its handle, which the usual spot runs into
     police: false,
   },
   {
@@ -127,6 +131,7 @@ export const VEHICLES = [
     roofRear: -1.3,
     roofFront: 0.05,
     suspension: { freqHz: 1.9, rollPerAcc: 0.004 }, // short, light and busy
+    rallyNumber: { lift: 0.05 }, // up from the sill, where the body curves in under the car
     police: false,
   },
   {

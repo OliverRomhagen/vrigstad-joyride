@@ -26,8 +26,17 @@ const AHEAD = 0.04; // the flames start this share of the car's length ahead of 
 const GLASS_EDGE_M = 0.03; // a decal triangle this near the top or bottom of a model's glass stays: the roof and the bonnet's back edge
 const LIFT_M = 0.006; // a decal stands this far off the paint, so it doesn't flicker into it, yet stays under a model's glass
 const RALLY_DISC_M = 0.62; // across the rally number's disc
+const NUMBER_AT = 0.45; // where along the car the rally number goes, as a share of its length from the nose
+const RALLY_DISC_FILL = 0.85; // the most of the door's painted height the disc takes, so a shallow door shrinks it rather than cut it
+const SPAN_STEP_M = 0.02; // how far apart the rays that find a side's visible paint are, top to bottom
+const SPAN_FROM_M = 5; // where they start, out from the car's middle: beyond any car's side
+const SPAN_TRIM_M = 0.05; // a strip this thin across the paint is trim, and the paint runs on past it; a sill is taller
+const SPAN_MIN_M = 0.1; // less paint than this showing, the number takes the fixed spot rather than shrink to a speck
 const STRIPES_M = 0.6; // across both rally stripes and the gap between them
 const LIGHT_PAINT = 0.62; // a paint lighter than this (0–1) gets dark stripes, else light ones, so they always show
+
+/** Where a model wants its rally number instead: along the car (share of its length from the nose), and lifted (m). */
+export type NumberAt = { readonly at?: number; readonly lift?: number };
 
 type Projector = {
   pos: THREE.Vector3;
@@ -40,13 +49,17 @@ type Projector = {
 
 /**
  * The meshes of `decal` on `panels`, placed in the car's frame; `paint`, the car's colour, picks the stripes' colour. `glass` is the
- * box of a model's windows in the same frame: a model's body runs on under its glass, so the decal is cut away there.
+ * box of a model's windows in the same frame: a model's body runs on under its glass, so the decal is cut away there. `sideSpan`
+ * tells how far up a model's side its paint shows, for the rally number (sideSpanByRays); `numberAt` moves the number on a model
+ * that needs it (vehicle-registry.ts rallyNumber).
  */
 export function decalMeshes(
   decal: Decal,
   paint: string,
   panels: readonly Panel[],
   glass: THREE.Box3 | null = null,
+  sideSpan: SideSpan | null = null,
+  numberAt?: NumberAt,
 ): THREE.Mesh[] {
   const box = new THREE.Box3(),
     part = new THREE.Box3();
@@ -56,7 +69,7 @@ export function decalMeshes(
   }
   if (box.isEmpty()) return [];
   const out: THREE.Mesh[] = [];
-  for (const pr of projectors(decal, paint, box)) {
+  for (const pr of projectors(decal, paint, box, glass, sideSpan, numberAt)) {
     const pieces: THREE.BufferGeometry[] = [];
     for (const p of panels) {
       stand.geometry = p.geometry;
@@ -86,7 +99,14 @@ export function disposeDecal(meshes: readonly THREE.Mesh[]) {
 }
 
 // where each decal goes, from the painted panels' box in the car's frame
-function projectors(decal: Decal, paint: string, box: THREE.Box3): Projector[] {
+function projectors(
+  decal: Decal,
+  paint: string,
+  box: THREE.Box3,
+  glass: THREE.Box3 | null,
+  sideSpan: SideSpan | null,
+  numberAt: NumberAt | undefined,
+): Projector[] {
   const { min, max } = box,
     L = max.z - min.z,
     W = max.x - min.x,
@@ -125,12 +145,48 @@ function projectors(decal: Decal, paint: string, box: THREE.Box3): Projector[] {
     ];
   }
   if (decal === 'stripes') return [top((min.z + max.z) / 2, 1.02 * L, STRIPES_M, stripes(paint))];
-  const zc = min.z + 0.45 * L,
-    yc = min.y + 0.3 * H;
-  return [
-    side(1, zc, RALLY_DISC_M, yc, RALLY_DISC_M, textures().rallyNumber),
-    side(-1, zc, RALLY_DISC_M, yc, RALLY_DISC_M, textures().rallyNumber),
-  ];
+  const zc = min.z + (numberAt?.at ?? NUMBER_AT) * L,
+    span = glass && sideSpan?.(zc, glass.min.y),
+    door = span && span.high - span.low >= SPAN_MIN_M ? span : null,
+    // on a model, the middle of the door's paint you can see, between its sill and the windows: a fixed share of the height put
+    // it on the XC70's tall black sill, which hides the paint under it, and cut the disc; the stand-in has no glass box, and its share fits
+    d = door ? Math.min(RALLY_DISC_M, RALLY_DISC_FILL * (door.high - door.low)) : RALLY_DISC_M,
+    yc = door ? Math.min((door.low + door.high) / 2 + (numberAt?.lift ?? 0), door.high - d / 2) : min.y + 0.3 * H;
+  return [side(1, zc, d, yc, d, textures().rallyNumber), side(-1, zc, d, yc, d, textures().rallyNumber)];
+}
+
+/** How far up a side's paint shows at z, in the car's frame, below `top`: what the eye sees, so not paint hidden behind a sill. */
+export type SideSpan = (z: number, top: number) => { low: number; high: number } | null;
+
+/**
+ * A SideSpan from rays at the car's right side, from `top` down: each lands on whatever is in front, so a sill over the body's
+ * paint ends the span, and a thin trim strip doesn't. `solid` is every part of the model but its glass; `paint` the painted panels among them.
+ */
+export function sideSpanByRays(
+  solid: readonly THREE.Object3D[],
+  paint: ReadonlySet<THREE.Object3D>,
+  frameToWorld: THREE.Matrix4,
+): SideSpan {
+  const ray = new THREE.Raycaster(),
+    from = new THREE.Vector3(),
+    dir = new THREE.Vector3();
+  return (z, top) => {
+    // the longest stretch of paint, top to bottom, across strips thin enough to be trim (a rubbing strip, a crease line)
+    let best: { low: number; high: number } | null = null,
+      run: { low: number; high: number } | null = null,
+      gap = 0;
+    for (let y = top - SPAN_STEP_M; y > 0; y -= SPAN_STEP_M) {
+      from.set(SPAN_FROM_M, y, z).applyMatrix4(frameToWorld);
+      ray.set(from, dir.set(-1, 0, 0).transformDirection(frameToWorld));
+      const hit = ray.intersectObjects(solid as THREE.Object3D[], false)[0];
+      if (hit && paint.has(hit.object)) {
+        run = run && gap <= SPAN_TRIM_M ? { low: y, high: run.high } : { low: y, high: y };
+        gap = 0;
+        if (!best || run.high - run.low > best.high - best.low) best = run;
+      } else gap += SPAN_STEP_M;
+    }
+    return best && best.high > best.low ? best : null;
+  };
 }
 
 // the triangles of g that face `dir` and lie outside the glass. A projector also catches panels side-on, where its picture would

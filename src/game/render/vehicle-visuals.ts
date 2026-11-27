@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { type Decal, isMetallicPaint } from '../sim/paint-jobs';
-import { decalMeshes, disposeDecal, type Panel } from './paint-decals';
+import { decalMeshes, disposeDecal, type Panel, sideSpanByRays } from './paint-decals';
 import { METALLIC_FINISH, setFlakes } from './paint-flakes';
 import {
   BEACON_PARTS,
@@ -215,8 +215,22 @@ export class VehicleVisuals {
         node.geometry.boundingBox ?? node.geometry.computeBoundingBox();
         glass.union(part.copy(node.geometry.boundingBox!).applyMatrix4(toFrame.clone().multiply(node.matrixWorld)));
       });
+      const solid: THREE.Object3D[] = [],
+        paint = new Set<THREE.Object3D>();
+      root.traverse(node => {
+        if (!(node instanceof THREE.Mesh) || node.name.startsWith(GLASS_PREFIX)) return;
+        solid.push(node);
+        if (isPaintedPanel(node.name)) paint.add(node);
+      });
       const toBody = toFrame.clone().multiply(body.matrixWorld).invert();
-      view.decals = decalMeshes(view.decal, view.color ?? '#ffffff', panels, glass.isEmpty() ? null : glass);
+      view.decals = decalMeshes(
+        view.decal,
+        view.color ?? '#ffffff',
+        panels,
+        glass.isEmpty() ? null : glass,
+        sideSpanByRays(solid, paint, frame.matrixWorld),
+        'rallyNumber' in view.definition ? view.definition.rallyNumber : undefined,
+      );
       for (const m of view.decals) {
         m.geometry.applyMatrix4(toBody); // into the geometry, not the mesh's transform, which can't hold a shear
         body.add(m);
