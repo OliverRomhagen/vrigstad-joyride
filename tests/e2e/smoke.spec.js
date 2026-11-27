@@ -253,7 +253,9 @@ test.describe('game (index.html)', () => {
     expect(errors).toEqual([]);
   });
 
-  test('?lab=pickadoll fires a shot that lands, and switches weapon and hit', async ({ page }) => {
+  test('?lab=pickadoll fires a shot that lands, switches weapon and hit, and aims through a scope', async ({
+    page,
+  }) => {
     const errors = watchErrors(page);
     await page.setViewportSize({ width: 640, height: 360 }); // checks only the hook; keep software WebGL affordable
     await page.goto('/index.html?lab=pickadoll');
@@ -278,6 +280,16 @@ test.describe('game (index.html)', () => {
         aiming: true,
       });
     await expect(page.locator('#p-aim')).toHaveAttribute('aria-pressed', 'true');
+    // on to the sniper: aiming it looks through its scope, and its fast shot still lands
+    for (let i = 0; i < 12 && (await state(page)).pickadoll.weapon !== 'algstudsare'; i++) {
+      await page.keyboard.press('KeyQ');
+      await frames(page, 1);
+    }
+    await expect.poll(async () => (await state(page)).pickadoll).toMatchObject({ weapon: 'algstudsare', scoped: true });
+    const { hits } = (await state(page)).pickadoll;
+    await page.keyboard.down('KeyX');
+    await expect.poll(async () => (await state(page)).pickadoll.hits).toBeGreaterThan(hits);
+    await page.keyboard.up('KeyX');
     expect(errors).toEqual([]);
   });
 

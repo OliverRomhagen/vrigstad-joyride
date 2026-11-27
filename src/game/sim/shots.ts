@@ -20,9 +20,14 @@ export interface Weapon {
   fuseS: number; // it goes off this long after it leaves, wherever it is by then; until then it only bounces and lies. 0 for none
   zone: '' | 'spikes'; // what it leaves on the ground where it lands: spikes are fotanglar
   shotM: number; // the radius it is drawn with
+  tracerM: number; // drawn as a streak this long behind it, not as a ball: for a shot too fast to see. 0 for a ball
+  scope: number; // aiming looks through a scope that magnifies this many times; 0 for none
 }
 
-/** The pistol ladder from #17, a scatter gun, the village-built bazooka, a minigun, a legendary and two throwables. */
+/**
+ * The pistol ladder from #17, a scatter gun, the village-built bazooka, a minigun, a legendary, a pistol that fires as
+ * fast as a real one, two rifles with a scope and two throwables.
+ */
 export const WEAPONS = [
   {
     id: 'artpuffra',
@@ -40,6 +45,8 @@ export const WEAPONS = [
     fuseS: 0,
     zone: '',
     shotM: 0.07,
+    tracerM: 0,
+    scope: 0,
   },
   {
     id: 'pickadoll',
@@ -57,6 +64,8 @@ export const WEAPONS = [
     fuseS: 0,
     zone: '',
     shotM: 0.07,
+    tracerM: 0,
+    scope: 0,
   },
   {
     id: 'pepprapuffra',
@@ -74,6 +83,8 @@ export const WEAPONS = [
     fuseS: 0,
     zone: '',
     shotM: 0.07,
+    tracerM: 0,
+    scope: 0,
   },
   {
     id: 'hagelbossa',
@@ -91,6 +102,8 @@ export const WEAPONS = [
     fuseS: 0,
     zone: '',
     shotM: 0.07,
+    tracerM: 0,
+    scope: 0,
   },
   {
     id: 'potatiskanon',
@@ -108,6 +121,8 @@ export const WEAPONS = [
     fuseS: 0,
     zone: '',
     shotM: 0.07,
+    tracerM: 0,
+    scope: 0,
   },
   {
     id: 'minigun',
@@ -125,6 +140,8 @@ export const WEAPONS = [
     fuseS: 0,
     zone: '',
     shotM: 0.07,
+    tracerM: 0,
+    scope: 0,
   },
   // the legendary one from #17: the weakest gun, but its peas bounce
   {
@@ -143,6 +160,68 @@ export const WEAPONS = [
     fuseS: 0,
     zone: '',
     shotM: 0.07,
+    tracerM: 0,
+    scope: 0,
+  },
+  // fast shots: they arrive nearly as you fire and are drawn as a streak. The plain pistol of #17's ladder
+  {
+    id: 'puffra',
+    name: 'Puffra',
+    speedMs: 320,
+    coolS: 0.13,
+    auto: false,
+    pellets: 1,
+    spreadRad: 0.004,
+    power: 1.3,
+    splatM: 0.25,
+    blastM: 0,
+    bounces: 0,
+    thrown: false,
+    fuseS: 0,
+    zone: '',
+    shotM: 0.03,
+    tracerM: 5,
+    scope: 0,
+  },
+  // rifles with a scope: slow to fire, and they go where the cross is. The air rifle is the gentle one
+  {
+    id: 'luftgevar',
+    name: 'Luftgevär',
+    speedMs: 170,
+    coolS: 0.7,
+    auto: false,
+    pellets: 1,
+    spreadRad: 0.001,
+    power: 0.6,
+    splatM: 0.15,
+    blastM: 0,
+    bounces: 0,
+    thrown: false,
+    fuseS: 0,
+    zone: '',
+    shotM: 0.03,
+    tracerM: 3,
+    scope: 3,
+  },
+  // the sniper of #17: a moose rifle
+  {
+    id: 'algstudsare',
+    name: 'Älgstudsare',
+    speedMs: 760,
+    coolS: 1.4,
+    auto: false,
+    pellets: 1,
+    spreadRad: 0,
+    power: 5,
+    splatM: 0.5,
+    blastM: 0,
+    bounces: 0,
+    thrown: false,
+    fuseS: 0,
+    zone: '',
+    shotM: 0.04,
+    tracerM: 14,
+    scope: 8,
   },
   // throwables (#17): lobbed by hand
   {
@@ -161,6 +240,8 @@ export const WEAPONS = [
     fuseS: 2.2,
     zone: '',
     shotM: 0.13,
+    tracerM: 0,
+    scope: 0,
   },
   {
     id: 'fotanglar',
@@ -178,6 +259,8 @@ export const WEAPONS = [
     fuseS: 0,
     zone: 'spikes',
     shotM: 0.1,
+    tracerM: 0,
+    scope: 0,
   },
 ] as const satisfies readonly Weapon[];
 

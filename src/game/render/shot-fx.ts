@@ -12,6 +12,10 @@ const SPLAT_ORDER = 1, // splats are drawn after the walls and cars they sit on
   STUCK_ORDERS = 4096;
 const LIFT_M = 0.03; // a splat sits this far off its surface, so the two don't flicker
 const SHOT_R_M = 0.07;
+const TRACER_THICK_M = 0.06, // a fast shot's streak: thicker than the shot, or it is thinner than a pixel a street away
+  TRACER_COLOUR = '#fff1c2',
+  STREAK_S = 0.07, // the last stretch of a fast shot's streak stays this long where it ended
+  STREAKS_MAX = 24; // of those at once; the oldest goes first
 const ARC_MAX = 64, // dots in a throw's arc
   ARC_DOT_M = 0.045;
 const ARM_M = 0.6, // the player's arm, shoulder to hand (models.ts)
@@ -52,6 +56,9 @@ const _m = new THREE.Matrix4(),
 export class ShotFx {
   private readonly g: ShotFxDeps;
   private readonly shots: THREE.InstancedMesh;
+  private readonly tracers: THREE.InstancedMesh;
+  private readonly ended: { at: THREE.Matrix4; leftS: number }[] = []; // streaks of shots that have landed
+  private nextEnded = 0;
   private readonly splats: THREE.InstancedMesh;
   private readonly spikes: THREE.InstancedMesh;
   private readonly arc: THREE.InstancedMesh;
@@ -79,6 +86,16 @@ export class ShotFx {
       new THREE.MeshBasicMaterial(),
       SHOTS_MAX,
     );
+    // a fast shot is a pale streak along its flight: a box, stretched
+    this.tracers = new THREE.InstancedMesh(
+      new THREE.BoxGeometry(1, 1, 1),
+      new THREE.MeshBasicMaterial({ color: new THREE.Color(TRACER_COLOUR).convertSRGBToLinear() }),
+      SHOTS_MAX,
+    );
+    this.tracers.count = 0;
+    this.tracers.frustumCulled = false;
+    this.tracers.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    g.scene.add(this.tracers);
     this.splats = new THREE.InstancedMesh(this.quad, this.splatMaterial(), max);
     // a fotangel: a small steel jack, four points whichever way it lies
     this.spikes = new THREE.InstancedMesh(
@@ -140,19 +157,66 @@ export class ShotFx {
     return c;
   }
 
-  /** Draws the shots in the air; `colour` gives each its colour. */
-  drawShots<S extends Shot>(shots: readonly S[], colour: (s: S) => string, radiusM: (s: S) => number) {
+  /**
+   * Draws the shots in the air; `colour` gives each its colour. One with a `tracerM` is drawn as a streak that long
+   * behind it, along its flight, and no longer than it has flown.
+   */
+  drawShots<S extends Shot>(
+    shots: readonly S[],
+    colour: (s: S) => string,
+    radiusM: (s: S) => number,
+    tracerM: (s: S) => number,
+    dt: number,
+  ) {
     const n = Math.min(shots.length, SHOTS_MAX);
-    if (!n && !this.shots.count) return; // nothing in the air, and nothing was: no buffers to send
+    if (!n && !this.shots.count && !this.tracers.count) return; // nothing in the air, and nothing was: no buffers to send
+    let balls = 0,
+      streaks = 0;
     for (let i = 0; i < n; i++) {
-      const s = shots[i];
+      const s = shots[i],
+        speed = Math.hypot(s.vx, s.vy, s.vz),
+        long = speed > 0 ? Math.min(tracerM(s), speed * s.ageS) : 0;
+      if (tracerM(s) > 0) {
+        if (long <= 0) continue; // it has only just left
+        _n.set(s.vx, s.vy, s.vz).divideScalar(speed);
+        _q.setFromUnitVectors(Z, _n);
+        _p.set(s.x, s.y, s.z).addScaledVector(_n, -long / 2);
+        this.tracers.setMatrixAt(streaks++, _m.compose(_p, _q, _s.set(TRACER_THICK_M, TRACER_THICK_M, long)));
+        continue;
+      }
       const r = radiusM(s) / SHOT_R_M;
-      this.shots.setMatrixAt(i, _m.makeScale(r, r, r).setPosition(s.x, s.y + (s.lying ? radiusM(s) : 0), s.z));
-      this.shots.setColorAt(i, this.linear(colour(s)));
+      this.shots.setMatrixAt(balls, _m.makeScale(r, r, r).setPosition(s.x, s.y + (s.lying ? radiusM(s) : 0), s.z));
+      this.shots.setColorAt(balls++, this.linear(colour(s)));
     }
-    this.shots.count = n;
+    this.shots.count = balls;
     this.shots.instanceMatrix.needsUpdate = true;
     if (this.shots.instanceColor) this.shots.instanceColor.needsUpdate = true;
+    for (const e of this.ended) {
+      if (e.leftS <= 0) continue;
+      if (streaks < SHOTS_MAX) this.tracers.setMatrixAt(streaks++, e.at);
+      e.leftS -= dt;
+    }
+    if (streaks || this.tracers.count) this.tracers.instanceMatrix.needsUpdate = true;
+    this.tracers.count = streaks;
+  }
+
+  /**
+   * A fast shot ended at (x, y, z), having come from (fromX, fromY, fromZ) this frame: the last `longM` metres of that
+   * stretch stay as a streak for a moment. Without it a shot that lands within its first frame would never be seen.
+   */
+  endStreak(fromX: number, fromY: number, fromZ: number, x: number, y: number, z: number, longM: number) {
+    _n.set(x - fromX, y - fromY, z - fromZ);
+    const long = Math.min(longM, _n.length());
+    if (long < 0.05) return;
+    _n.normalize();
+    if (this.ended.length < STREAKS_MAX) this.ended.push({ at: new THREE.Matrix4(), leftS: 0 });
+    const e = this.ended[this.nextEnded];
+    this.nextEnded = (this.nextEnded + 1) % STREAKS_MAX;
+    _q.setFromUnitVectors(Z, _n);
+    _p.set(x, y, z).addScaledVector(_n, -long / 2);
+    e.at.compose(_p, _q, _s.set(TRACER_THICK_M, TRACER_THICK_M, long));
+    e.leftS = STREAK_S;
+    this.tracers.count = Math.max(this.tracers.count, 1); // so the next drawShots doesn't take the air for empty
   }
 
   /**
@@ -310,6 +374,12 @@ export class ShotFx {
     _spin.setFromRotationMatrix(_m.lookAt(_p.set(x, y, z), _n.set(lx, ly, lz), UP));
     camera.position.lerp(_p, k);
     camera.quaternion.slerp(_spin, k);
+  }
+
+  /** The field of view through a scope that magnifies `times`, as a share of the usual: `zoom` for aimCamera. */
+  magnified(times: number) {
+    const half = THREE.MathUtils.degToRad(this.fov / 2);
+    return Math.atan(Math.tan(half) / times) / half;
   }
 
   /**

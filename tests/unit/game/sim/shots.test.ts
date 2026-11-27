@@ -49,10 +49,10 @@ function shot(weapon = PICKADOLL): Shot {
   };
 }
 
-function fly(s: Shot, w: ShotWorld) {
+function fly(s: Shot, w: ShotWorld, dt = 1 / 60) {
   const out = newHit();
   for (let i = 0; i < 600; i++) {
-    const hit = stepShot(s, 1 / 60, w, out);
+    const hit = stepShot(s, dt, w, out);
     if (hit) return hit;
   }
   throw new Error('still flying after 10 s');
@@ -250,6 +250,47 @@ describe('aimAtMoving', () => {
     const a = aimAt(60, 0, 1, 0, 10, 2, -30, { yaw: 0, pitch: 0 }),
       b = aimAtMoving(60, 0, 1, 0, 10, 2, -30, 0, 0, { yaw: 0, pitch: 0 });
     expect(b).toEqual(a);
+  });
+});
+
+describe('a fast shot', () => {
+  const ALG = WEAPONS.findIndex(w => w.id === 'algstudsare');
+
+  it('stops at someone in its way, however far it flies in a frame', () => {
+    // 760 m/s is 25 m in one step of 1/30 s: well past a person 0.7 m across
+    const people = [{ x: 0, z: -200, scale: 1 }],
+      hit = fly({ ...shot(ALG), ...aimShot(WEAPONS[ALG], 0, 0) }, world({ collide: () => false, people }), 1 / 30) as {
+        kind: string;
+        z: number;
+      };
+    expect(hit.kind).toBe('person');
+    expect(hit.z).toBeGreaterThan(-200.6);
+    expect(hit.z).toBeLessThan(-199.4);
+  });
+
+  it('lands where a slow frame rate lands it too', () => {
+    const land = (dt: number) => {
+      const hit = fly({ ...shot(ALG), ...aimShot(WEAPONS[ALG], 0.1, -0.004) }, world({ collide: () => false }), dt);
+      return hit as { x: number; z: number };
+    };
+    const quick = land(1 / 120),
+      slow = land(1 / 20);
+    expect(Math.hypot(quick.x - slow.x, quick.z - slow.z)).toBeLessThan(1);
+  });
+
+  it('hits who it is aimed at 300 m off, the drop allowed for', () => {
+    const weapon = WEAPONS[ALG],
+      aim = aimAt(weapon.speedMs, 0, MUZZLE_M, 0, 0, 1, -300, { yaw: 0, pitch: 0 }),
+      people = [{ x: 0, z: -300, scale: 1 }],
+      hit = fly({ ...shot(ALG), ...aimShot(weapon, aim.yaw, aim.pitch) }, world({ collide: () => false, people }));
+    expect((hit as { kind: string }).kind).toBe('person');
+  });
+});
+
+describe('the weapons', () => {
+  it('have ids of their own, and a scope only on something you fire', () => {
+    expect(new Set(WEAPONS.map(w => w.id)).size).toBe(WEAPONS.length);
+    for (const w of WEAPONS) if (w.scope) expect(w.thrown).toBe(false);
   });
 });
 
