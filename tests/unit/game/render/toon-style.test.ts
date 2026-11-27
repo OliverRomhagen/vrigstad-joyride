@@ -294,3 +294,18 @@ test('a failing render still puts the game materials back', () => {
   expect(() => style.render(scene, camera)).toThrow('context lost');
   expect(mesh.material).toBe(paint);
 });
+
+test('cockpit clipping stays on the toon material used for the draw', () => {
+  const scene = new THREE.Scene();
+  const planes = [new THREE.Plane(new THREE.Vector3(0, -1, 0), 1)];
+  const paint = new THREE.MeshStandardMaterial({ clippingPlanes: planes, clipIntersection: true, clipShadows: true });
+  const body = new THREE.Mesh(box, paint);
+  scene.add(body);
+  const renderer = recordingRenderer(scene);
+  new ToonStyle(renderer).render(scene, camera);
+  const drawn = renderer.seen.get(body) as THREE.Material;
+  expect(drawn.clippingPlanes).toBe(planes);
+  expect(drawn.clipIntersection).toBe(true);
+  expect(drawn.clipShadows).toBe(true);
+  expect(body.material).toBe(paint);
+});

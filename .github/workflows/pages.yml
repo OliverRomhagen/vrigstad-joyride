@@ -27,14 +27,32 @@ jobs:
         with:
           node-version: lts/*
           cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            wiki/package-lock.json
       - run: npm ci
       - run: npm run build
+      # the wiki goes into dist/wiki/, so it is built after the game (whose build empties dist/); its links and its map embed
+      # follow the base path, which is the repository's page plus wiki/. A wiki that fails to build doesn't stop the game's
+      # deploy: the live site keeps the last wiki that built, and the run goes red after the deploy.
+      - id: wiki
+        continue-on-error: true
+        run: npm ci --prefix wiki && npm run build --prefix wiki
+        env:
+          BASE_PATH: /${{ github.event.repository.name }}/wiki
+      - if: steps.wiki.outcome == 'failure'
+        run: rm -rf dist/wiki
       # media/ holds the teaser the README links to on the live site; .nojekyll serves the files as they are
       - run: mkdir site && cp -r media site/ && cp -r dist/. site/ && touch site/.nojekyll
       - uses: JamesIves/github-pages-deploy-action@fa24774553152dd7873cd16ebd8d959b010c5445 # v4.9.0
         with:
           folder: site
           branch: gh-pages
-          clean-exclude: pr-preview
+          # one pattern per line; wiki/ too when it didn't build, so the live site keeps the last one that did
+          clean-exclude: ${{ steps.wiki.outcome == 'failure' && fromJSON('"pr-preview\nwiki"') || 'pr-preview' }}
           # The default force push would drop a preview pushed to gh-pages since the checkout; rebase onto it instead
           force: false
+      - if: steps.wiki.outcome == 'failure'
+        run: |
+          echo "::error::The wiki didn't build (see its step above). The game is deployed; the live site keeps the last wiki that built."
+          exit 1
