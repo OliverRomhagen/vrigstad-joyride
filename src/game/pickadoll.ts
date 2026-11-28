@@ -228,6 +228,11 @@ export class Pickadoll {
   private carVx = 0; // the speed of the car you fire from, which its shots keep (m/s); 0 on foot
   private carVz = 0;
   private crossY = -1; // where the crosshair was last put
+  /**
+   * where the crosshair was in the frame last drawn, with the camera the line of sight is read from: on the frame aiming
+   * starts or stops the crosshair moves at once, but the camera only follows after the line is read
+   */
+  private shownCrossY = CROSSHAIR_NDC_Y;
   private readonly flown: Shot = {
     x: 0,
     y: 0,
@@ -706,7 +711,8 @@ export class Pickadoll {
     muzzle.x = from.x + Math.cos(view.camYaw) * side;
     muzzle.z = from.z + Math.sin(view.camYaw) * side;
     muzzle.y = this.g.world.groundAt(from.x, from.z) + (car ? 0 : Math.max(0, player.y)) + MUZZLE_M;
-    const line = fx.sightLine(crossY, this.line),
+    // the line of sight through the crosshair as last drawn, with the camera it was drawn with: what you clicked on
+    const line = fx.sightLine(this.shownCrossY, this.line),
       pastM = Math.hypot(muzzle.x - line.x, muzzle.y - line.y, muzzle.z - line.z),
       seen =
         armed &&
@@ -722,6 +728,7 @@ export class Pickadoll {
           this.world,
           this.aimHit,
         );
+    this.shownCrossY = crossY;
     let tx = this.aimHit.x,
       ty = this.aimHit.y,
       tz = this.aimHit.z,
