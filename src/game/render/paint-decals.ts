@@ -30,7 +30,7 @@ const NUMBER_AT = 0.45; // where along the car the rally number goes, as a share
 const RALLY_DISC_FILL = 0.85; // the most of the door's painted height the disc takes, so a shallow door shrinks it rather than cut it
 const SPAN_STEP_M = 0.02; // how far apart the rays that find a side's visible paint are, top to bottom
 const SPAN_FROM_M = 5; // where they start, out from the car's middle: beyond any car's side
-const SPAN_TRIM_M = 0.05; // a strip this thin across the paint is trim, and the paint runs on past it; a sill is taller
+const SPAN_TRIM_M = 0.05; // a strip about this thin across the paint (to a step of the rays) is trim, and the paint runs on past it; a sill is taller
 const SPAN_MIN_M = 0.1; // less paint than this showing, the number takes the fixed spot rather than shrink to a speck
 const STRIPES_M = 0.6; // across both rally stripes and the gap between them
 const LIGHT_PAINT = 0.62; // a paint lighter than this (0–1) gets dark stripes, else light ones, so they always show
@@ -173,17 +173,17 @@ export function sideSpanByRays(
   return (z, top) => {
     // the longest stretch of paint, top to bottom, across strips thin enough to be trim (a rubbing strip, a crease line)
     let best: { low: number; high: number } | null = null,
-      run: { low: number; high: number } | null = null,
-      gap = 0;
+      run: { low: number; high: number } | null = null;
     for (let y = top - SPAN_STEP_M; y > 0; y -= SPAN_STEP_M) {
       from.set(SPAN_FROM_M, y, z).applyMatrix4(frameToWorld);
       ray.set(from, dir.set(-1, 0, 0).transformDirection(frameToWorld));
       const hit = ray.intersectObjects(solid as THREE.Object3D[], false)[0];
       if (hit && paint.has(hit.object)) {
-        run = run && gap <= SPAN_TRIM_M ? { low: y, high: run.high } : { low: y, high: y };
-        gap = 0;
+        // the strip between this paint and the last is what lies between the two hits, less a step of the rays on either side
+        const bridged: boolean = !!run && run.low - y <= SPAN_TRIM_M + SPAN_STEP_M + 1e-6;
+        run = run && bridged ? { low: y, high: run.high } : { low: y, high: y };
         if (!best || run.high - run.low > best.high - best.low) best = run;
-      } else gap += SPAN_STEP_M;
+      }
     }
     return best && best.high > best.low ? best : null;
   };

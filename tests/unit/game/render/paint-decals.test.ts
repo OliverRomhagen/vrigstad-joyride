@@ -33,6 +33,10 @@ describe('sideSpanByRays (where a side shows paint, for the rally number)', () =
     expect(split.low).toBeGreaterThan(0.45);
   });
 
+  it('runs across a thin strip wherever it sits on the rays', () => {
+    for (const y of [0.5, 0.51]) expect(side([box(0.85, y, y + 0.03)])(0, 1)!.low).toBeLessThan(0.03); // one ray step apart
+  });
+
   it('measures in the car’s frame wherever the car stands', () => {
     const moved = new THREE.Matrix4().makeRotationY(Math.PI).setPosition(30, 2, -12),
       span = side([box(0.85, 0, 0.3)], moved)(0, 1)!;
