@@ -329,9 +329,9 @@ export interface ShotHit {
   /** index in world.people or world.cars for a person or a car, else -1 */
   target: number;
   /** the shot bounced off and flies on; false when it stopped here */
-  bounced: boolean;
+  fliesOn: boolean;
   /** its fuse ran out here: it goes off, in the air or on the ground */
-  burst: boolean;
+  wentOff: boolean;
 }
 
 /**
@@ -362,7 +362,7 @@ const _probe = { x: 0, z: 0 },
 /** Moves a shot on by dt seconds. Returns what it hit, 'gone' when it ran out of range, or null while it still flies. */
 export function stepShot(s: Shot, dt: number, world: ShotWorld, out: ShotHit): ShotHit | 'gone' | null {
   const fuseS = WEAPONS[s.weapon].fuseS;
-  out.burst = false;
+  out.wentOff = false;
   if (s.lying) {
     s.lifeS += dt;
     return s.lifeS >= fuseS ? burst(s, world, out) : null;
@@ -380,15 +380,15 @@ export function stepShot(s: Shot, dt: number, world: ShotWorld, out: ShotHit): S
     s.ageS += h;
     const hit = hitAt(s, world, out);
     if (hit) {
-      hit.bounced = bounce(s, hit);
+      hit.fliesOn = bounce(s, hit);
       // a shot with a fuse that is out of bounces or speed lies where it stopped until the fuse runs out
-      if (!hit.bounced && fuseS && hit.kind !== 'person') {
+      if (!hit.fliesOn && fuseS && hit.kind !== 'person') {
         s.x = hit.x + hit.nx * BOUNCE_CLEAR_M;
         s.z = hit.z + hit.nz * BOUNCE_CLEAR_M;
         s.y = world.groundAt(s.x, s.z);
         s.vx = s.vy = s.vz = 0;
         s.lying = true;
-        hit.bounced = true;
+        hit.fliesOn = true;
       }
       return hit;
     }
@@ -405,8 +405,8 @@ function burst(s: Shot, world: ShotWorld, out: ShotHit): ShotHit {
   out.z = s.z;
   out.dx = 0;
   out.dz = -1;
-  out.bounced = false;
-  out.burst = true;
+  out.fliesOn = false;
+  out.wentOff = true;
   return out;
 }
 
@@ -522,8 +522,8 @@ export const newHit = (): ShotHit => ({
   dx: 0,
   dz: -1,
   target: -1,
-  bounced: false,
-  burst: false,
+  fliesOn: false,
+  wentOff: false,
 });
 
 /**
@@ -547,7 +547,7 @@ export function flightPath(s: Shot, world: ShotWorld, stepS: number, max: number
       end.z = s.z;
       break;
     }
-    if (hit && !hit.bounced) break;
+    if (hit && !hit.fliesOn) break;
   }
   out[n * 3] = end.x;
   out[n * 3 + 1] = end.y;

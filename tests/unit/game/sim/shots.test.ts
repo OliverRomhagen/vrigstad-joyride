@@ -154,7 +154,7 @@ describe('a shot that bounces', () => {
     // aimed a little up: a level pea is on the ground before the wall, 20 m away
     const s: Shot = { ...shot(GULD), ...aimShot(WEAPONS[GULD], 0, 0.2) },
       hit = fly(s, world());
-    expect(hit).toMatchObject({ kind: 'wall', bounced: true });
+    expect(hit).toMatchObject({ kind: 'wall', fliesOn: true });
     expect(s.vz).toBeGreaterThan(0); // it flew north, and now south
     expect(Math.hypot(s.vx, s.vz)).toBeLessThan(WEAPONS[GULD].speedMs);
     expect(s.bounced).toBe(1);
@@ -164,7 +164,7 @@ describe('a shot that bounces', () => {
     const s = shot(GULD),
       w = world({ collide: () => false });
     let hits = 0;
-    for (let hit = fly(s, w); hit !== 'gone' && hit.bounced; hit = fly(s, w)) hits++;
+    for (let hit = fly(s, w); hit !== 'gone' && hit.fliesOn; hit = fly(s, w)) hits++;
     expect(hits).toBeGreaterThan(1);
     expect(hits).toBeLessThanOrEqual(WEAPONS[GULD].bounces);
   });
@@ -172,9 +172,9 @@ describe('a shot that bounces', () => {
   it('is stopped by a person, and a pickadoll shot never bounces', () => {
     expect(fly(shot(GULD), world({ people: [{ x: 0, z: -10, scale: 1 }] }))).toMatchObject({
       kind: 'person',
-      bounced: false,
+      fliesOn: false,
     });
-    expect(fly(shot(), world())).toMatchObject({ kind: 'wall', bounced: false });
+    expect(fly(shot(), world())).toMatchObject({ kind: 'wall', fliesOn: false });
   });
 });
 
@@ -189,9 +189,9 @@ describe('a thrown shot with a fuse', () => {
     for (let i = 0; i < 600; i++) {
       const hit = stepShot(s, 1 / 60, w, out);
       if (hit === 'gone') throw new Error('gone before its fuse');
-      if (hit?.burst) return { touches, hit };
+      if (hit?.wentOff) return { touches, hit };
       if (hit) {
-        expect(hit.bounced).toBe(true); // it never stops on what it touches
+        expect(hit.fliesOn).toBe(true); // it never stops on what it touches
         touches++;
       }
     }
@@ -203,7 +203,7 @@ describe('a thrown shot with a fuse', () => {
       { touches, hit } = untilBurst(s, world({ collide: () => false }));
     expect(touches).toBeGreaterThan(0);
     expect(s.lifeS).toBeCloseTo(fuseS, 1);
-    expect(hit).toMatchObject({ kind: 'ground', y: 0, burst: true, bounced: false });
+    expect(hit).toMatchObject({ kind: 'ground', y: 0, wentOff: true, fliesOn: false });
   });
 
   it('goes off in the air when the fuse runs out before it lands', () => {
@@ -216,7 +216,7 @@ describe('a thrown shot with a fuse', () => {
 
   it('goes off at once on a person', () => {
     const hit = fly(shot(GRANAT), world({ people: [{ x: 0, z: -3, scale: 1 }] }));
-    expect(hit).toMatchObject({ kind: 'person', bounced: false });
+    expect(hit).toMatchObject({ kind: 'person', fliesOn: false });
   });
 });
 

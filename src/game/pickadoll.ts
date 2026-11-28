@@ -580,7 +580,7 @@ export class Pickadoll {
       if (!hit) continue;
       if (hit !== 'gone') {
         this.land(s, hit);
-        if (hit.bounced) continue; // it flies on
+        if (hit.fliesOn) continue; // it flies on
         const tracerM = WEAPONS[s.weapon].tracerM;
         if (tracerM) fx.endStreak(x, y, z, hit.x, hit.y, hit.z, tracerM);
       }
@@ -708,7 +708,7 @@ export class Pickadoll {
     const { fx, crowd, rnd } = this.g,
       weapon = WEAPONS[s.weapon],
       colour = this.colourOf(s);
-    if (hit.bounced && weapon.fuseS) return; // a grenade only bounces and lies until its fuse runs out
+    if (hit.fliesOn && weapon.fuseS) return; // a grenade only bounces and lies until its fuse runs out
     this.hits++;
     if (weapon.zone === 'spikes') {
       dropSpike(this.spikes, hit, this.g.world.groundAt, s.seed);
