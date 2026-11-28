@@ -509,8 +509,9 @@ describe('placeFurniture: along the country roads (#305)', () => {
       expect(posts.length).toBeGreaterThan(0);
       for (const p of posts) expect(Math.abs(p.x - 25)).toBeGreaterThanOrEqual(10);
     }
-    // the main road in two pieces that meet at x = 0, as OSM splits a way: no gap there beyond the usual spacing
-    const west = road(RoadClass.PRIMARY, [-300, 0, 0, 0], { i: 1001 }),
+    // the main road in two pieces that meet at x = 0, as OSM splits a way: no gap there beyond the usual spacing. The
+    // western piece is 282 m, so its last post stands about 7 m from the join, where a junction keep would drop it
+    const west = road(RoadClass.PRIMARY, [-282, 0, 0, 0], { i: 1001 }),
       east = road(RoadClass.PRIMARY, [0, 0, 300, 0], { i: 1002 });
     const split = kinds(
       place({ world: { r: [west, east] }, profiles: [sides('outskirts'), sides('outskirts')] }).placements,

@@ -171,7 +171,7 @@ export const FURNITURE: Readonly<Record<FurnitureKind, FurnitureDefinition>> = {
     carriagewayClearanceM: 0.4,
     treeClearanceM: 0.5,
     dedupeRadiusM: 10,
-    junctionKeepM: 10, // not in a junction's mouth, where a driver turns
+    junctionKeepM: 2, // posts.ts keeps them out of a real junction's mouth; Placer's junctions include plain OSM splits
     maxSlopeDeg: 25,
   },
 };
