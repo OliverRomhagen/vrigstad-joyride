@@ -24,6 +24,8 @@ npm run data:report         # what the streetscape and street furniture rules in
 tools/fetch.sh              # re-download OSM + elevation (rarely needed; hits public APIs)
 ```
 
+`npm run data` is only byte-exact on Linux x86-64, which is what CI checks the committed `data/vrigstad.json` against: on macOS the last bit of `math.cos` differs and some lines split into different pieces. To commit regenerated data from a Mac, run it in CI's Ubuntu: `docker run --rm --platform linux/amd64 -v "$PWD":/w -w /w ubuntu:24.04 sh -c "apt-get update -qq && apt-get install -y -qq python3 && python3 tools/process.py data/raw data/vrigstad.json"`.
+
 Live site: https://oliverromhagen.github.io/vrigstad-joyride/ (GitHub Pages, from the `gh-pages` branch, which `.github/workflows/pages.yml` builds and deploys on every push to `main`).
 
 ## Workflow
