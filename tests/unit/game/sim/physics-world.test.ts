@@ -366,6 +366,55 @@ describe('PhysicsWorld', () => {
     w.dispose();
   });
 
+  it('knocks a moving prop loose when it runs into a parked car or a player standing still', () => {
+    // a 3 m board running east at 4 m/s along z = 20, its middle from x 0, toward something standing at x 10
+    const board: PropSpec = {
+      ...mailbox(0, 20),
+      widthM: 0.1,
+      depthM: 0.05,
+      heightM: 1.8,
+      moves: true,
+      parts: [{ x: 0.5, y: 0.4, z: 0, hx: 1.5, hy: 0.4, hz: 0.025, massKg: 10 }], // reaching 2 m ahead of its post
+    };
+    for (const what of ['car', 'player'] as const) {
+      const w = world(flat, [board]),
+        parked = car(10, 20);
+      let x = 0,
+        knockedAt = Number.NaN;
+      for (let k = 0; k < 180 && Number.isNaN(knockedAt); k++) {
+        if (what === 'car') w.follow([parked], null, parked);
+        else w.follow([], { x: 10, z: 20 }, { x: 10, z: 20 });
+        x += 4 * PHYSICS_STEP_S;
+        w.moveStanding(0, x, 0, 20, 0);
+        w.step(PHYSICS_STEP_S);
+        if (w.isLoose(0)) knockedAt = x;
+      }
+      // its nose, 2 m ahead of its post, meets the car's tail 2.4 m short of its middle, or the player's 0.3 m capsule
+      const meets = what === 'car' ? 10 - 2.4 - 2 : 10 - 0.3 - 2;
+      expect(knockedAt, what).toBeGreaterThan(meets - 0.2);
+      expect(knockedAt, what).toBeLessThan(meets + 0.05);
+      w.dispose();
+    }
+  });
+
+  it('turns a moving prop with its path, and lets it fall without the spin of its last turn', () => {
+    const w = world(flat, [{ ...mailbox(0, 20), moves: true }]),
+      p = pose();
+    // half a turn in one step: Rapier gives its body the spin that takes, 188 rad/s
+    w.moveStanding(0, 0, 0, 20, Math.PI);
+    w.step(PHYSICS_STEP_S);
+    expect(Math.abs(w.propPose(0, p).qy)).toBeCloseTo(1, 6);
+    w.knockProp(0, 0, 1, 20.1, 0, 0, 0);
+    w.step(PHYSICS_STEP_S);
+    const before = w.propPose(0, pose());
+    w.step(PHYSICS_STEP_S);
+    w.propPose(0, p);
+    // how far it turned in the step after: next to nothing, where that spin would turn it three radians
+    const dot = Math.abs(before.qx * p.qx + before.qy * p.qy + before.qz * p.qz + before.qw * p.qw);
+    expect(2 * Math.acos(Math.min(1, dot))).toBeLessThan(0.05);
+    w.dispose();
+  });
+
   it('runs fixed steps, catching up a long frame but no more than four steps at once', () => {
     const w = world(flat);
     expect(w.step(PHYSICS_STEP_S / 2)).toBe(0);
