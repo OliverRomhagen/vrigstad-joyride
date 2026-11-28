@@ -126,7 +126,11 @@ const KNOCKBACK_UP_SHARE = 0.3; // this share of the knockback goes upwards, so 
 // a throw (pang): a person hit is thrown over
 const PANG_THROW_MS = 5, // a person leaves at this, plus PANG_THROW_MS_PER_NS for each N·s of the weapon's push
   PANG_THROW_MS_PER_NS = 0.0625,
-  BLAST_SHARE = 0.6; // a blast reaches those around the hit with this share of its push and damage
+  BLAST_SHARE = 0.6, // a blast reaches those around the hit with this share of its push and damage
+  PANG_STEP_BACK_M = 0.5; // with too many down already, who is hit is only knocked this far back
+// a spatter's drops land between these shares of the blast's radius from the hit, each this share of the weapon's splat
+const DROP_REACH_K = [0.3, 1],
+  DROP_SIZE_K = [0.2, 0.5];
 const DANCE_SPIN_RADS = 7, // a dance: they spin this fast and hop
   DANCE_HOP_M = 0.22,
   DANCE_HOP_HZ = 3.2;
@@ -201,6 +205,7 @@ export interface PickadollDeps {
 export class Pickadoll {
   private readonly g: PickadollDeps;
   private readonly shots: (Shot & { seed: number; ammo: number })[] = []; // ammo: its index in AMMOS
+  private readonly spareShots: (Shot & { seed: number; ammo: number })[] = []; // landed, to be fired again
   private readonly dancers: { npc: Npc; leftS: number }[] = [];
   private readonly spikes: Spike[] = [];
   private readonly spikeWorld: { -readonly [K in keyof SpikeWorld]: SpikeWorld[K] };
@@ -287,7 +292,13 @@ export class Pickadoll {
   constructor(g: PickadollDeps) {
     this.g = g;
     this.world = { groundAt: g.world.groundAt, collide: g.world.collide, people: g.crowd.npcs, cars: [] };
-    this.spikeWorld = { cars: g.cars, people: g.crowd.npcs, walker: null };
+    this.spikeWorld = {
+      cars: g.cars,
+      people: g.crowd.npcs,
+      walker: null,
+      // a car with a flat already, or one a crash spares, leaves the spikes for the next car
+      canPuncture: k => g.cars[k].flat === NO_FLAT && !this.spared(g.cars[k]),
+    };
     // The controls, through the game's input: the left mouse button or X fires, the right one aims while held, C keeps
     // aiming on, Q changes the weapon (Hands among them), G its ammo, and H goes to Hands and back. A press of the trigger
     // is kept a moment (pulledS); on Hands it does nothing
@@ -826,10 +837,11 @@ export class Pickadoll {
       if (step === ShotStep.HIT) {
         const hit = this.hit;
         this.land(s, hit);
-        if (hit.bounced) continue; // it flies on
+        if (hit.fliesOn) continue; // it flies on
         const tracerM = WEAPONS[s.weapon].tracerM;
         if (tracerM) fx.endStreak(x, y, z, hit.x, hit.y, hit.z, tracerM);
       }
+      this.spareShots.push(s);
       this.shots[i] = this.shots[this.shots.length - 1];
       this.shots.pop();
     }
@@ -947,20 +959,20 @@ export class Pickadoll {
     const cvx = this.carVx,
       cvz = this.carVz;
     for (let i = 0; i < weapon.pellets && this.shots.length < SHOTS_MAX; i++) {
-      const v = aimShot(weapon, yaw, pitch, rnd() * 2 - 1, rnd() * 2 - 1);
-      this.shots.push({
-        ...this.muzzle,
-        vx: v.vx + cvx,
-        vy: v.vy,
-        vz: v.vz + cvz,
-        ageS: 0,
-        bounced: 0,
-        lifeS: 0,
-        lying: false,
-        weapon: this.weapon,
-        seed: rnd(),
-        ammo,
-      });
+      // a shot that has landed is used again, so firing makes no garbage once the pool has grown
+      const s = this.spareShots.pop() ?? { ...this.flown, seed: 0, ammo };
+      aimShot(weapon, yaw, pitch, rnd() * 2 - 1, rnd() * 2 - 1, s);
+      s.vx += cvx;
+      s.vz += cvz;
+      s.x = this.muzzle.x;
+      s.y = this.muzzle.y;
+      s.z = this.muzzle.z;
+      s.ageS = s.bounced = s.lifeS = 0;
+      s.lying = false;
+      s.weapon = this.weapon;
+      s.seed = rnd();
+      s.ammo = ammo;
+      this.shots.push(s);
     }
     this.fired++;
   }
@@ -973,7 +985,7 @@ export class Pickadoll {
       colour = this.colourOf(s),
       splat = effectOf(ammo, EffectKind.SPLAT),
       splatM = weapon.splatM * (splat?.sizeK ?? 0);
-    if (hit.bounced && weapon.fuseS) return; // a grenade only bounces and lies until its fuse runs out
+    if (hit.fliesOn && weapon.fuseS) return; // a grenade only bounces and lies until its fuse runs out
     this.hits++;
     if (effectOf(ammo, EffectKind.SPIKES)) {
       dropSpike(this.spikes, hit, this.g.world.groundAt, s.seed);
@@ -1026,12 +1038,12 @@ export class Pickadoll {
     const spatter = effectOf(ammo, EffectKind.SPATTER);
     for (let i = 0; spatter && i < spatter.drops; i++) {
       const a = rnd() * Math.PI * 2,
-        reach = weapon.blastM * (0.3 + rnd() * 0.7),
+        reach = weapon.blastM * (DROP_REACH_K[0] + rnd() * (DROP_REACH_K[1] - DROP_REACH_K[0])),
         x = hit.x + Math.cos(a) * reach,
         z = hit.z + Math.sin(a) * reach;
       fx.splat(
         { kind: HitKind.GROUND, x, y: this.g.world.groundAt(x, z), z, nx: 0, ny: 1, nz: 0 },
-        weapon.splatM * (0.2 + rnd() * 0.3),
+        weapon.splatM * (DROP_SIZE_K[0] + rnd() * (DROP_SIZE_K[1] - DROP_SIZE_K[0])),
         colour,
         rnd(),
       );
@@ -1092,8 +1104,8 @@ export class Pickadoll {
               (PANG_THROW_MS + knockbackNs * PANG_THROW_MS_PER_NS) * (isHead ? HEAD_THROW_K : 1),
             )
           ) {
-            n.x += dx * 0.5;
-            n.z += dz * 0.5;
+            n.x += dx * PANG_STEP_BACK_M;
+            n.z += dz * PANG_STEP_BACK_M;
           }
           break;
         case EffectKind.DANCE:

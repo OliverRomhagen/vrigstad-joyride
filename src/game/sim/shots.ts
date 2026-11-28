@@ -37,7 +37,7 @@ export interface Weapon extends AmmoRule {
   blastM: number; // a hit also reaches everyone within this radius; 0 for none
   bounces: number; // how many times a shot bounces off the ground, a wall or a car before it stops
   thrown: boolean; // lobbed by hand, not fired
-  fuseS: number; // it goes off this long after it leaves, wherever it is by then; until then it only bounces and lies. 0 for none
+  fuseS: number; // it goes off this long after it leaves, wherever it is by then, or at once on a person; until then it only bounces and lies. 0 for none
   shotM: number; // the radius it is drawn with
   tracerM: number; // drawn as a streak this long behind it, not as a ball: for a shot too fast to see. 0 for a ball
   scope: number; // aiming looks through a scope that magnifies this many times; 0 for none
@@ -283,6 +283,10 @@ const BOUNCE_KEEP = 0.78, // the share of its speed a shot keeps in a bounce
   THROWN_BOUNCE_KEEP = 0.4, // and a thrown thing, which thuds: it lands near where it was thrown at
   BOUNCE_MIN_MS = 4, // slower than this after a bounce, it stops there
   BOUNCE_CLEAR_M = 0.08; // a bounced shot starts this far off the surface, so it isn't hit again at once
+// These checks are a stand-in until the physics world's ray casts take over (#54, ?lab=rapier), so they are kept
+// simple and their known limits left: a wall thinner than STEP_M minus twice WALL_PROBE_M, such as a bridge's railing
+// (a line), can be passed between two checks; every check tests every person and car; and the line of sight
+// (sight) checks every STEP_M, some 640 checks a frame and 1,680 through a scope.
 const STEP_M = 0.25; // a shot is checked every this far along its path, so it can't skip through a person
 const CAST_STEP_M = 2; // with a world's ray cast, a shot's path is cast in straight pieces this long: its arc bends little over one
 const WALL_MAX_M = 9; // houses are taken to be this tall: a shot above it flies over
@@ -347,9 +351,9 @@ export interface ShotHit {
   /** index in world.people or world.cars for a person or a car, the prop's number for a prop, else -1 */
   target: number;
   /** the shot bounced off and flies on; false when it stopped here */
-  bounced: boolean;
+  fliesOn: boolean;
   /** its fuse ran out here: it goes off, in the air or on the ground */
-  burst: boolean;
+  wentOff: boolean;
 }
 
 /**
@@ -417,7 +421,7 @@ export type ShotStep = (typeof ShotStep)[keyof typeof ShotStep];
  */
 export function stepShot(s: Shot, dt: number, world: ShotWorld, out: ShotHit): ShotStep {
   const fuseS = WEAPONS[s.weapon].fuseS;
-  out.burst = false;
+  out.wentOff = false;
   if (s.lying) {
     s.lifeS += dt;
     if (s.lifeS < fuseS) return ShotStep.FLYING;
@@ -444,15 +448,15 @@ export function stepShot(s: Shot, dt: number, world: ShotWorld, out: ShotHit): S
     s.ageS += h;
     const hit = cast ? (cast(x0, y0, z0, s.x, s.y, s.z, out) ?? groundBelow(s, world, out)) : hitAt(s, world, out);
     if (hit) {
-      hit.bounced = bounce(s, hit);
+      hit.fliesOn = bounce(s, hit);
       // a shot with a fuse that is out of bounces or speed lies where it stopped until the fuse runs out
-      if (!hit.bounced && fuseS && hit.kind !== HitKind.PERSON) {
+      if (!hit.fliesOn && fuseS && hit.kind !== HitKind.PERSON) {
         s.x = hit.x + hit.nx * BOUNCE_CLEAR_M;
         s.z = hit.z + hit.nz * BOUNCE_CLEAR_M;
         s.y = world.groundAt(s.x, s.z);
         s.vx = s.vy = s.vz = 0;
         s.lying = true;
-        hit.bounced = true;
+        hit.fliesOn = true;
       }
       return ShotStep.HIT;
     }
@@ -469,8 +473,8 @@ function burst(s: Shot, world: ShotWorld, out: ShotHit) {
   out.z = s.z;
   out.dx = 0;
   out.dz = -1;
-  out.bounced = false;
-  out.burst = true;
+  out.fliesOn = false;
+  out.wentOff = true;
 }
 
 // off the ground, a wall or a car, if its weapon's shots bounce and it has bounces and speed left: the shot is turned
@@ -600,8 +604,8 @@ export const newHit = (): ShotHit => ({
   dx: 0,
   dz: -1,
   target: -1,
-  bounced: false,
-  burst: false,
+  fliesOn: false,
+  wentOff: false,
 });
 
 /**
@@ -625,7 +629,7 @@ export function flightPath(s: Shot, world: ShotWorld, stepS: number, max: number
       end.z = s.z;
       break;
     }
-    if (step === ShotStep.HIT && !end.bounced) break;
+    if (step === ShotStep.HIT && !end.fliesOn) break;
   }
   out[n * 3] = end.x;
   out[n * 3 + 1] = end.y;

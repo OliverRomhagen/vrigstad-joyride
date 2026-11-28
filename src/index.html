@@ -138,12 +138,13 @@ body { isolation: isolate; }
   @keyframes lab-headshot { from { scale: 1.45; } to { scale: 1; } }
 }
 /* a scope: the view through a round glass with a fine cross, dark around it. The ring and its hit ticks stay on top */
-#lab-scope { position: absolute; inset: 0; pointer-events: none; opacity: 0; transition: opacity .08s ease-in;
+#lab-scope { position: absolute; inset: 0; pointer-events: none; opacity: 0;
   background:
     linear-gradient(rgba(12, 16, 12, .75), rgba(12, 16, 12, .75)) 50% 50% / 1px 76vmin no-repeat,
     linear-gradient(rgba(12, 16, 12, .75), rgba(12, 16, 12, .75)) 50% 50% / 76vmin 1px no-repeat,
     radial-gradient(circle at 50% 50%, transparent 0 37.5vmin, rgba(8, 10, 8, .55) 38vmin 38.6vmin, rgba(8, 10, 8, .96) 39.4vmin); }
-#lab-scope.on { opacity: 1; transition-duration: .14s; }
+#lab-scope.on { opacity: 1; }
+@media (prefers-reduced-motion: no-preference) { #lab-scope { transition: opacity .08s ease-in; } #lab-scope.on { transition-duration: .14s; } }
 /* the pickadoll lab's weapon wheel (#526): a ring of slots round the middle while Q or the weapon button is held; the
    slot pointed at lights up, and the middle names it. It comes in a little slower than it goes */
 #lab-wheel { --size: min(78vmin, 340px); position: absolute; left: 50%; top: 50%; width: var(--size); aspect-ratio: 1; translate: -50% -50%; border-radius: 50%;
