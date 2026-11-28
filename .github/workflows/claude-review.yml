@@ -120,9 +120,15 @@ jobs:
             echo "::warning::Couldn't list the PR's commits, so counting their authors as new."
             authors='!'
           fi
+          # `claude` is the account GitHub matches to noreply@anthropic.com, the author of commits Claude Code makes in
+          # the cloud, and it has no merged PR here: counting it as new held every such PR for approval. It passes as a
+          # known author would, so a new collaborator's Claude Code commits are let through too, wherever the pusher isn't
+          # checked: pushed to a known person's draft, they're reviewed unapproved once that person marks it ready. Like
+          # any author email it can be forged as well. #605 is about these commits carrying their person's name instead,
+          # which would end this exception.
           while IFS= read -r a; do
             case "$a" in
-              '' | "$AUTHOR" | "$SENDER") ;;
+              '' | "$AUTHOR" | "$SENDER" | claude) ;;
               '?') unknown+=("a commit author with no GitHub account") ;;
               '!') unknown+=("the commits' authors") ;;
               *) known "$a" || unknown+=("$a") ;;
