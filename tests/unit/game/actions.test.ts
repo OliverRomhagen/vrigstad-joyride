@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { Actions, type ActionsDeps } from '../../../src/game/actions';
+import { ACTION_REFUSAL, Actions, type ActionsDeps } from '../../../src/game/actions';
 import type { Car } from '../../../src/game/cars';
 import type { Cat } from '../../../src/game/cats';
+import { Commands } from '../../../src/game/commands';
 import { FINE_PER_STAR_KR } from '../../../src/game/economy';
 import { HP_MAX } from '../../../src/game/health';
 import type { Place } from '../../../src/game/places';
@@ -37,6 +38,7 @@ function actions(
     stars?: number;
     place?: Place | null;
     places?: Place[];
+    inside?: Place | null;
     cat?: Cat | null;
     menuOpen?: boolean;
     skroten?: boolean;
@@ -59,6 +61,13 @@ function actions(
       calls.push('clear');
     },
   };
+  // every command E runs, as a hook sees it: its name and where it came from
+  const commands = new Commands(),
+    ran: string[] = [];
+  commands.use((call, next) => {
+    ran.push(call.name + ' from ' + call.source);
+    return next();
+  });
   const health = { hp: 7, calm: 0, god: false },
     wallet = { kr: o.kr ?? 0 };
   const g: ActionsDeps = {
@@ -66,10 +75,11 @@ function actions(
     view,
     player,
     cars: o.cars ?? [],
-    places: { inside: null, list: o.places ?? [] },
+    places: { inside: o.inside ?? null, list: o.places ?? [] },
     wanted,
     health,
     wallet,
+    commands,
     menuOpen: () => !!o.menuOpen,
     showPlayer: v => {
       mesh.visible = v;
@@ -109,7 +119,23 @@ function actions(
     sayLater: l => void calls.push('later ' + l),
     pickLine: a => a[0],
   };
-  return { a: new Actions(g), calls, screens, game, view, player, mesh, wanted, health, wallet };
+  const a = new Actions(g);
+  a.registerCommands(commands);
+  return {
+    a,
+    deps: g,
+    commands,
+    ran,
+    calls,
+    screens,
+    game,
+    view,
+    player,
+    mesh,
+    wanted,
+    health,
+    wallet,
+  };
 }
 
 describe('Actions.action', () => {
@@ -256,6 +282,161 @@ describe('Actions.action', () => {
     expect(t.view.lookOff).toBe(0);
     expect(t.view.camYaw).toBeCloseTo(0.5);
     expect(t.mesh.visible).toBe(true);
+  });
+});
+
+describe('enter and exit as commands', () => {
+  it('E at a car only picks the command: a hook sees enter, then exit, from input', () => {
+    const t = actions({ cars: [parked()] });
+    t.a.action();
+    expect(t.game.inCar).toBe(true);
+    t.a.action();
+    expect(t.game.inCar).toBe(false);
+    expect(t.ran).toEqual(['enter from input', 'exit from input']);
+  });
+
+  it('E runs no command for what is not getting in or out of a car', () => {
+    const t = actions({ cars: [parked({ saleKr: 2000 })] });
+    t.a.action(); // Plåt-Pelle's price
+    actions().a.action(); // nothing in reach
+    const onRing = actions({ cars: [parked()], skroten: true });
+    onRing.a.action();
+    onRing.a.action(); // Skroten's offer
+    expect(t.ran).toEqual([]);
+    expect(onRing.ran).toEqual(['enter from input']);
+  });
+
+  it('a hook that refuses the command keeps you on foot, and E shows its reason', () => {
+    const t = actions({ cars: [parked()] });
+    t.commands.use(call => 'No ' + call.name + ' here.');
+    t.a.action();
+    expect(t.game.inCar).toBe(false);
+    expect(t.calls).toEqual(['toast No enter here.']);
+  });
+
+  it('E shows the reason when exit refuses, and nothing when a command is done', () => {
+    const c = parked({ owned: true }),
+      t = actions({ cars: [c] });
+    t.a.action(); // in: done, so no toast for the line
+    expect(t.calls).toEqual([]);
+    c.v = 20;
+    t.a.action();
+    expect(t.calls).toEqual(['toast Slow down before you get out.']);
+    expect(t.game.inCar).toBe(true);
+  });
+
+  it('a run is done or refused: execute says which, and a typed line shows no toast', () => {
+    const c = parked({ owned: true }),
+      t = actions({ cars: [c] });
+    expect(t.commands.execute('exit')).toEqual({
+      ok: false,
+      text: 'You are not in a car.',
+      code: ACTION_REFUSAL.NOT_DRIVING,
+    });
+    expect(t.commands.execute('enter')).toEqual({ ok: true, text: 'You are in the Volvo.' });
+    expect(t.commands.execute('enter').code).toBe(ACTION_REFUSAL.ALREADY_DRIVING);
+    c.v = 20;
+    expect(t.commands.execute('exit')).toEqual({
+      ok: false,
+      text: 'Slow down before you get out.',
+      code: ACTION_REFUSAL.TOO_FAST,
+    });
+    c.v = 0;
+    expect(t.commands.execute('exit')).toEqual({ ok: true, text: 'You got out of the Volvo.' });
+    expect(t.calls).toEqual([]); // the console shows the line; only E toasts a reason
+  });
+
+  it('enter gets you into the car in reach without a key, as taking it by E does', () => {
+    const c = parked(),
+      t = actions({ cars: [c] });
+    expect(t.commands.run('enter', 'test')).toBe('You are in the Volvo.');
+    expect(t.game.pcar).toBe(c);
+    expect(c.owned).toBe(true);
+    expect(t.calls).toEqual(['toast You took the Volvo. Nobody noticed.', 'stolen 1']);
+    expect(t.commands.run('enter', 'test')).toBe('You are already in the Volvo.');
+    expect(t.ran).toEqual(['enter from test', 'enter from test']);
+  });
+
+  it('enter says why not: no car, a car for sale, inside a house, a menu open, before Start, or under a title card', () => {
+    expect(actions().commands.run('enter')).toBe('No car in reach.');
+    const lot = actions({ cars: [parked({ saleKr: 2000 })] });
+    expect(lot.commands.run('enter')).toBe('The Volvo is for sale at Skroten.');
+    expect(lot.calls).toEqual([]); // the price is what E asks, not what enter does
+    const home = actions({ cars: [parked()], inside: { kind: 'safe', name: 'Storgatan', x: 0, z: 0 } });
+    expect(home.commands.run('enter')).toBe('You are inside a house.');
+    const shopping = actions({ cars: [parked()], menuOpen: true });
+    expect(shopping.commands.run('enter')).toBe('Close the menu first.');
+    const waiting = actions({ cars: [parked()] });
+    waiting.game.started = false;
+    expect(waiting.commands.run('enter')).toBe('Press Start first.');
+    waiting.game.started = true;
+    waiting.game.titleCardT = 1;
+    expect(waiting.commands.run('exit')).toBe('Wait for the title card to go.');
+    for (const t of [lot, home, shopping, waiting]) expect(t.game.inCar).toBe(false);
+  });
+
+  it('exit gets you out, and says so when you are on foot or too fast', () => {
+    const c = parked(),
+      t = actions({ cars: [c] });
+    expect(t.commands.run('exit')).toBe('You are not in a car.');
+    t.commands.run('enter');
+    c.v = 20;
+    expect(t.commands.run('exit')).toBe('Slow down before you get out.');
+    expect(t.game.inCar).toBe(true);
+    c.v = 0;
+    expect(t.commands.run('exit')).toBe('You got out of the Volvo.');
+    expect(t.game.inCar).toBe(false);
+    expect(c.mode).toBe('idle');
+  });
+
+  it("exit gets you out on Skroten's ring too: the offer is what E asks first", () => {
+    const t = actions({ cars: [parked()], skroten: true });
+    t.commands.run('enter');
+    expect(t.commands.run('exit')).toBe('You got out of the Volvo.');
+    expect(t.calls).not.toContain('skroten');
+  });
+
+  it('names each refusal, so code never has to match the sentence', () => {
+    const code = (o: Parameters<typeof actions>[0], line: string, before?: (t: ReturnType<typeof actions>) => void) => {
+      const t = actions(o);
+      before?.(t);
+      return t.commands.execute(line).code;
+    };
+    const safe: Place = { kind: 'safe', name: 'Storgatan', x: 0, z: 0 };
+    expect(code({}, 'enter')).toBe(ACTION_REFUSAL.NO_CAR_IN_REACH);
+    expect(code({ cars: [parked({ saleKr: 2000 })] }, 'enter')).toBe(ACTION_REFUSAL.CAR_FOR_SALE);
+    expect(code({ cars: [parked()], inside: safe }, 'enter')).toBe(ACTION_REFUSAL.INDOORS);
+    expect(code({ cars: [parked()], menuOpen: true }, 'enter')).toBe(ACTION_REFUSAL.MENU_OPEN);
+    expect(code({ menuOpen: true }, 'exit')).toBe(ACTION_REFUSAL.MENU_OPEN);
+    expect(
+      code({}, 'enter', t => {
+        t.game.started = false;
+      }),
+    ).toBe(ACTION_REFUSAL.NOT_STARTED);
+    expect(
+      code({}, 'exit', t => {
+        t.game.titleCardT = 1;
+      }),
+    ).toBe(ACTION_REFUSAL.TITLE_CARD);
+    expect(code({ cars: [parked()] }, 'enter')).toBeUndefined(); // done: no code
+  });
+
+  it('E with nothing to do runs no command and shows no toast', () => {
+    const t = actions();
+    t.a.action();
+    expect(t.ran).toEqual([]);
+    expect(t.calls).toEqual([]);
+  });
+
+  it('both take no words, run outside dev mode and explain themselves', () => {
+    const t = actions();
+    expect(t.commands.run('enter now')).toBe('Too many words. Usage: enter');
+    expect(t.commands.run('help exit')).toBe(
+      'exit: get out of the car you drive\nWhat E does in a car, once it is slow enough.\nExamples:\n  exit',
+    );
+    const players = new Commands({ allowed: access => access === 'player' });
+    new Actions(t.deps).registerCommands(players);
+    expect(players.names()).toEqual(['enter', 'exit', 'help']);
   });
 });
 

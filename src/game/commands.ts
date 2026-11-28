@@ -5,8 +5,8 @@
 /** Who may run a command: `dev` only in dev mode (the default), `player` always. */
 export type Access = 'dev' | 'player';
 
-/** Where a line came from, so a hook can tell a typed line from a script or a test. */
-export type CallSource = 'console' | 'url' | 'script' | 'panel' | 'test';
+/** Where a line came from, so a hook can tell a typed line from a script or a test; `input` is a key, a touch or a gamepad button. */
+export type CallSource = 'console' | 'input' | 'url' | 'script' | 'panel' | 'test';
 
 /** One run of a command, as the command and the hooks see it. */
 export interface Call {

@@ -683,6 +683,12 @@ test.describe('game (index.html)', () => {
     };
     await expect(await run('adopt dog')).toHaveText('No pet called dog. Usage: adopt <cat>');
     await expect(await run('adopt cat')).toHaveText('Adopted a cat.');
+    // a player action by command, without its key (#366): enter and exit do what E does at a car
+    await expect(await run('car volvo240')).toHaveText('Parked a Volvo 240 next to you.');
+    await expect(await run('enter')).toHaveText('You are in the Volvo 240.');
+    expect(await state(page)).toMatchObject({ inCar: true });
+    await expect(await run('exit')).toHaveText('You got out of the Volvo 240.');
+    expect(await state(page)).toMatchObject({ inCar: false });
     const setLine = await run('tune set driving.grip 8'); // the tunables (#357)
     await expect(setLine).toHaveText(/^driving\.grip = 8 1\/s \(was [\d.]+\)$/);
     const was = (await setLine.textContent()).match(/was ([\d.]+)/)[1];
