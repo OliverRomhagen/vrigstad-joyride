@@ -15,17 +15,19 @@ import {
   newHit,
   type Shot,
   type ShotHit,
+  ShotStep,
   type ShotWorld,
   sight,
   stepShot,
   WEAPONS,
+  WeaponId,
 } from '../../../../src/game/sim/shots';
 import { BuildingKind } from '../../../../src/world/data';
 import { makeWorld, square } from '../../world/fixture';
 
 beforeAll(() => RAPIER.init());
 
-const PICKADOLL = WEAPONS.findIndex(w => w.id === 'pickadoll');
+const PICKADOLL = WEAPONS.findIndex(w => w.id === WeaponId.PICKADOLL);
 
 // flat ground, sampled every 5 m over a 200 m square
 const flat = {
@@ -93,9 +95,9 @@ function shot(x = 0, z = 0): Shot {
 function fly(s: Shot, w: ShotWorld): ShotHit {
   const out = newHit();
   for (let i = 0; i < 600; i++) {
-    const hit = stepShot(s, 1 / 60, w, out);
-    if (hit === 'gone') throw new Error('out of range');
-    if (hit) return hit;
+    const step = stepShot(s, 1 / 60, w, out);
+    if (step === ShotStep.GONE) throw new Error('out of range');
+    if (step === ShotStep.HIT) return out;
   }
   throw new Error('still flying after 10 s');
 }

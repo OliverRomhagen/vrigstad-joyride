@@ -89,7 +89,8 @@ export interface PersonBody {
 }
 
 /** What a ray cast can meet: the weapons' hits are the same kinds (HitKind in shots.ts). */
-export type SurfaceKind = 'ground' | 'wall' | 'car' | 'person' | 'prop';
+export const SurfaceKind = { GROUND: 'ground', WALL: 'wall', CAR: 'car', PERSON: 'person', PROP: 'prop' } as const;
+export type SurfaceKind = (typeof SurfaceKind)[keyof typeof SurfaceKind];
 
 /** What a line met: the point, the surface's normal there, and what it belongs to. */
 export interface SegmentHit {
@@ -107,7 +108,7 @@ export interface SegmentHit {
 }
 
 export const newSegmentHit = (): SegmentHit => ({
-  kind: 'ground',
+  kind: SurfaceKind.GROUND,
   x: 0,
   y: 0,
   z: 0,
@@ -544,14 +545,14 @@ export class PhysicsWorld {
     out.person = this.personByCollider.get(h) ?? null;
     out.prop = this.propByCollider.get(h) ?? -1;
     out.kind = out.car
-      ? 'car'
+      ? SurfaceKind.CAR
       : out.person
-        ? 'person'
+        ? SurfaceKind.PERSON
         : out.prop >= 0
-          ? 'prop'
+          ? SurfaceKind.PROP
           : h === this.groundCollider
-            ? 'ground'
-            : 'wall';
+            ? SurfaceKind.GROUND
+            : SurfaceKind.WALL;
     return true;
   }
 

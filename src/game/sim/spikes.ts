@@ -2,7 +2,7 @@
 // to lie and who is on one each step; what that does to them (a limp, a puncture, a hurt foot) is decided by the page
 // module, ../pickadoll.ts. Plain data, metres and seconds.
 import { WHEEL, type Wheel } from '../cars';
-import type { ShotHit } from './shots';
+import { HitKind, type ShotHit } from './shots';
 
 export const SPIKES_MAX = 140, // on the ground at once; the oldest go first
   SPIKE_S = 60, // one lies this long
@@ -61,7 +61,7 @@ export function dropSpike(
   groundAt: (x: number, z: number) => number,
   turn: number,
 ) {
-  const out = hit.kind === 'ground' ? 0 : SPIKE_OFF_WALL_M,
+  const out = hit.kind === HitKind.GROUND ? 0 : SPIKE_OFF_WALL_M,
     x = hit.x + hit.nx * out,
     z = hit.z + hit.nz * out;
   if (spikes.length >= SPIKES_MAX) spikes.shift();

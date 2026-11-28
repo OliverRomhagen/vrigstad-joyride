@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { HitKind } from '../../../../src/game/sim/shots';
 import {
   dropSpike,
   newSpikeStep,
@@ -18,21 +19,22 @@ const world = (over: Partial<SpikeWorld> = {}): SpikeWorld => ({ cars: [], peopl
 describe('dropSpike', () => {
   it("lies on the ground where it fell, at the ground's height", () => {
     const spikes: Spike[] = [];
-    dropSpike(spikes, { kind: 'ground', x: 3, z: -4, nx: 0, nz: 0 }, (x, z) => x + z, 0.25);
+    dropSpike(spikes, { kind: HitKind.GROUND, x: 3, z: -4, nx: 0, nz: 0 }, (x, z) => x + z, 0.25);
     expect(spikes).toEqual([{ x: 3, y: -1, z: -4, turn: 0.25, leftS: SPIKE_S }]);
   });
 
   it('drops out from a wall or a car it hit, the way the surface faces', () => {
     const spikes: Spike[] = [];
-    dropSpike(spikes, { kind: 'wall', x: 0, z: -20, nx: 0, nz: 1 }, flat, 0);
-    dropSpike(spikes, { kind: 'car', x: 5, z: 0, nx: -1, nz: 0 }, flat, 0);
+    dropSpike(spikes, { kind: HitKind.WALL, x: 0, z: -20, nx: 0, nz: 1 }, flat, 0);
+    dropSpike(spikes, { kind: HitKind.CAR, x: 5, z: 0, nx: -1, nz: 0 }, flat, 0);
     expect(spikes[0]).toMatchObject({ x: 0, z: -20 + SPIKE_OFF_WALL_M });
     expect(spikes[1]).toMatchObject({ x: 5 - SPIKE_OFF_WALL_M, z: 0 });
   });
 
   it('lets the oldest go when there are too many', () => {
     const spikes: Spike[] = [];
-    for (let i = 0; i <= SPIKES_MAX; i++) dropSpike(spikes, { kind: 'ground', x: i, z: 0, nx: 0, nz: 0 }, flat, 0);
+    for (let i = 0; i <= SPIKES_MAX; i++)
+      dropSpike(spikes, { kind: HitKind.GROUND, x: i, z: 0, nx: 0, nz: 0 }, flat, 0);
     expect(spikes).toHaveLength(SPIKES_MAX);
     expect(spikes[0].x).toBe(1);
   });

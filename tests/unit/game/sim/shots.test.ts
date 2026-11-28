@@ -7,16 +7,20 @@ import {
   blastPush,
   flightPath,
   GRAVITY_MS2,
+  knockbackOf,
   MUZZLE_M,
   newHit,
   type Shot,
+  ShotStep,
   type ShotWorld,
   sight,
+  slideCar,
   stepShot,
   WEAPONS,
+  WeaponId,
 } from '../../../../src/game/sim/shots';
 
-const PICKADOLL = WEAPONS.findIndex(w => w.id === 'pickadoll');
+const PICKADOLL = WEAPONS.findIndex(w => w.id === WeaponId.PICKADOLL);
 const T = { lengthM: 4.6, widthM: 1.8 };
 
 // flat ground at 0, and one house: everything north of z = -20 between x = -5 and 5
@@ -52,8 +56,8 @@ function shot(weapon = PICKADOLL): Shot {
 function fly(s: Shot, w: ShotWorld, dt = 1 / 60) {
   const out = newHit();
   for (let i = 0; i < 600; i++) {
-    const hit = stepShot(s, dt, w, out);
-    if (hit) return hit;
+    const step = stepShot(s, dt, w, out);
+    if (step !== ShotStep.FLYING) return step === ShotStep.HIT ? out : step;
   }
   throw new Error('still flying after 10 s');
 }
@@ -85,13 +89,13 @@ describe('stepShot', () => {
     // level from MUZZLE_M: it falls for sqrt(2 h / g) seconds
     const fallS = Math.sqrt((2 * MUZZLE_M) / GRAVITY_MS2);
     expect(-s.z).toBeCloseTo(WEAPONS[PICKADOLL].speedMs * fallS, 0);
-    if (hit !== 'gone') expect(-hit.z).toBeCloseTo(WEAPONS[PICKADOLL].speedMs * fallS, 0);
+    if (hit !== ShotStep.GONE) expect(-hit.z).toBeCloseTo(WEAPONS[PICKADOLL].speedMs * fallS, 0);
   });
 
   it('hits the wall of a house, and says which way the wall faces', () => {
     const hit = fly(shot(), world());
     expect(hit).toMatchObject({ kind: 'wall', nx: 0, nz: 1 }); // the south wall faces south
-    if (hit !== 'gone') expect(hit.z).toBeCloseTo(-20); // on the wall's face, not where the shot was noticed inside it
+    if (hit !== ShotStep.GONE) expect(hit.z).toBeCloseTo(-20); // on the wall's face, not where the shot was noticed inside it
   });
 
   it('hits a person in the way, not the house behind them', () => {
@@ -111,7 +115,7 @@ describe('stepShot', () => {
     // a car at z = -10 pointing east: its body is 0.9 m either side of its spine
     const hit = fly(shot(), world({ cars: [{ x: 0, z: -10, h: Math.PI / 2, T }] }));
     expect(hit).toMatchObject({ kind: 'car', target: 0 });
-    if (hit !== 'gone') {
+    if (hit !== ShotStep.GONE) {
       expect(hit.z).toBeCloseTo(-10 + T.widthM / 2); // on the body's side
       expect(hit.nz).toBeCloseTo(1); // the side that faces the shooter
     }
@@ -136,19 +140,20 @@ describe('stepShot', () => {
 
   it('does not skip through a person on a slow frame', () => {
     const s = shot(),
-      hit = stepShot(s, 0.25, world({ people: [{ x: 0, z: -9, scale: 1 }] }), newHit());
+      hit = newHit();
+    expect(stepShot(s, 0.25, world({ people: [{ x: 0, z: -9, scale: 1 }] }), hit)).toBe('hit');
     expect(hit).toMatchObject({ kind: 'person' });
   });
 });
 
 describe('the weapons', () => {
   it('has a minigun that fires for as long as the trigger is held', () => {
-    expect(WEAPONS.find(w => w.id === 'minigun')).toMatchObject({ auto: true });
+    expect(WEAPONS.find(w => w.id === WeaponId.MINIGUN)).toMatchObject({ auto: true });
   });
 });
 
 describe('a shot that bounces', () => {
-  const GULD = WEAPONS.findIndex(w => w.id === 'guldartpuffra');
+  const GULD = WEAPONS.findIndex(w => w.id === WeaponId.GULDARTPUFFRA);
 
   it('comes back off a wall the way it went in, slower, and flies on', () => {
     // aimed a little up: a level pea is on the ground before the wall, 20 m away
@@ -164,7 +169,7 @@ describe('a shot that bounces', () => {
     const s = shot(GULD),
       w = world({ collide: () => false });
     let hits = 0;
-    for (let hit = fly(s, w); hit !== 'gone' && hit.fliesOn; hit = fly(s, w)) hits++;
+    for (let hit = fly(s, w); hit !== ShotStep.GONE && hit.fliesOn; hit = fly(s, w)) hits++;
     expect(hits).toBeGreaterThan(1);
     expect(hits).toBeLessThanOrEqual(WEAPONS[GULD].bounces);
   });
@@ -179,7 +184,7 @@ describe('a shot that bounces', () => {
 });
 
 describe('a thrown shot with a fuse', () => {
-  const GRANAT = WEAPONS.findIndex(w => w.id === 'granat'),
+  const GRANAT = WEAPONS.findIndex(w => w.id === WeaponId.GRANAT),
     fuseS = WEAPONS[GRANAT].fuseS;
 
   // steps until it goes off; says how many times it touched something before, and when it went off
@@ -187,13 +192,12 @@ describe('a thrown shot with a fuse', () => {
     const out = newHit();
     let touches = 0;
     for (let i = 0; i < 600; i++) {
-      const hit = stepShot(s, 1 / 60, w, out);
-      if (hit === 'gone') throw new Error('gone before its fuse');
-      if (hit?.wentOff) return { touches, hit };
-      if (hit) {
-        expect(hit.fliesOn).toBe(true); // it never stops on what it touches
-        touches++;
-      }
+      const step = stepShot(s, 1 / 60, w, out);
+      if (step === ShotStep.GONE) throw new Error('gone before its fuse');
+      if (step === ShotStep.FLYING) continue;
+      if (out.wentOff) return { touches, hit: out };
+      expect(out.fliesOn).toBe(true); // it never stops on what it touches
+      touches++;
     }
     throw new Error('never went off');
   }
@@ -222,13 +226,14 @@ describe('a thrown shot with a fuse', () => {
 
 describe('a bounce on a slope', () => {
   it('goes on up a hill instead of stopping where it first touches', () => {
-    const GULD = WEAPONS.findIndex(w => w.id === 'guldartpuffra'),
+    const GULD = WEAPONS.findIndex(w => w.id === WeaponId.GULDARTPUFFRA),
       // the ground rises 1 m for every 2 m north
       w = world({ collide: () => false, groundAt: (_x, z) => -z * 0.5 }),
       s = { ...shot(GULD), ...aimShot(WEAPONS[GULD], 0, 0.5) },
       out = newHit();
     let first: number | null = null;
-    for (let i = 0; i < 600 && first === null; i++) if (stepShot(s, 1 / 60, w, out)) first = s.bounced;
+    for (let i = 0; i < 600 && first === null; i++)
+      if (stepShot(s, 1 / 60, w, out) !== ShotStep.FLYING) first = s.bounced;
     expect(first).toBe(1); // it met the slope still rising, and bounced off it
     expect(out.ny).toBeCloseTo(2 / Math.hypot(1, 2)); // the slope's own normal, leaning back south
     expect(out.nz).toBeCloseTo(1 / Math.hypot(1, 2));
@@ -254,7 +259,7 @@ describe('aimAtMoving', () => {
 });
 
 describe('a fast shot', () => {
-  const ALG = WEAPONS.findIndex(w => w.id === 'algstudsare');
+  const ALG = WEAPONS.findIndex(w => w.id === WeaponId.ALGSTUDSARE);
 
   it('stops at someone in its way, however far it flies in a frame', () => {
     // 760 m/s is 25 m in one step of 1/30 s: well past a person 0.7 m across
@@ -312,7 +317,7 @@ describe('blastPush', () => {
 
 describe('a grenade at rest', () => {
   it('lies on the ground where it stopped, on a slope too', () => {
-    const GRANAT = WEAPONS.findIndex(w => w.id === 'granat'),
+    const GRANAT = WEAPONS.findIndex(w => w.id === WeaponId.GRANAT),
       // a hill that rises to the north and to the east
       w = world({ collide: () => false, groundAt: (x, z) => -z * 0.3 + x * 0.2 }),
       s = { ...shot(GRANAT), vx: 3 },
@@ -337,7 +342,7 @@ describe('flightPath', () => {
   });
 
   it('follows a grenade through its bounces to where it comes to rest', () => {
-    const GRANAT = WEAPONS.findIndex(w => w.id === 'granat'),
+    const GRANAT = WEAPONS.findIndex(w => w.id === WeaponId.GRANAT),
       points: number[] = [],
       end = newHit(),
       n = flightPath(shot(GRANAT), world({ collide: () => false }), 1 / 20, 64, points, end);
@@ -394,7 +399,7 @@ describe('sight', () => {
 
 describe('aimAt', () => {
   it('sends a shot through the point it is aimed at, drop and all', () => {
-    for (const weapon of [PICKADOLL, WEAPONS.findIndex(w => w.id === 'potatiskanon')]) {
+    for (const weapon of [PICKADOLL, WEAPONS.findIndex(w => w.id === WeaponId.POTATISKANON)]) {
       // a point on the house's south wall, 3 m up and a little to the east
       const { yaw, pitch } = aimAt(WEAPONS[weapon].speedMs, 0, MUZZLE_M, 0, 2, 3, -20, { yaw: 0, pitch: 0 });
       const hit = fly(
@@ -412,7 +417,7 @@ describe('aimAt', () => {
         world(),
       );
       expect(hit).toMatchObject({ kind: 'wall' });
-      if (hit !== 'gone') {
+      if (hit !== ShotStep.GONE) {
         expect(hit.x).toBeCloseTo(2, 0);
         expect(hit.y).toBeCloseTo(3, 0);
       }
@@ -443,5 +448,41 @@ describe('assistTarget', () => {
   it('is nobody when nobody is inside the cone or the range', () => {
     expect(assistTarget(0, 0, Math.PI, { people, cars: [] }, 0.3, 45)).toBeNull();
     expect(assistTarget(0, 0, 0, { people, cars: [] }, 0.3, 10)).toBeNull();
+  });
+});
+
+describe('knockbackOf', () => {
+  it('pushes by what the shot weighs times its speed, so a faster weapon pushes harder', () => {
+    expect(knockbackOf({ shotMassKg: 0.5, speedMs: 80 })).toBe(40);
+    expect(knockbackOf({ shotMassKg: 0.5, speedMs: 160 })).toBe(80);
+  });
+
+  it("keeps the pushes the weapons' power gave: 40 N·s a point", () => {
+    const by = (id: WeaponId) => knockbackOf(WEAPONS.find(w => w.id === id)!);
+    expect(by(WeaponId.PICKADOLL)).toBeCloseTo(40, 0);
+    expect(by(WeaponId.POTATISKANON)).toBeCloseTo(160, 0);
+    expect(by(WeaponId.ALGSTUDSARE)).toBeCloseTo(200, 0);
+  });
+});
+
+describe('slideCar', () => {
+  it('slides a parked car along a push that beats its brakes', () => {
+    const c = { x: 10, z: 5, mode: 'parked' as const };
+    expect(slideCar(c, 0, -1, 120)).toBe(true);
+    expect(c.x).toBe(10);
+    expect(c.z).toBeCloseTo(5 - 120 * 0.0035); // 0.0035 m an N·s
+  });
+
+  it("holds a parked car against a pistol's push: the shot only marks it", () => {
+    const c = { x: 10, z: 5, mode: 'parked' as const };
+    const pickadoll = WEAPONS.find(w => w.id === WeaponId.PICKADOLL)!;
+    expect(slideCar(c, 0, -1, knockbackOf(pickadoll))).toBe(false);
+    expect(c).toEqual({ x: 10, z: 5, mode: 'parked' });
+  });
+
+  it('leaves a car that drives where its driving puts it', () => {
+    const c = { x: 10, z: 5, mode: 'ai' as const };
+    expect(slideCar(c, 1, 0, 500)).toBe(false);
+    expect(c).toMatchObject({ x: 10, z: 5 });
   });
 });

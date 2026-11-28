@@ -1,7 +1,7 @@
 // Draws the shots (#17, lab: pickadoll): the shots in the air, the splats they leave on the ground, on walls, on cars
 // and on people, and the mark where the next shot would land. The rules are in ../sim/shots.ts.
 import * as THREE from 'three';
-import { SHOTS_MAX, type Shot, type ShotHit } from '../sim/shots';
+import { HitKind, SHOTS_MAX, type Shot, type ShotHit } from '../sim/shots';
 import { SPIKES_MAX } from '../sim/spikes';
 
 const SPLATS_MAX = 600,
@@ -30,9 +30,6 @@ const BODY_HALF_DEPTH_M = 0.15,
   BODY_LOW_M = 0.9,
   BODY_HIGH_M = 1.4,
   BODY_SPLAT_MAX_M = 0.2;
-
-/** The gegga's colours. */
-export const GEGGA = ['#ff3b6b', '#ffd400', '#22d3a0', '#2e9bff', '#b45cff', '#ff7a1a'] as const;
 
 export interface ShotFxDeps {
   scene: THREE.Scene;
@@ -269,7 +266,7 @@ export class ShotFx {
   /** Leaves a splat of radius `r` (m) where a shot hit the ground or a wall; `turn` (0..1) turns it, so no two look the same. */
   splat(hit: Pick<ShotHit, 'kind' | 'x' | 'y' | 'z' | 'nx' | 'ny' | 'nz'>, r: number, colour: string, turn: number) {
     _n.set(hit.nx, hit.ny, hit.nz);
-    if (hit.kind === 'ground') {
+    if (hit.kind === HitKind.GROUND) {
       const { groundAt } = this.g,
         d = SLOPE_STEP_M;
       _n.set(

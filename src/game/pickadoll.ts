@@ -1,14 +1,15 @@
-// The pickadoll lab (#17, ?lab=pickadoll): a proof of concept for trying weapons and hits side by side. You have every
-// weapon from the start; Q changes the weapon, G what a hit does, and the mouse button, X or the Fire button fires, on
-// foot and from a car. The keys and buttons are controls it adds to the game's input (./input.ts). Changing the weapon,
-// the hit and keeping the aim are commands (`weapon`, `hit`, `aim`: docs/console.md), which Q, G, C and the buttons run;
-// firing and holding the aim are held input. The rules are in ./sim/shots.ts and the drawing in ./render/shot-fx.ts; this file reads the
-// controls, shows the two HUD buttons and decides what each hit does to the world. A page module: it uses the DOM.
+// The pickadoll lab (#17, ?lab=pickadoll): a proof of concept for trying weapons and ammo side by side. You have every
+// weapon from the start; Q changes the weapon, G its ammo, and the mouse button, X or the Fire button fires, on foot and
+// from a car. The keys and buttons are controls it adds to the game's input (./input.ts). Changing the weapon, the ammo
+// and keeping the aim are commands (`weapon`, `ammo`, `aim`: docs/console.md), which Q, G, C and the buttons run;
+// firing and holding the aim are held input. The rules are in ./sim/shots.ts and ./sim/ammo.ts and the drawing in
+// ./render/shot-fx.ts; this file reads the controls, shows the two HUD buttons and carries out each hit's effects on
+// the world. A page module: it uses the DOM.
 import { clamp, wrap } from '../world/math';
 import type { Rnd } from '../world/random';
 import { NO_FLAT } from './cars';
 import { choice, command, optional, toggle } from './command-args';
-import type { Commands } from './commands';
+import { type Commands, UsageError } from './commands';
 import { damageCar } from './health';
 import { type Control, type Input, MouseButton } from './input';
 import type { Npc } from './pedestrians';
@@ -16,7 +17,8 @@ import type { PlayerState } from './player';
 import type { Ragdolls } from './ragdolls';
 import type { RenderedCar } from './render/car-meshes';
 import type { Person } from './render/models';
-import { GEGGA, type ShotFx } from './render/shot-fx';
+import type { ShotFx } from './render/shot-fx';
+import { AMMOS, type Ammo, accepts, ammoFor, EffectKind, effectOf, nextAmmo } from './sim/ammo';
 import { pushBodyOut } from './sim/car-body';
 import type { PhysicsWorld } from './sim/physics-world';
 import { physicsCast } from './sim/shot-physics';
@@ -26,17 +28,20 @@ import {
   assistTarget,
   blastPush,
   flightPath,
-  HIT_FLAVOURS,
-  type HitFlavour,
+  HitKind,
+  knockbackOf,
   MUZZLE_M,
   newHit,
   SHOTS_MAX,
   type Shot,
   type ShotHit,
+  ShotStep,
   type ShotWorld,
   sight,
+  slideCar,
   stepShot,
   WEAPONS,
+  WeaponId,
 } from './sim/shots';
 import { dropSpike, newSpikeStep, type Spike, type SpikeWorld, stepSpikes } from './sim/spikes';
 import type { GameState, ViewState } from './state';
@@ -52,8 +57,8 @@ const SCOPE_EYE_M = 1.6, // the eye, above your feet
   SCOPE_SIGHT_M = 420,
   SCOPE_ON_K = 0.6; // the scope's edge and cross show, and you are hidden, from this far into the aim
 const TARGET_UP_M = 1; // the soft lock aims this far above its target's feet
-// the weapon you start with; WEAPONS' ids are literal types, so renaming this one fails the typecheck here
-const START_WEAPON = WEAPONS.findIndex(w => w.id === 'pickadoll');
+// the weapon you start with
+const START_WEAPON = WEAPONS.findIndex(w => w.id === WeaponId.PICKADOLL);
 // hold to aim (the right mouse button, C, or the Aim button): the camera tucks in over your right shoulder and turns
 // about it, so you can look nearly straight up and down, the crosshair sits in the middle, and you face where you aim
 const AIM_BACK_M = 3, // the camera sits this far behind your shoulder
@@ -67,6 +72,17 @@ const AIM_BACK_M = 3, // the camera sits this far behind your shoulder
   AIM_MUZZLE_SIDE_M = 0.3, // while aiming, shots leave from your right side, nearer the camera's line
   LOOK_YAW_K = 0.006, // rad per pixel of look, as the game's own camera
   LOOK_PITCH_K = 0.004;
+// the lab's keys: the code Input listens for, and the letter its button shows and announces
+const LAB_KEYS = {
+  FIRE: { code: 'KeyX', label: 'X' },
+  AIM: { code: 'KeyC', label: 'C' },
+  WEAPON: { code: 'KeyQ', label: 'Q' },
+  AMMO: { code: 'KeyG', label: 'G' },
+  HOLSTER: { code: 'KeyH', label: 'H' },
+} as const;
+// the lab's commands, by the name typed in the console: what its keys and buttons run
+const LAB_COMMANDS = { AIM: 'aim', WEAPON: 'weapon', AMMO: 'ammo', HOLSTER: 'holster' } as const;
+type LabCommand = (typeof LAB_COMMANDS)[keyof typeof LAB_COMMANDS];
 // the soft lock on a touch screen, where there is no fine aim: the shot goes to the nearest person or car near where you look
 const ASSIST_CONE_RAD = 0.3,
   ASSIST_CONE_CAR_RAD = 0.6, // wider from a car: both thumbs are busy driving
@@ -76,25 +92,20 @@ const PULL_KEEP_S = 0.12; // a click this long before the weapon is ready still 
 const HANDS = 'hands',
   HANDS_NAME = 'Hands';
 const INTRO_AFTER_S = 5.5; // the lab's own line comes this long after Start, once the start line is gone
-// with ?lab=rapier, a shot knocks street furniture over: this hard for each point of the weapon's power (N·s), so the
-// pickadoll's sends a 12 kg mailbox off at about 3 m/s
-const KNOCK_NS_PER_POWER = 40,
-  KNOCK_UP = 0.3; // and this much of it upwards, so the prop tips rather than slides
-// pang: a hit throws people and shoves cars
-const PANG_THROW_MS = 5, // a person leaves at this, plus PANG_THROW_PER_POWER_MS for each point of the weapon's power
-  PANG_THROW_PER_POWER_MS = 2.5,
-  PANG_CAR_SHOVE_M = 0.14, // a parked car slides this far per point of power
-  PANG_CAR_DMG = 2, // and takes this much damage per point of power
-  PANG_STEP_BACK_M = 0.5, // with too many down already, who is hit is only knocked this far back
-  BLAST_SHARE = 0.6; // a blast reaches those around the hit with this share of its push and damage
-const SCUFF = '#2b2b2b', // the mark a pang hit leaves
-  SCUFF_K = 0.45; // its size, as a share of the weapon's splat: a scuff, not a splash
-const STARE_S = 2.5; // someone hit by gegga stops and looks at you this long
-const DANCE_S = 6,
-  DANCE_SPIN_RADS = 7,
+// with ?lab=rapier, a shot knocks street furniture over with the weapon's push (knockbackOf): the pickadoll's 40 N·s sends a
+// 12 kg mailbox off at about 3 m/s
+const KNOCKBACK_UP_SHARE = 0.3; // this share of the knockback goes upwards, so the prop tips rather than slides
+// a throw (pang): a person hit is thrown over
+const PANG_THROW_MS = 5, // a person leaves at this, plus PANG_THROW_MS_PER_NS for each N·s of the weapon's push
+  PANG_THROW_MS_PER_NS = 0.0625,
+  BLAST_SHARE = 0.6, // a blast reaches those around the hit with this share of its push and damage
+  PANG_STEP_BACK_M = 0.5; // with too many down already, who is hit is only knocked this far back
+// a spatter's drops land between these shares of the blast's radius from the hit, each this share of the weapon's splat
+const DROP_REACH_K = [0.3, 1],
+  DROP_SIZE_K = [0.2, 0.5];
+const DANCE_SPIN_RADS = 7, // a dance: they spin this fast and hop
   DANCE_HOP_M = 0.22,
-  DANCE_HOP_HZ = 3.2,
-  DANCE_COLOUR = '#ff5fd2';
+  DANCE_HOP_HZ = 3.2;
 // throwing: hold to see the arc, let go to throw
 const ARC_STEP_S = 1 / 20, // the arc has a dot this often along the flight
   ARC_POINTS = 64,
@@ -103,24 +114,21 @@ const ARC_STEP_S = 1 / 20, // the arc has a dot this often along the flight
 const RAISED_S = 1.2, // the arm stays up this long after a shot
   WIND_UP_RAD = -0.9; // the arm goes back this far while you hold a throw
 // the placeholder gun in the hand, by weapon: its length and thickness (m). No models yet
-const GUN_M: Record<(typeof WEAPONS)[number]['id'], readonly [number, number]> = {
-  artpuffra: [0.5, 0.04],
-  pickadoll: [0.3, 0.08],
-  pepprapuffra: [0.4, 0.1],
-  hagelbossa: [0.65, 0.09],
-  potatiskanon: [0.85, 0.2],
-  minigun: [0.75, 0.17],
-  guldartpuffra: [0.5, 0.05],
-  puffra: [0.28, 0.07],
-  luftgevar: [0.95, 0.05],
-  algstudsare: [1.1, 0.07],
-  granat: [0.14, 0.14],
-  fotanglar: [0.12, 0.16],
+const GUN_M: Record<WeaponId, readonly [number, number]> = {
+  [WeaponId.ARTPUFFRA]: [0.5, 0.04],
+  [WeaponId.PICKADOLL]: [0.3, 0.08],
+  [WeaponId.PEPPRAPUFFRA]: [0.4, 0.1],
+  [WeaponId.HAGELBOSSA]: [0.65, 0.09],
+  [WeaponId.POTATISKANON]: [0.85, 0.2],
+  [WeaponId.MINIGUN]: [0.75, 0.17],
+  [WeaponId.GULDARTPUFFRA]: [0.5, 0.05],
+  [WeaponId.PUFFRA]: [0.28, 0.07],
+  [WeaponId.LUFTGEVAR]: [0.95, 0.05],
+  [WeaponId.ALGSTUDSARE]: [1.1, 0.07],
+  [WeaponId.GRANAT]: [0.14, 0.14],
+  [WeaponId.FOTANGLAR]: [0.12, 0.16],
 };
 const HIT_MARK_S = 0.1; // the crosshair's ticks stay this long after a hit on a person or a car, then fade (index.html)
-const BLAST_DROPS = 7, // a blast of gegga leaves this many more splats around the hit,
-  DROP_REACH_K = [0.3, 1], // between these shares of the blast's radius from it,
-  DROP_SIZE_K = [0.2, 0.5]; // each this share of the weapon's splat
 // fotanglar: they lie where they land for a while (./sim/spikes.ts). Someone who steps on one hops on and walks
 // slowly; a car that drives over one gets a flat tyre (Car.flat); you are hurt, unless you jump over
 const FLAT_LINES = ['”PANG! Dä va däcket, dä.”', '”Punka! Klart dä skulle hända nu.”', '”Nu small dä i ett däck.”'],
@@ -162,8 +170,8 @@ export interface PickadollDeps {
 /** The lab's weapons: built once, stepped every frame. */
 export class Pickadoll {
   private readonly g: PickadollDeps;
-  private readonly shots: (Shot & { seed: number; flavour: HitFlavour })[] = [];
-  private readonly spareShots: (Shot & { seed: number; flavour: HitFlavour })[] = []; // landed, to be fired again
+  private readonly shots: (Shot & { seed: number; ammo: number })[] = []; // ammo: its index in AMMOS
+  private readonly spareShots: (Shot & { seed: number; ammo: number })[] = []; // landed, to be fired again
   private readonly dancers: { npc: Npc; leftS: number }[] = [];
   private readonly spikes: Spike[] = [];
   private readonly spikeWorld: { -readonly [K in keyof SpikeWorld]: SpikeWorld[K] };
@@ -205,10 +213,10 @@ export class Pickadoll {
   private isScoped = false; // looking through the scope: its edge shows and you are hidden
   private readonly world: ShotWorld & { cars: RenderedCar[] };
   private readonly weaponButton: HTMLButtonElement;
-  private readonly flavourButton: HTMLButtonElement;
+  private readonly ammoButton: HTMLButtonElement;
   private readonly aimButton: HTMLButtonElement;
   private weapon = START_WEAPON;
-  private flavour = 0;
+  private chosenAmmo = 0; // the ammo picked last, in AMMOS; a weapon that doesn't fire it fires its own (ammo)
   private readonly trigger: Control; // held while the trigger is down
   private readonly aimHold: Control; // held while the right mouse button is
   private pulledS = -1; // s since a pull that hasn't fired yet, -1 for none: a weapon that isn't automatic fires once per pull
@@ -225,9 +233,9 @@ export class Pickadoll {
   private ready = false;
   private castThrough: PickadollDeps['physics'] = null; // the world this.world.cast asks
   private firedFrom: RenderedCar | null = null; // the car you sit in this frame, which your shots pass through
-  /** shots fired and hits landed so far, for the test hook */
-  fired = 0;
-  hits = 0;
+  // shots fired and hits landed so far, for the test hook (state)
+  private fired = 0;
+  private hits = 0;
 
   constructor(g: PickadollDeps) {
     this.g = g;
@@ -240,33 +248,33 @@ export class Pickadoll {
       canPuncture: k => g.cars[k].flat === NO_FLAT && !this.spared(g.cars[k]),
     };
     // The controls, through the game's input: the left mouse button or X fires, the right one aims while held, C keeps
-    // aiming on, Q changes the weapon (Hands among them), G the hit, and H goes to Hands and back. A press of the trigger
+    // aiming on, Q changes the weapon (Hands among them), G its ammo, and H goes to Hands and back. A press of the trigger
     // is kept a moment (pulledS); on Hands it does nothing
     this.trigger = g.input.addControl({
-      codes: ['KeyX'],
+      codes: [LAB_KEYS.FIRE.code],
       mouseButton: MouseButton.LEFT,
       press: () => {
         if (!this.holstered) this.pulledS = 0;
       },
     });
     this.aimHold = g.input.addControl({ mouseButton: MouseButton.RIGHT });
-    g.input.addControl({ codes: ['KeyC'], press: () => this.runFromInput('aim') });
-    g.input.addControl({ codes: ['KeyQ'], press: () => this.runFromInput('weapon') });
-    g.input.addControl({ codes: ['KeyG'], press: () => this.runFromInput('hit') });
-    g.input.addControl({ codes: ['KeyH'], press: () => this.runFromInput('holster') });
+    g.input.addControl({ codes: [LAB_KEYS.AIM.code], press: () => this.runFromInput(LAB_COMMANDS.AIM) });
+    g.input.addControl({ codes: [LAB_KEYS.WEAPON.code], press: () => this.runFromInput(LAB_COMMANDS.WEAPON) });
+    g.input.addControl({ codes: [LAB_KEYS.AMMO.code], press: () => this.runFromInput(LAB_COMMANDS.AMMO) });
+    g.input.addControl({ codes: [LAB_KEYS.HOLSTER.code], press: () => this.runFromInput(LAB_COMMANDS.HOLSTER) });
     const fire = document.createElement('button');
     fire.type = 'button';
     fire.id = 'p-fire';
     fire.textContent = 'Fire';
-    fire.setAttribute('aria-keyshortcuts', 'X');
+    fire.setAttribute('aria-keyshortcuts', LAB_KEYS.FIRE.label);
     this.trigger.hold(fire);
     const aim = document.createElement('button');
     aim.type = 'button';
     aim.id = 'p-aim';
     aim.textContent = 'Aim';
     aim.setAttribute('aria-pressed', 'false');
-    aim.setAttribute('aria-keyshortcuts', 'C');
-    aim.addEventListener('click', () => this.runFromInput('aim'));
+    aim.setAttribute('aria-keyshortcuts', LAB_KEYS.AIM.label);
+    aim.addEventListener('click', () => this.runFromInput(LAB_COMMANDS.AIM));
     this.aimButton = aim;
     g.$('pad').prepend(fire, aim);
     g.$('pad').classList.add('lab'); // four buttons: index.html stacks them on a narrow phone
@@ -279,20 +287,20 @@ export class Pickadoll {
     g.$('stage').append(this.crosshair);
     if (g.player.mesh.arms) g.fx.giveGun(g.player.mesh.arms[1]);
     g.fx.holsterGun(true);
-    this.weaponButton = this.hudButton('Q', 'weapon');
-    this.flavourButton = this.hudButton('G', 'hit');
+    this.weaponButton = this.hudButton(LAB_KEYS.WEAPON.label, LAB_COMMANDS.WEAPON);
+    this.ammoButton = this.hudButton(LAB_KEYS.AMMO.label, LAB_COMMANDS.AMMO);
     this.drawHud();
     this.registerCommands(); // last: a command never reaches a lab that failed half-built
   }
 
-  private hudButton(key: string, line: string) {
+  private hudButton(key: string, command: LabCommand) {
     const { $, canvas } = this.g,
       button = document.createElement('button');
     button.type = 'button';
     button.className = 'plate lab-weapon';
     button.setAttribute('aria-keyshortcuts', key);
     button.addEventListener('click', () => {
-      this.runFromInput(line);
+      this.runFromInput(command);
       canvas.focus();
     });
     $('tr').append(button);
@@ -306,12 +314,12 @@ export class Pickadoll {
       kbd.textContent = key;
       button.replaceChildren(kbd, name);
     };
-    label(this.weaponButton, 'Q', this.weaponName);
+    label(this.weaponButton, LAB_KEYS.WEAPON.label, this.weaponName);
     this.weaponButton.setAttribute('aria-label', 'Weapon: ' + this.weaponName);
-    this.flavourButton.setAttribute('aria-label', 'Hit: ' + HIT_FLAVOURS[this.flavour].name);
+    this.ammoButton.setAttribute('aria-label', 'Ammo: ' + AMMOS[this.ammo].name);
     const [lengthM, thickM] = GUN_M[WEAPONS[this.weapon].id];
     this.g.fx.sizeGun(lengthM, thickM);
-    label(this.flavourButton, 'G', HIT_FLAVOURS[this.flavour].name);
+    label(this.ammoButton, LAB_KEYS.AMMO.label, AMMOS[this.ammo].name);
   }
 
   // C and the Aim button switch aiming on until they switch it off
@@ -344,20 +352,26 @@ export class Pickadoll {
     this.raisedS = 0; // the arm a last shot raised goes down with it
   }
 
-  private pickFlavour(index: number) {
-    this.flavour = index;
+  // an ammo only its own weapon fires is never kept as the pick: the next weapon goes back to the ammo picked before
+  private pickAmmo(index: number) {
+    if (AMMOS[index].anyWeapon) this.chosenAmmo = index;
     this.drawHud();
   }
 
-  // weapon, hit and aim: with no word each goes on to the next, which is what Q, G, C and the buttons run. Firing and
+  // the ammo the weapon in your hand fires: the one picked last, if it fires that
+  private get ammo() {
+    return ammoFor(WEAPONS[this.weapon], this.chosenAmmo);
+  }
+
+  // weapon, ammo and aim: with no word each goes on to the next, which is what Q, G, C and the buttons run. Firing and
   // holding the aim are not commands: they are held, as throttle and steer are
   private registerCommands() {
     const { commands } = this.g;
     commands.register(
-      'weapon',
+      LAB_COMMANDS.WEAPON,
       command({
         help: 'change to the next weapon, Hands among them, or to the one you name',
-        examples: ['weapon', 'weapon minigun', 'weapon ' + HANDS],
+        examples: ['weapon', 'weapon ' + WeaponId.MINIGUN, 'weapon ' + HANDS],
         access: 'player',
         args: [optional(choice('weapon', [HANDS, ...WEAPONS.map(w => w.id)]))],
         run: ({ weapon }) => {
@@ -372,29 +386,37 @@ export class Pickadoll {
       }),
     );
     commands.register(
-      'hit',
+      LAB_COMMANDS.AMMO,
       command({
-        help: 'change what a hit does to the next kind, or to the one you name',
-        examples: ['hit', 'hit dans'],
+        help: "change the weapon's ammo to the next it fires, or to the one you name",
+        examples: ['ammo', 'ammo dans'],
         access: 'player',
         args: [
           optional(
             choice(
-              'hit',
-              HIT_FLAVOURS.map(f => f.id),
+              'ammo',
+              AMMOS.map(a => a.id),
             ),
           ),
         ],
-        run: ({ hit }) => {
-          this.pickFlavour(
-            hit === undefined ? (this.flavour + 1) % HIT_FLAVOURS.length : HIT_FLAVOURS.findIndex(f => f.id === hit),
-          );
-          return 'Hit: ' + HIT_FLAVOURS[this.flavour].name + '.';
+        run: ({ ammo }) => {
+          const weapon = WEAPONS[this.weapon];
+          if (ammo !== undefined && !accepts(weapon, ammo))
+            throw new UsageError(
+              weapon.name +
+                ' fires ' +
+                AMMOS.filter(a => accepts(weapon, a.id))
+                  .map(a => a.name)
+                  .join(', ') +
+                ', not that.',
+            );
+          this.pickAmmo(ammo === undefined ? nextAmmo(weapon, this.ammo) : AMMOS.findIndex(a => a.id === ammo));
+          return 'Ammo: ' + AMMOS[this.ammo].name + '.';
         },
       }),
     );
     commands.register(
-      'aim',
+      LAB_COMMANDS.AIM,
       command({
         help: 'keep aiming over the shoulder, or stop: switches when you say neither',
         examples: ['aim', 'aim off'],
@@ -408,7 +430,7 @@ export class Pickadoll {
       }),
     );
     commands.register(
-      'holster',
+      LAB_COMMANDS.HOLSTER,
       command({
         help: 'go to Hands, or back to your last weapon with off; switches with neither',
         examples: ['holster', 'holster off'],
@@ -424,8 +446,8 @@ export class Pickadoll {
 
   // a key or a button runs its command through the registry, as a typed line does, so the hooks see it too. The line
   // that comes back is for the console: here the HUD shows what changed
-  private runFromInput(line: string) {
-    this.g.commands.run(line, 'input');
+  private runFromInput(command: LabCommand, word?: string) {
+    this.g.commands.run(word ? command + ' ' + word : command, 'input');
   }
 
   /** What the test hook shows. */
@@ -436,7 +458,7 @@ export class Pickadoll {
       markedHits: this.markedHits,
       splats: this.g.fx.splatted,
       weapon: this.holstered ? HANDS : WEAPONS[this.weapon].id,
-      flavour: HIT_FLAVOURS[this.flavour].id,
+      ammo: AMMOS[this.ammo].id,
       aiming: this.aimK > 0.5,
       scoped: this.isScoped,
       holstered: this.holstered,
@@ -459,8 +481,8 @@ export class Pickadoll {
       if (this.introS <= 0)
         this.g.toast(
           coarse
-            ? 'Lab: pickadoll. Tap Hands at the top for a weapon, Fire fires, Aim aims; tap the weapon and the hit to change them.'
-            : 'Lab: pickadoll. Q or H takes a weapon out, click or X fires, right button or C aims, G changes the hit, H puts it away.',
+            ? 'Lab: pickadoll. Tap Hands at the top for a weapon, Fire fires, Aim aims; tap the weapon and the ammo to change them.'
+            : 'Lab: pickadoll. Q or H takes a weapon out, click or X fires, right button or C aims, G changes the ammo, H puts it away.',
           6,
         );
     }
@@ -527,7 +549,7 @@ export class Pickadoll {
     let tx = this.aimHit.x,
       ty = this.aimHit.y,
       tz = this.aimHit.z,
-      onTarget = seen && (this.aimHit.kind === 'person' || this.aimHit.kind === 'car');
+      onTarget = seen && (this.aimHit.kind === HitKind.PERSON || this.aimHit.kind === HitKind.CAR);
     // not through a scope: its view is far narrower than the cone, and the shot would go to someone you can't see
     if (coarse && !onTarget && !this.isScoped) {
       const t = assistTarget(
@@ -605,9 +627,10 @@ export class Pickadoll {
     for (let i = this.shots.length - 1; i >= 0; i--) {
       const s = this.shots[i],
         { x, y, z } = s, // where it was when the frame began
-        hit = stepShot(s, dt, this.world, this.hit);
-      if (!hit) continue;
-      if (hit !== 'gone') {
+        step = stepShot(s, dt, this.world, this.hit);
+      if (step === ShotStep.FLYING) continue;
+      if (step === ShotStep.HIT) {
+        const hit = this.hit;
         this.land(s, hit);
         if (hit.fliesOn) continue; // it flies on
         const tracerM = WEAPONS[s.weapon].tracerM;
@@ -659,9 +682,9 @@ export class Pickadoll {
     }
     const yaw = view.camYaw,
       cp = Math.cos(this.aimPitch),
-      fx_ = Math.sin(yaw) * cp,
-      fy = Math.sin(this.aimPitch),
-      fz = -Math.cos(yaw) * cp,
+      lookX = Math.sin(yaw) * cp,
+      lookY = Math.sin(this.aimPitch),
+      lookZ = -Math.cos(yaw) * cp,
       ground = world.groundAt(player.x, player.z);
     if (scope) {
       // forward of your middle, but back from a wall you stand against: nearer than the camera draws, the wall would
@@ -675,7 +698,7 @@ export class Pickadoll {
       const ex = player.x + Math.sin(yaw) * fwd,
         ey = ground + player.y + SCOPE_EYE_M,
         ez = player.z - Math.cos(yaw) * fwd;
-      fx.aimCamera(this.aimK, ex, ey, ez, ex + fx_, ey + fy, ez + fz, fx.magnified(scope));
+      fx.aimCamera(this.aimK, ex, ey, ez, ex + lookX, ey + lookY, ez + lookZ, fx.magnified(scope));
       return;
     }
     // the shoulder, pulled in when a wall is beside you
@@ -689,11 +712,20 @@ export class Pickadoll {
     // back from the shoulder as far as there is room: not into a wall, not under the ground
     let back = AIM_BACK_M;
     for (; back > 0.3; back -= 0.25) {
-      const x = sx - fx_ * back,
-        z = sz - fz * back;
-      if (this.clear(x, z) && sy - fy * back > world.groundAt(x, z) + AIM_ROOM_M) break;
+      const x = sx - lookX * back,
+        z = sz - lookZ * back;
+      if (this.clear(x, z) && sy - lookY * back > world.groundAt(x, z) + AIM_ROOM_M) break;
     }
-    fx.aimCamera(this.aimK, sx - fx_ * back, sy - fy * back, sz - fz * back, sx + fx_, sy + fy, sz + fz, AIM_ZOOM);
+    fx.aimCamera(
+      this.aimK,
+      sx - lookX * back,
+      sy - lookY * back,
+      sz - lookZ * back,
+      sx + lookX,
+      sy + lookY,
+      sz + lookZ,
+      AIM_ZOOM,
+    );
   }
 
   // no wall within AIM_ROOM_M of (x, z)
@@ -703,20 +735,22 @@ export class Pickadoll {
     return !this.g.world.collide(this.probe, AIM_ROOM_M);
   }
 
-  private readonly colourOf = (s: { seed: number; flavour: HitFlavour }) =>
-    s.flavour === 'gegga' ? GEGGA[Math.floor(s.seed * GEGGA.length)] : s.flavour === 'dans' ? DANCE_COLOUR : SCUFF;
+  private readonly colourOf = (s: { seed: number; ammo: number }) => {
+    const { colours } = AMMOS[s.ammo];
+    return colours[Math.floor(s.seed * colours.length)];
+  };
 
   private fire(car: RenderedCar | null, yaw: number, pitch: number) {
     const { rnd, player } = this.g,
       weapon = WEAPONS[this.weapon],
-      flavour = HIT_FLAVOURS[this.flavour].id;
+      ammo = this.ammo;
     if (!car) player.h = yaw; // you turn to face where you fire
     // a shot from a moving car keeps the car's speed
     const cvx = this.carVx,
       cvz = this.carVz;
     for (let i = 0; i < weapon.pellets && this.shots.length < SHOTS_MAX; i++) {
       // a shot that has landed is used again, so firing makes no garbage once the pool has grown
-      const s = this.spareShots.pop() ?? { ...this.flown, seed: 0, flavour };
+      const s = this.spareShots.pop() ?? { ...this.flown, seed: 0, ammo };
       aimShot(weapon, yaw, pitch, rnd() * 2 - 1, rnd() * 2 - 1, s);
       s.vx += cvx;
       s.vz += cvz;
@@ -727,68 +761,70 @@ export class Pickadoll {
       s.lying = false;
       s.weapon = this.weapon;
       s.seed = rnd();
-      s.flavour = flavour;
+      s.ammo = ammo;
       this.shots.push(s);
     }
     this.fired++;
   }
 
-  // what a hit does, by its flavour; a weapon with a blast then reaches everyone around it
-  private land(s: Shot & { seed: number; flavour: HitFlavour }, hit: ShotHit) {
+  // what a hit does: its ammo's effects, on who or what it landed on; a weapon with a blast then reaches everyone around it
+  private land(s: Shot & { seed: number; ammo: number }, hit: ShotHit) {
     const { fx, crowd, rnd } = this.g,
       weapon = WEAPONS[s.weapon],
-      colour = this.colourOf(s);
+      ammo: Ammo = AMMOS[s.ammo],
+      colour = this.colourOf(s),
+      splat = effectOf(ammo, EffectKind.SPLAT),
+      splatM = weapon.splatM * (splat?.sizeK ?? 0);
     if (hit.fliesOn && weapon.fuseS) return; // a grenade only bounces and lies until its fuse runs out
     this.hits++;
-    if (weapon.zone === 'spikes') {
+    if (effectOf(ammo, EffectKind.SPIKES)) {
       dropSpike(this.spikes, hit, this.g.world.groundAt, s.seed);
       fx.drawSpikes(this.spikes);
       return;
     }
-    const person = hit.kind === 'person' ? crowd.npcs[hit.target] : null,
-      car = hit.kind === 'car' ? this.world.cars[hit.target] : null;
-    if (person) this.hitPerson(person, s.flavour, hit.dx, hit.dz, hit.y, weapon.power, weapon.splatM, colour, s.seed);
-    else if (car) this.hitCar(car, s.flavour, hit, weapon.power, weapon.splatM, colour, s.seed);
-    else if (hit.kind === 'prop') {
-      // knocked over, with no splat: a mark left in the air where it stood would hang there
-      const k = weapon.power * KNOCK_NS_PER_POWER;
-      this.g.physics?.knockProp(hit.target, hit.x, hit.y, hit.z, hit.dx * k, k * KNOCK_UP, hit.dz * k);
-    } else fx.splat(hit, s.flavour === 'gegga' ? weapon.splatM : weapon.splatM * SCUFF_K, colour, s.seed);
+    const person = hit.kind === HitKind.PERSON ? crowd.npcs[hit.target] : null,
+      car = hit.kind === HitKind.CAR ? this.world.cars[hit.target] : null,
+      knockbackNs = knockbackOf(weapon);
+    if (person) this.hitPerson(person, ammo, hit.dx, hit.dz, hit.y, knockbackNs, weapon.splatM, colour, s.seed);
+    else if (car) {
+      this.hitCar(car, ammo, hit.dx, hit.dz, knockbackNs, weapon.damage);
+      if (splat) fx.splatOn(car.mesh, hit, splatM, colour, s.seed);
+    } else if (hit.kind === HitKind.PROP) {
+      // knocked over, whatever the ammo, with no splat: a mark left in the air where it stood would hang there
+      this.g.physics?.knockProp(
+        hit.target,
+        hit.x,
+        hit.y,
+        hit.z,
+        hit.dx * knockbackNs,
+        knockbackNs * KNOCKBACK_UP_SHARE,
+        hit.dz * knockbackNs,
+      );
+    } else if (splat) fx.splat(hit, splatM, colour, s.seed);
     if (person || car) this.mark();
     if (!weapon.blastM) return;
     const { push } = this;
     for (const n of crowd.npcs) {
       if (n === person || n.down || !blastPush(hit.x, hit.z, weapon.blastM, n.x, n.z, push)) continue;
-      this.hitPerson(
-        n,
-        s.flavour,
-        push.dx,
-        push.dz,
-        hit.y + 1,
-        weapon.power * BLAST_SHARE,
-        weapon.splatM,
+      this.hitPerson(n, ammo, push.dx, push.dz, hit.y + 1, knockbackNs * BLAST_SHARE, weapon.splatM, colour, rnd());
+      this.mark();
+    }
+    for (const c of this.world.cars)
+      if (c !== car && blastPush(hit.x, hit.z, weapon.blastM, c.x, c.z, push))
+        this.hitCar(c, ammo, push.dx, push.dz, knockbackNs * BLAST_SHARE, weapon.damage * BLAST_SHARE);
+    const spatter = effectOf(ammo, EffectKind.SPATTER);
+    for (let i = 0; spatter && i < spatter.drops; i++) {
+      const a = rnd() * Math.PI * 2,
+        reach = weapon.blastM * (DROP_REACH_K[0] + rnd() * (DROP_REACH_K[1] - DROP_REACH_K[0])),
+        x = hit.x + Math.cos(a) * reach,
+        z = hit.z + Math.sin(a) * reach;
+      fx.splat(
+        { kind: HitKind.GROUND, x, y: this.g.world.groundAt(x, z), z, nx: 0, ny: 1, nz: 0 },
+        weapon.splatM * (DROP_SIZE_K[0] + rnd() * (DROP_SIZE_K[1] - DROP_SIZE_K[0])),
         colour,
         rnd(),
       );
-      this.mark();
     }
-    if (s.flavour === 'pang')
-      for (const c of this.world.cars)
-        if (c !== car && blastPush(hit.x, hit.z, weapon.blastM, c.x, c.z, push))
-          this.shoveCar(c, push.dx, push.dz, weapon.power * BLAST_SHARE);
-    if (s.flavour === 'gegga')
-      for (let i = 0; i < BLAST_DROPS; i++) {
-        const a = rnd() * Math.PI * 2,
-          reach = weapon.blastM * (DROP_REACH_K[0] + rnd() * (DROP_REACH_K[1] - DROP_REACH_K[0])),
-          x = hit.x + Math.cos(a) * reach,
-          z = hit.z + Math.sin(a) * reach;
-        fx.splat(
-          { kind: 'ground', x, y: this.g.world.groundAt(x, z), z, nx: 0, ny: 1, nz: 0 },
-          weapon.splatM * (DROP_SIZE_K[0] + rnd() * (DROP_SIZE_K[1] - DROP_SIZE_K[0])),
-          colour,
-          rnd(),
-        );
-      }
   }
 
   // tells you a shot landed on someone or something that counts, however far off it was
@@ -797,45 +833,40 @@ export class Pickadoll {
     this.markS = HIT_MARK_S;
   }
 
-  // (dx, dz): the way the hit pushes them, a unit vector along the ground
+  // the ammo's effects on a person; (dx, dz): the way the hit pushes them, a unit vector along the ground
   private hitPerson(
     n: Npc,
-    flavour: HitFlavour,
+    ammo: Ammo,
     dx: number,
     dz: number,
     y: number,
-    power: number,
+    knockbackNs: number,
     splatM: number,
     colour: string,
     turn: number,
   ) {
     const { fx, crowd, ragdolls } = this.g;
-    if (flavour === 'gegga') {
-      fx.splatOnPerson(n.mesh, dx, dz, y, splatM, colour, turn);
-      crowd.stare(n, 0.1, STARE_S);
-    } else if (flavour === 'pang') {
-      // too many down already: they are only knocked a step back
-      if (!ragdolls.push(n, dx, dz, PANG_THROW_MS + power * PANG_THROW_PER_POWER_MS)) {
-        n.x += dx * PANG_STEP_BACK_M;
-        n.z += dz * PANG_STEP_BACK_M;
+    for (const e of ammo.effects)
+      switch (e.kind) {
+        case EffectKind.SPLAT:
+          if (e.onPeople) fx.splatOnPerson(n.mesh, dx, dz, y, splatM * e.sizeK, colour, turn);
+          break;
+        case EffectKind.STARE:
+          crowd.stare(n, 0.1, e.s);
+          break;
+        case EffectKind.THROW:
+          // too many down already: they are only knocked a step back
+          if (!ragdolls.push(n, dx, dz, PANG_THROW_MS + knockbackNs * PANG_THROW_MS_PER_NS)) {
+            n.x += dx * PANG_STEP_BACK_M;
+            n.z += dz * PANG_STEP_BACK_M;
+          }
+          break;
+        case EffectKind.DANCE:
+          if (this.dancers.some(d => d.npc === n)) break;
+          crowd.stare(n, 0.1, e.s); // stops them where they are
+          this.dancers.push({ npc: n, leftS: e.s });
+          break;
       }
-    } else if (!this.dancers.some(d => d.npc === n)) {
-      crowd.stare(n, 0.1, DANCE_S); // stops them where they are
-      this.dancers.push({ npc: n, leftS: DANCE_S });
-    }
-  }
-
-  private hitCar(
-    c: RenderedCar,
-    flavour: HitFlavour,
-    hit: ShotHit,
-    power: number,
-    splatM: number,
-    colour: string,
-    turn: number,
-  ) {
-    if (flavour === 'pang') this.shoveCar(c, hit.dx, hit.dz, power);
-    this.g.fx.splatOn(c.mesh, hit, flavour === 'gegga' ? splatM : splatM * SCUFF_K, colour, turn);
   }
 
   // the cars a crash spares (crashes.ts): Plåt-Pelle's for sale, which also stand still, and the one you drive in god mode
@@ -843,12 +874,11 @@ export class Pickadoll {
     return c.saleKr > 0 || (this.g.god && c === this.g.game.pcar);
   }
 
-  private shoveCar(c: RenderedCar, dx: number, dz: number, power: number) {
+  // the ammo's effects on a car: its damage, and a slide when the push beats its brakes
+  private hitCar(c: RenderedCar, ammo: Ammo, dx: number, dz: number, knockbackNs: number, damage: number) {
     if (this.spared(c)) return;
-    damageCar(c, power * PANG_CAR_DMG);
-    if (c.mode !== 'parked') return; // a car that drives is where its driving puts it
-    c.x += dx * power * PANG_CAR_SHOVE_M;
-    c.z += dz * power * PANG_CAR_SHOVE_M;
+    if (effectOf(ammo, EffectKind.DAMAGE)) damageCar(c, damage);
+    if (!effectOf(ammo, EffectKind.SHOVE) || !slideCar(c, dx, dz, knockbackNs)) return;
     pushBodyOut(c, this.world.collide); // or shot by shot it would go through a wall, as a car shoved by a crash (cars.ts)
     this.g.placeCar(c);
   }

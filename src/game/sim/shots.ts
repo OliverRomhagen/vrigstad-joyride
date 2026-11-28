@@ -1,25 +1,44 @@
-// Shots (#17, lab: pickadoll): what the weapons fire, how a shot flies and what it hits. A proof of concept for trying
-// weapons and hits side by side: the weapon decides how a shot is delivered, the hit flavour what it does on landing.
+// Shots (#17, lab: pickadoll): the weapons, how a shot flies and what it hits. A proof of concept for trying weapons
+// and ammo side by side: the weapon decides how a shot is delivered, the ammo (./ammo.ts) what it does on landing.
 // Plain data and functions: no three.js, no DOM.
+import type { CarMode } from '../cars';
+import { AmmoId, type AmmoRule } from './ammo';
 import { bodyRadius, type CarBody, nearestOnSpine, PERSON_RADIUS_M } from './car-body';
-import type { SurfaceKind } from './physics-world';
+import { SurfaceKind } from './physics-world';
 
-/** How a weapon delivers its shots. */
-export interface Weapon {
-  id: string;
+/** The weapons, by the id the lab's `weapon` command and the test hook use. */
+export const WeaponId = {
+  ARTPUFFRA: 'artpuffra',
+  PICKADOLL: 'pickadoll',
+  PEPPRAPUFFRA: 'pepprapuffra',
+  HAGELBOSSA: 'hagelbossa',
+  POTATISKANON: 'potatiskanon',
+  MINIGUN: 'minigun',
+  GULDARTPUFFRA: 'guldartpuffra',
+  PUFFRA: 'puffra',
+  LUFTGEVAR: 'luftgevar',
+  ALGSTUDSARE: 'algstudsare',
+  GRANAT: 'granat',
+  FOTANGLAR: 'fotanglar',
+} as const;
+export type WeaponId = (typeof WeaponId)[keyof typeof WeaponId];
+
+/** How a weapon delivers its shots, and which ammo it fires (AmmoRule: null for every ammo any weapon fires). */
+export interface Weapon extends AmmoRule {
+  id: WeaponId;
   name: string;
   speedMs: number; // muzzle speed
   coolS: number; // between shots
   auto: boolean; // fires for as long as the trigger is held
   pellets: number; // shots per pull
   spreadRad: number; // each shot leaves within this angle of the aim
-  power: number; // how hard a hit lands; 1 is the pickadoll's
+  shotMassKg: number; // what a shot weighs, at the game's scale, not a real bullet's: times speedMs, the push its hit gives (knockbackOf)
+  damage: number; // what a hit does to a car's damage, with an ammo that damages (EffectKind.DAMAGE)
   splatM: number; // radius of the mark a hit leaves
   blastM: number; // a hit also reaches everyone within this radius; 0 for none
   bounces: number; // how many times a shot bounces off the ground, a wall or a car before it stops
   thrown: boolean; // lobbed by hand, not fired
   fuseS: number; // it goes off this long after it leaves, wherever it is by then, or at once on a person; until then it only bounces and lies. 0 for none
-  zone: '' | 'spikes'; // what it leaves on the ground where it lands: spikes are fotanglar
   shotM: number; // the radius it is drawn with
   tracerM: number; // drawn as a streak this long behind it, not as a ball: for a shot too fast to see. 0 for a ball
   scope: number; // aiming looks through a scope that magnifies this many times; 0 for none
@@ -31,247 +50,251 @@ export interface Weapon {
  */
 export const WEAPONS = [
   {
-    id: 'artpuffra',
+    id: WeaponId.ARTPUFFRA,
     name: 'Ärtpuffra',
     speedMs: 32,
     coolS: 0.08,
     auto: false,
     pellets: 1,
     spreadRad: 0.012,
-    power: 0.25,
+    shotMassKg: 0.3125,
+    damage: 0.5,
     splatM: 0.2,
     blastM: 0,
     bounces: 0,
     thrown: false,
     fuseS: 0,
-    zone: '',
     shotM: 0.07,
     tracerM: 0,
     scope: 0,
+    ammo: null,
   },
   {
-    id: 'pickadoll',
+    id: WeaponId.PICKADOLL,
     name: 'Pickadoll',
     speedMs: 70,
     coolS: 0.1,
     auto: false,
     pellets: 1,
     spreadRad: 0.006,
-    power: 1,
+    shotMassKg: 0.571,
+    damage: 2,
     splatM: 0.6,
     blastM: 0,
     bounces: 0,
     thrown: false,
     fuseS: 0,
-    zone: '',
     shotM: 0.07,
     tracerM: 0,
     scope: 0,
+    ammo: null,
   },
   {
-    id: 'pepprapuffra',
+    id: WeaponId.PEPPRAPUFFRA,
     name: 'Pepprapuffra',
     speedMs: 60,
     coolS: 0.07,
     auto: true,
     pellets: 1,
     spreadRad: 0.045,
-    power: 0.5,
+    shotMassKg: 0.333,
+    damage: 1,
     splatM: 0.45,
     blastM: 0,
     bounces: 0,
     thrown: false,
     fuseS: 0,
-    zone: '',
     shotM: 0.07,
     tracerM: 0,
     scope: 0,
+    ammo: null,
   },
   {
-    id: 'hagelbossa',
+    id: WeaponId.HAGELBOSSA,
     name: 'Hagelbössa',
     speedMs: 55,
     coolS: 0.8,
     auto: false,
     pellets: 8,
     spreadRad: 0.09,
-    power: 0.6,
+    shotMassKg: 0.436,
+    damage: 1.2,
     splatM: 0.4,
     blastM: 0,
     bounces: 0,
     thrown: false,
     fuseS: 0,
-    zone: '',
     shotM: 0.07,
     tracerM: 0,
     scope: 0,
+    ammo: null,
   },
   {
-    id: 'potatiskanon',
+    id: WeaponId.POTATISKANON,
     name: 'Potatiskanon',
     speedMs: 26,
     coolS: 1.2,
     auto: false,
     pellets: 1,
     spreadRad: 0.01,
-    power: 4,
+    shotMassKg: 6.15,
+    damage: 8,
     splatM: 2.2,
     blastM: 4,
     bounces: 0,
     thrown: false,
     fuseS: 0,
-    zone: '',
     shotM: 0.07,
     tracerM: 0,
     scope: 0,
+    ammo: null,
   },
   {
-    id: 'minigun',
+    id: WeaponId.MINIGUN,
     name: 'Minigun',
     speedMs: 75,
     coolS: 0.03,
     auto: true,
     pellets: 1,
     spreadRad: 0.055,
-    power: 0.4,
+    shotMassKg: 0.213,
+    damage: 0.8,
     splatM: 0.38,
     blastM: 0,
     bounces: 0,
     thrown: false,
     fuseS: 0,
-    zone: '',
     shotM: 0.07,
     tracerM: 0,
     scope: 0,
+    ammo: null,
   },
   // the legendary one from #17: the weakest gun, but its peas bounce
   {
-    id: 'guldartpuffra',
+    id: WeaponId.GULDARTPUFFRA,
     name: 'Guldärtpuffran',
     speedMs: 30,
     coolS: 0.08,
     auto: false,
     pellets: 1,
     spreadRad: 0.012,
-    power: 0.3,
+    shotMassKg: 0.4,
+    damage: 0.6,
     splatM: 0.24,
     blastM: 0,
     bounces: 12,
     thrown: false,
     fuseS: 0,
-    zone: '',
     shotM: 0.07,
     tracerM: 0,
     scope: 0,
+    ammo: null,
   },
   // fast shots: they arrive nearly as you fire and are drawn as a streak. The plain pistol of #17's ladder
   {
-    id: 'puffra',
+    id: WeaponId.PUFFRA,
     name: 'Puffra',
     speedMs: 320,
     coolS: 0.13,
     auto: false,
     pellets: 1,
     spreadRad: 0.004,
-    power: 1.3,
+    shotMassKg: 0.1625,
+    damage: 2.6,
     splatM: 0.25,
     blastM: 0,
     bounces: 0,
     thrown: false,
     fuseS: 0,
-    zone: '',
     shotM: 0.03,
     tracerM: 5,
     scope: 0,
+    ammo: null,
   },
   // rifles with a scope: slow to fire, and they go where the cross is. The air rifle is the gentle one
   {
-    id: 'luftgevar',
+    id: WeaponId.LUFTGEVAR,
     name: 'Luftgevär',
     speedMs: 170,
     coolS: 0.7,
     auto: false,
     pellets: 1,
     spreadRad: 0.001,
-    power: 0.6,
+    shotMassKg: 0.141,
+    damage: 1.2,
     splatM: 0.15,
     blastM: 0,
     bounces: 0,
     thrown: false,
     fuseS: 0,
-    zone: '',
     shotM: 0.03,
     tracerM: 3,
     scope: 3,
+    ammo: null,
   },
   // the sniper of #17: a moose rifle
   {
-    id: 'algstudsare',
+    id: WeaponId.ALGSTUDSARE,
     name: 'Älgstudsare',
     speedMs: 760,
     coolS: 1.4,
     auto: false,
     pellets: 1,
     spreadRad: 0,
-    power: 5,
+    shotMassKg: 0.263,
+    damage: 10,
     splatM: 0.5,
     blastM: 0,
     bounces: 0,
     thrown: false,
     fuseS: 0,
-    zone: '',
     shotM: 0.04,
     tracerM: 14,
     scope: 8,
+    ammo: null,
   },
   // throwables (#17): lobbed by hand
   {
-    id: 'granat',
+    id: WeaponId.GRANAT,
     name: 'Granat',
     speedMs: 15,
     coolS: 0.9,
     auto: false,
     pellets: 1,
     spreadRad: 0.01,
-    power: 3,
+    shotMassKg: 8,
+    damage: 6,
     splatM: 1.8,
     blastM: 5,
     bounces: 6,
     thrown: true,
     fuseS: 2.2,
-    zone: '',
     shotM: 0.13,
     tracerM: 0,
     scope: 0,
+    ammo: null,
   },
   {
-    id: 'fotanglar',
+    id: WeaponId.FOTANGLAR,
     name: 'Fotanglar',
     speedMs: 11,
     coolS: 1,
     auto: false,
     pellets: 7,
     spreadRad: 0.16,
-    power: 0,
+    shotMassKg: 0,
+    damage: 0,
     splatM: 0,
     blastM: 0,
     bounces: 0,
     thrown: true,
     fuseS: 0,
-    zone: 'spikes',
     shotM: 0.1,
     tracerM: 0,
     scope: 0,
+    ammo: [AmmoId.FOTANGLAR],
   },
 ] as const satisfies readonly Weapon[];
-
-/** What a hit does: the answers to try side by side. */
-export const HIT_FLAVOURS = [
-  { id: 'gegga', name: 'Gegga' }, // a bright splat where it lands; nobody is hurt
-  { id: 'pang', name: 'Pang' }, // people are thrown and cars shoved; no colour
-  { id: 'dans', name: 'Dans' }, // a prank: who is hit dances for a while
-] as const;
-export type HitFlavour = (typeof HIT_FLAVOURS)[number]['id'];
 
 export const GRAVITY_MS2 = 9.8;
 export const MUZZLE_M = 1.35; // a shot leaves this far above the shooter's feet
@@ -329,6 +352,7 @@ export interface ShotWorld {
  * what a shot can land on, the kinds a physics world's ray cast meets: a prop is street furniture, which only a world
  * with a ray cast holds
  */
+export const HitKind = SurfaceKind;
 export type HitKind = SurfaceKind;
 
 /** Where a shot landed, on what, and how it was flying. `n` is the surface's normal; `d` the way the shot flew along the ground. */
@@ -375,13 +399,44 @@ export function aimShot(
 const _probe = { x: 0, z: 0 },
   _onCar = { x: 0, z: 0 };
 
-/** Moves a shot on by dt seconds. Returns what it hit, 'gone' when it ran out of range, or null while it still flies. */
-export function stepShot(s: Shot, dt: number, world: ShotWorld, out: ShotHit): ShotHit | 'gone' | null {
+/** The push a weapon's hit gives, in N·s: what its shot weighs times the speed it leaves at. A faster weapon pushes harder. */
+export const knockbackOf = (w: Pick<Weapon, 'shotMassKg' | 'speedMs'>) => w.shotMassKg * w.speedMs;
+
+const CAR_HOLD_NS = 60, // a parked car's brakes hold against a smaller push: a pistol's shot marks it, a potato shoves it
+  CAR_SLIDE_M_PER_NS = 0.0035; // past that, it slides this far for each N·s of the push
+
+/**
+ * A parked car pushed along (dx, dz) by `knockbackNs`: it slides when the push beats its brakes. A car that drives stays
+ * where its driving puts it. True when the car moved, so whoever draws it places it again.
+ */
+export function slideCar(
+  c: { x: number; z: number; mode: CarMode },
+  dx: number,
+  dz: number,
+  knockbackNs: number,
+): boolean {
+  if (c.mode !== 'parked' || knockbackNs < CAR_HOLD_NS) return false;
+  c.x += dx * knockbackNs * CAR_SLIDE_M_PER_NS;
+  c.z += dz * knockbackNs * CAR_SLIDE_M_PER_NS;
+  return true;
+}
+
+/** What a step did to a shot (stepShot). */
+export const ShotStep = { FLYING: 'flying', HIT: 'hit', GONE: 'gone' } as const;
+export type ShotStep = (typeof ShotStep)[keyof typeof ShotStep];
+
+/**
+ * Moves a shot on by dt seconds: HIT when it hit something or went off, which `out` then describes, GONE when it
+ * ran out of range, and FLYING while it still flies, or lies until its fuse runs out.
+ */
+export function stepShot(s: Shot, dt: number, world: ShotWorld, out: ShotHit): ShotStep {
   const fuseS = WEAPONS[s.weapon].fuseS;
   out.wentOff = false;
   if (s.lying) {
     s.lifeS += dt;
-    return s.lifeS >= fuseS ? burst(s, world, out) : null;
+    if (s.lifeS < fuseS) return ShotStep.FLYING;
+    burst(s, world, out);
+    return ShotStep.HIT;
   }
   const { cast } = world,
     speed = Math.hypot(s.vx, s.vy, s.vz),
@@ -389,7 +444,10 @@ export function stepShot(s: Shot, dt: number, world: ShotWorld, out: ShotHit): S
     h = dt / steps;
   for (let i = 0; i < steps; i++) {
     s.lifeS += h;
-    if (fuseS && s.lifeS >= fuseS) return burst(s, world, out);
+    if (fuseS && s.lifeS >= fuseS) {
+      burst(s, world, out);
+      return ShotStep.HIT;
+    }
     const x0 = s.x,
       y0 = s.y,
       z0 = s.z;
@@ -402,7 +460,7 @@ export function stepShot(s: Shot, dt: number, world: ShotWorld, out: ShotHit): S
     if (hit) {
       hit.fliesOn = bounce(s, hit);
       // a shot with a fuse that is out of bounces or speed lies where it stopped until the fuse runs out
-      if (!hit.fliesOn && fuseS && hit.kind !== 'person') {
+      if (!hit.fliesOn && fuseS && hit.kind !== HitKind.PERSON) {
         s.x = hit.x + hit.nx * BOUNCE_CLEAR_M;
         s.z = hit.z + hit.nz * BOUNCE_CLEAR_M;
         s.y = world.groundAt(s.x, s.z);
@@ -410,16 +468,16 @@ export function stepShot(s: Shot, dt: number, world: ShotWorld, out: ShotHit): S
         s.lying = true;
         hit.fliesOn = true;
       }
-      return hit;
+      return ShotStep.HIT;
     }
-    if (s.ageS > RANGE_S) return 'gone';
+    if (s.ageS > RANGE_S) return ShotStep.GONE;
   }
-  return null;
+  return ShotStep.FLYING;
 }
 
 // the fuse ran out: it goes off where it is, and what it leaves lands on the ground below
-function burst(s: Shot, world: ShotWorld, out: ShotHit): ShotHit {
-  surface(out, 'ground', -1, 0, 1, 0);
+function burst(s: Shot, world: ShotWorld, out: ShotHit) {
+  surface(out, HitKind.GROUND, -1, 0, 1, 0);
   out.x = s.x;
   out.y = world.groundAt(s.x, s.z);
   out.z = s.z;
@@ -427,13 +485,12 @@ function burst(s: Shot, world: ShotWorld, out: ShotHit): ShotHit {
   out.dz = -1;
   out.fliesOn = false;
   out.wentOff = true;
-  return out;
 }
 
 // off the ground, a wall or a car, if its weapon's shots bounce and it has bounces and speed left: the shot is turned
 // back from the surface and flies on from it. People stop a shot.
 function bounce(s: Shot, hit: ShotHit): boolean {
-  if (hit.kind === 'person' || s.bounced >= WEAPONS[s.weapon].bounces) return false;
+  if (hit.kind === HitKind.PERSON || s.bounced >= WEAPONS[s.weapon].bounces) return false;
   const into = s.vx * hit.nx + s.vy * hit.ny + s.vz * hit.nz;
   if (into >= 0) return false; // already leaving the surface
   const keep = WEAPONS[s.weapon].thrown ? THROWN_BOUNCE_KEEP : BOUNCE_KEEP;
@@ -464,7 +521,7 @@ function hitAt(
       p = world.people[i];
     if (p.down || up > PERSON_TALL_M * p.scale) continue;
     if (Math.hypot(p.x - s.x, p.z - s.z) > PERSON_RADIUS_M * p.scale) continue;
-    return surface(out, 'person', i, -out.dx, 0, -out.dz);
+    return surface(out, HitKind.PERSON, i, -out.dx, 0, -out.dz);
   }
   if (up < CAR_TALL_M)
     for (let k = 0, n = cars ? cars.length : world.cars.length; k < n; k++) {
@@ -481,7 +538,7 @@ function hitAt(
         nz = d > 0.01 ? ez / d : -out.dz;
       out.x = _onCar.x + nx * bodyRadius(c);
       out.z = _onCar.z + nz * bodyRadius(c);
-      return surface(out, 'car', i, nx, 0, nz);
+      return surface(out, HitKind.CAR, i, nx, 0, nz);
     }
   if (up <= 0) return onGround(s, world, out, up, STEP_M);
   if (up < WALL_MAX_M) {
@@ -497,7 +554,7 @@ function hitAt(
       // on the wall's face: the probe ends its own radius outside it
       out.x = _probe.x - nx * WALL_PROBE_M;
       out.z = _probe.z - nz * WALL_PROBE_M;
-      return surface(out, 'wall', -1, nx, 0, nz);
+      return surface(out, HitKind.WALL, -1, nx, 0, nz);
     }
   }
   return null;
@@ -534,7 +591,7 @@ function onGround(s: Shot, world: ShotWorld, out: ShotHit, up: number, stepM: nu
     sx = world.groundAt(out.x - d, out.z) - world.groundAt(out.x + d, out.z),
     sz = world.groundAt(out.x, out.z - d) - world.groundAt(out.x, out.z + d),
     len = Math.hypot(sx, 2 * d, sz);
-  return surface(out, 'ground', -1, sx / len, (2 * d) / len, sz / len);
+  return surface(out, HitKind.GROUND, -1, sx / len, (2 * d) / len, sz / len);
 }
 
 function surface(out: ShotHit, kind: HitKind, target: number, nx: number, ny: number, nz: number): ShotHit {
@@ -547,7 +604,7 @@ function surface(out: ShotHit, kind: HitKind, target: number, nx: number, ny: nu
 }
 
 export const newHit = (): ShotHit => ({
-  kind: 'ground',
+  kind: HitKind.GROUND,
   x: 0,
   y: 0,
   z: 0,
@@ -573,8 +630,8 @@ export function flightPath(s: Shot, world: ShotWorld, stepS: number, max: number
     out[n * 3 + 1] = s.y;
     out[n * 3 + 2] = s.z;
     n++;
-    const hit = stepShot(s, stepS, world, end);
-    if (hit === 'gone') return n;
+    const step = stepShot(s, stepS, world, end);
+    if (step === ShotStep.GONE) return n;
     if (s.lying) {
       // where a shot with a fuse comes to rest is where it will go off
       end.x = s.x;
@@ -582,7 +639,7 @@ export function flightPath(s: Shot, world: ShotWorld, stepS: number, max: number
       end.z = s.z;
       break;
     }
-    if (hit && !hit.fliesOn) break;
+    if (step === ShotStep.HIT && !end.fliesOn) break;
   }
   out[n * 3] = end.x;
   out[n * 3 + 1] = end.y;
@@ -678,7 +735,7 @@ export function sight(
 
 // the line of sight met nothing: `out` is its far end
 function miss(x: number, y: number, z: number, dx: number, dy: number, dz: number, toM: number, out: ShotHit) {
-  surface(out, 'ground', -1, 0, 1, 0);
+  surface(out, HitKind.GROUND, -1, 0, 1, 0);
   out.x = x + dx * toM;
   out.y = y + dy * toM;
   out.z = z + dz * toM;

@@ -19,9 +19,11 @@ import {
   MUZZLE_M,
   newHit,
   type Shot,
+  ShotStep,
   type ShotWorld,
   stepShot,
   WEAPONS,
+  WeaponId,
 } from '../../../../src/game/sim/shots';
 import { Tunables } from '../../../../src/game/sim/tunables';
 import { makeWorld } from '../../world/fixture';
@@ -124,7 +126,7 @@ describe('the shooting range', () => {
     const w = rangeWorld();
     const world: ShotWorld = { groundAt, collide: () => false, people: [], cars: [] };
     world.cast = physicsCast(w, world, () => null);
-    const weapon = WEAPONS.findIndex(x => x.id === 'pickadoll');
+    const weapon = WEAPONS.findIndex(x => x.id === WeaponId.PICKADOLL);
     const fire = (x: number, pitch: number) => fireFrom(x, RANGE_Z, pitch, Math.PI); // south
     const fireFrom = (x: number, z: number, pitch: number, yaw: number) => {
       const s: Shot = {
@@ -140,9 +142,9 @@ describe('the shooting range', () => {
       };
       const out = newHit();
       for (let k = 0; k < 600; k++) {
-        const hit = stepShot(s, 1 / 60, world, out);
-        if (hit === 'gone') throw new Error('out of range');
-        if (hit) return hit;
+        const step = stepShot(s, 1 / 60, world, out);
+        if (step === ShotStep.GONE) throw new Error('out of range');
+        if (step === ShotStep.HIT) return out;
       }
       throw new Error('still flying');
     };

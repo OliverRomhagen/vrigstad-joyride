@@ -297,7 +297,7 @@ test.describe('game (index.html)', () => {
     expect(errors).toEqual([]);
   });
 
-  test('?lab=pickadoll fires a shot that lands, switches weapon and hit, and aims through a scope', async ({
+  test('?lab=pickadoll fires a shot that lands, switches weapon and ammo, and aims through a scope', async ({
     page,
   }) => {
     const errors = watchErrors(page);
@@ -307,7 +307,7 @@ test.describe('game (index.html)', () => {
     // the lab loads behind its flag, and a failure to load only warns: without this, the plain game would pass
     await expect
       .poll(async () => (await state(page)).pickadoll)
-      .toMatchObject({ weapon: 'hands', flavour: 'gegga', holstered: true });
+      .toMatchObject({ weapon: 'hands', ammo: 'gegga', holstered: true });
     await frames(page, 3); // the lab waits a frame after Start, and a pull before it is ready is dropped
     // you start on Hands, where the trigger does nothing; H takes out the weapon held last, the pickadoll
     await page.keyboard.press('KeyX');
@@ -326,7 +326,7 @@ test.describe('game (index.html)', () => {
       .poll(async () => (await state(page)).pickadoll)
       .toMatchObject({
         weapon: 'pepprapuffra',
-        flavour: 'pang',
+        ammo: 'pang',
         aiming: true,
       });
     await expect(page.locator('#p-aim')).toHaveAttribute('aria-pressed', 'true');
