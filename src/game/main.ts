@@ -71,6 +71,7 @@ import { PlaceMeshes } from './render/places';
 import { GroundTexture } from './render/ground-texture';
 import { BAR_BLUE, BAR_RED, barGeo, barMat, blob, blobTex, boxGeo, carGeo, carMat, GLASS, geoCache, PROFILES, paintMat, personParts, TRACTOR_CAB } from './render/models';
 import { buildStage, SUN_DIR, setUpRenderer } from './render/stage';
+import { ToonStyle } from './render/toon-style';
 import { addBridges, addBuildings, addRoadRibbons, addStreetscapeMeshes, addTerrain, addTrees, addWater } from './render/world-meshes';
 import { WINDOW_FRAMES_COARSE_M, WINDOW_FRAMES_M } from './render/window-frames';
 import { type CarType, specFor } from './sim/vehicle-spec';
@@ -164,8 +165,7 @@ buildings.addBarrier(bridges);   // the bridges' railings stop cars, people and 
 const yard = yardLayout(bPolys, hAt); for (const i of yard.passable) buildings.stopColliding(i);   // Skroten (src/game/skroten-yard.ts): its workshop and carport become walls you can drive between
 for (const p of yard.outlines) buildings.addSolid(p);   // its fence, workshop walls, hut, wrecks and heaps, before any car parks; solids, so crowds and cats don't take them for houses
 floorAt = (x, z) => yardFloorAt(yard, x, z, hAt);   // everyone stands on the even floors of Skroten's workshop and carport
-const toon = lab.on('toon');
-const windowFrames = addBuildings(scene, D, heightfield, { rnd, pick, maxAnisotropy, skip: [SKROT_HALL, SKROT_CARPORT], flatWalls: toon, boardSeams: toon, toonWindows: toon, windowFramesM: toon ? (coarse ? WINDOW_FRAMES_COARSE_M : WINDOW_FRAMES_M) : 0 });   // rolls rnd() for the house colours, before any tree spot
+const windowFrames = addBuildings(scene, D, heightfield, { rnd, pick, maxAnisotropy, skip: [SKROT_HALL, SKROT_CARPORT], flatWalls: true, boardSeams: true, toonWindows: true, windowFramesM: coarse ? WINDOW_FRAMES_COARSE_M : WINDOW_FRAMES_M });   // rolls rnd() for the house colours, before any tree spot
 
 // ---------- trees: spruces and birches, each with its own shade, size and lean ----------
 const TREE_M2_PER_TRY = 110, TREE_ROAD_CLEARANCE_M = 2.5;   // one try at a tree per this much of a wood's bounding box; no trunk closer to a road's edge
@@ -432,8 +432,7 @@ $('go').addEventListener('click', loop.startGame);
 installCaptureHook({ THREE, renderer, camera, game, view, player, cars, keys: input.keys, joy: input.joy, D, R, nodes: roads.junctions, nodeKey, driveable: roads.driveable, hAt,
   action, addCar, removeCar, placeCar, carGeo, sun, SUN_DIR, wanted, places, wallet, TRISS_KR, vehicleVisuals: { state: (c: Car) => vehicleVisuals.state(meshed(c)) },
   followCamera: () => windowFrames?.update(camera.position.x, camera.position.z) }, location.search);
-// ?lab=toon draws the world cel-shaded (#206). The frames before its code arrives draw the default look, behind the intro
-if (lab.on('toon')) import('./render/toon-style').then(m => loop.drawThrough(new m.ToonStyle(renderer))).catch(err => console.warn('Lab: toon failed', err));
+loop.drawThrough(new ToonStyle(renderer, { coarse }));   // the world is drawn cel-shaded (#206), from the first frame
 loop.start();
 
 // ---------- test hook: read-only state for the smoke tests (src/game/test-hook.ts) ----------

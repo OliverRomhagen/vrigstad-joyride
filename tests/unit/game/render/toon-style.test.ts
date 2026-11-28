@@ -5,7 +5,11 @@ import { INK_FLAG, INK_NO_FEET_FLAG } from '../../../../src/game/render/ink-flag
 import {
   FINISH_LEVELS,
   finishOf,
+  INK_CELL_M,
+  INK_NEAR_COARSE_M,
+  INK_NEAR_M,
   INK_PULL,
+  inkPieces,
   TOON_FILL_SCALE,
   TOON_LEVELS,
   TOON_SUN_SCALE,
@@ -385,3 +389,155 @@ test('cockpit clipping stays on the toon material used for the draw', () => {
   expect(drawn.clipShadows).toBe(true);
   expect(body.material).toBe(paint);
 });
+
+test("a small thing's ink is drawn only near the camera, less far on a touch screen", () => {
+  const scene = new THREE.Scene(),
+    crate = new THREE.Mesh(box, new THREE.MeshLambertMaterial()),
+    eye = new THREE.PerspectiveCamera();
+  crate.userData[INK_FLAG] = true;
+  scene.add(crate);
+  const lines = () => crate.children[0] as THREE.LineSegments;
+  for (const [style, near] of [
+    [new ToonStyle({ render: () => {} }), INK_NEAR_M],
+    [new ToonStyle({ render: () => {} }, { coarse: true }), INK_NEAR_COARSE_M],
+  ] as const) {
+    crate.clear();
+    style.render(scene, eye); // builds the lines
+    scene.updateMatrixWorld();
+    for (const [z, drawn] of [
+      [near - 5, true],
+      [near + 5, false],
+    ] as const) {
+      eye.position.set(0, 0, z);
+      eye.updateMatrixWorld();
+      style.render(scene, eye);
+      expect(lines().visible).toBe(drawn);
+    }
+  }
+});
+
+test('the lines of a mesh as wide as the village are cut into squares, so the ones out of view are culled', () => {
+  const segments: number[] = [];
+  for (let x = -600; x < 600; x += 10) segments.push(x, 0, 0, x + 5, 0, 0); // a 1.2 km row of short lines
+  const wide = new THREE.BufferGeometry();
+  wide.setAttribute('position', new THREE.Float32BufferAttribute(segments, 3));
+  const pieces = inkPieces(wide);
+  expect(pieces.length).toBe(1200 / INK_CELL_M);
+  expect(pieces.reduce((n, g) => n + g.getAttribute('position').count, 0)).toBe(segments.length / 3); // none lost
+  for (const g of pieces) expect(g.boundingSphere?.radius).toBeLessThanOrEqual(INK_CELL_M);
+  const small = new THREE.EdgesGeometry(box);
+  expect(inkPieces(small)).toEqual([small]); // a car's or a crate's stays one piece
+});
+
+test('a mesh that joins an inked group later, as a car model does once it loads, gets its ink then', () => {
+  const scene = new THREE.Scene(),
+    car = new THREE.Group(),
+    style = new ToonStyle({ render: () => {} });
+  car.userData[INK_FLAG] = true;
+  scene.add(car);
+  style.render(scene, camera);
+  const model = new THREE.Mesh(box, new THREE.MeshStandardMaterial());
+  car.add(model);
+  style.render(scene, camera);
+  style.render(scene, camera);
+  expect(model.children.filter(o => o instanceof THREE.LineSegments)).toHaveLength(1);
+});
+
+test("a lone house's piece of the village's ink is drawn from any distance, though the piece is small", () => {
+  const scene = new THREE.Scene(),
+    houses = new THREE.BoxGeometry(4, 4, 4).toNonIndexed(),
+    village = new THREE.Mesh(
+      mergeTwo(houses.clone().translate(-500, 0, 75), houses.clone().translate(800, 0, 75)), // each inside one square
+      new THREE.MeshLambertMaterial(),
+    ), // one mesh, its origin at Torget, as the house shells are, with one house in each of two squares
+    eye = new THREE.PerspectiveCamera(),
+    style = new ToonStyle({ render: () => {} });
+  village.userData[INK_FLAG] = true;
+  scene.add(village);
+  eye.position.set(805, 0, 75); // by one house, 1.3 km from the other
+  style.render(scene, eye); // builds the lines
+  style.render(scene, eye);
+  const pieces = village.children as THREE.LineSegments[];
+  expect(pieces).toHaveLength(2); // cut into squares, each a piece a few metres across
+  for (const l of pieces) expect(l.visible).toBe(true); // left to the camera's culling, not hidden by distance
+});
+
+test('a mesh drawn before its group is flagged gets its ink once the flag is set', () => {
+  const scene = new THREE.Scene(),
+    car = new THREE.Group(),
+    model = new THREE.Mesh(box, new THREE.MeshStandardMaterial()),
+    style = new ToonStyle({ render: () => {} });
+  car.add(model);
+  scene.add(car);
+  style.render(scene, camera);
+  expect(model.children).toHaveLength(0);
+  car.userData[INK_FLAG] = true;
+  style.render(scene, camera);
+  style.render(scene, camera);
+  expect(model.children.filter(o => o instanceof THREE.LineSegments)).toHaveLength(1);
+});
+
+test("a thing's ink is judged by its nearest side as drawn: scaled up, it isn't small", () => {
+  const scene = new THREE.Scene(),
+    eye = new THREE.PerspectiveCamera(),
+    style = new ToonStyle({ render: () => {} }),
+    sign = new THREE.Mesh(new THREE.SphereGeometry(5, 8, 4), new THREE.MeshLambertMaterial()), // 10 m across
+    big = new THREE.Mesh(new THREE.SphereGeometry(5, 8, 4), new THREE.MeshLambertMaterial());
+  big.scale.setScalar(10); // 100 m across as drawn, though its geometry is 10
+  for (const m of [sign, big]) m.userData[INK_FLAG] = true;
+  sign.position.set(0, 0, -(INK_NEAR_M + 3)); // its near side 2 m inside the reach, its centre 3 m past it
+  big.position.set(0, 0, 500);
+  scene.add(sign, big);
+  style.render(scene, eye); // builds the lines
+  style.render(scene, eye);
+  expect(sign.children[0].visible).toBe(true);
+  expect(big.children[0].visible).toBe(true); // 450 m to its near side: not a small thing, so not hidden by distance
+  eye.position.set(0, 0, 10); // 8 m further from the sign: past the reach
+  eye.updateMatrixWorld();
+  style.render(scene, eye);
+  expect(sign.children[0].visible).toBe(false);
+});
+
+test('the ink is judged from where the camera is this frame, before three updates it', () => {
+  const scene = new THREE.Scene(),
+    crate = new THREE.Mesh(box, new THREE.MeshLambertMaterial()),
+    eye = new THREE.PerspectiveCamera(),
+    style = new ToonStyle({ render: () => {} });
+  crate.userData[INK_FLAG] = true;
+  scene.add(crate);
+  eye.position.set(0, 0, 1000);
+  eye.updateMatrixWorld();
+  style.render(scene, eye); // builds the lines, far off
+  style.render(scene, eye);
+  expect(crate.children[0].visible).toBe(false);
+  eye.position.set(0, 0, 5); // a respawn beside it: the camera is moved, its matrix not yet updated
+  style.render(scene, eye);
+  expect(crate.children[0].visible).toBe(true);
+  expect(scene.matrixWorldAutoUpdate).toBe(true); // three's own update is back on after the draw
+});
+
+test('a thing that jumps with the camera, as the player does on a respawn, keeps its ink on that frame', () => {
+  const scene = new THREE.Scene(),
+    person = new THREE.Mesh(box, new THREE.MeshLambertMaterial()),
+    eye = new THREE.PerspectiveCamera(),
+    style = new ToonStyle({ render: () => {} });
+  person.userData[INK_FLAG] = true;
+  scene.add(person);
+  eye.position.set(0, 0, 5);
+  style.render(scene, eye); // builds the lines
+  for (const o of [person, eye]) o.position.x += 1000; // both moved, neither matrix updated yet
+  style.render(scene, eye);
+  expect(person.children[0].visible).toBe(true);
+});
+
+// two non-indexed geometries' positions as one
+function mergeTwo(a: THREE.BufferGeometry, b: THREE.BufferGeometry) {
+  const pa = a.getAttribute('position').array as Float32Array,
+    pb = b.getAttribute('position').array as Float32Array,
+    out = new Float32Array(pa.length + pb.length);
+  out.set(pa);
+  out.set(pb, pa.length);
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(out, 3));
+  return g;
+}

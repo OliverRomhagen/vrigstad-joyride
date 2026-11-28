@@ -158,6 +158,12 @@ export function addBridges(scene: THREE.Scene, bridges: BridgeIndex, heightfield
 // walls of gabled roofs, ending in a white fascia board, a white board under flat roofs, and a chimney on gabled roofs
 const WIN_W = WINDOW_TILE_M,
   STOREY = 2.8; // window spacing and storey height (m)
+// the painted window, which the 3D frames (render/window-frames.ts) are placed over: its frame's width, how far out
+// from the walls the skin it's painted on stands, its height and how high its sill is up a storey (m)
+const WINDOW_W_M = 1,
+  WINDOW_SKIN_OUT_M = 0.04;
+export const WINDOW_H_M = 1.25,
+  WINDOW_SILL_M = 0.9;
 const BOARD_M = 0.2, // the width of a timber house's panel boards in the toon style (m)
   BOARD_SEAM_ALPHA = 0.28,
   TIMBER_MAX_M2 = 450; // the same size that gives a house the big buildings' plaster colours
@@ -218,13 +224,23 @@ export function addBuildings(
       y = (v: number) => 128 - (v / STOREY) * 128;
     x.translate(u(WIN_W / 2 - 1.3), 0); // the window below is drawn for a 2.6 m tile: centred in the wider one
     x.fillStyle = '#f1efe8';
-    x.fillRect(u(0.8), y(2.15), u(1), y(0.9) - y(2.15)); // frame: 1.0 x 1.25 m, sill 0.9 m up
+    const top = WINDOW_SILL_M + WINDOW_H_M;
+    const left = 1.3 - WINDOW_W_M / 2,
+      bar = 0.08, // the frame's width round the glass (m)
+      cross = 0.07, // the cross bars' width (m)
+      crossY = WINDOW_SILL_M + 0.815; // where the cross bar runs across, its middle (m up)
+    x.fillRect(u(left), y(top), u(WINDOW_W_M), y(WINDOW_SILL_M) - y(top)); // the frame
     x.fillStyle = toonWindows ? WINDOW_GLASS : '#26323a';
-    x.fillRect(u(0.88), y(2.07), u(0.84), y(0.98) - y(2.07));
+    x.fillRect(u(left + bar), y(top - bar), u(WINDOW_W_M - 2 * bar), y(WINDOW_SILL_M + bar) - y(top - bar));
     if (!toonWindows) {
       x.fillStyle = '#f1efe8';
-      x.fillRect(u(1.265), y(2.07), u(0.07), y(0.98) - y(2.07));
-      x.fillRect(u(0.88), y(1.75), u(0.84), y(1.68) - y(1.75)); // cross bars
+      x.fillRect(u(1.3 - cross / 2), y(top - bar), u(cross), y(WINDOW_SILL_M + bar) - y(top - bar));
+      x.fillRect(
+        u(left + bar),
+        y(crossY + cross / 2),
+        u(WINDOW_W_M - 2 * bar),
+        y(crossY - cross / 2) - y(crossY + cross / 2),
+      ); // cross bars
     }
     const t = new THREE.CanvasTexture(cv);
     t.wrapS = t.wrapT = THREE.RepeatWrapping;
@@ -440,7 +456,7 @@ export function addBuildings(
           // from d to a where the outline runs the other way, so its front faces out, as the shell's walls do: the shadow's
           // normalBias moves the lookup along the normal, into the wall's own shadow when it points in. The tile is
           // symmetric, so it needs no mirroring
-          const [w1x, w1z, w2x, w2z] = o(0.04, false),
+          const [w1x, w1z, w2x, w2z] = o(WINDOW_SKIN_OUT_M, false),
             s1x = w1x + ux * run.start,
             s1z = w1z + uz * run.start,
             s2x = w2x - ux * run.start,
@@ -457,12 +473,12 @@ export function addBuildings(
               for (let r = 0; r < rows; r++) {
                 const along = run.start + (k + 0.5) * tw;
                 frames.push(
-                  a.x + ux * along + ox * 0.04,
-                  yb + (r + 1.525 / STOREY) * th,
-                  a.z + uz * along + oz * 0.04,
+                  a.x + ux * along + ox * WINDOW_SKIN_OUT_M,
+                  yb + (r + (WINDOW_SILL_M + WINDOW_H_M / 2) / STOREY) * th,
+                  a.z + uz * along + oz * WINDOW_SKIN_OUT_M,
                   facing,
-                  (tw * 1.0) / WIN_W,
-                  (th * 1.25) / STOREY,
+                  (tw * WINDOW_W_M) / WIN_W,
+                  (th * WINDOW_H_M) / STOREY,
                 );
               }
           }

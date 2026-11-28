@@ -22,27 +22,27 @@ describe('lab commands', () => {
     const lines = c.run('lab').split('\n');
     expect(lines).toHaveLength(LAB_EXPERIMENTS.length);
     expect(lines[0]).toBe('hello [on]: Hello lab. Cost: Nothing: logs one line, as the smallest example of a gate');
-    expect(lines.find(l => l.startsWith('toon '))).toMatch(/^toon \[off\]: Cel-shaded style\. Cost: /);
+    expect(lines.find(l => l.startsWith('cockpit '))).toMatch(/^cockpit \[off\]: Driver's view\. Cost: /);
     expect(reloads).toEqual([]);
   });
 
   it('switches one on or off by loading the page again where you stand, with the other parameters kept', () => {
     const { c, reloads } = console_('?dev&lab=hello&at=1,2');
-    expect(c.run('lab on toon')).toBe('toon is on. Loading the page again…');
+    expect(c.run('lab on cockpit')).toBe('cockpit is on. Loading the page again…');
     expect(c.run('lab OFF Hello')).toBe('hello is off. Loading the page again…');
-    expect(reloads).toEqual(['?dev&lab=hello,toon&at=12.5,-3.0,0.60,0.34', '?dev&at=12.5,-3.0,0.60,0.34']);
+    expect(reloads).toEqual(['?dev&lab=hello,cockpit&at=12.5,-3.0,0.60,0.34', '?dev&at=12.5,-3.0,0.60,0.34']);
   });
 
   it('adds where you stand to an address without it', () => {
     const { c, reloads } = console_('?dev');
-    c.run('lab on toon');
-    expect(reloads).toEqual(['?dev&lab=toon&at=12.5,-3.0,0.60,0.34']);
+    c.run('lab on cockpit');
+    expect(reloads).toEqual(['?dev&lab=cockpit&at=12.5,-3.0,0.60,0.34']);
   });
 
   it('leaves the page alone when the experiment is already there', () => {
     const { c, reloads } = console_('?lab=hello');
     expect(c.run('lab on hello')).toBe('hello is already on.');
-    expect(c.run('lab off toon')).toBe('toon is already off.');
+    expect(c.run('lab off cockpit')).toBe('cockpit is already off.');
     expect(reloads).toEqual([]);
   });
 
@@ -53,14 +53,14 @@ describe('lab commands', () => {
       .join(', ');
     expect(c.run('lab on warp')).toBe(`No experiment called warp. Pick one of: ${known}. Usage: lab on <experiment>`);
     expect(c.run('lab on')).toBe('Usage: lab on <experiment>');
-    expect(c.run('lab toon')).toBe('No subcommand called toon. Usage: lab [on|off <experiment>]');
+    expect(c.run('lab cockpit')).toBe('No subcommand called cockpit. Usage: lab [on|off <experiment>]');
     expect(reloads).toEqual([]);
   });
 
   it('completes on, off and the ids with Tab', () => {
     const { c } = console_();
     expect(c.complete('lab ')).toEqual(['off', 'on']);
-    expect(c.complete('lab on t')).toEqual(['toon']);
+    expect(c.complete('lab on c')).toEqual(['cockpit']);
     expect(c.complete('lab off ')).toEqual(LAB_EXPERIMENTS.map(e => e.id).sort());
   });
 
