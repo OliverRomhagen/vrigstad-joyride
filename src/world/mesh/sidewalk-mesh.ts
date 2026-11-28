@@ -2,7 +2,7 @@ import '../three-legacy';
 import * as THREE from 'three';
 import { Surface } from '../data';
 import { Part, type Soup, type StreetscapeLayout } from '../streetscape';
-import { TILE_M } from './road-ribbons';
+import { worldUv } from './road-ribbons';
 
 /** sRGB colours of the streetscape, by part and surface; warm late-summer greys (#187 §9) */
 export interface StreetscapeColours {
@@ -49,6 +49,12 @@ export interface SidewalkMeshOptions {
    * stay the caller's. Without one, a class's patches take the flat `road` colour.
    */
   roadMaterials?: readonly (THREE.Material | undefined)[];
+  /**
+   * the linear colour the ribbons give a surface (RoadRibbons.surfaceColour): the ribbons' materials are white and
+   * vertex-coloured, so the patches drawn with them carry the colour of their own road's surface (#399). Copied into
+   * `out`, which it returns
+   */
+  roadColour?: (surface: Surface, out: THREE.Color) => THREE.Color;
 }
 
 /** The colour of a triangle of the streetscape surface, sRGB. */
@@ -137,7 +143,14 @@ export class SidewalkMesh {
 
   constructor(
     layout: Pick<StreetscapeLayout, 'surface' | 'roadPatches' | 'markings'>,
-    { surface, markings, colours = STREETSCAPE_COLOURS, debugSources = false, roadMaterials = [] }: SidewalkMeshOptions,
+    {
+      surface,
+      markings,
+      colours = STREETSCAPE_COLOURS,
+      debugSources = false,
+      roadMaterials = [],
+      roadColour,
+    }: SidewalkMeshOptions,
   ) {
     const s = layout.surface;
     const lin = new Map<number, THREE.Color>();
@@ -169,13 +182,13 @@ export class SidewalkMesh {
       }
       // the ribbon's own material: UVs in the same TILE_M scale, so the asphalt speckle matches. Patches are small and
       // few, so one mesh per class, as the ribbons have
-      for (const m of batchByChunk(patch, material, null, Infinity)) {
-        const pos = m.geometry.getAttribute('position');
-        const uv = new Float32Array(pos.count * 2);
-        for (let i = 0; i < pos.count; i++) {
-          uv[i * 2] = (pos.getX(i) + m.position.x) / TILE_M;
-          uv[i * 2 + 1] = (pos.getZ(i) + m.position.z) / TILE_M;
-        }
+      for (const m of batchByChunk(
+        patch,
+        material,
+        (t, out) => roadColour?.(patch.surface[t], out) ?? out.copy(linear(colours.road)),
+        Infinity,
+      )) {
+        const uv = worldUv(m.geometry.getAttribute('position').array, m.position.x, m.position.z);
         m.geometry.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
         m.renderOrder = 6 - c;
         this.meshes.push(m);

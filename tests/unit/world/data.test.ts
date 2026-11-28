@@ -13,6 +13,7 @@ import {
   SideState,
   StreetParking,
   Surface,
+  surfaceOf,
   WaterwayKind,
   type WorldData,
 } from '../../../src/world/data';
@@ -93,5 +94,21 @@ describe('data/vrigstad.json', () => {
     }
     for (const k of w.kb ?? []) expect(codes(Kerb)).toContain(k.kb);
     expect((w.t ?? []).length % 2).toBe(0);
+  });
+});
+
+describe('surfaceOf (#399)', () => {
+  it('reads a mapped surface, whatever the class', () => {
+    expect(surfaceOf({ c: RoadClass.PRIMARY, sf: Surface.PAVING })).toBe(Surface.PAVING);
+    expect(surfaceOf({ c: RoadClass.PATH, sf: Surface.ASPHALT })).toBe(Surface.ASPHALT); // a cycle path
+    expect(surfaceOf({ c: RoadClass.STREET, sf: Surface.GRAVEL })).toBe(Surface.GRAVEL);
+  });
+
+  it('makes untagged car roads asphalt, tracks gravel and paths unpaved', () => {
+    for (const c of [RoadClass.PRIMARY, RoadClass.SECONDARY, RoadClass.STREET, RoadClass.SERVICE])
+      expect(surfaceOf({ c })).toBe(Surface.ASPHALT);
+    expect(surfaceOf({ c: RoadClass.TRACK })).toBe(Surface.GRAVEL);
+    expect(surfaceOf({ c: RoadClass.PATH })).toBe(Surface.UNPAVED);
+    expect(surfaceOf({ c: RoadClass.STREET, sf: Surface.UNKNOWN })).toBe(Surface.ASPHALT);
   });
 });

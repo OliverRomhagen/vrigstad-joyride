@@ -172,6 +172,16 @@ export type WaterwayKind = (typeof WaterwayKind)[keyof typeof WaterwayKind];
 /** carriageway width of each road class (m), indexed by RoadClass */
 export const ROAD_WIDTH_M = [9, 7.5, 5.5, 3.5, 2.6, 1.5] as const satisfies Record<RoadClass, number>;
 
+/**
+ * What a road is surfaced with (#399), so its ribbon, the streetscape's patches beside it and the ground texture under it
+ * can't disagree: its surface=* tag when mapped, else by class. In Vrigstad an untagged car road is asphalt, an
+ * untagged track gravel and an untagged path a sandy unpaved one. Surface is declared below; a const read at call time.
+ */
+export function surfaceOf(road: Pick<Road, 'c' | 'sf'>): Surface {
+  if (road.sf) return road.sf;
+  return road.c === RoadClass.TRACK ? Surface.GRAVEL : road.c === RoadClass.PATH ? Surface.UNPAVED : Surface.ASPHALT;
+}
+
 // Streetscape codes (#187), as tools/process.py assigns them. 0 is always "not mapped".
 export const RoadUse = {
   NONE: 0,

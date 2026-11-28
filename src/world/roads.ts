@@ -1,4 +1,4 @@
-import { ROAD_WIDTH_M, RoadClass, type WorldData } from './data';
+import { ROAD_WIDTH_M, RoadClass, type Surface, type WorldData } from './data';
 import type { Heightfield } from './heightfield';
 import { segmentDistance } from './polygon';
 
@@ -8,6 +8,8 @@ export interface RoadLine {
   p: Point[];
   c: RoadClass;
   n: string;
+  /** surface=*, when mapped: read it through surfaceOf (#399) */
+  sf?: Surface;
 }
 
 export interface NearestRoad {
@@ -59,7 +61,7 @@ export class RoadNetwork {
     this.lines = data.r.map(r => {
       const p: Point[] = [];
       for (let i = 0; i < r.p.length; i += 2) p.push([r.p[i], r.p[i + 1]]);
-      return { p, c: r.c, n: r.n };
+      return r.sf ? { p, c: r.c, n: r.n, sf: r.sf } : { p, c: r.c, n: r.n };
     });
 
     this.lines.forEach((r, ri) => {
