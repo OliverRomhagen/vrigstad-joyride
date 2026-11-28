@@ -155,6 +155,7 @@ export interface PickadollDeps {
 export class Pickadoll {
   private readonly g: PickadollDeps;
   private readonly shots: (Shot & { seed: number; flavour: HitFlavour })[] = [];
+  private readonly spareShots: (Shot & { seed: number; flavour: HitFlavour })[] = []; // landed, to be fired again
   private readonly dancers: { npc: Npc; leftS: number }[] = [];
   private readonly spikes: Spike[] = [];
   private readonly spikeWorld: { -readonly [K in keyof SpikeWorld]: SpikeWorld[K] };
@@ -595,6 +596,7 @@ export class Pickadoll {
         const tracerM = WEAPONS[s.weapon].tracerM;
         if (tracerM) fx.endStreak(x, y, z, hit.x, hit.y, hit.z, tracerM);
       }
+      this.spareShots.push(s);
       this.shots[i] = this.shots[this.shots.length - 1];
       this.shots.pop();
     }
@@ -696,20 +698,20 @@ export class Pickadoll {
     const cvx = this.carVx,
       cvz = this.carVz;
     for (let i = 0; i < weapon.pellets && this.shots.length < SHOTS_MAX; i++) {
-      const v = aimShot(weapon, yaw, pitch, rnd() * 2 - 1, rnd() * 2 - 1);
-      this.shots.push({
-        ...this.muzzle,
-        vx: v.vx + cvx,
-        vy: v.vy,
-        vz: v.vz + cvz,
-        ageS: 0,
-        bounced: 0,
-        lifeS: 0,
-        lying: false,
-        weapon: this.weapon,
-        seed: rnd(),
-        flavour,
-      });
+      // a shot that has landed is used again, so firing makes no garbage once the pool has grown
+      const s = this.spareShots.pop() ?? { ...this.flown, seed: 0, flavour };
+      aimShot(weapon, yaw, pitch, rnd() * 2 - 1, rnd() * 2 - 1, s);
+      s.vx += cvx;
+      s.vz += cvz;
+      s.x = this.muzzle.x;
+      s.y = this.muzzle.y;
+      s.z = this.muzzle.z;
+      s.ageS = s.bounced = s.lifeS = 0;
+      s.lying = false;
+      s.weapon = this.weapon;
+      s.seed = rnd();
+      s.flavour = flavour;
+      this.shots.push(s);
     }
     this.fired++;
   }
