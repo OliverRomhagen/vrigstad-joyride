@@ -26,6 +26,8 @@ export interface SpikeWorld {
   people: readonly { x: number; z: number; down?: boolean }[];
   /** you, on foot and on the ground; null in a car or in a jump, which clears them */
   walker: { x: number; z: number } | null;
+  /** whether the car at this index in `cars` can still get a flat; one that can't drives over spikes and leaves them. All can when left out */
+  canPuncture?(k: number): boolean;
 }
 
 /** What a step found. The lists are indices in the world's, and one can be named twice, by two spikes. */
@@ -67,7 +69,8 @@ export function dropSpike(
 }
 
 /**
- * Moves the spikes on by dt seconds and says who is on one. A car that rolls over a spike uses it up; a foot doesn't,
+ * Moves the spikes on by dt seconds and says who is on one. A car that rolls over a spike uses it up, if it can still
+ * get a flat; a foot doesn't,
  * so the next one to come by steps on it too. A spike a car used up this step catches nobody else.
  */
 export function stepSpikes(spikes: Spike[], dt: number, world: SpikeWorld, out: SpikeStep): SpikeStep {
@@ -80,7 +83,12 @@ export function stepSpikes(spikes: Spike[], dt: number, world: SpikeWorld, out: 
     if (!used)
       for (let k = 0; k < world.cars.length; k++) {
         const c = world.cars[k];
-        if (Math.abs(c.v) > SPIKE_CAR_MIN_MS && Math.hypot(c.x - s.x, c.z - s.z) < SPIKE_WHEEL_M) {
+        if (
+          Math.abs(c.v) > SPIKE_CAR_MIN_MS &&
+          Math.hypot(c.x - s.x, c.z - s.z) < SPIKE_WHEEL_M &&
+          !out.cars.includes(k) && // one flat per car: a second spike under it this step stays
+          (world.canPuncture?.(k) ?? true)
+        ) {
           out.cars.push(k);
           out.wheels.push(wheelOver(c, s));
           used = true;

@@ -84,8 +84,11 @@ const KNOCK_NS_PER_POWER = 40,
 const PANG_THROW_MS = 5, // a person leaves at this, plus PANG_THROW_PER_POWER_MS for each point of the weapon's power
   PANG_THROW_PER_POWER_MS = 2.5,
   PANG_CAR_SHOVE_M = 0.14, // a parked car slides this far per point of power
-  PANG_CAR_DMG = 2; // and takes this much damage per point of power
-const SCUFF = '#2b2b2b'; // the mark a pang hit leaves
+  PANG_CAR_DMG = 2, // and takes this much damage per point of power
+  PANG_STEP_BACK_M = 0.5, // with too many down already, who is hit is only knocked this far back
+  BLAST_SHARE = 0.6; // a blast reaches those around the hit with this share of its push and damage
+const SCUFF = '#2b2b2b', // the mark a pang hit leaves
+  SCUFF_K = 0.45; // its size, as a share of the weapon's splat: a scuff, not a splash
 const STARE_S = 2.5; // someone hit by gegga stops and looks at you this long
 const DANCE_S = 6,
   DANCE_SPIN_RADS = 7,
@@ -115,7 +118,9 @@ const GUN_M: Record<(typeof WEAPONS)[number]['id'], readonly [number, number]> =
   fotanglar: [0.12, 0.16],
 };
 const HIT_MARK_S = 0.1; // the crosshair's ticks stay this long after a hit on a person or a car, then fade (index.html)
-const BLAST_DROPS = 7; // a blast of gegga leaves this many more splats around the hit
+const BLAST_DROPS = 7, // a blast of gegga leaves this many more splats around the hit,
+  DROP_REACH_K = [0.3, 1], // between these shares of the blast's radius from it,
+  DROP_SIZE_K = [0.2, 0.5]; // each this share of the weapon's splat
 // fotanglar: they lie where they land for a while (./sim/spikes.ts). Someone who steps on one hops on and walks
 // slowly; a car that drives over one gets a flat tyre (Car.flat); you are hurt, unless you jump over
 const FLAT_LINES = ['”PANG! Dä va däcket, dä.”', '”Punka! Klart dä skulle hända nu.”', '”Nu small dä i ett däck.”'],
@@ -158,6 +163,7 @@ export interface PickadollDeps {
 export class Pickadoll {
   private readonly g: PickadollDeps;
   private readonly shots: (Shot & { seed: number; flavour: HitFlavour })[] = [];
+  private readonly spareShots: (Shot & { seed: number; flavour: HitFlavour })[] = []; // landed, to be fired again
   private readonly dancers: { npc: Npc; leftS: number }[] = [];
   private readonly spikes: Spike[] = [];
   private readonly spikeWorld: { -readonly [K in keyof SpikeWorld]: SpikeWorld[K] };
@@ -226,7 +232,13 @@ export class Pickadoll {
   constructor(g: PickadollDeps) {
     this.g = g;
     this.world = { groundAt: g.world.groundAt, collide: g.world.collide, people: g.crowd.npcs, cars: [] };
-    this.spikeWorld = { cars: g.cars, people: g.crowd.npcs, walker: null };
+    this.spikeWorld = {
+      cars: g.cars,
+      people: g.crowd.npcs,
+      walker: null,
+      // a car with a flat already, or one a crash spares, leaves the spikes for the next car
+      canPuncture: k => g.cars[k].flat === NO_FLAT && !this.spared(g.cars[k]),
+    };
     // The controls, through the game's input: the left mouse button or X fires, the right one aims while held, C keeps
     // aiming on, Q changes the weapon (Hands among them), G the hit, and H goes to Hands and back. A press of the trigger
     // is kept a moment (pulledS); on Hands it does nothing
@@ -597,10 +609,11 @@ export class Pickadoll {
       if (!hit) continue;
       if (hit !== 'gone') {
         this.land(s, hit);
-        if (hit.bounced) continue; // it flies on
+        if (hit.fliesOn) continue; // it flies on
         const tracerM = WEAPONS[s.weapon].tracerM;
         if (tracerM) fx.endStreak(x, y, z, hit.x, hit.y, hit.z, tracerM);
       }
+      this.spareShots.push(s);
       this.shots[i] = this.shots[this.shots.length - 1];
       this.shots.pop();
     }
@@ -702,20 +715,20 @@ export class Pickadoll {
     const cvx = this.carVx,
       cvz = this.carVz;
     for (let i = 0; i < weapon.pellets && this.shots.length < SHOTS_MAX; i++) {
-      const v = aimShot(weapon, yaw, pitch, rnd() * 2 - 1, rnd() * 2 - 1);
-      this.shots.push({
-        ...this.muzzle,
-        vx: v.vx + cvx,
-        vy: v.vy,
-        vz: v.vz + cvz,
-        ageS: 0,
-        bounced: 0,
-        lifeS: 0,
-        lying: false,
-        weapon: this.weapon,
-        seed: rnd(),
-        flavour,
-      });
+      // a shot that has landed is used again, so firing makes no garbage once the pool has grown
+      const s = this.spareShots.pop() ?? { ...this.flown, seed: 0, flavour };
+      aimShot(weapon, yaw, pitch, rnd() * 2 - 1, rnd() * 2 - 1, s);
+      s.vx += cvx;
+      s.vz += cvz;
+      s.x = this.muzzle.x;
+      s.y = this.muzzle.y;
+      s.z = this.muzzle.z;
+      s.ageS = s.bounced = s.lifeS = 0;
+      s.lying = false;
+      s.weapon = this.weapon;
+      s.seed = rnd();
+      s.flavour = flavour;
+      this.shots.push(s);
     }
     this.fired++;
   }
@@ -725,7 +738,7 @@ export class Pickadoll {
     const { fx, crowd, rnd } = this.g,
       weapon = WEAPONS[s.weapon],
       colour = this.colourOf(s);
-    if (hit.bounced && weapon.fuseS) return; // a grenade only bounces and lies until its fuse runs out
+    if (hit.fliesOn && weapon.fuseS) return; // a grenade only bounces and lies until its fuse runs out
     this.hits++;
     if (weapon.zone === 'spikes') {
       dropSpike(this.spikes, hit, this.g.world.groundAt, s.seed);
@@ -740,28 +753,38 @@ export class Pickadoll {
       // knocked over, with no splat: a mark left in the air where it stood would hang there
       const k = weapon.power * KNOCK_NS_PER_POWER;
       this.g.physics?.knockProp(hit.target, hit.x, hit.y, hit.z, hit.dx * k, k * KNOCK_UP, hit.dz * k);
-    } else fx.splat(hit, s.flavour === 'gegga' ? weapon.splatM : weapon.splatM * 0.45, colour, s.seed);
+    } else fx.splat(hit, s.flavour === 'gegga' ? weapon.splatM : weapon.splatM * SCUFF_K, colour, s.seed);
     if (person || car) this.mark();
     if (!weapon.blastM) return;
     const { push } = this;
     for (const n of crowd.npcs) {
       if (n === person || n.down || !blastPush(hit.x, hit.z, weapon.blastM, n.x, n.z, push)) continue;
-      this.hitPerson(n, s.flavour, push.dx, push.dz, hit.y + 1, weapon.power * 0.6, weapon.splatM, colour, rnd());
+      this.hitPerson(
+        n,
+        s.flavour,
+        push.dx,
+        push.dz,
+        hit.y + 1,
+        weapon.power * BLAST_SHARE,
+        weapon.splatM,
+        colour,
+        rnd(),
+      );
       this.mark();
     }
     if (s.flavour === 'pang')
       for (const c of this.world.cars)
         if (c !== car && blastPush(hit.x, hit.z, weapon.blastM, c.x, c.z, push))
-          this.shoveCar(c, push.dx, push.dz, weapon.power * 0.6);
+          this.shoveCar(c, push.dx, push.dz, weapon.power * BLAST_SHARE);
     if (s.flavour === 'gegga')
       for (let i = 0; i < BLAST_DROPS; i++) {
         const a = rnd() * Math.PI * 2,
-          reach = weapon.blastM * (0.3 + rnd() * 0.7),
+          reach = weapon.blastM * (DROP_REACH_K[0] + rnd() * (DROP_REACH_K[1] - DROP_REACH_K[0])),
           x = hit.x + Math.cos(a) * reach,
           z = hit.z + Math.sin(a) * reach;
         fx.splat(
           { kind: 'ground', x, y: this.g.world.groundAt(x, z), z, nx: 0, ny: 1, nz: 0 },
-          weapon.splatM * (0.2 + rnd() * 0.3),
+          weapon.splatM * (DROP_SIZE_K[0] + rnd() * (DROP_SIZE_K[1] - DROP_SIZE_K[0])),
           colour,
           rnd(),
         );
@@ -793,8 +816,8 @@ export class Pickadoll {
     } else if (flavour === 'pang') {
       // too many down already: they are only knocked a step back
       if (!ragdolls.push(n, dx, dz, PANG_THROW_MS + power * PANG_THROW_PER_POWER_MS)) {
-        n.x += dx * 0.5;
-        n.z += dz * 0.5;
+        n.x += dx * PANG_STEP_BACK_M;
+        n.z += dz * PANG_STEP_BACK_M;
       }
     } else if (!this.dancers.some(d => d.npc === n)) {
       crowd.stare(n, 0.1, DANCE_S); // stops them where they are
@@ -812,7 +835,7 @@ export class Pickadoll {
     turn: number,
   ) {
     if (flavour === 'pang') this.shoveCar(c, hit.dx, hit.dz, power);
-    this.g.fx.splatOn(c.mesh, hit, flavour === 'gegga' ? splatM : splatM * 0.45, colour, turn);
+    this.g.fx.splatOn(c.mesh, hit, flavour === 'gegga' ? splatM : splatM * SCUFF_K, colour, turn);
   }
 
   // the cars a crash spares (crashes.ts): Plåt-Pelle's for sale, which also stand still, and the one you drive in god mode
