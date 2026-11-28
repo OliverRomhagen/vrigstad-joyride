@@ -279,6 +279,10 @@ const BOUNCE_KEEP = 0.78, // the share of its speed a shot keeps in a bounce
   THROWN_BOUNCE_KEEP = 0.4, // and a thrown thing, which thuds: it lands near where it was thrown at
   BOUNCE_MIN_MS = 4, // slower than this after a bounce, it stops there
   BOUNCE_CLEAR_M = 0.08; // a bounced shot starts this far off the surface, so it isn't hit again at once
+// These checks are a stand-in until the physics world's ray casts take over (#54, ?lab=rapier), so they are kept
+// simple and their known limits left: a wall thinner than STEP_M minus twice WALL_PROBE_M, such as a bridge's railing
+// (a line), can be passed between two checks; every check tests every person and car; and the line of sight
+// (sight) checks every STEP_M, some 640 checks a frame and 1,680 through a scope.
 const STEP_M = 0.25; // a shot is checked every this far along its path, so it can't skip through a person
 const WALL_MAX_M = 9; // houses are taken to be this tall: a shot above it flies over
 const PERSON_TALL_M = 1.85; // a standard person, to the top of the head
