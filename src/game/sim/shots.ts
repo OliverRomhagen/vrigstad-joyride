@@ -14,7 +14,7 @@ export const WeaponId = {
   HAGELBOSSA: 'hagelbossa',
   MINIGUN: 'minigun',
   GULDARTPUFFRA: 'guldartpuffra',
-  PUFFRA: 'puffra',
+  KNALLEN: 'knallen',
   LUFTGEVAR: 'luftgevar',
   ALGSTUDSARE: 'algstudsare',
   GRANAT: 'granat',
@@ -169,18 +169,19 @@ export const WEAPONS = [
     scope: 0,
     ammo: null,
   },
-  // fast shots: they arrive nearly as you fire and are drawn as a streak. The plain pistol of #17's ladder
+  // fast shots: they arrive nearly as you fire and are drawn as a streak. Knallen is the magnum: slow to fire, and
+  // its push (120 N·s) knocks people flat and nudges a parked car, where the pickadoll's (40) only marks it
   {
-    id: WeaponId.PUFFRA,
-    name: 'Puffra',
+    id: WeaponId.KNALLEN,
+    name: 'Knallen',
     speedMs: 320,
-    coolS: 0.13,
+    coolS: 0.6,
     auto: false,
     pellets: 1,
-    spreadRad: 0.004,
-    shotMassKg: 0.1625,
-    damage: 2.6,
-    splatM: 0.25,
+    spreadRad: 0.002,
+    shotMassKg: 0.375,
+    damage: 6,
+    splatM: 0.35,
     blastM: 0,
     bounces: 0,
     thrown: false,
@@ -379,7 +380,7 @@ const _probe = { x: 0, z: 0 },
 /** The push a weapon's hit gives, in N·s: what its shot weighs times the speed it leaves at. A faster weapon pushes harder. */
 export const knockbackOf = (w: Pick<Weapon, 'shotMassKg' | 'speedMs'>) => w.shotMassKg * w.speedMs;
 
-const CAR_HOLD_NS = 60, // a parked car's brakes hold against a smaller push: a pistol's shot marks it, a rifle's shoves it
+const CAR_HOLD_NS = 60, // a parked car's brakes hold against a smaller push: a light shot marks it, a magnum's or a rifle's shoves it
   CAR_SLIDE_M_PER_NS = 0.0035; // past that, it slides this far for each N·s of the push
 
 /**

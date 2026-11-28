@@ -146,7 +146,7 @@ const GUN_M: Record<WeaponId, readonly [number, number]> = {
   [WeaponId.HAGELBOSSA]: [0.65, 0.09],
   [WeaponId.MINIGUN]: [0.75, 0.17],
   [WeaponId.GULDARTPUFFRA]: [0.5, 0.05],
-  [WeaponId.PUFFRA]: [0.28, 0.07],
+  [WeaponId.KNALLEN]: [0.36, 0.09], // a long barrel
   [WeaponId.LUFTGEVAR]: [0.95, 0.05],
   [WeaponId.ALGSTUDSARE]: [1.1, 0.07],
   [WeaponId.GRANAT]: [0.14, 0.14],
