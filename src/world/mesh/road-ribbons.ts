@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { ROAD_WIDTH_M, type RoadClass, Surface, surfaceOf } from '../data';
 import type { Heightfield } from '../heightfield';
 import { resample, ribbonEdges, STEP_M } from '../polyline';
-import { type Point, type RoadNetwork, roadLiftM } from '../roads';
+import { nodeKey, type Point, type RoadNetwork, roadLiftM } from '../roads';
 
 export interface RoadRibbonOptions {
   /** a light tile that the road colours tint, repeating every TILE_M in world x and z; it stays the caller's */
@@ -18,7 +18,17 @@ export interface RoadRibbonOptions {
   skip?: (ri: number) => boolean;
 }
 
-/** how soft each surface is: the softer of two roads that meet sits lower, so the harder one draws on top */
+/**
+ * where a road meets one of a harder surface at its end, its colour fades in from that road's over this far (m), on the
+ * softer road's side, so a gravel track leaving a street doesn't step (#399). The fade starts at the harder road's edge,
+ * where the softer ribbon comes out from under it, and the ribbon gets a vertex at each end of it, so it runs this
+ * length at every junction whatever the sampling.
+ */
+export const SURFACE_BLEND_M = 4;
+/**
+ * how soft each surface is: the softer of two roads that meet sits lower, so the harder one draws on top, and the softer
+ * one fades in from the harder's colour; equal ones don't fade
+ */
 const SOFTNESS: Readonly<Record<Surface, number>> = {
   [Surface.UNKNOWN]: 0,
   [Surface.ASPHALT]: 0,
@@ -75,14 +85,25 @@ export class RoadRibbons {
     this.surfaceColours = surfaceColours;
     const positions: number[][] = Array.from({ length: CENTRE_LINE + 1 }, () => []);
     const colours: number[][] = Array.from({ length: CENTRE_LINE }, () => []);
-    const ribbon = (ri: number, out: number[], points: Point[], width: number, lift: number) => {
+    /** `alongByVertex`, when given, gets each pushed vertex's distance along the road (m); returns the road's length */
+    const ribbon = (
+      ri: number,
+      out: number[],
+      points: Point[],
+      width: number,
+      lift: number,
+      alongByVertex?: number[],
+    ) => {
       const onBridge = heightOf?.(ri, points[0][0], points[0][1], lift) !== undefined;
       const q = resample(points, onBridge ? BRIDGE_STEP_M : STEP_M);
       const y = (x: number, z: number) =>
         (onBridge ? heightOf?.(ri, x, z, lift) : undefined) ?? heightfield.heightAt(x, z) + lift;
       let pl: number[] = [];
       let pr: number[] = [];
+      let along = 0;
+      let before = 0;
       for (let i = 0; i < q.length; i++) {
+        if (i > 0) along += Math.hypot(q[i][0] - q[i - 1][0], q[i][1] - q[i - 1][1]);
         const { lx, lz, rx, rz } = ribbonEdges(q, i, width);
         const l = [lx, y(lx, lz), lz];
         const r = [rx, y(rx, rz), rz];
@@ -107,19 +128,71 @@ export class RoadRibbons {
             pr[1],
             pr[2],
           );
+          alongByVertex?.push(before, along, along, before, along, before); // pl, l, r, pl, r, pr
         }
         pl = l;
         pr = r;
+        before = along;
       }
+      return along;
     };
-    roads.lines.forEach((r, ri) => {
+    const { lines } = roads;
+    const surfaceByRoad = lines.map(r => surfaceOf(r));
+    const roadsByNode = new Map<string, number[]>();
+    lines.forEach((r, ri) => {
+      if (skip?.(ri)) return;
+      for (const p of r.p) {
+        const k = nodeKey(p);
+        const list = roadsByNode.get(k);
+        if (!list) roadsByNode.set(k, [ri]);
+        else if (!list.includes(ri)) list.push(ri);
+      }
+    });
+    // what road ri fades in from at its end p: the hardest other surface there, if harder than ri's, and how far from p
+    // the widest road of that surface reaches (m), where ri comes out from under it
+    const fadeFrom = (ri: number, p: Point) => {
+      const mine = SOFTNESS[surfaceByRoad[ri]];
+      let from: Surface | null = null;
+      let edgeM = 0;
+      for (const o of roadsByNode.get(nodeKey(p)) ?? []) {
+        const soft = SOFTNESS[surfaceByRoad[o]];
+        if (soft >= mine || (from !== null && soft > SOFTNESS[from])) continue;
+        if (from === null || soft < SOFTNESS[from]) {
+          from = surfaceByRoad[o];
+          edgeM = 0;
+        }
+        edgeM = Math.max(edgeM, ROAD_WIDTH_M[lines[o].c] / 2);
+      }
+      return from === null ? null : { colour: this.linear(from), edgeM };
+    };
+    const mixed = new THREE.Color();
+    lines.forEach((r, ri) => {
       if (skip?.(ri)) return;
       const out = positions[r.c],
-        from = out.length,
-        surface = surfaceOf(r),
-        c = this.linear(surface);
-      ribbon(ri, out, r.p, ROAD_WIDTH_M[r.c], ribbonLiftM(r.c, surface));
-      for (let k = from; k < out.length; k += 3) colours[r.c].push(c.r, c.g, c.b);
+        surface = surfaceByRoad[ri],
+        own = this.linear(surface),
+        lift = ribbonLiftM(r.c, surface);
+      const start = fadeFrom(ri, r.p[0]),
+        end = fadeFrom(ri, r.p[r.p.length - 1]);
+      if (!start && !end) {
+        const from = out.length;
+        ribbon(ri, out, r.p, ROAD_WIDTH_M[r.c], lift);
+        for (let k = from; k < out.length; k += 3) colours[r.c].push(own.r, own.g, own.b);
+      } else {
+        const length = pathLength(r.p);
+        const cuts = [
+          ...(start ? [start.edgeM, start.edgeM + SURFACE_BLEND_M] : []),
+          ...(end ? [length - end.edgeM - SURFACE_BLEND_M, length - end.edgeM] : []),
+        ];
+        const alongByVertex: number[] = [];
+        ribbon(ri, out, cutAt(r.p, cuts), ROAD_WIDTH_M[r.c], lift, alongByVertex);
+        for (const along of alongByVertex) {
+          mixed.copy(own);
+          if (start) mixed.lerpColors(start.colour, mixed, clamp01((along - start.edgeM) / SURFACE_BLEND_M));
+          if (end) mixed.lerpColors(end.colour, mixed, clamp01((length - end.edgeM - along) / SURFACE_BLEND_M));
+          colours[r.c].push(mixed.r, mixed.g, mixed.b);
+        }
+      }
       if (r.c < 2) ribbon(ri, positions[CENTRE_LINE], r.p, CENTRE_LINE_WIDTH_M, CENTRE_LINE_LIFT_M);
     });
 
@@ -172,6 +245,36 @@ export class RoadRibbons {
       (mesh.material as THREE.Material).dispose();
     }
   }
+}
+
+const clamp01 = (t: number) => Math.min(1, Math.max(0, t));
+
+const pathLength = (points: readonly Point[]) => {
+  let length = 0;
+  for (let i = 1; i < points.length; i++)
+    length += Math.hypot(points[i][0] - points[i - 1][0], points[i][1] - points[i - 1][1]);
+  return length;
+};
+
+/** The polyline with a vertex added at each of the distances along it (m) that falls strictly inside it. */
+export function cutAt(points: readonly Point[], alongs: readonly number[]): Point[] {
+  const cuts = alongs.filter(a => a > 1e-6).sort((x, y) => x - y);
+  const out: Point[] = [points[0]];
+  let start = 0;
+  let c = 0;
+  for (let i = 1; i < points.length; i++) {
+    const a = points[i - 1];
+    const b = points[i];
+    const span = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    for (; c < cuts.length && cuts[c] < start + span - 1e-6; c++) {
+      if (cuts[c] <= start + 1e-6) continue;
+      const t = (cuts[c] - start) / span;
+      out.push([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]);
+    }
+    out.push(b);
+    start += span;
+  }
+  return out;
 }
 
 /** UVs from world x and z, TILE_M to a tile, for flat [x, y, z, ...] positions. */
