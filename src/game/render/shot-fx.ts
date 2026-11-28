@@ -351,6 +351,7 @@ export class ShotFx {
       d.at.set(hit.x, hit.y, hit.z).addScaledVector(_n, DROP_R_M * 2);
       d.v.set(rnd() * 2 - 1, rnd() * 2 - 1, rnd() * 2 - 1).multiplyScalar(DROP_SIDE_MS);
       d.v.addScaledVector(_n, DROP_OUT_MS[0] + rnd() * (DROP_OUT_MS[1] - DROP_OUT_MS[0]) - d.v.dot(_n));
+      d.v.y = Math.max(0, d.v.y); // off a wall, a car or a person none starts downwards, into the ground below
       d.colour.copy(this.linear(colour));
       d.lifeS = d.leftS = DROP_S[0] + rnd() * (DROP_S[1] - DROP_S[0]);
     }
