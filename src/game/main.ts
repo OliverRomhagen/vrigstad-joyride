@@ -37,6 +37,7 @@ import { layoutShore } from '../world/shore';
 import { Water } from '../world/water';
 import { WaterBodies } from '../world/water-shapes';
 import { type Car, type CarMode, Fleet, newCar, TURBO_AT } from './cars';
+import { lampState, lampsOff } from './lighting';
 import { CatColony } from './cats';
 import { Hud } from './hud';
 import { Input } from './input';
@@ -193,7 +194,9 @@ ground.bakeTreeShadows(allTreeSpots, blobTex);
 // the rules (driving, traffic, the parked cars) are in src/game/cars.ts; the meshes in src/game/render/car-meshes.ts
 // the getters are read when they are used, so they can name things declared further down
 const bodyMotion = new BodyMotion();
-const vehicleVisuals = new VehicleVisuals(coarse, (c, body) => bodyMotion.addNode(c as RenderedCar, body));
+// car lights (#304, src/game/lighting.ts): brake, reversing and dipped lights by day, hazards on a wreck; dark is 0 until the dusk glow
+const lamps = lampsOff();
+const vehicleVisuals = new VehicleVisuals(coarse, (c, body) => bodyMotion.addNode(c as RenderedCar, body), c => lampState(c as RenderedCar, 0, game.clockS, lamps));
 const carMeshes = new CarMeshes({ scene, groundAt, normalAt, carGeo, carMat, blob, barGeo, barMat, vehicleVisuals, bodyMotion });
 const placeCar = carMeshes.placeCar.bind(carMeshes);
 // every car has its meshes: addCar attaches them before the Fleet holds it, so the sim's Car is a RenderedCar here

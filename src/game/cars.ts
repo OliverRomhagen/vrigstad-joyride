@@ -52,6 +52,8 @@ const _onC = { x: 0, z: 0 },
 const TRAFFIC_LIMIT_MS = [13.9, 11, 8.3] as const; // speed limit (m/s) on a primary road, a secondary one and a street (RoadClass); traffic drives on no other
 const TRAFFIC_ACC_MS2 = 3,
   TRAFFIC_BRAKE_MS2 = 9; // how fast traffic speeds up to the limit and slows for what's ahead
+// traffic slowing harder than this shows its brake lights (#304): about where a real driver is on the pedal rather than coasting
+const BRAKE_LIGHT_DECEL_MS2 = 2.5;
 const LOOK_CAR_M = 11,
   LOOK_CAR_SIDE_M = 1.7; // a car this far ahead, and this close to the line ahead, stops traffic
 const LOOK_PLAYER_M = 9,
@@ -99,6 +101,7 @@ export interface Car extends Point {
   color: string; // the paint (sRGB), one of T.cols
   mods: CarMods; // Plåt-Pelle's upgrades (sim/upgrades.ts)
   limiterOff: boolean; // a tuned EPA-traktor's switch under the wheel is on: it drives as fast as a car
+  brk: boolean; // the brake lights (#304): the pedal, or traffic slowing harder than BRAKE_LIGHT_DECEL_MS2; written here, read only by lighting.ts
 }
 
 /** A new car standing still at (x, z), nose towards h. `color` is the caller's roll from T.cols, so the world's rolls stay in their order. */
@@ -145,6 +148,7 @@ export function newCar(
     color,
     mods: noMods(),
     limiterOff: false,
+    brk: false,
   };
 }
 /** Where a car or a walker is on the street network: road ri, from vertex a towards a + dir. */
@@ -401,7 +405,10 @@ export class Fleet {
     }
     const target =
       blocked || wrecked(c) ? 0 : Math.min(c.T.max * topSpeedShare(c.dmg), TRAFFIC_LIMIT_MS[R[c.ri].c as 0 | 1 | 2]);
+    const v0 = c.v;
     c.v += clamp(target - c.v, -TRAFFIC_BRAKE_MS2 * dt, TRAFFIC_ACC_MS2 * dt);
+    // slowing hard, or standing with a foot on the brake behind what holds it up, so a queue shows a row of red
+    c.brk = (dt > 0 && (v0 - c.v) / dt > BRAKE_LIGHT_DECEL_MS2) || (target === 0 && c.v < 0.5);
     c.t += c.v * dt;
     for (let g = 0; c.t >= L && g < 8; g++) {
       c.t -= L;
@@ -426,7 +433,8 @@ export class Fleet {
   // shared driving model for the player and the police; only the player passes canDrift
   drive(c: Car, thr: number, steer: number, brake: boolean, dt: number, canDrift = false) {
     const { roads, water, half: HALF, crash, rammed, placeCar } = this.g,
-      cars = this.cars;
+      cars = this.cars,
+      v0 = c.v;
     c.thr = thr = Math.abs(thr - c.thr) < 0.02 ? thr : approach(c.thr, thr, c.T.handling.throttleResponseS, dt);
     c.st = approach(c.st, steer, steerResponseOf(c), dt); // weight: speed and heading answer a little late
     if (wrecked(c)) {
@@ -487,6 +495,9 @@ export class Fleet {
     if (c.boost > 0 && c.v < max) c.v = Math.min(max, c.v + DRIVING.TURBO_ACC * dt); // only up to the limit, so it never cancels the overspeed braking below
     if (c.v > max) c.v = Math.max(max, c.v - 14 * dt);
     if (c.v < -7) c.v = -7;
+    // what the driver asks for: the brake, or reverse throttle while still rolling forwards (as the counter-throttle above);
+    // not the slowing itself, which off-road drag, water and the speed cap do with no foot on the pedal
+    c.brk = brake || (thr < 0 && v0 > 0.5);
     const s = c.drift ? c.drift * (0.6 + 0.4 * c.st * c.drift) : c.st; // in a drift the nose always swings the drift's way; steering tightens or widens it
     c.yr = yawRate(c.v, s, c.T.handling.wheelbaseM) * (c.drift ? DRIVING.DRIFT_YAW : 1); // rad/s
     const h0 = c.h;

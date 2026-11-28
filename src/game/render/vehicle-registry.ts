@@ -17,6 +17,24 @@ export const keepVehiclePart = (name: string) =>
   BEACON_PARTS.test(name) ||
   WHEEL_NODES.some(wheel => wheel === name);
 
+/**
+ * A model's lamps by what they show (#304): the names of its lamp meshes, each one material. Housings, reflectors and
+ * the dark red outer tail lenses stay unlit. A model without reversing lamps or indicators shows no reversing lights or
+ * hazards. tests/unit/vehicles/assets.test.ts checks every name against the model.
+ */
+export type VehicleLamps = {
+  head: readonly string[];
+  rear: readonly string[];
+  reverse?: readonly string[];
+  hazard?: readonly string[];
+};
+const XC70_LAMPS: VehicleLamps = {
+  head: ['parts_headlamp_ivory'],
+  rear: ['parts_tail_lamp_red'],
+  reverse: ['parts_reverse_lamp_clear'],
+  hazard: ['parts_indicator_amber'],
+};
+
 export const VEHICLES = [
   {
     id: 'volvo240',
@@ -32,6 +50,12 @@ export const VEHICLES = [
     height: 1.46,
     roofRear: -1.0,
     roofFront: 0.45,
+    lamps: {
+      head: ['lamp_front_lenses'],
+      rear: ['lamp_rear_red', 'lamp_rear_ribs'],
+      reverse: ['lamp_rear_reverse'],
+      hazard: ['lamp_indicators'],
+    },
     police: false,
   },
   {
@@ -48,6 +72,7 @@ export const VEHICLES = [
     height: 1.42,
     roofRear: -1.0,
     roofFront: 0.5,
+    lamps: { head: ['round3_headlamp_ivory'], rear: ['round3_tail_lamp_red'], hazard: ['round3_indicator_amber'] },
     police: false,
   },
   {
@@ -75,6 +100,8 @@ export const VEHICLES = [
       pitchPerAcc: 0.003,
       maxPitchRad: 0.05,
     },
+    lamps: XC70_LAMPS,
+    coolHead: true, // a newer car's whiter headlamps
     police: false,
   },
   {
@@ -92,6 +119,8 @@ export const VEHICLES = [
     height: 1.56,
     roofRear: -2.2,
     roofFront: 0.3, // the redrawn body's roof reaches further forward (#471)
+    lamps: XC70_LAMPS,
+    coolHead: true, // a newer car's whiter headlamps
     police: true,
   },
   {
@@ -109,6 +138,12 @@ export const VEHICLES = [
     roofRear: -1.1,
     roofFront: 0.75,
     suspension: { freqHz: 1.0, damping: 0.45, rollPerAcc: 0.006, maxRollRad: 0.09 }, // a soft American barge
+    lamps: {
+      head: ['lamp_headlights'],
+      rear: ['lamp_taillights'],
+      reverse: ['lamp_reverse_units'],
+      hazard: ['lamp_parking'],
+    },
     police: false,
   },
   {
@@ -126,6 +161,7 @@ export const VEHICLES = [
     roofRear: -1.3,
     roofFront: 0.05,
     suspension: { freqHz: 1.9, rollPerAcc: 0.004 }, // short, light and busy
+    lamps: { head: ['lamp_headlights'], rear: ['lamp_taillights_red'], hazard: ['parts_amber_indicators'] },
     police: false,
   },
   {
@@ -143,6 +179,7 @@ export const VEHICLES = [
     height: 1.55,
     roofRear: -0.85,
     roofFront: 0.2,
+    lamps: { head: ['lamp_headlamp'], rear: ['parts_tail_red'], hazard: ['lamp_indicator'] },
     police: false,
   },
 ] as const satisfies readonly (Record<string, unknown> & { archetype: CarType })[];
