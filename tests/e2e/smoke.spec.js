@@ -173,13 +173,16 @@ test.describe('game (index.html)', () => {
     expect(f.meshes).toBeGreaterThan(0);
     expect(f.meshes).toBeLessThanOrEqual(16 * 36); // per 400 m cell at most one per model (14, FurnitureModelId; raise this with the next model) and per lamp glass (2), and the 2200 m world spans 6 × 6 cells
     expect(f.debug).toBe(true);
-    // every house that fronts a street has a plot (#401), most a driveway, and some edges are closed
+    // every house that fronts a street has a plot (#401), most a driveway, and some edges are closed; the boundaries
+    // and the paving are built after the first frame
+    await expect.poll(async () => (await state(page)).plots.ready).toBe(true);
     const { plots: p } = await state(page);
     expect(p.plots).toBeGreaterThan(400);
     expect(p.driveways.mapped + p.driveways.generated).toBeGreaterThan(0.95 * p.plots);
     for (const k of ['hedge', 'picket', 'board', 'wall', 'mesh']) expect(p.boundaryM[k]).toBeGreaterThan(0); // mesh: round industrial land
     expect(p.meshes).toBeGreaterThan(0);
     expect(p.meshes).toBeLessThanOrEqual(2 * 81); // boxes and fence panels per 250 m chunk of the 2200 m world, 9 × 9
+    expect(p.drivewayMeshes).toBeGreaterThan(0); // asphalt and gravel on the driveways
     expect(p.debug).toBe(false);
     await page.locator('#go').click();
     await frames(page, 5);

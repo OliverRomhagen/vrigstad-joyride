@@ -201,6 +201,8 @@ export interface StreetscapeInputs {
   avoidTrees?: number[];
   /** street trees keep this from any other road's carriageway edge (m) */
   treeRoadClearanceM?: number;
+  /** driveways not mapped as roads (plots.ts): the road each leaves, where it meets its edge, and how wide it is (m) */
+  driveways?: readonly { ri: number; x: number; z: number; widthM: number }[];
 }
 
 // ---------- small geometry helpers ----------
@@ -612,15 +614,23 @@ export function buildStreetscape(inp: StreetscapeInputs): StreetscapeLayout {
     const near = nearestSide(x.x, x.z);
     if (near) openings.push({ ...near, half: KERB_HALF_M, kind: 'kerb' });
   }
+  // generated driveways lower the curb as mapped ones do, unless an opening is there already
+  for (const d of inp.driveways ?? []) {
+    const near = nearestSide(d.x, d.z, d.ri);
+    const half = (d.widthM + DRIVEWAY_EXTRA_M) / 2;
+    if (near && !openings.some(o => o.ri === near.ri && o.side === near.side && Math.abs(o.s - near.s) < o.half + half))
+      openings.push({ ...near, half, kind: 'driveway' });
+  }
 
-  /** the road side nearest (x, z), if the point is within KERB_REACH_M of a carriageway edge */
-  function nearestSide(x: number, z: number): { ri: number; side: -1 | 1; s: number } | null {
+  /** the road side nearest (x, z), if the point is within KERB_REACH_M of a carriageway edge; of road `onlyRi`, if given */
+  function nearestSide(x: number, z: number, onlyRi?: number): { ri: number; side: -1 | 1; s: number } | null {
     let best: { ri: number; side: -1 | 1; s: number } | null = null;
     let bestD = KERB_REACH_M;
     const list = roads.grid.get(Math.floor(x / 50) + ',' + Math.floor(z / 50)) ?? [];
     for (let i = 0; i < list.length; i += 5) {
       const ri = list[i + 4];
-      if (!isCarriageway(lines[ri].c, data.r[ri].s) || !samples[ri]) continue;
+      if (!isCarriageway(lines[ri].c, data.r[ri].s) || !samples[ri] || (onlyRi !== undefined && ri !== onlyRi))
+        continue;
       const d = segmentDistance(x, z, list[i], list[i + 1], list[i + 2], list[i + 3]) - ROAD_WIDTH_M[lines[ri].c] / 2;
       if (d >= bestD) continue;
       const rs = samples[ri]!;
