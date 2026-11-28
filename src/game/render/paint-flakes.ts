@@ -31,7 +31,8 @@ vec3 flakeHash(vec3 p) {
 // game's one directional light, and the loop takes the directional lights last of the direct ones): each flake, tilted its own
 // way, adds a glint where it mirrors the sun into the eye, and none in shadow or on the side facing away from it. It only ever adds
 // light: tilting the paint's own normal instead turned the flakes facing away into dark specks, like rust
-const FRAGMENT_FLAKE = `#include <lights_fragment_begin>
+// `into` is where the glint goes: the specular light, or for the toon style, whose shader leaves that out, the emitted light
+const fragmentFlake = (into: string) => `#include <lights_fragment_begin>
 #if NUM_DIR_LIGHTS > 0
 {
   vec3 tilt = flakeHash(floor(vFlakeAt * ${glsl(FLAKE_CELLS_PER_M)})) * 2.0 - 1.0;
@@ -39,28 +40,32 @@ const FRAGMENT_FLAKE = `#include <lights_fragment_begin>
   vec3 halfway = normalize(directLight.direction + normalize(vViewPosition));
   float facing = smoothstep(0.0, ${glsl(SUNLIT_FADE)}, dot(normal, directLight.direction));
   vec3 glint = mix(vec3(1.0), diffuseColor.rgb / max(max(diffuseColor.r, diffuseColor.g), diffuseColor.b), ${glsl(GLINT_TINT)}); // warm in the paint's own hue, as real flakes are
-  reflectedLight.directSpecular += glint * directLight.color * facing * ${glsl(GLINT_STRENGTH)} * pow(max(dot(flake, halfway), 0.0), ${glsl(GLINT_SHARPNESS)});
+  ${into} += glint * directLight.color * facing * ${glsl(GLINT_STRENGTH)} * pow(max(dot(flake, halfway), 0.0), ${glsl(GLINT_SHARPNESS)});
 }
 #endif`;
 
-// one patch for every flaked material, so they share one program
-function patchFlakes(shader: THREE.WebGLProgramParametersWithUniforms) {
+// one patch for every flaked material of a kind, so they share one program
+const patchWith = (fragment: string) => (shader: THREE.WebGLProgramParametersWithUniforms) => {
   shader.vertexShader = shader.vertexShader
     .replace('#include <common>', `#include <common>${VERTEX_HEAD}`)
     .replace('#include <begin_vertex>', '#include <begin_vertex>\nvFlakeAt = position;'); // the body's own space: flakes stay on the car
   shader.fragmentShader = shader.fragmentShader
     .replace('#include <common>', `#include <common>${FRAGMENT_HEAD}`)
-    .replace('#include <lights_fragment_begin>', FRAGMENT_FLAKE);
-}
+    .replace('#include <lights_fragment_begin>', fragment);
+};
+const patchFlakes = patchWith(fragmentFlake('reflectedLight.directSpecular')),
+  patchToonFlakes = patchWith(fragmentFlake('totalEmissiveRadiance'));
 const flakesKey = () => 'paint-flakes';
 
 /** Whether a material wears the flakes' patch: its colour is still its own, unlike a shader that draws its own (the water). */
-export const hasFlakes = (material: THREE.Material) => material.onBeforeCompile === patchFlakes;
+export const hasFlakes = (material: THREE.Material) =>
+  material.onBeforeCompile === patchFlakes || material.onBeforeCompile === patchToonFlakes;
 
-/** Puts the flakes in a model's paint, or takes them out (`on` false); a material the patch already matches is left alone. */
-export function setFlakes(material: THREE.MeshStandardMaterial, on: boolean) {
-  if ((material.onBeforeCompile === patchFlakes) === on) return;
-  material.onBeforeCompile = on ? patchFlakes : THREE.Material.prototype.onBeforeCompile;
+/** Puts the flakes in a paint, or takes them out (`on` false); a material the patch already matches is left alone. */
+export function setFlakes(material: THREE.MeshStandardMaterial | THREE.MeshToonMaterial, on: boolean) {
+  if (hasFlakes(material) === on) return;
+  const patch = material instanceof THREE.MeshToonMaterial ? patchToonFlakes : patchFlakes;
+  material.onBeforeCompile = on ? patch : THREE.Material.prototype.onBeforeCompile;
   material.customProgramCacheKey = on ? flakesKey : THREE.Material.prototype.customProgramCacheKey;
   material.needsUpdate = true;
 }

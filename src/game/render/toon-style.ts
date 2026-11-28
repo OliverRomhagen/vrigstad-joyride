@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { HOUSE_SHELLS_MATERIAL } from './house-materials';
 import { inkEdges } from './ink-edges';
 import { INK_COLOR, INK_FLAG, INK_NO_FEET_FLAG } from './ink-flag';
-import { hasFlakes } from './paint-flakes';
+import { hasFlakes, setFlakes } from './paint-flakes';
 
 // The look follows the "Kraftig" (bold) cel shading of the art direction lab (v20).
 // Light per quarter of MeshToonMaterial's ramp, which it samples at `dot * 0.5 + 0.5` (dot of normal and light
@@ -45,7 +45,7 @@ type MeshMaterial = THREE.Material | THREE.Material[];
 type Renderer = Pick<THREE.WebGLRenderer, 'render'>;
 
 // a material with its own shader patch (the water) keeps it: a toon copy would draw it in its plain, often white, colour. A
-// metallic paint's flakes only add glints to its own colour, so it goes toon like any paint, without them, among the other cars
+// metallic paint's flakes only add glints to its own colour, so it goes toon like any paint, and its toon copy gets them too
 const isLit = (material: THREE.Material): material is LitMaterial =>
   (material instanceof THREE.MeshLambertMaterial ||
     material instanceof THREE.MeshPhongMaterial ||
@@ -200,6 +200,7 @@ export class ToonStyle {
     toon.emissiveIntensity = material.emissiveIntensity;
     toon.opacity = material.opacity;
     toon.visible = material.visible;
+    setFlakes(toon, hasFlakes(material)); // a metallic paint sparkles in the toon style too, and stops when resprayed
     return toon;
   }
 

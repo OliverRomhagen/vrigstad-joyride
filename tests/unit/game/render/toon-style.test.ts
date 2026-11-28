@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { expect, test, vi } from 'vitest';
 import { HOUSE_SHELLS_MATERIAL } from '../../../../src/game/render/house-materials';
 import { INK_FLAG, INK_NO_FEET_FLAG } from '../../../../src/game/render/ink-flag';
-import { setFlakes } from '../../../../src/game/render/paint-flakes';
+import { hasFlakes, setFlakes } from '../../../../src/game/render/paint-flakes';
 import {
   FINISH_LEVELS,
   finishOf,
@@ -306,8 +306,9 @@ test('material arrays, instanced trees and custom materials', () => {
   water.onBeforeCompile = () => {}; // its colour comes from the patched shader, which a toon copy would lose
   setFlakes(gold, true); // a metallic paint: its colour is its own, the flakes only add glints
   scene.add(building, trees, dome, lake, car);
-  const renderer = recordingRenderer(scene);
-  new ToonStyle(renderer).render(scene, camera);
+  const renderer = recordingRenderer(scene),
+    style = new ToonStyle(renderer);
+  style.render(scene, camera);
   const [toonWalls, toonGlass] = renderer.seen.get(building) as THREE.MeshToonMaterial[];
   expect(toonWalls).toBeInstanceOf(THREE.MeshToonMaterial);
   expect(toonGlass).toMatchObject({ transparent: true, opacity: 0.4 });
@@ -315,10 +316,14 @@ test('material arrays, instanced trees and custom materials', () => {
   expect(trees.children).toHaveLength(0);
   expect(renderer.seen.get(dome)).toBe(sky);
   expect(renderer.seen.get(lake)).toBe(water);
-  expect(renderer.seen.get(car)).toBeInstanceOf(THREE.MeshToonMaterial); // goes toon among the other cars, without its flakes
+  expect(renderer.seen.get(car)).toBeInstanceOf(THREE.MeshToonMaterial); // goes toon among the other cars
+  expect(hasFlakes(renderer.seen.get(car) as THREE.Material)).toBe(true); // and keeps its sparkle
   expect((renderer.seen.get(car) as THREE.MeshToonMaterial).color.equals(gold.color)).toBe(true); // in its own paint
   expect(building.material).toEqual([walls, glass]);
   expect(trees.material).toBe(walls);
+  setFlakes(gold, false); // resprayed in a plain paint: its toon copy stops sparkling too
+  style.render(scene, camera);
+  expect(hasFlakes(renderer.seen.get(car) as THREE.Material)).toBe(false);
 });
 
 test('a material swapped into a material array draws as its own toon copy', () => {
