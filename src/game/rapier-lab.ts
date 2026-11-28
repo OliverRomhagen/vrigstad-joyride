@@ -145,6 +145,7 @@ export async function startRapierLab(g: RapierLabDeps): Promise<RapierLabState> 
   const world = new PhysicsWorld(R, {
     data: g.data,
     heightfield: g.heightfield,
+    groundAt: g.groundAt,
     props: specs,
     blocks: rangeBlocks(g.groundAt),
   });

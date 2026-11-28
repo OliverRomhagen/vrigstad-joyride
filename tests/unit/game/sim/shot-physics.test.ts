@@ -51,9 +51,11 @@ const car = (x: number, z: number): CarBody => ({ x, z, h: 0, T: { lengthM: 4.8,
 const person = (x: number, z: number, scale = 1): PersonBody => ({ x, z, scale });
 
 // a world with a house whose south wall is at z = -25, between x = -5 and 5; the player stands at the origin
-function setUp(o: { people?: PersonBody[]; cars?: CarBody[]; props?: PropSpec[] } = {}) {
+function setUp(
+  o: { people?: PersonBody[]; cars?: CarBody[]; props?: PropSpec[]; groundAt?: (x: number, z: number) => number } = {},
+) {
   const data = makeWorld({ b: [{ p: square(-5, -35, 10), h: 5, k: BuildingKind.OTHER }] });
-  const physics = new PhysicsWorld(RAPIER, { data, heightfield: flat, props: o.props ?? [] });
+  const physics = new PhysicsWorld(RAPIER, { data, heightfield: flat, groundAt: o.groundAt, props: o.props ?? [] });
   const people = o.people ?? [],
     cars = o.cars ?? [];
   const player = { x: 0, z: 0 };
@@ -110,6 +112,17 @@ describe('shots through the physics world', () => {
     expect(hit.target).toBe(1);
     expect(hit.z).toBeGreaterThan(-20); // the capsule's south side, 0.3 m or so before their middle
     expect(hit.z).toBeLessThan(-19.5);
+    physics.dispose();
+  });
+
+  it('stands a person on the ground as drawn, so a line at their head on a pavement meets them', () => {
+    const PAVEMENT_M = 0.3; // the drawn ground, above the heightfield's
+    const { physics, world } = setUp({ people: [person(0, -20)], groundAt: () => PAVEMENT_M });
+    const out = newHit();
+    // level, at the drawn head's height above the pavement: above the capsule were it on the heightfield
+    expect(sight(0, PAVEMENT_M + 1.7, 0, 0, 0, -1, 0.5, 50, world, out)).toBe(true);
+    expect(out.kind).toBe('person');
+    expect(sight(0, PAVEMENT_M + 1.9, 0, 0, 0, -1, 0.5, 50, world, out) && out.kind).not.toBe('person'); // over their head
     physics.dispose();
   });
 

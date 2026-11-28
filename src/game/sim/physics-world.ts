@@ -134,6 +134,12 @@ export interface PropPose {
 export interface PhysicsWorldOptions {
   data: WorldData;
   heightfield: Ground;
+  /**
+   * The ground as drawn, curbs, pavements and road lifts included, which the people, the cars and the player stand on:
+   * up to half a metre above the heightfield on a pavement. Their bodies stand on it, or a shot at a drawn head passes
+   * over its capsule. The heightfield's own height without it.
+   */
+  groundAt?(x: number, z: number): number;
   props: readonly PropSpec[];
   /** more fixed boxes, such as the shooting range's bank: each its middle and half its size (m) */
   blocks?: readonly { x: number; y: number; z: number; hx: number; hy: number; hz: number }[];
@@ -170,7 +176,8 @@ export class PhysicsWorld {
   readonly loosened: number[] = [];
   private readonly R: Rapier;
   private readonly world: InstanceType<Rapier['World']>;
-  private readonly heightAt: (x: number, z: number) => number;
+  /** the ground as drawn, where the people, the cars and the player stand (PhysicsWorldOptions.groundAt) */
+  private readonly standAt: (x: number, z: number) => number;
   private readonly props: readonly PropSpec[];
   /** each prop's reach from its middle across the ground: half its footprint's diagonal (m) */
   private readonly propReach: Float64Array;
@@ -213,9 +220,9 @@ export class PhysicsWorld {
   private stepCount = 0;
   private lastStepMs = 0;
 
-  constructor(R: Rapier, { data, heightfield, props, blocks = [] }: PhysicsWorldOptions) {
+  constructor(R: Rapier, { data, heightfield, groundAt, props, blocks = [] }: PhysicsWorldOptions) {
     this.R = R;
-    this.heightAt = (x, z) => heightfield.heightAt(x, z);
+    this.standAt = groundAt ?? ((x, z) => heightfield.heightAt(x, z));
     this.props = props;
     this.propReach = Float64Array.from(props, p => Math.hypot(p.widthM, p.depthM) / 2);
     this.propBodies = props.map(() => null);
@@ -279,7 +286,7 @@ export class PhysicsWorld {
         half = Math.max(0.01, car.T.lengthM / 2 - r);
       if (!body) {
         body = this.world.createRigidBody(
-          R.RigidBodyDesc.kinematicPositionBased().setTranslation(car.x, this.heightAt(car.x, car.z) + r, car.z),
+          R.RigidBodyDesc.kinematicPositionBased().setTranslation(car.x, this.standAt(car.x, car.z) + r, car.z),
         );
         // a capsule lies along the body's z, and the body turns so that z points where the car does
         const collider = this.world.createCollider(
@@ -290,7 +297,7 @@ export class PhysicsWorld {
         this.carByCollider.set(collider.handle, car);
       }
       // the game's heading h points the car at (sin h, -cos h); a turn of π - h about y takes z there
-      const target = this.aim(body, car.x, this.heightAt(car.x, car.z) + r, car.z, Math.PI - car.h);
+      const target = this.aim(body, car.x, this.standAt(car.x, car.z) + r, car.z, Math.PI - car.h);
       target.radius = r;
       target.spine = half;
       if (target.moving) this.joinNear(car.x, car.z); // a parked car has joined what is near it already
@@ -303,7 +310,7 @@ export class PhysicsWorld {
         this.targets.delete(body);
       }
     if (player) {
-      const y = this.heightAt(player.x, player.z) + PERSON_RADIUS_M + PLAYER_HALF_HEIGHT_M;
+      const y = this.standAt(player.x, player.z) + PERSON_RADIUS_M + PLAYER_HALF_HEIGHT_M;
       this.aim(this.playerBody, player.x, y, player.z, Number.NaN);
     } else this.aim(this.playerBody, 0, -1000, 0, Number.NaN); // in a car: out of the way
     this.playerAway = !player;
@@ -326,7 +333,7 @@ export class PhysicsWorld {
     for (const p of people) {
       if (p.down || Math.hypot(p.x - near.x, p.z - near.z) > PERSON_JOIN_M) continue;
       seen.add(p);
-      const y = this.heightAt(p.x, p.z) + (PERSON_RADIUS_M + PLAYER_HALF_HEIGHT_M) * p.scale;
+      const y = this.standAt(p.x, p.z) + (PERSON_RADIUS_M + PLAYER_HALF_HEIGHT_M) * p.scale;
       let body = this.personBodies.get(p);
       if (!body) {
         body = this.world.createRigidBody(R.RigidBodyDesc.kinematicPositionBased().setTranslation(p.x, y, p.z));
