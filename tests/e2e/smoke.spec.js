@@ -340,6 +340,22 @@ test.describe('game (index.html)', () => {
     await page.keyboard.down('KeyX');
     await expect.poll(async () => (await state(page)).pickadoll.hits).toBeGreaterThan(hits);
     await page.keyboard.up('KeyX');
+    // the weapon wheel (#526): holding Q opens it, and letting go in its middle picks nothing
+    await page.keyboard.down('KeyQ');
+    await expect.poll(async () => (await state(page)).pickadoll.wheel).toBe(true);
+    await page.keyboard.up('KeyQ');
+    await expect.poll(async () => (await state(page)).pickadoll).toMatchObject({ wheel: false, weapon: 'algstudsare' });
+    // held on the weapon button, a drag points into it: 80° right of up is the third slot, the pickadoll with dans
+    const box = await page.locator('.lab-weapon').first().boundingBox();
+    const [bx, by] = [box.x + box.width / 2, box.y + box.height / 2];
+    await page.mouse.move(bx, by);
+    await page.mouse.down();
+    await expect.poll(async () => (await state(page)).pickadoll.wheel).toBe(true);
+    await page.mouse.move(bx + 98, by - 17, { steps: 4 });
+    await page.mouse.up();
+    await expect
+      .poll(async () => (await state(page)).pickadoll)
+      .toMatchObject({ wheel: false, weapon: 'pickadoll', ammo: 'dans' });
     expect(errors).toEqual([]);
   });
 
