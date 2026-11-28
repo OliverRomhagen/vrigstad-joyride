@@ -840,8 +840,13 @@ export class Pickadoll {
         if (hit.fliesOn) continue; // it flies on
         const tracerM = WEAPONS[s.weapon].tracerM;
         if (tracerM) fx.endStreak(x, y, z, hit.x, hit.y, hit.z, tracerM);
-        // seen on what it hit for a moment, not gone a little short of it; not one that went off, nor a fotangel, which lies there
-        else if (!hit.wentOff && !effectOf(AMMOS[s.ammo], EffectKind.SPIKES))
+        // seen on what it hit for a moment, not gone a little short of it: on the ground or a wall, which stay put. Not on
+        // a car, a person or a prop, which move on and would leave it in the air; nor one that went off, nor a fotangel
+        else if (
+          (hit.kind === HitKind.GROUND || hit.kind === HitKind.WALL) &&
+          !hit.wentOff &&
+          !effectOf(AMMOS[s.ammo], EffectKind.SPIKES)
+        )
           fx.impact(hit, WEAPONS[s.weapon].shotM, this.flightColourOf(s));
       }
       this.spareShots.push(s);
