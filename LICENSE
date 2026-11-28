@@ -27,6 +27,10 @@ Third-party components keep their own licenses:
 - Icons in the wiki: Lucide (ISC License, full text below; some icons are
   from Feather, MIT License, as its text says), drawn from the npm package
   @lucide/svelte.
+- The GitHub and Discord marks on the marketing page: Simple Icons 16.38.1
+  (CC0 1.0, no rights reserved), copied into
+  wiki/src/lib/landing/BrandIcon.svelte. The marks themselves are their
+  owners' trademarks, used only to link to them.
 
 ---
 

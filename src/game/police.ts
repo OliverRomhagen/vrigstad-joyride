@@ -10,9 +10,11 @@ export const MAX_STARS = 3; // one police car per star
 const SPAWN_MIN_M = 200,
   SPAWN_MAX_M = 480,
   SPAWN_TRIES = 60; // a police car starts on a road this far from you (m); after this many misses, on any road
-const EVADE_DIST_M = 170,
-  EVADE_S = 18,
-  EVADE_SHOW_S = 2; // stay further than this from every police car for this long (s) to lose them; the stars show it after EVADE_SHOW_S
+// stay further than this from every police car for this long (s) to lose them; the stars show it after EVADE_SHOW_S. The
+// marketing page's getaway (wiki/src/routes/about/) loses them by the same rule.
+export const EVADE_DIST_M = 170,
+  EVADE_S = 18;
+const EVADE_SHOW_S = 2;
 const BUST_DIST_M = 7.5,
   BUST_SPEED_MS = 2.5,
   BUST_S = 1.6; // a police car this close while you're this slow for this long (s) gets you Gripen!
