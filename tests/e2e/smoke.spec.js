@@ -239,7 +239,7 @@ test.describe('game (index.html)', () => {
     // One page load: the old lab flag is ignored, so ragdolls are on without it and the lab list stays empty.
     await page.goto('/index.html?lab=ragdoll');
     await page.locator('#go').click();
-    expect(await state(page)).toMatchObject({ lab: [], ragdolls: 0 }); // nobody knocked over yet
+    expect(await state(page)).toMatchObject({ lab: [], ragdolls: 0, pickadoll: null }); // nobody knocked over yet, and no lab without its flag
     expect(errors).toEqual([]);
   });
 
@@ -278,6 +278,52 @@ test.describe('game (index.html)', () => {
     const notice = await page.request.get('/media/vehicles/NOTICE.txt');
     expect(notice.ok()).toBe(true);
     expect(await notice.text()).toContain('Vehicle models by Axel Tidehorn');
+    expect(errors).toEqual([]);
+  });
+
+  test('?lab=pickadoll fires a shot that lands, switches weapon and hit, and aims through a scope', async ({
+    page,
+  }) => {
+    const errors = watchErrors(page);
+    await page.setViewportSize({ width: 640, height: 360 }); // checks only the hook; keep software WebGL affordable
+    await page.goto('/index.html?lab=pickadoll');
+    await page.locator('#go').click();
+    // the lab loads behind its flag, and a failure to load only warns: without this, the plain game would pass
+    await expect
+      .poll(async () => (await state(page)).pickadoll)
+      .toMatchObject({ weapon: 'hands', flavour: 'gegga', holstered: true });
+    await frames(page, 3); // the lab waits a frame after Start, and a pull before it is ready is dropped
+    // you start on Hands, where the trigger does nothing; H takes out the weapon held last, the pickadoll
+    await page.keyboard.press('KeyX');
+    await frames(page, 2);
+    expect((await state(page)).pickadoll).toMatchObject({ holstered: true, fired: 0 });
+    await page.keyboard.press('KeyH');
+    await expect.poll(async () => (await state(page)).pickadoll.weapon).toBe('pickadoll');
+    await page.keyboard.down('KeyX');
+    await expect.poll(async () => (await state(page)).pickadoll.fired).toBeGreaterThan(0);
+    await page.keyboard.up('KeyX');
+    await expect.poll(async () => (await state(page)).pickadoll.splats).toBeGreaterThan(0); // it landed and left its gegga
+    await page.keyboard.press('KeyQ');
+    await page.keyboard.press('KeyG');
+    await page.keyboard.press('KeyC');
+    await expect
+      .poll(async () => (await state(page)).pickadoll)
+      .toMatchObject({
+        weapon: 'pepprapuffra',
+        flavour: 'pang',
+        aiming: true,
+      });
+    await expect(page.locator('#p-aim')).toHaveAttribute('aria-pressed', 'true');
+    // on to the sniper: aiming it looks through its scope, and its fast shot still lands
+    for (let i = 0; i < 12 && (await state(page)).pickadoll.weapon !== 'algstudsare'; i++) {
+      await page.keyboard.press('KeyQ');
+      await frames(page, 1);
+    }
+    await expect.poll(async () => (await state(page)).pickadoll).toMatchObject({ weapon: 'algstudsare', scoped: true });
+    const { hits } = (await state(page)).pickadoll;
+    await page.keyboard.down('KeyX');
+    await expect.poll(async () => (await state(page)).pickadoll.hits).toBeGreaterThan(hits);
+    await page.keyboard.up('KeyX');
     expect(errors).toEqual([]);
   });
 

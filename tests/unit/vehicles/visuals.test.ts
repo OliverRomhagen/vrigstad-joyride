@@ -210,6 +210,20 @@ test('reparenting preserves inherited uniform wheel scale', async () => {
   expect(bounds.max.distanceTo(expected.max)).toBeLessThan(1e-8);
 });
 
+test('a flat tyre is drawn squashed, still on the ground', async () => {
+  const assets = new VehicleVisuals(false),
+    c = { ...car(), flat: 1 }; // front right
+  assets.attach(c, 'volvo240', c.fallback);
+  assets.update(focus, 0.4);
+  await settle(assets, [c]);
+  assets.sync(c);
+  c.mesh.updateMatrixWorld(true);
+  const whole = new THREE.Box3().setFromObject(c.mesh.getObjectByName('wheel_fl')!),
+    flat = new THREE.Box3().setFromObject(c.mesh.getObjectByName('wheel_fr')!);
+  expect(flat.min.y).toBeCloseTo(whole.min.y, 2);
+  expect(flat.max.y - flat.min.y).toBeLessThan((whole.max.y - whole.min.y) * 0.8);
+});
+
 test('disposing an instance during loading cannot resurrect its visual', async () => {
   let finish!: (model: GLTF) => void;
   vi.mocked(GLTFLoader.prototype.loadAsync).mockImplementation(

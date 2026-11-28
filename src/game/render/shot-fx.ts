@@ -1,0 +1,433 @@
+// Draws the shots (#17, lab: pickadoll): the shots in the air, the splats they leave on the ground, on walls, on cars
+// and on people, and the mark where the next shot would land. The rules are in ../sim/shots.ts.
+import * as THREE from 'three';
+import { SHOTS_MAX, type Shot, type ShotHit } from '../sim/shots';
+import { SPIKES_MAX } from '../sim/spikes';
+
+const SPLATS_MAX = 600,
+  SPLATS_MAX_COARSE = 220; // splats on the ground and the walls; the oldest is painted over first. On a touch screen
+const STUCK_MAX = 80,
+  STUCK_MAX_COARSE = 36; // splats on cars and people, each its own mesh
+const SPLAT_ORDER = 1, // splats are drawn after the walls and cars they sit on
+  STUCK_ORDERS = 4096;
+const LIFT_M = 0.03; // a splat sits this far off its surface, so the two don't flicker
+const SHOT_R_M = 0.07;
+const TRACER_THICK_M = 0.06, // a fast shot's streak: thicker than the shot, or it is thinner than a pixel a street away
+  TRACER_COLOUR = '#fff1c2',
+  STREAK_S = 0.07, // the last stretch of a fast shot's streak stays this long where it ended
+  STREAKS_MAX = 24; // of those at once; the oldest goes first
+const ARC_MAX = 64, // dots in a throw's arc
+  ARC_DOT_M = 0.045;
+const ARM_M = 0.6, // the player's arm, shoulder to hand (models.ts)
+  ARM_HALF_THICK_M = 0.08,
+  GUN_GRIP_M = 0.08; // the hand holds the gun this far in from its end
+const SPIKE_M = 0.16;
+const SLOPE_STEP_M = 0.5; // the ground's slope under a splat is read over this distance
+const TEX_PX = 128;
+// where a splat lands on a person: on the front, the back or a side of the body's box (m, as personParts builds it)
+const BODY_HALF_DEPTH_M = 0.15,
+  BODY_HALF_WIDTH_M = 0.26,
+  BODY_LOW_M = 0.9,
+  BODY_HIGH_M = 1.4,
+  BODY_SPLAT_MAX_M = 0.2;
+
+/** The gegga's colours. */
+export const GEGGA = ['#ff3b6b', '#ffd400', '#22d3a0', '#2e9bff', '#b45cff', '#ff7a1a'] as const;
+
+export interface ShotFxDeps {
+  scene: THREE.Scene;
+  camera: THREE.PerspectiveCamera; // the line of sight starts here, and aiming moves it
+  coarse: boolean;
+  groundAt(x: number, z: number): number;
+  rnd(): number; // its own stream: the shape of the splat
+}
+
+const _m = new THREE.Matrix4(),
+  _q = new THREE.Quaternion(),
+  _spin = new THREE.Quaternion(),
+  _p = new THREE.Vector3(),
+  _n = new THREE.Vector3(),
+  _s = new THREE.Vector3(),
+  _c = new THREE.Color(),
+  Z = new THREE.Vector3(0, 0, 1),
+  UP = new THREE.Vector3(0, 1, 0);
+
+/** Shots, splats and the aim mark. */
+export class ShotFx {
+  private readonly g: ShotFxDeps;
+  private readonly shots: THREE.InstancedMesh;
+  private readonly tracers: THREE.InstancedMesh;
+  private readonly ended: { at: THREE.Matrix4; leftS: number }[] = []; // streaks of shots that have landed
+  private nextEnded = 0;
+  private readonly splats: THREE.InstancedMesh;
+  private readonly spikes: THREE.InstancedMesh;
+  private readonly arc: THREE.InstancedMesh;
+  private readonly arcEnd: THREE.Mesh;
+  private readonly gun: THREE.Mesh;
+  private readonly quad = new THREE.PlaneGeometry(1, 1);
+  private readonly texture: THREE.CanvasTexture;
+  private readonly stuckMats = new Map<string, THREE.Material>();
+  private readonly colours = new Map<string, THREE.Color>();
+  private readonly stuck: THREE.Mesh[] = [];
+  private readonly stuckMax: number;
+  private readonly fov: number; // the camera's usual field of view
+  private next = 0; // the splat painted over next
+  /** splats left so far, the painted-over ones included */
+  splatted = 0;
+
+  constructor(g: ShotFxDeps) {
+    this.g = g;
+    this.fov = g.camera.fov;
+    this.texture = splatTexture(g.rnd);
+    const max = g.coarse ? SPLATS_MAX_COARSE : SPLATS_MAX;
+    this.stuckMax = g.coarse ? STUCK_MAX_COARSE : STUCK_MAX;
+    this.shots = new THREE.InstancedMesh(
+      new THREE.SphereGeometry(SHOT_R_M, 8, 6),
+      new THREE.MeshBasicMaterial(),
+      SHOTS_MAX,
+    );
+    // a fast shot is a pale streak along its flight: a box, stretched
+    this.tracers = new THREE.InstancedMesh(
+      new THREE.BoxGeometry(1, 1, 1),
+      new THREE.MeshBasicMaterial({ color: new THREE.Color(TRACER_COLOUR).convertSRGBToLinear() }),
+      SHOTS_MAX,
+    );
+    this.tracers.count = 0;
+    this.tracers.frustumCulled = false;
+    this.tracers.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    g.scene.add(this.tracers);
+    this.splats = new THREE.InstancedMesh(this.quad, this.splatMaterial(), max);
+    // a fotangel: a small steel jack, four points whichever way it lies
+    this.spikes = new THREE.InstancedMesh(
+      new THREE.TetrahedronGeometry(SPIKE_M),
+      new THREE.MeshLambertMaterial({ color: new THREE.Color('#3a4046').convertSRGBToLinear() }),
+      SPIKES_MAX,
+    );
+    this.spikes.count = 0;
+    this.spikes.frustumCulled = false;
+    this.spikes.castShadow = true;
+    g.scene.add(this.spikes);
+    // a throw's arc: pale dots, and a ring on the ground where it ends
+    const pale = new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.75, depthWrite: false });
+    this.arc = new THREE.InstancedMesh(new THREE.SphereGeometry(ARC_DOT_M, 6, 4), pale, ARC_MAX);
+    this.arc.count = 0;
+    this.arc.frustumCulled = false;
+    this.arcEnd = new THREE.Mesh(new THREE.RingGeometry(0.92, 1, 40).rotateX(-Math.PI / 2), pale);
+    this.arcEnd.visible = false;
+    // a placeholder gun: one dark box, sized for the weapon held (no models yet)
+    this.gun = new THREE.Mesh(
+      new THREE.BoxGeometry(1, 1, 1),
+      new THREE.MeshLambertMaterial({ color: new THREE.Color('#2a2f33').convertSRGBToLinear() }),
+    );
+    this.gun.castShadow = true;
+    g.scene.add(this.arc, this.arcEnd);
+    for (const mesh of [this.shots, this.splats]) {
+      mesh.setColorAt(0, _c.set('#ffffff')); // makes the colour buffer before the first frame compiles the material
+      mesh.count = 0;
+      mesh.frustumCulled = false; // the instances are all over the village
+      mesh.renderOrder = SPLAT_ORDER;
+      mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      g.scene.add(mesh);
+    }
+  }
+
+  // The game keeps colour management off (src/world/three-legacy.ts), so every colour here is converted by hand.
+  // cut out, not blended: crisp edges, and no sorting against the glass and the water. Unlit: in full sun a lit splat
+  // on the ground washed out to pastel, so the colour is drawn as it is (and glows a little at night)
+  private splatMaterial(colour?: string) {
+    return new THREE.MeshBasicMaterial({
+      map: this.texture,
+      color: new THREE.Color(colour ?? '#ffffff').convertSRGBToLinear(),
+      alphaTest: 0.5,
+      depthWrite: false, // splats that overlap are settled by the order they landed in, not by depth, where they would flicker
+      side: THREE.DoubleSide,
+      polygonOffset: true,
+      polygonOffsetFactor: -2,
+      polygonOffsetUnits: -2,
+    });
+  }
+
+  // a colour as the renderer wants it, worked out once: the shots in the air ask every frame
+  private linear(colour: string) {
+    let c = this.colours.get(colour);
+    if (!c) {
+      c = new THREE.Color(colour).convertSRGBToLinear();
+      this.colours.set(colour, c);
+    }
+    return c;
+  }
+
+  /**
+   * Draws the shots in the air; `colour` gives each its colour. One with a `tracerM` is drawn as a streak that long
+   * behind it, along its flight, and no longer than it has flown.
+   */
+  drawShots<S extends Shot>(
+    shots: readonly S[],
+    colour: (s: S) => string,
+    radiusM: (s: S) => number,
+    tracerM: (s: S) => number,
+    dt: number,
+  ) {
+    const n = Math.min(shots.length, SHOTS_MAX);
+    if (!n && !this.shots.count && !this.tracers.count) return; // nothing in the air, and nothing was: no buffers to send
+    let balls = 0,
+      streaks = 0;
+    for (let i = 0; i < n; i++) {
+      const s = shots[i],
+        speed = Math.hypot(s.vx, s.vy, s.vz),
+        long = speed > 0 ? Math.min(tracerM(s), speed * s.ageS) : 0;
+      if (tracerM(s) > 0) {
+        if (long <= 0) continue; // it has only just left
+        _n.set(s.vx, s.vy, s.vz).divideScalar(speed);
+        _q.setFromUnitVectors(Z, _n);
+        _p.set(s.x, s.y, s.z).addScaledVector(_n, -long / 2);
+        this.tracers.setMatrixAt(streaks++, _m.compose(_p, _q, _s.set(TRACER_THICK_M, TRACER_THICK_M, long)));
+        continue;
+      }
+      const r = radiusM(s) / SHOT_R_M;
+      this.shots.setMatrixAt(balls, _m.makeScale(r, r, r).setPosition(s.x, s.y + (s.lying ? radiusM(s) : 0), s.z));
+      this.shots.setColorAt(balls++, this.linear(colour(s)));
+    }
+    this.shots.count = balls;
+    this.shots.instanceMatrix.needsUpdate = true;
+    if (this.shots.instanceColor) this.shots.instanceColor.needsUpdate = true;
+    for (const e of this.ended) {
+      if (e.leftS <= 0) continue;
+      if (streaks < SHOTS_MAX) this.tracers.setMatrixAt(streaks++, e.at);
+      e.leftS -= dt;
+    }
+    if (streaks || this.tracers.count) this.tracers.instanceMatrix.needsUpdate = true;
+    this.tracers.count = streaks;
+  }
+
+  /**
+   * A fast shot ended at (x, y, z), having come from (fromX, fromY, fromZ) this frame: the last `longM` metres of that
+   * stretch stay as a streak for a moment. Without it a shot that lands within its first frame would never be seen.
+   */
+  endStreak(fromX: number, fromY: number, fromZ: number, x: number, y: number, z: number, longM: number) {
+    _n.set(x - fromX, y - fromY, z - fromZ);
+    const long = Math.min(longM, _n.length());
+    if (long < 0.05) return;
+    _n.normalize();
+    if (this.ended.length < STREAKS_MAX) this.ended.push({ at: new THREE.Matrix4(), leftS: 0 });
+    const e = this.ended[this.nextEnded];
+    this.nextEnded = (this.nextEnded + 1) % STREAKS_MAX;
+    _q.setFromUnitVectors(Z, _n);
+    _p.set(x, y, z).addScaledVector(_n, -long / 2);
+    e.at.compose(_p, _q, _s.set(TRACER_THICK_M, TRACER_THICK_M, long));
+    e.leftS = STREAK_S;
+    this.tracers.count = Math.max(this.tracers.count, 1); // so the next drawShots doesn't take the air for empty
+  }
+
+  /**
+   * Draws a throw's arc: `n` points, x, y, z after each other in `points`, as a dotted line, and a ring of `ringM`
+   * metres on the ground where it ends. n = 0 hides it.
+   */
+  drawArc(points: readonly number[], n: number, ringM: number) {
+    if (!n && !this.arc.count) return;
+    const dots = Math.min(n, ARC_MAX);
+    for (let i = 0; i < dots; i++)
+      this.arc.setMatrixAt(i, _m.makeTranslation(points[i * 3], points[i * 3 + 1], points[i * 3 + 2]));
+    this.arc.count = dots;
+    this.arc.instanceMatrix.needsUpdate = true;
+    this.arcEnd.visible = n > 0;
+    if (n > 0) {
+      this.arcEnd.position.set(points[(n - 1) * 3], points[(n - 1) * 3 + 1] + LIFT_M * 2, points[(n - 1) * 3 + 2]);
+      this.arcEnd.scale.setScalar(ringM);
+    }
+  }
+
+  /** Puts a placeholder gun in a hand: `arm` hangs from its shoulder, so the gun points the way the arm does. */
+  giveGun(arm: THREE.Object3D) {
+    arm.add(this.gun);
+  }
+
+  /** Puts the gun away, out of sight, or draws it again. */
+  holsterGun(away: boolean) {
+    this.gun.visible = !away;
+  }
+
+  /** The gun's length and thickness (m), for the weapon held. */
+  sizeGun(lengthM: number, thickM: number) {
+    this.gun.scale.set(thickM, lengthM, thickM);
+    // on top of the hand when the arm is raised (the arm's -z is up then), so it shows over the arm from behind
+    this.gun.position.set(0, -ARM_M - lengthM / 2 + GUN_GRIP_M * 2, -(ARM_HALF_THICK_M + thickM / 2));
+  }
+
+  /** Draws the fotanglar that lie on the ground. Call it when the list changes. */
+  drawSpikes(spikes: readonly { x: number; y: number; z: number; turn: number }[]) {
+    const n = Math.min(spikes.length, SPIKES_MAX);
+    for (let i = 0; i < n; i++) {
+      const s = spikes[i];
+      _q.setFromAxisAngle(UP, s.turn * Math.PI * 2);
+      this.spikes.setMatrixAt(i, _m.compose(_p.set(s.x, s.y + SPIKE_M * 0.6, s.z), _q, _s.set(1, 1, 1)));
+    }
+    this.spikes.count = n;
+    this.spikes.instanceMatrix.needsUpdate = true;
+  }
+
+  /** Leaves a splat of radius `r` (m) where a shot hit the ground or a wall; `turn` (0..1) turns it, so no two look the same. */
+  splat(hit: Pick<ShotHit, 'kind' | 'x' | 'y' | 'z' | 'nx' | 'ny' | 'nz'>, r: number, colour: string, turn: number) {
+    _n.set(hit.nx, hit.ny, hit.nz);
+    if (hit.kind === 'ground') {
+      const { groundAt } = this.g,
+        d = SLOPE_STEP_M;
+      _n.set(
+        groundAt(hit.x - d, hit.z) - groundAt(hit.x + d, hit.z),
+        2 * d,
+        groundAt(hit.x, hit.z - d) - groundAt(hit.x, hit.z + d),
+      ).normalize();
+    }
+    this.place(hit, r, turn);
+    const i = this.next;
+    this.next = (this.next + 1) % this.splats.instanceMatrix.count;
+    this.splats.setMatrixAt(i, _m);
+    this.splats.setColorAt(i, this.linear(colour));
+    this.splats.count = Math.min(this.splats.count + 1, this.splats.instanceMatrix.count);
+    this.splats.instanceMatrix.needsUpdate = true;
+    if (this.splats.instanceColor) this.splats.instanceColor.needsUpdate = true;
+    this.splatted++;
+  }
+
+  // _m: a quad of radius r at the hit, facing along _n and turned about it
+  private place(at: { x: number; y: number; z: number }, r: number, turn: number) {
+    _q.setFromUnitVectors(Z, _n).multiply(_spin.setFromAxisAngle(Z, turn * Math.PI * 2));
+    _p.set(at.x, at.y, at.z).addScaledVector(_n, LIFT_M);
+    _m.compose(_p, _q, _s.set(r * 2, r * 2, 1));
+  }
+
+  /** Leaves a splat on something that moves, a car's mesh: it goes where the car goes. */
+  splatOn(
+    target: THREE.Object3D,
+    hit: Pick<ShotHit, 'x' | 'y' | 'z' | 'nx' | 'ny' | 'nz'>,
+    r: number,
+    colour: string,
+    turn: number,
+  ) {
+    _n.set(hit.nx, hit.ny, hit.nz);
+    this.place(hit, r, turn);
+    const mesh = this.stick(colour);
+    _m.decompose(mesh.position, mesh.quaternion, mesh.scale);
+    mesh.updateMatrixWorld();
+    target.updateWorldMatrix(true, false);
+    target.attach(mesh); // keeps it where it is in the world, as the target's child
+  }
+
+  /** Leaves a splat on a person's body, on the side the shot came from: (dx, dz) is the way the shot flew, `y` its height. */
+  splatOnPerson(person: THREE.Object3D, dx: number, dz: number, y: number, r: number, colour: string, turn: number) {
+    person.updateWorldMatrix(true, false);
+    // the way back to the shooter, in the person's own axes
+    _n.set(-dx, 0, -dz).transformDirection(_m.copy(person.matrixWorld).invert());
+    const up = THREE.MathUtils.clamp(
+      _p.set(person.position.x, y, person.position.z).applyMatrix4(_m).y,
+      BODY_LOW_M,
+      BODY_HIGH_M,
+    );
+    const mesh = this.stick(colour);
+    if (Math.abs(_n.z) >= Math.abs(_n.x)) {
+      mesh.position.set(0, up, Math.sign(_n.z) * BODY_HALF_DEPTH_M);
+      _n.set(0, 0, Math.sign(_n.z) || 1);
+    } else {
+      mesh.position.set(Math.sign(_n.x) * BODY_HALF_WIDTH_M, up, 0);
+      _n.set(Math.sign(_n.x), 0, 0);
+    }
+    mesh.quaternion.setFromUnitVectors(Z, _n).multiply(_spin.setFromAxisAngle(Z, turn * Math.PI * 2));
+    mesh.scale.setScalar(Math.min(r, BODY_SPLAT_MAX_M) * 2);
+    person.add(mesh);
+  }
+
+  private shown(o: THREE.Object3D) {
+    for (let p = o.parent; p; p = p.parent) if (p === this.g.scene) return true;
+    return false;
+  }
+
+  // a splat mesh of its own, taking the oldest one's place when there are too many
+  private stick(colour: string) {
+    let material = this.stuckMats.get(colour);
+    if (!material) {
+      material = this.splatMaterial(colour);
+      this.stuckMats.set(colour, material);
+    }
+    // those on a person or a car that has left the scene go first, so they hold neither a slot nor the dead mesh
+    let kept = 0;
+    for (const old of this.stuck) {
+      if (this.shown(old)) this.stuck[kept++] = old;
+      else old.removeFromParent();
+    }
+    this.stuck.length = kept;
+    if (this.stuck.length >= this.stuckMax) this.stuck.shift()!.removeFromParent();
+    const mesh = new THREE.Mesh(this.quad, material);
+    mesh.renderOrder = SPLAT_ORDER + (this.splatted % STUCK_ORDERS) / STUCK_ORDERS; // a later one over an earlier one
+    this.stuck.push(mesh);
+    this.splatted++;
+    return mesh;
+  }
+
+  /**
+   * Moves the camera `k` of the way (0..1) from where the game put it to (x, y, z), looking at (lx, ly, lz), with the
+   * field of view `zoom` times the usual at k = 1. Call it every frame, after the game's camera is placed; k = 0 only
+   * puts the field of view back.
+   */
+  aimCamera(k: number, x: number, y: number, z: number, lx: number, ly: number, lz: number, zoom: number) {
+    const { camera } = this.g,
+      fov = this.fov * (1 + (zoom - 1) * k);
+    if (camera.fov !== fov) {
+      camera.fov = fov;
+      camera.updateProjectionMatrix();
+    }
+    if (k <= 0) return;
+    _spin.setFromRotationMatrix(_m.lookAt(_p.set(x, y, z), _n.set(lx, ly, lz), UP));
+    camera.position.lerp(_p, k);
+    camera.quaternion.slerp(_spin, k);
+  }
+
+  /** The field of view through a scope that magnifies `times`, as a share of the usual: `zoom` for aimCamera. */
+  magnified(times: number) {
+    const half = THREE.MathUtils.degToRad(this.fov / 2);
+    return Math.atan(Math.tan(half) / times) / half;
+  }
+
+  /**
+   * The line of sight through a point on screen: `ndcY` is how far above the middle it is, as a share of half the
+   * screen's height. Writes where it starts (the camera) and its direction, a unit vector, to `out`.
+   */
+  sightLine(ndcY: number, out: { x: number; y: number; z: number; dx: number; dy: number; dz: number }) {
+    const { camera } = this.g;
+    _p.set(0, ndcY, 0.5).unproject(camera).sub(camera.position).normalize();
+    out.x = camera.position.x;
+    out.y = camera.position.y;
+    out.z = camera.position.z;
+    out.dx = _p.x;
+    out.dy = _p.y;
+    out.dz = _p.z;
+    return out;
+  }
+}
+
+// one splat shape, white on clear: a blob with lobes around it and a few drops flung further out
+function splatTexture(rnd: () => number) {
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = TEX_PX;
+  const ctx = canvas.getContext('2d')!,
+    mid = TEX_PX / 2;
+  ctx.fillStyle = '#fff';
+  const dot = (x: number, y: number, r: number) => {
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fill();
+  };
+  dot(mid, mid, TEX_PX * 0.24);
+  for (let i = 0; i < 11; i++) {
+    const a = (i / 11) * Math.PI * 2 + rnd() * 0.4,
+      reach = TEX_PX * (0.2 + rnd() * 0.13);
+    dot(mid + Math.cos(a) * reach, mid + Math.sin(a) * reach, TEX_PX * (0.05 + rnd() * 0.07));
+  }
+  for (let i = 0; i < 9; i++) {
+    const a = rnd() * Math.PI * 2,
+      reach = TEX_PX * (0.36 + rnd() * 0.1);
+    dot(mid + Math.cos(a) * reach, mid + Math.sin(a) * reach, TEX_PX * (0.012 + rnd() * 0.025));
+  }
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+}

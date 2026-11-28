@@ -36,7 +36,7 @@ import { treeSpots } from '../world/trees';
 import { layoutShore } from '../world/shore';
 import { Water } from '../world/water';
 import { WaterBodies } from '../world/water-shapes';
-import { type Car, type CarMode, Fleet, newCar, TURBO_AT } from './cars';
+import { type Car, type CarMode, Fleet, newCar, registerFlatTyreCommand, TURBO_AT } from './cars';
 import { CatColony } from './cats';
 import { Hud } from './hud';
 import { Input } from './input';
@@ -66,6 +66,7 @@ import { CAT_SCRATCH_HP, canHurt, LOW_HP, hurt, newHealth, registerCarDamageComm
 import { HOME } from './player';
 import { Wanted } from './police';
 import { Ragdolls } from './ragdolls';
+import type { Pickadoll } from './pickadoll';
 import { RagdollMeshes } from './render/ragdoll-meshes';
 import { PlaceMeshes } from './render/places';
 import { GroundTexture } from './render/ground-texture';
@@ -246,7 +247,7 @@ if (lab.on('cockpit')) import('./render/cockpit').then(m => { cockpit = new m.Co
 // sunlight streaks and the sun disc (#212, src/game/render/sun-streaks.ts): the day cycle's direct light times the clouds' shade; ?sunrays=off leaves them out
 const sunStreaks = dayQs.get('sunrays') === 'off' ? null : new SunStreaks({ sunDir: SUN_DIR });
 if (sunStreaks) scene.add(sunStreaks.object);
-function placeCamera(T: { x: number; z: number }, now: number, dt: number) { cameraRig.update(T, now, dt); cockpit?.update();
+function placeCamera(T: { x: number; z: number }, now: number, dt: number) { cameraRig.update(T, now, dt); cockpit?.update(); pickadoll?.aimCamera();   // the lab's over-the-shoulder aim, last: it wins while you aim (declared at the end)
   windowFrames?.update(camera.position.x, camera.position.z);   // the toon style's 3D window frames near the camera (#413)
   sunStreaks?.update(camera, sky.sun * skyDome.sunFactor, skyDome.sunShade, sun.color);
   if (filmGrain.enabled) { filmGrain.setMoving(cameraMoved(grainPos, grainQuat, camera.position, camera.quaternion)); grainPos.copy(camera.position); grainQuat.copy(camera.quaternion); } }
@@ -359,6 +360,7 @@ pets.registerCommands(commands);
 wanted.registerCommands(commands);
 registerHealthCommands(commands, health, drawHealth);
 registerCarDamageCommand(commands, () => (game.inCar ? game.pcar : null));
+if (lab.on('pickadoll')) registerFlatTyreCommand(commands, () => (game.inCar ? game.pcar : null));   // flat <wheel|off>: the lab's fotanglar are what burst a tyre, so without the flag nothing can
 registerTunableCommands(commands, tunables);
 // lab on <id> writes ?lab= and loads the page again, with ?at= so you start where you stand (or where the car you drive does)
 registerLabCommands(commands, { lab, search: () => location.search, reload: search => { location.search = search; },
@@ -384,6 +386,7 @@ const input = new Input({ win: window, doc: document, canvas, $, coarse, menuKey
   jump: () => { if (jumpOk()) game.jumpQ = true; },   // queue only where a jump can start (see jumpOk)
   look: (dx, dy) => { if (game.paused) return; // a drag that began before the pause would turn the camera all at once on Resume
     const { lookSpeed, invertY } = pause.settings; dx *= lookSpeed; dy *= invertY ? -lookSpeed : lookSpeed;
+    if (pickadoll?.aimLook(dx, dy)) return;
     if (game.inCar) { view.lookOff = wrap(view.lookOff + dx * 0.006); view.lookIdle = 0; } else view.camYaw = wrap(view.camYaw + dx * 0.006);
     view.camPitch = clamp(view.camPitch + dy * 0.004, 0.06, 1.25); },
   zoom: f => cameraRig.zoom(f),
@@ -422,7 +425,7 @@ const prompt = new ActionPrompt({ $, game, places, wanted, get menuOpen() { retu
 // ---------- main loop (src/game/loop.ts) ----------
 const loop = new GameLoop({ $, renderer, scene, camera, canvas, coarse, half: HALF, game, view, player, health, input, places, wanted, cars, startCam: START_CAM, barMat, barColours: [BAR_BLUE, BAR_RED], cameraRig: { update: placeCamera },
   get toasting() { return hud.toasting; }, inWater, collide, groundAt, drive, updateTraffic, knockedOut, hurtPlayer, shake, toast, hideTitleCard: () => hud.hideTitleCard(),
-  updateTrisslott: dt => trisslott.update(dt), updatePlaces: dt => { placeMeshes.update(dt); skrotenMeshes.update(dt, player); }, updateDriftFx, updateVehicles: (T, dt) => { vehicleVisuals.update(T, dt); priceTags.update(); }, updateSmoke, updateBanknotes: dt => banknotes.update(dt), updateConfetti: dt => confetti.update(dt), updateNpcs: (T, dt) => { updateNpcs(T, dt); ragdolls.update(dt); ragdollMeshes.update(); }, updateCats,
+  updateTrisslott: dt => trisslott.update(dt), updatePlaces: dt => { placeMeshes.update(dt); skrotenMeshes.update(dt, player); }, updateDriftFx, updateVehicles: (T, dt) => { vehicleVisuals.update(T, dt); priceTags.update(); }, updateSmoke, updateBanknotes: dt => banknotes.update(dt), updateConfetti: dt => confetti.update(dt), updateNpcs: (T, dt) => { updateNpcs(T, dt); ragdolls.update(dt); ragdollMeshes.update(); pickadoll?.update(dt); }, updateCats,
   updateDrivers: (T, dt) => drivers.update(T, dt), updateBodies: (T, dt) => bodyMotion.update(T, dt), updateDaylight, drawHearts, updateHud: dt => hud.update(dt), drawMini,
   updateSign, catRideLines: () => crashes.catRideLines(), closeMenuIfLeft: () => menuPlate.closeIfLeft(), updatePrompt: () => prompt.update(), drawHealth,
   timeFrame: workStart => { if (!debugOverlay) return; const t = performance.now(); debugOverlay.frame(t, t - workStart, renderer.info); } });
@@ -434,10 +437,16 @@ installCaptureHook({ THREE, renderer, camera, game, view, player, cars, keys: in
   followCamera: () => windowFrames?.update(camera.position.x, camera.position.z) }, location.search);
 // ?lab=toon draws the world cel-shaded (#206). The frames before its code arrives draw the default look, behind the intro
 if (lab.on('toon')) import('./render/toon-style').then(m => loop.drawThrough(new m.ToonStyle(renderer))).catch(err => console.warn('Lab: toon failed', err));
+// ?lab=pickadoll: weapons to try, and three answers to what a hit does (#17: src/game/pickadoll.ts). Stepped after the crowd, above
+let pickadoll: Pickadoll | null = null;
+if (lab.on('pickadoll')) Promise.all([import('./pickadoll'), import('./render/shot-fx')]).then(([m, fx]) => {
+  pickadoll = new m.Pickadoll({ input, commands, canvas, $, coarse, game, view, calmMotion, hurtPlayer, get god() { return health.god; }, player, world: { groundAt, collide }, crowd, cars, ragdolls, placeCar, rnd: makeRnd(1717), toast,
+    fx: new fx.ShotFx({ scene, camera, coarse, groundAt, rnd: makeRnd(1718) }), get menuOpen() { return !kmenu.hidden || pause.isOpen; }, get inside() { return !!places.inside; } });
+}).catch(err => console.warn('Lab: pickadoll failed', err));
 loop.start();
 
 // ---------- test hook: read-only state for the smoke tests (src/game/test-hook.ts) ----------
-installTestHook({ game, view, player, health, cars, labs: lab.list(), get styled() { return loop.styled; }, get cockpit() { return !!cockpit?.inside; }, get ragdolls() { return ragdolls.count; }, get stars() { return wanted.stars; }, get cats() { return cats.length; }, get ownCat() { return !!colony.owned; }, get displayCar() { return displayCar; }, lift: yard.workshop?.bay ?? null,
+installTestHook({ game, view, player, health, cars, labs: lab.list(), get styled() { return loop.styled; }, get cockpit() { return !!cockpit?.inside; }, get ragdolls() { return ragdolls.count; }, get pickadoll() { return pickadoll?.state ?? null; }, get stars() { return wanted.stars; }, get cats() { return cats.length; }, get ownCat() { return !!colony.owned; }, get displayCar() { return displayCar; }, lift: yard.workshop?.bay ?? null,
   vehicleVisuals: { state: c => vehicleVisuals.state(meshed(c)) }, crackShown: c => carDamage.crackShown(meshed(c)), bodyMotion: { state: c => bodyMotion.state(meshed(c)) }, skyDome, street, debugStreetscape: DEBUG_STREETSCAPE, bridges: { index: bridges, draw: bridgeMeshes, groundAt }, furniture, water: { bodies: waterBodies, surface: waterLook.surface, props: waterLook.props, shore, terrainTriangles: terrainMesh.triangles, refinedCells: heightfield.refinedCells, buildMs: waterCutMs + waterMeshMs, inWater, hAt }, debugFurniture: DEBUG_FURNITURE, nearestCar,
   get kr() { return wallet.kr; }, get banknotes() { return banknotes.live; }, get confetti() { return confetti.live; }, get devcon() { return devcon.isOpen; }, build: __BUILD__, get fps() { return !!debugOverlay?.shown; }, day: { get hour() { return dayClock.hour; }, get night() { return dayClock.night; }, get sunLight() { return sky.sun; } }, sunStreaks });
 })();

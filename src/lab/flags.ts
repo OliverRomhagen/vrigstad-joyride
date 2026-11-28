@@ -17,6 +17,11 @@ export interface LabExperiment {
 export const LAB_EXPERIMENTS = [
   { id: 'hello', name: 'Hello lab', cost: 'Nothing: logs one line, as the smallest example of a gate' },
   {
+    id: 'pickadoll',
+    name: 'Pickadoll: weapons and what a hit does',
+    cost: 'No download; about 0.1 ms a frame for the line of sight, 0.3 ms more for a held minigun, and a few hundred more quads once you have painted a street',
+  },
+  {
     id: 'cockpit',
     name: "Driver's view",
     cost: "A small download; in the driver's seat (V in a car), a simple interior of a few dozen meshes",

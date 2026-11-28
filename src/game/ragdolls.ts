@@ -78,6 +78,21 @@ export class Ragdolls {
     return true;
   };
 
+  /**
+   * Knocks n over with a push that is no car: a shot (lab: pickadoll). The push goes (dx, dz), a unit vector along the
+   * ground, at `speedMs`. No star: the caller decides what a hit costs. A stand-in until #342 gives a ragdoll a push of its own:
+   * it throws them as a bumper would, from one step behind them.
+   */
+  readonly push = (n: Npc, dx: number, dz: number, speedMs: number): boolean => {
+    if (n.down || this.bodies.length >= this.max) return false;
+    const from = { x: n.x - dx, z: n.z - dz, v: speedMs, vh: Math.atan2(dx, -dz) };
+    const r = knockOver(n, from, this.g.world, this.rnd, n.scale);
+    if (!r) return false;
+    n.down = true;
+    this.bodies.push({ npc: n, r, was: r.pos.slice(), shown: r.pos.slice() });
+    return true;
+  };
+
   /** Steps the physics on a fixed timestep and hands back the ones that are up again. */
   update(dt: number): void {
     const { world, crowd, pcar } = this.g;

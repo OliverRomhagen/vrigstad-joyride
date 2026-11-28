@@ -1,7 +1,7 @@
 // Skroten buys the car you drive in (#76): drive onto its ring, press E, and Plåt-Pelle makes an offer by the car's model and damage.
 // He mends and upgrades the car you drive onto the workshop's lift, and sells the cars on his lot: press E by one for his price. Neither with the police after you, and he never buys a police car.
 // On foot you can talk to him. main.ts passes in the menu plate, the wallet and what happens to the car. No three.js or DOM here.
-import type { Car, CarForSale } from './cars';
+import { type Car, type CarForSale, NO_FLAT } from './cars';
 import { carPrice, earn, fmtKr, pay, RESPRAY_KR, repairPrice, salePrice, UPGRADE_KR, type Wallet } from './economy';
 import type { MenuItem } from './pets';
 import { tooFastToGetOut } from './player';
@@ -75,7 +75,7 @@ export class Skroten {
   // what Skroten pays for c, or the reason it won't buy it
   private offer(c: Car): number | string {
     if (this.g.stars) return CHASED;
-    return carPrice(c.type, this.g.modelId(c), c.dmg) ?? NO_POLICE;
+    return carPrice(c.type, this.g.modelId(c), c.dmg, c.flat !== NO_FLAT) ?? NO_POLICE;
   }
 
   // why Plåt-Pelle won't touch c on the lift, or null when he will
@@ -84,9 +84,9 @@ export class Skroten {
     return repairPrice(c.type, this.g.modelId(c), 0) === null ? NO_POLICE : null;
   }
 
-  // what he asks to mend c: 0 for a whole car
+  // what he asks to mend c, a flat tyre included: 0 for a whole car
   private repairKr(c: Car) {
-    return repairPrice(c.type, this.g.modelId(c), c.dmg) ?? 0;
+    return repairPrice(c.type, this.g.modelId(c), c.dmg, c.flat !== NO_FLAT) ?? 0;
   }
 
   // the car you drive stands on the lift
@@ -149,7 +149,7 @@ export class Skroten {
     const { openMenu, toast, carName } = this.g,
       no = this.refusesLift(c);
     if (no) {
-      if (c.dmg > 0) toast(no, 3.5); // a whole car: E gets you out, as the prompt says, without a word every time
+      if (c.dmg > 0 || c.flat !== NO_FLAT) toast(no, 3.5); // a whole car: E gets you out, as the prompt says, without a word every time
       return false;
     }
     const fix = this.repairKr(c),
@@ -163,9 +163,17 @@ export class Skroten {
     openMenu(
       'skrot-lift',
       OWNER_SAYS +
-        (fix
-          ? '”Den där ' + carName(c) + ' ä allt tilltufsad. ' + fmtKr(fix) + ', så blir den som ny.”'
-          : '”Fin ' + carName(c) + '! Va ska ja göra mä den?”'),
+        (!fix
+          ? '”Fin ' + carName(c) + '! Va ska ja göra mä den?”'
+          : c.dmg <= 0
+            ? '”Punka, va? ' + fmtKr(fix) + ' för ett nytt däck, så rullar den rakt igen.”'
+            : '”Den där ' +
+              carName(c) +
+              ' ä allt tilltufsad' +
+              (c.flat === NO_FLAT ? '' : ', å punka på köpet') +
+              '. ' +
+              fmtKr(fix) +
+              ', så blir den som ny.”'),
       items,
       k => {
         if (k === 'paint') this.openPaint(c);
@@ -232,6 +240,7 @@ export class Skroten {
       !!kr &&
       this.work(c, kr, () => {
         c.dmg = 0;
+        c.flat = NO_FLAT; // a burst tyre too: a mended car drives straight
         return '”Så där! Som ny. Nästan.”';
       })
     );

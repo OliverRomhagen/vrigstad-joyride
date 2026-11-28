@@ -19,6 +19,7 @@
     "src/game/test-hook.ts",
     "src/game/capture-hook.ts",
     "src/game/devconsole.ts",
-    "src/game/confetti.ts"
+    "src/game/confetti.ts",
+    "src/game/pickadoll.ts"
   ]
 }
