@@ -23,6 +23,9 @@
 - name: "preview"
   color: "0e8a16"
   description: "Deploy a playable preview of this PR (feat PRs get one without it)"
+- name: "playtest"
+  color: "1d76db"
+  description: "Merge this PR into the shared playtest preview, with the other labelled PRs"
 # Type labels: PR triage sets them from the PR title, for the release notes' sections (.github/release.yml). Not by hand.
 - name: "breaking"
   color: "d93f0b"
