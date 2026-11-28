@@ -31,6 +31,11 @@ export const LAB_EXPERIMENTS = [
     name: 'Cel-shaded style',
     cost: 'Every lit material swapped each frame, an extra line draw per inked mesh, the village shells included, and the timber houses drawn again, blended, for their board seams',
   },
+  {
+    id: 'rapier',
+    name: 'Rapier physics',
+    cost: 'Downloads the Rapier physics engine (about 1.65 MB compressed) and steps a physics world every frame',
+  },
 ] as const satisfies readonly LabExperiment[];
 
 export type LabId = (typeof LAB_EXPERIMENTS)[number]['id'];
