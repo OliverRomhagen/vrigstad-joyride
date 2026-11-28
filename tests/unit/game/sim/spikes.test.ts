@@ -51,6 +51,18 @@ describe('stepSpikes', () => {
     expect(spikes).toEqual([]);
   });
 
+  it('is left for the next car by one that cannot get a flat', () => {
+    const spikes = [spike()],
+      out = newSpikeStep(),
+      cars = [{ x: 0.5, z: 0, v: 10, h: 0 }];
+    stepSpikes(spikes, 0.1, world({ cars, canPuncture: () => false }), out);
+    expect(out).toMatchObject({ cars: [], changed: false });
+    expect(spikes).toHaveLength(1);
+    stepSpikes(spikes, 0.1, world({ cars }), out);
+    expect(out).toMatchObject({ cars: [0], changed: true });
+    expect(spikes).toEqual([]);
+  });
+
   it('is stepped on by everyone who comes by, but not by someone lying down', () => {
     const spikes = [spike()],
       people = [

@@ -221,7 +221,13 @@ export class Pickadoll {
   constructor(g: PickadollDeps) {
     this.g = g;
     this.world = { groundAt: g.world.groundAt, collide: g.world.collide, people: g.crowd.npcs, cars: [] };
-    this.spikeWorld = { cars: g.cars, people: g.crowd.npcs, walker: null };
+    this.spikeWorld = {
+      cars: g.cars,
+      people: g.crowd.npcs,
+      walker: null,
+      // a car with a flat already, or one a crash spares, leaves the spikes for the next car
+      canPuncture: k => g.cars[k].flat === NO_FLAT && !this.spared(g.cars[k]),
+    };
     // The controls, through the game's input: the left mouse button or X fires, the right one aims while held, C keeps
     // aiming on, Q changes the weapon (Hands among them), G the hit, and H goes to Hands and back. A press of the trigger
     // is kept a moment (pulledS); on Hands it does nothing
@@ -730,7 +736,17 @@ export class Pickadoll {
     const { push } = this;
     for (const n of crowd.npcs) {
       if (n === person || n.down || !blastPush(hit.x, hit.z, weapon.blastM, n.x, n.z, push)) continue;
-      this.hitPerson(n, s.flavour, push.dx, push.dz, hit.y + 1, weapon.power * BLAST_SHARE, weapon.splatM, colour, rnd());
+      this.hitPerson(
+        n,
+        s.flavour,
+        push.dx,
+        push.dz,
+        hit.y + 1,
+        weapon.power * BLAST_SHARE,
+        weapon.splatM,
+        colour,
+        rnd(),
+      );
       this.mark();
     }
     if (s.flavour === 'pang')
