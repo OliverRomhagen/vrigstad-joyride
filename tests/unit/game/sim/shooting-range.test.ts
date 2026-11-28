@@ -1,14 +1,22 @@
 import RAPIER from '@dimforge/rapier3d-compat';
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { registerPhysicsTunables } from '../../../../src/game/sim/physics-tunables';
-import { PHYSICS_STEP_S, PhysicsWorld, type PropPose } from '../../../../src/game/sim/physics-world';
+import { newSegmentHit, PHYSICS_STEP_S, PhysicsWorld, type PropPose } from '../../../../src/game/sim/physics-world';
 import {
   BANK,
+  MOOSE,
+  MOVERS,
+  MOVING_TARGETS,
+  MoverKind,
+  type MoverPose,
+  moverPose,
+  moverSpecs,
   PAVILION,
   RANGE_X,
   RANGE_Z,
   rangeBlocks,
   rangeTargets,
+  SLIDER_HEIGHT_M,
   TARGET,
   TARGET_DISTANCES_M,
   targetSpecs,
@@ -163,3 +171,124 @@ describe('the shooting range', () => {
     w.dispose();
   });
 });
+
+describe('the moving targets', () => {
+  const at = (m: (typeof MOVING_TARGETS)[number], tS: number) => moverPose(m, tS, { x: 0, z: 0, rotationY: 0 });
+  const moose = MOVERS.RUNNING_MOOSE;
+  // the moose's round: 17 m east at 4 m/s, 1.5 s stopped, back, 1.5 s stopped
+  const runS = (moose.toM - moose.fromM) / moose.speedMps,
+    roundS = 2 * (runS + moose.pauseS);
+
+  it('runs the moose east along its rail, stops at the end, and runs back facing the other way', () => {
+    expect(roundS).toBeCloseTo(11.5, 6);
+    const start = at(moose, 0);
+    expect(start).toEqual({ x: RANGE_X + moose.fromM, z: RANGE_Z + 80, rotationY: 0 });
+    expect(at(moose, 1).x).toBeCloseTo(RANGE_X + moose.fromM + 4, 6);
+    expect(at(moose, runS).x).toBeCloseTo(RANGE_X + moose.toM, 6); // at the east end,
+    expect(at(moose, runS + 1)).toMatchObject({ x: RANGE_X + moose.toM, rotationY: 0 }); // stopped, still facing east
+    const back = at(moose, runS + moose.pauseS + 1);
+    expect(back.x).toBeCloseTo(RANGE_X + moose.toM - 4, 6); // running back
+    expect(back.rotationY).toBeCloseTo(Math.PI, 6); // facing west
+    expect(at(moose, roundS - 0.5)).toMatchObject({ x: RANGE_X + moose.fromM, rotationY: Math.PI }); // stopped at the west end
+    expect(at(moose, roundS).x).toBeCloseTo(start.x, 6); // and round again
+    expect(at(moose, -1).x).toBeCloseTo(at(moose, roundS - 1).x, 6); // before 0 too
+  });
+
+  it('keeps every mover on its rail and never faster than its speed', () => {
+    for (const m of MOVING_TARGETS) {
+      let last = at(m, 0).x;
+      for (let tS = 0.1; tS < 60; tS += 0.1) {
+        const { x, z } = at(m, tS);
+        expect(z).toBe(RANGE_Z + m.distanceM);
+        expect(x).toBeGreaterThanOrEqual(RANGE_X + m.fromM - 1e-9);
+        expect(x).toBeLessThanOrEqual(RANGE_X + m.toM + 1e-9);
+        expect(Math.abs(x - last)).toBeLessThanOrEqual(m.speedMps * 0.1 + 1e-9);
+        last = x;
+      }
+    }
+    // they turn at different times
+    const turns = MOVING_TARGETS.map(m => m.startS);
+    expect(new Set(turns).size).toBe(turns.length);
+  });
+
+  it('never lets the moose hide a standing board from any lane’s spot on the firing line', () => {
+    const targets = rangeTargets(),
+      [west, east] = reach(moose);
+    for (const from of targets)
+      for (const far of targets) {
+        if (far.distanceM <= moose.distanceM) continue; // in front of the moose: it can't hide that
+        // where the line from the shooter to the far board's middle crosses the moose's rail, past the moose's nose or
+        // tail by more than half the board
+        const x = from.x + ((far.x - from.x) * moose.distanceM) / far.distanceM - RANGE_X;
+        expect(x + TARGET.boardM / 2 < west || x - TARGET.boardM / 2 > east).toBe(true);
+      }
+  });
+
+  it('keeps the sliders below every line from a muzzle to a standing board', () => {
+    // a line from above the board's bottom edge to a point on the board stays above that edge all the way: the sliders,
+    // below it, are under every line, wherever they are
+    expect(SLIDER_HEIGHT_M).toBeLessThan(TARGET.heightM - TARGET.boardM);
+    expect(MUZZLE_M).toBeGreaterThan(TARGET.heightM - TARGET.boardM);
+  });
+
+  it('runs every mover clear of the standing targets, with the bank behind it from the lanes in front of it', () => {
+    const targets = rangeTargets();
+    for (const m of MOVING_TARGETS) {
+      const z = RANGE_Z + m.distanceM,
+        [west, east] = reach(m);
+      for (const s of targets) {
+        if (Math.abs(s.z - z) > 1.5) continue;
+        expect(s.x - RANGE_X < west - 1 || s.x - RANGE_X > east + 1).toBe(true);
+      }
+      // a shot from a lane whose spot is in front of the track, at either end of it, meets the bank's front
+      const front = BANK.z - BANK.depthM / 2 - RANGE_Z;
+      for (const from of targets) {
+        const dx = from.x - RANGE_X;
+        if (dx < west - LANE_HALF_M || dx > east + LANE_HALF_M) continue;
+        for (const end of [west, east]) {
+          const x = dx + ((end - dx) * front) / m.distanceM;
+          expect(Math.abs(x - (BANK.x - RANGE_X)), `${m.kind} at ${m.distanceM} m, from ${dx}`).toBeLessThan(
+            BANK.widthM / 2,
+          );
+        }
+      }
+    }
+  });
+
+  it('holds the movers in the world with the targets, and a shot knocks the moose where it has run to', () => {
+    const props = [...targetSpecs(groundAt), ...moverSpecs(groundAt)],
+      w = new PhysicsWorld(RAPIER, { data: makeWorld({}), heightfield: field, props, blocks: rangeBlocks(groundAt) }),
+      first = TARGET_DISTANCES_M.length, // the moose's index
+      mp: MoverPose = { x: 0, z: 0, rotationY: 0 };
+    expect(w.joined).toHaveLength(first + MOVING_TARGETS.length);
+    let tS = 0;
+    for (let k = 0; k < 120; k++) {
+      tS += PHYSICS_STEP_S;
+      MOVING_TARGETS.forEach((m, n) => {
+        moverPose(m, tS, mp);
+        w.moveStanding(first + n, mp.x, ground, mp.z, mp.rotationY);
+      });
+      w.step(PHYSICS_STEP_S);
+    }
+    const x = RANGE_X + moose.fromM + 2 * moose.speedMps, // 8 m along after 2 s
+      p = w.propPose(first, pose());
+    expect(p.x).toBeCloseTo(x, 4);
+    // a line from the firing line meets the moose's body where it has run to, beside its post
+    const hit = newSegmentHit();
+    expect(w.castSegment(x + 0.5, ground + 1.3, RANGE_Z, x + 0.5, ground + 1.3, RANGE_Z + 100, null, hit)).toBe(true);
+    expect(hit.prop).toBe(first);
+    w.knockProp(first, hit.x, hit.y, hit.z, 0, 0, 10);
+    expect(w.isLoose(first)).toBe(true);
+    w.dispose();
+  });
+});
+
+/** half a lane's width: a lane's spot is in front of what is within this of it (m) */
+const LANE_HALF_M = 2;
+
+/** How far west and east of the firing line's middle mover `m` reaches, facing either way, a slider's board included (m). */
+function reach(m: (typeof MOVING_TARGETS)[number]) {
+  return m.kind === MoverKind.MOOSE
+    ? [m.fromM - MOOSE.frontM, m.toM + MOOSE.frontM]
+    : [m.fromM - TARGET.boardM / 2, m.toM + TARGET.boardM / 2];
+}

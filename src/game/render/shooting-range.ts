@@ -1,10 +1,23 @@
 // The shooting range by Stockarydsvägen, drawn (#545, ?lab=rapier): the pavilion, the bank, the firing line and the
-// targets, which follow their bodies in the physics world as they fall and stand up again. Reads the physics world,
-// never writes it. The layout is in ../sim/shooting-range.ts.
+// targets, which follow their bodies in the physics world as they fall and stand up again, and the moving targets on
+// their rails. Reads the physics world, never writes it. The layout is in ../sim/shooting-range.ts.
 import * as THREE from 'three';
 import type { BoxPart } from '../box-part';
 import type { PhysicsWorld, PropPose } from '../sim/physics-world';
-import { BANK, LANE_M, PAVILION, RANGE_X, RANGE_Z, roofBox, TARGET, TARGET_DISTANCES_M } from '../sim/shooting-range';
+import {
+  BANK,
+  LANE_M,
+  MOOSE,
+  MOVING_TARGETS,
+  MoverKind,
+  PAVILION,
+  RANGE_X,
+  RANGE_Z,
+  roofBox,
+  SLIDER_HEIGHT_M,
+  TARGET,
+  TARGET_DISTANCES_M,
+} from '../sim/shooting-range';
 
 const FALU = '#8b2a1e', // the red of a Swedish timbered house
   TRIM = '#ece5d3',
@@ -14,7 +27,12 @@ const FALU = '#8b2a1e', // the red of a Swedish timbered house
   EARTH = '#74804a', // grassed over
   WHITE = '#f4f1e8',
   BLACK = '#1d1d1d',
-  RED = '#c4372b';
+  RED = '#c4372b',
+  MOOSE_BROWN = '#715743', // painted as the real running-moose targets are: a dark moose, its rings on the shoulder
+  RAIL = '#3b3936';
+/** how far each rail reaches past the end of its mover's track, and its size across and up (m) */
+const RAIL_PAST_M = 1,
+  RAIL_M = 0.12;
 
 const _pose: PropPose = { x: 0, y: 0, z: 0, qx: 0, qy: 0, qz: 0, qw: 1 };
 
@@ -26,6 +44,8 @@ export interface ShootingRangeMeshDeps {
   world: Pick<PhysicsWorld, 'drawnPose' | 'isLoose' | 'isAwake'>;
   /** the targets' indices in the physics world's props, in the order of rangeTargets() */
   targets: readonly number[];
+  /** the moving targets' indices in the physics world's props, in the order of MOVING_TARGETS */
+  movers: readonly number[];
 }
 
 export class ShootingRangeMeshes {
@@ -34,6 +54,7 @@ export class ShootingRangeMeshes {
   /** whether each target was loose when it was last drawn, null before the first time */
   private readonly targetLooseWhenDrawn: (boolean | null)[] = [];
   private readonly targetAwakeWhenDrawn: boolean[] = [];
+  private readonly moverMeshes: THREE.Mesh[] = [];
 
   constructor(g: ShootingRangeMeshDeps) {
     this.g = g;
@@ -65,6 +86,27 @@ export class ShootingRangeMeshes {
       this.targetLooseWhenDrawn.push(null);
       this.targetAwakeWhenDrawn.push(false);
     }
+    // the moving targets, and the rails they run on, low at their feet, each in 2 m pieces that follow the ground
+    const sliderGeo = boxGeo(target(SLIDER_HEIGHT_M)),
+      mooseGeo = boxGeo(moose());
+    for (const m of MOVING_TARGETS) {
+      const mesh = new THREE.Mesh(m.kind === MoverKind.MOOSE ? mooseGeo : sliderGeo, paintMat);
+      mesh.castShadow = mesh.receiveShadow = true;
+      scene.add(mesh);
+      this.moverMeshes.push(mesh);
+      const z = RANGE_Z + m.distanceM,
+        x0 = RANGE_X + m.fromM - RAIL_PAST_M,
+        x1 = RANGE_X + m.toM + RAIL_PAST_M,
+        count = Math.ceil((x1 - x0) / 2),
+        piece = (x1 - x0) / count,
+        y0 = groundAt(x0, z),
+        rail: BoxPart[] = [];
+      for (let n = 0; n < count; n++) {
+        const dx = (n + 0.5) * piece;
+        rail.push([piece, RAIL_M, RAIL_M, dx, groundAt(x0 + dx, z) - y0 + RAIL_M / 2 - 0.04, 0, RAIL]);
+      }
+      place(rail, x0, z, false);
+    }
   }
 
   /**
@@ -86,31 +128,65 @@ export class ShootingRangeMeshes {
       m.position.set(p.x, p.y, p.z);
       m.quaternion.set(p.qx, p.qy, p.qz, p.qw);
     }
+    // the movers move while they stand, so they're drawn every frame: where the world has them, which is where a shot
+    // meets them
+    const { movers } = this.g;
+    for (let k = 0; k < movers.length; k++) {
+      const p = world.drawnPose(movers[k], _pose),
+        m = this.moverMeshes[k];
+      m.position.set(p.x, p.y, p.z);
+      m.quaternion.set(p.qx, p.qy, p.qz, p.qw);
+    }
   }
 }
 
-/** A target about its middle, as its body is: a post with a board at the top, square rings on both faces. */
-function target(): BoxPart[] {
+/**
+ * A target about its middle, as its body is: a post with a board at the top, `heightM` to the board's top, square
+ * rings on both faces.
+ */
+function target(heightM = TARGET.heightM): BoxPart[] {
   const t = TARGET,
-    half = t.heightM / 2,
-    postH = t.heightM - t.boardM,
+    half = heightM / 2,
+    postH = heightM - t.boardM,
     boardY = half - t.boardM / 2,
     face = t.boardThickM / 2;
   const parts: BoxPart[] = [
     [t.postM, postH, t.postM, 0, -half + postH / 2, 0, BOARDS],
     [t.boardM, t.boardM, t.boardThickM, 0, boardY, 0, WHITE],
   ];
-  // the rings, each a square laid a few mm proud of the one under it, on both faces
-  const rings: [number, string][] = [
+  rings(parts, 0, boardY, face, 1);
+  return parts;
+}
+
+/** The rings, each a square laid a few mm proud of the one under it, on both faces, at (x, y), `scale` times a board's. */
+function rings(parts: BoxPart[], x: number, y: number, face: number, scale: number) {
+  const sizes: [number, string][] = [
     [0.52, BLACK],
     [0.36, WHITE],
     [0.22, BLACK],
     [0.09, RED],
   ];
-  rings.forEach(([size, colour], n) => {
-    const z = face + 0.002 * (n + 1);
-    parts.push([size, size, 0.002, 0, boardY, z, colour], [size, size, 0.002, 0, boardY, -z, colour]);
+  sizes.forEach(([size, colour], n) => {
+    const z = face + 0.002 * (n + 1),
+      s = size * scale;
+    parts.push([s, s, 0.002, x, y, z, colour], [s, s, 0.002, x, y, -z, colour]);
   });
+}
+
+/**
+ * The running moose about its middle, as its body is: the silhouette's boxes (MOOSE), its post under them, and the
+ * rings on its shoulder, on both faces, as on the real targets.
+ */
+function moose(): BoxPart[] {
+  const o = MOOSE,
+    half = o.heightM / 2,
+    thick = TARGET.boardThickM,
+    body = o.parts[0],
+    bellyY = body.y - body.h / 2;
+  // the post, drawn below the belly only: one drawn behind the board's face as well shows through it far off
+  const parts: BoxPart[] = [[o.postM, bellyY, thick / 2, 0, bellyY / 2 - half, 0, BOARDS]];
+  for (const p of o.parts) parts.push([p.w, p.h, thick, p.x, p.y - half, 0, MOOSE_BROWN]);
+  rings(parts, body.x + 0.45, body.y - half, thick / 2, 1.2); // over the heart, behind the front legs
   return parts;
 }
 
