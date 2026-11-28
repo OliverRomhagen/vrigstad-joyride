@@ -753,18 +753,24 @@ export class Pickadoll {
     // a shot from a moving car keeps the car's speed, and the aim allows for it, so it still lands under the crosshair
     this.carVx = car ? Math.sin(car.vh) * car.v : 0;
     this.carVz = car ? -Math.cos(car.vh) * car.v : 0;
-    const { yaw, pitch } = aimAtMoving(
-      weapon.speedMs,
-      muzzle.x,
-      muzzle.y,
-      muzzle.z,
-      tx,
-      ty,
-      tz,
-      this.carVx,
-      this.carVz,
-      this.aim,
-    );
+    aimAtMoving(weapon.speedMs, muzzle.x, muzzle.y, muzzle.z, tx, ty, tz, this.carVx, this.carVz, this.aim);
+    // nothing under the crosshair (the sky, or past a lamp post): the shot goes along the line of sight itself, with no
+    // allowance for its drop. Aiming at the line's far end, 160 m out, made a slow weapon lob at the sky, so the arm
+    // swung up whenever the crosshair left a post or a wall
+    if (!seen && !onTarget) {
+      // from a moving car the shot keeps the car's speed, so it leaves along w = k·line − car, with |w| the weapon's
+      // speed: w plus the car's speed then points along the line. On foot the car's speed is 0 and w is the line
+      const v = weapon.speedMs,
+        along = line.dx * this.carVx + line.dz * this.carVz,
+        room = along * along - (this.carVx * this.carVx + this.carVz * this.carVz) + v * v,
+        k = room > 0 ? along + Math.sqrt(room) : v, // the car outruns the shot sideways: as on foot
+        wx = k * line.dx - (room > 0 ? this.carVx : 0),
+        wy = k * line.dy,
+        wz = k * line.dz - (room > 0 ? this.carVz : 0);
+      this.aim.yaw = Math.atan2(wx, -wz);
+      this.aim.pitch = Math.asin(clamp(wy / Math.hypot(wx, wy, wz), -1, 1));
+    }
+    const { yaw, pitch } = this.aim;
     this.crosshair.hidden = !armed;
     this.crosshair.classList.toggle('on', onTarget);
     this.markS -= dt;
