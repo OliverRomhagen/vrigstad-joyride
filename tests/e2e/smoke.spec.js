@@ -325,7 +325,7 @@ test.describe('game (index.html)', () => {
     await expect
       .poll(async () => (await state(page)).pickadoll)
       .toMatchObject({
-        weapon: 'pepprapuffra',
+        weapon: 'kpisten',
         ammo: 'pang',
         aiming: true,
       });
@@ -368,7 +368,7 @@ test.describe('game (index.html)', () => {
     await expect
       .poll(async () => (await state(page)).pickadoll?.throughPhysics ?? false, { timeout: 60_000 })
       .toBe(true);
-    expect((await state(page)).rapier).toMatchObject({ targets: 7, targetsDown: 0 }); // the range's, standing (#545)
+    expect((await state(page)).rapier).toMatchObject({ targets: 10, movers: 3, targetsDown: 0 }); // the range's, three moving, all standing (#545)
     await frames(page, 3);
     await page.keyboard.press('KeyH'); // you start on Hands: H takes out the pickadoll
     await expect.poll(async () => (await state(page)).pickadoll.holstered).toBe(false);

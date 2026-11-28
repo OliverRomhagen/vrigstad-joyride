@@ -17,7 +17,7 @@ import {
   type PropSpec,
   type Rapier,
 } from './sim/physics-world';
-import { rangeBlocks, targetSpecs } from './sim/shooting-range';
+import { MOVING_TARGETS, type MoverPose, moverPose, moverSpecs, rangeBlocks, targetSpecs } from './sim/shooting-range';
 
 /** what a car can knock over, and what each weighs (kg) */
 const PROP_MASS_KG: Partial<Record<FurnitureKind, number>> = {
@@ -72,9 +72,11 @@ export interface RapierLabState {
   readonly steps: number;
   /** the people near the player that the world holds */
   readonly people: number;
-  /** the shooting range's targets (#545), and how many are down right now */
+  /** the shooting range's targets (#545), the moving ones included, and how many are down right now */
   readonly targets: number;
   readonly targetsDown: number;
+  /** of the targets, the ones that move */
+  readonly movers: number;
   /** the world itself, for the weapons' ray casts (?lab=pickadoll); not for the test hook */
   world: PhysicsWorld;
 }
@@ -140,11 +142,14 @@ export async function startRapierLab(g: RapierLabDeps): Promise<RapierLabState> 
     });
   }
   // the shooting range's targets go after the street furniture, so the furniture's indices match its placements
-  const targets = targetSpecs(g.groundAt).map(t => specs.push(t) - 1);
+  const standing = targetSpecs(g.groundAt).map(t => specs.push(t) - 1),
+    movers = moverSpecs(g.groundAt).map(t => specs.push(t) - 1),
+    targets = [...standing, ...movers];
   const t1 = performance.now();
   const world = new PhysicsWorld(R, {
     data: g.data,
     heightfield: g.heightfield,
+    groundAt: g.groundAt,
     props: specs,
     blocks: rangeBlocks(g.groundAt),
   });
@@ -156,12 +161,27 @@ export async function startRapierLab(g: RapierLabDeps): Promise<RapierLabState> 
     placements,
     heights: specs.map(s => s.heightM),
   });
-  const range = new ShootingRangeMeshes({ scene: g.scene, groundAt: g.groundAt, boxGeo, paintMat, world, targets });
-  const now = () => performance.now();
+  const range = new ShootingRangeMeshes({
+    scene: g.scene,
+    groundAt: g.groundAt,
+    boxGeo,
+    paintMat,
+    world,
+    targets: standing,
+    movers,
+  });
+  const now = () => performance.now(),
+    moverAt: MoverPose = { x: 0, z: 0, rotationY: 0 };
+  let rangeS = 0; // the game's time since the range was built, which the movers run by (s)
   g.addFrameUpdate(dt => {
     const viewer = g.playerCar() ?? g.player;
     world.follow(g.cars, g.inCar() ? null : g.player, viewer);
     if (g.people) world.followPeople(g.people, viewer);
+    rangeS += dt;
+    for (let k = 0; k < movers.length; k++) {
+      const at = moverPose(MOVING_TARGETS[k], rangeS, moverAt);
+      world.moveStanding(movers[k], at.x, g.groundAt(at.x, at.z), at.z, at.rotationY);
+    }
     world.step(dt, now);
     draw.update();
     range.update();
@@ -192,6 +212,7 @@ export async function startRapierLab(g: RapierLabDeps): Promise<RapierLabState> 
       return world.people;
     },
     targets: targets.length,
+    movers: movers.length,
     get targetsDown() {
       let n = 0;
       for (const i of targets) if (world.isLoose(i)) n++;

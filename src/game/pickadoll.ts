@@ -8,7 +8,7 @@
 import { createElement, Egg, Hand, type IconNode, Music, Triangle, Zap } from 'lucide';
 import { clamp, wrap } from '../world/math';
 import type { Rnd } from '../world/random';
-import { NO_FLAT } from './cars';
+import { NO_FLAT, type Wheel } from './cars';
 import { choice, command, optional, toggle } from './command-args';
 import { type Commands, UsageError } from './commands';
 import { damageCar } from './health';
@@ -37,12 +37,14 @@ import {
   aimAtMoving,
   aimShot,
   assistTarget,
+  BURST_GAP_S,
   blastPush,
   flightPath,
   HitKind,
   knockbackOf,
   MUZZLE_M,
   newHit,
+  onHead,
   SHOTS_MAX,
   type Shot,
   type ShotHit,
@@ -54,7 +56,7 @@ import {
   WEAPONS,
   WeaponId,
 } from './sim/shots';
-import { dropSpike, newSpikeStep, type Spike, type SpikeWorld, stepSpikes } from './sim/spikes';
+import { dropSpike, newSpikeStep, type Spike, type SpikeWorld, stepSpikes, tyreHit } from './sim/spikes';
 import type { GameState, ViewState } from './state';
 import { WeaponWheel } from './weapon-wheel';
 
@@ -139,23 +141,28 @@ const ARC_STEP_S = 1 / 20, // the arc has a dot this often along the flight
   ARC_RING_M = 0.7; // the ring where it lands, for a throwable with no blast
 // the stance: the right arm comes up along the aim while you aim, hold the trigger or have just fired
 const RAISED_S = 1.2, // the arm stays up this long after a shot
+  ARM_EASE_PER_S = 18, // the arm follows the aim's pitch this fast (1/s), so crossing something near doesn't flick it
   WIND_UP_RAD = -0.9; // the arm goes back this far while you hold a throw
 // the placeholder gun in the hand, by weapon: its length and thickness (m). No models yet
 const GUN_M: Record<WeaponId, readonly [number, number]> = {
   [WeaponId.ARTPUFFRA]: [0.5, 0.04],
   [WeaponId.PICKADOLL]: [0.3, 0.08],
-  [WeaponId.PEPPRAPUFFRA]: [0.4, 0.1],
+  [WeaponId.KPISTEN]: [0.55, 0.08],
   [WeaponId.HAGELBOSSA]: [0.65, 0.09],
-  [WeaponId.POTATISKANON]: [0.85, 0.2],
   [WeaponId.MINIGUN]: [0.75, 0.17],
   [WeaponId.GULDARTPUFFRA]: [0.5, 0.05],
-  [WeaponId.PUFFRA]: [0.28, 0.07],
+  [WeaponId.KNALLEN]: [0.36, 0.09], // a long barrel
   [WeaponId.LUFTGEVAR]: [0.95, 0.05],
   [WeaponId.ALGSTUDSARE]: [1.1, 0.07],
   [WeaponId.GRANAT]: [0.14, 0.14],
   [WeaponId.FOTANGLAR]: [0.12, 0.16],
 };
 const HIT_MARK_S = 0.1; // the crosshair's ticks stay this long after a hit on a person or a car, then fade (index.html)
+// a headshot (onHead): the crosshair stays red this long, and the hit does more: a harder throw, a longer stare or dance
+const HEAD_MARK_S = 0.35,
+  HEAD_THROW_K = 1.5,
+  HEAD_STARE_K = 2,
+  HEAD_DANCE_K = 1.5;
 // fotanglar: they lie where they land for a while (./sim/spikes.ts). Someone who steps on one hops on and walks
 // slowly; a car that drives over one gets a flat tyre (Car.flat); you are hurt, unless you jump over
 const FLAT_LINES = ['”PANG! Dä va däcket, dä.”', '”Punka! Klart dä skulle hända nu.”', '”Nu small dä i ett däck.”'],
@@ -212,8 +219,12 @@ export class Pickadoll {
   private readonly arcEnd = newHit();
   private isWindingUp = false; // a throw is held back, its arc showing
   private raisedS = 0; // s the arm stays up
+  private armPitch = 0; // rad: the arm's pitch, easing after the aim's
   private markS = 0; // s the crosshair's hit ticks stay on
   private markedHits = 0; // hits on a person or a car, for the test hook
+  private headMarkS = 0; // s the crosshair stays red after a headshot
+  private headshots = 0; // for the test hook
+  private punctures = 0; // tyres a shot burst, for the test hook
   private readonly hit = newHit();
   private readonly aimHit = newHit();
   private readonly line = { x: 0, y: 0, z: 0, dx: 0, dy: 0, dz: -1 };
@@ -223,6 +234,11 @@ export class Pickadoll {
   private carVx = 0; // the speed of the car you fire from, which its shots keep (m/s); 0 on foot
   private carVz = 0;
   private crossY = -1; // where the crosshair was last put
+  /**
+   * where the crosshair was in the frame last drawn, with the camera the line of sight is read from: on the frame aiming
+   * starts or stops the crosshair moves at once, but the camera only follows after the line is read
+   */
+  private shownCrossY = CROSSHAIR_NDC_Y;
   private readonly flown: Shot = {
     x: 0,
     y: 0,
@@ -249,6 +265,7 @@ export class Pickadoll {
   private readonly aimHold: Control; // held while the right mouse button is
   private pulledS = -1; // s since a pull that hasn't fired yet, -1 for none: a weapon that isn't automatic fires once per pull
   private coolS = 0;
+  private burstLeft = 0; // shots still to come in the burst a pull started
   private clockS = 0;
   private introS = INTRO_AFTER_S;
   private aimKept = false; // aiming was switched on with C or the Aim button
@@ -477,6 +494,7 @@ export class Pickadoll {
 
   private pickWeapon(index: number) {
     this.weapon = index;
+    this.burstLeft = 0; // a burst stops with its weapon
     this.holster(false); // changing the weapon takes it out
     this.coolS = Math.min(this.coolS, WEAPONS[this.weapon].coolS); // the wait left, at most the new weapon's own
     this.drawHud();
@@ -618,6 +636,8 @@ export class Pickadoll {
       fired: this.fired,
       hits: this.hits,
       markedHits: this.markedHits,
+      headshots: this.headshots,
+      punctures: this.punctures,
       splats: this.g.fx.splatted,
       weapon: this.holstered ? HANDS : WEAPONS[this.weapon].id,
       ammo: AMMOS[this.ammo].id,
@@ -705,7 +725,8 @@ export class Pickadoll {
     muzzle.x = from.x + Math.cos(view.camYaw) * side;
     muzzle.z = from.z + Math.sin(view.camYaw) * side;
     muzzle.y = this.g.world.groundAt(from.x, from.z) + (car ? 0 : Math.max(0, player.y)) + MUZZLE_M;
-    const line = fx.sightLine(crossY, this.line),
+    // the line of sight through the crosshair as last drawn, with the camera it was drawn with: what you clicked on
+    const line = fx.sightLine(this.shownCrossY, this.line),
       pastM = Math.hypot(muzzle.x - line.x, muzzle.y - line.y, muzzle.z - line.z),
       seen =
         armed &&
@@ -721,6 +742,7 @@ export class Pickadoll {
           this.world,
           this.aimHit,
         );
+    this.shownCrossY = crossY;
     let tx = this.aimHit.x,
       ty = this.aimHit.y,
       tz = this.aimHit.z,
@@ -745,22 +767,30 @@ export class Pickadoll {
     // a shot from a moving car keeps the car's speed, and the aim allows for it, so it still lands under the crosshair
     this.carVx = car ? Math.sin(car.vh) * car.v : 0;
     this.carVz = car ? -Math.cos(car.vh) * car.v : 0;
-    const { yaw, pitch } = aimAtMoving(
-      weapon.speedMs,
-      muzzle.x,
-      muzzle.y,
-      muzzle.z,
-      tx,
-      ty,
-      tz,
-      this.carVx,
-      this.carVz,
-      this.aim,
-    );
+    aimAtMoving(weapon.speedMs, muzzle.x, muzzle.y, muzzle.z, tx, ty, tz, this.carVx, this.carVz, this.aim);
+    // nothing under the crosshair (the sky, or past a lamp post): the shot goes along the line of sight itself, with no
+    // allowance for its drop. Aiming at the line's far end, 160 m out, made a slow weapon lob at the sky, so the arm
+    // swung up whenever the crosshair left a post or a wall
+    if (!seen && !onTarget) {
+      // from a moving car the shot keeps the car's speed, so it leaves along w = k·line − car, with |w| the weapon's
+      // speed: w plus the car's speed then points along the line. On foot the car's speed is 0 and w is the line
+      const v = weapon.speedMs,
+        along = line.dx * this.carVx + line.dz * this.carVz,
+        room = along * along - (this.carVx * this.carVx + this.carVz * this.carVz) + v * v,
+        k = room > 0 ? along + Math.sqrt(room) : v, // the car outruns the shot sideways: as on foot
+        wx = k * line.dx - (room > 0 ? this.carVx : 0),
+        wy = k * line.dy,
+        wz = k * line.dz - (room > 0 ? this.carVz : 0);
+      this.aim.yaw = Math.atan2(wx, -wz);
+      this.aim.pitch = Math.asin(clamp(wy / Math.hypot(wx, wy, wz), -1, 1));
+    }
+    const { yaw, pitch } = this.aim;
     this.crosshair.hidden = !armed;
     this.crosshair.classList.toggle('on', onTarget);
     this.markS -= dt;
     this.crosshair.classList.toggle('hit', this.markS > 0);
+    this.headMarkS -= dt;
+    this.crosshair.classList.toggle('head', this.headMarkS > 0);
     // a click a moment before the weapon is ready still fires; an older one is dropped, so clicks never queue up
     if (this.pulledS >= 0) this.pulledS += dt;
     if (!armed || this.pulledS > PULL_KEEP_S + dt) this.pulledS = -1;
@@ -785,18 +815,35 @@ export class Pickadoll {
         weapon.blastM || ARC_RING_M,
       );
     } else fx.drawArc(this.arc, 0, 0);
-    if (armed && this.coolS <= 0 && (weapon.thrown ? thrown : weapon.auto ? pulling : this.pulledS >= 0)) {
+    if (!armed) this.burstLeft = 0;
+    if (
+      armed &&
+      this.coolS <= 0 &&
+      (this.burstLeft > 0 || (weapon.thrown ? thrown : weapon.auto ? pulling : this.pulledS >= 0))
+    ) {
       this.pulledS = -1;
-      this.coolS = Math.max(this.coolS, -dt) + weapon.coolS; // what this frame overshot comes off the next wait
+      // a pull fires the weapon's burst, BURST_GAP_S apart, and the weapon waits its coolS after the last of it
+      this.burstLeft = this.burstLeft > 0 ? this.burstLeft - 1 : weapon.burst - 1;
+      // what this frame overshot comes off the next wait
+      this.coolS = Math.max(this.coolS, -dt) + (this.burstLeft > 0 ? BURST_GAP_S : weapon.coolS);
       this.raisedS = RAISED_S;
       this.fire(car, yaw, pitch);
     }
     // the stance, drawn over the walk's arm swing: the right arm along the aim, or back for a throw
     this.raisedS -= dt;
-    const arms = player.mesh.arms;
+    const arms = player.mesh.arms,
+      raised = aiming || this.raisedS > 0 || (pulling && !weapon.thrown);
+    // the shot goes at the aim's own pitch; only the arm eases, and it starts from the aim when it comes up
+    this.armPitch = raised ? this.armPitch + (pitch - this.armPitch) * (1 - Math.exp(-ARM_EASE_PER_S * dt)) : pitch;
     if (arms && !car && armed) {
       if (this.isWindingUp) arms[1].rotation.x = WIND_UP_RAD;
-      else if (aiming || this.raisedS > 0 || (pulling && !weapon.thrown)) arms[1].rotation.x = Math.PI / 2 + pitch;
+      else if (raised) arms[1].rotation.x = Math.PI / 2 + this.armPitch;
+    }
+    // while the arm is up you keep facing the aim, as aiming does: walking then moves you sideways or back. Otherwise
+    // the walk turned you to the way you walk between shots and each shot turned you back, a flicker with a quick weapon
+    if (!car && armed && raised && !aiming) {
+      player.h = yaw;
+      player.mesh.rotation.y = -yaw;
     }
 
     for (let i = this.shots.length - 1; i >= 0; i--) {
@@ -810,12 +857,22 @@ export class Pickadoll {
         if (hit.fliesOn) continue; // it flies on
         const tracerM = WEAPONS[s.weapon].tracerM;
         if (tracerM) fx.endStreak(x, y, z, hit.x, hit.y, hit.z, tracerM);
+        // seen on what it hit for a moment, not gone a little short of it: on the ground or a wall, which stay put. Not on
+        // a car, a person or a prop, which move on and would leave it in the air; nor one that went off, nor a fotangel
+        else if (
+          (hit.kind === HitKind.GROUND || hit.kind === HitKind.WALL) &&
+          !hit.wentOff &&
+          !effectOf(AMMOS[s.ammo], EffectKind.SPIKES)
+        )
+          fx.impact(hit, WEAPONS[s.weapon].shotM, this.flightColourOf(s));
+        // a few droplets fly off whatever it hit, in its splat's colour; not off one that went off, nor a fotangel
+        if (!hit.wentOff && !effectOf(AMMOS[s.ammo], EffectKind.SPIKES)) fx.spray(hit, this.colourOf(s));
       }
       this.spareShots.push(s);
       this.shots[i] = this.shots[this.shots.length - 1];
       this.shots.pop();
     }
-    fx.drawShots(this.shots, this.colourOf, this.radiusOf, this.tracerOf, dt);
+    fx.drawShots(this.shots, this.flightColourOf, this.radiusOf, this.tracerOf, dt);
     this.dance(dt);
     this.stepSpikes(dt);
   }
@@ -914,6 +971,11 @@ export class Pickadoll {
     const { colours } = AMMOS[s.ammo];
     return colours[Math.floor(s.seed * colours.length)];
   };
+  // the shot in the air: its ammo's flight colour, else the colour it marks with
+  private readonly flightColourOf = (s: { seed: number; ammo: number }) => {
+    const ammo: Ammo = AMMOS[s.ammo];
+    return ammo.flightColour ?? this.colourOf(s);
+  };
 
   private fire(car: RenderedCar | null, yaw: number, pitch: number) {
     const { rnd, player } = this.g,
@@ -960,8 +1022,21 @@ export class Pickadoll {
     const person = hit.kind === HitKind.PERSON ? crowd.npcs[hit.target] : null,
       car = hit.kind === HitKind.CAR ? this.world.cars[hit.target] : null,
       knockbackNs = knockbackOf(weapon);
-    if (person) this.hitPerson(person, ammo, hit.dx, hit.dz, hit.y, knockbackNs, weapon.splatM, colour, s.seed);
+    // how far the person's middle is to the side of the shot's way (hit.dx, hit.dz is a unit vector along the ground)
+    const isHead =
+      !!person &&
+      onHead(
+        hit.y - this.g.world.groundAt(person.x, person.z),
+        (person.x - hit.x) * hit.dz - (person.z - hit.z) * hit.dx,
+        person.scale,
+      );
+    if (person) this.hitPerson(person, ammo, hit.dx, hit.dz, hit.y, knockbackNs, weapon.splatM, colour, s.seed, isHead);
     else if (car) {
+      // the tyre first: a heavy shot's shove moves the car away from where the shot met it
+      const wheel = effectOf(ammo, EffectKind.PUNCTURE)
+        ? tyreHit(car, hit, hit.y - this.g.world.groundAt(hit.x, hit.z))
+        : null;
+      if (wheel !== null && this.burst(car, wheel)) this.punctures++;
       this.hitCar(car, ammo, hit.dx, hit.dz, knockbackNs, weapon.damage);
       if (splat) fx.splatOn(car.mesh, hit, splatM, colour, s.seed);
     } else if (hit.kind === HitKind.PROP) {
@@ -976,7 +1051,7 @@ export class Pickadoll {
         hit.dz * knockbackNs,
       );
     } else if (splat) fx.splat(hit, splatM, colour, s.seed);
-    if (person || car) this.mark();
+    if (person || car) this.mark(isHead);
     if (!weapon.blastM) return;
     const { push } = this;
     for (const n of crowd.npcs) {
@@ -1003,9 +1078,25 @@ export class Pickadoll {
   }
 
   // tells you a shot landed on someone or something that counts, however far off it was
-  private mark() {
+  private mark(isHead = false) {
     this.markedHits++;
     this.markS = HIT_MARK_S;
+    if (!isHead) return;
+    this.headshots++;
+    this.headMarkS = HEAD_MARK_S;
+    // each headshot kicks the ring again, in a burst too: the class comes off, a layout, and it goes back on
+    this.crosshair.classList.remove('head');
+    void this.crosshair.offsetWidth;
+    this.crosshair.classList.add('head');
+  }
+
+  // a burst tyre, from a shot or a fotangel: one flat per car, and your own says so. True when it burst
+  private burst(c: RenderedCar, wheel: Wheel) {
+    if (c.flat !== NO_FLAT || this.spared(c)) return false;
+    c.flat = wheel;
+    if (c === this.g.game.pcar)
+      this.g.toast(FLAT_LINES[Math.floor(this.g.rnd() * FLAT_LINES.length)] + ' A tyre is flat.', 3);
+    return true;
   }
 
   // the ammo's effects on a person; (dx, dz): the way the hit pushes them, a unit vector along the ground
@@ -1019,27 +1110,35 @@ export class Pickadoll {
     splatM: number,
     colour: string,
     turn: number,
+    isHead = false, // a headshot: more of each effect (HEAD_*_K)
   ) {
     const { fx, crowd, ragdolls } = this.g;
     for (const e of ammo.effects)
       switch (e.kind) {
         case EffectKind.SPLAT:
-          if (e.onPeople) fx.splatOnPerson(n.mesh, dx, dz, y, splatM * e.sizeK, colour, turn);
+          if (e.onPeople) fx.splatOnPerson(n.mesh, dx, dz, y, splatM * e.sizeK, colour, turn, isHead);
           break;
         case EffectKind.STARE:
-          crowd.stare(n, 0.1, e.s);
+          crowd.stare(n, 0.1, e.s * (isHead ? HEAD_STARE_K : 1));
           break;
         case EffectKind.THROW:
           // too many down already: they are only knocked a step back
-          if (!ragdolls.push(n, dx, dz, PANG_THROW_MS + knockbackNs * PANG_THROW_MS_PER_NS)) {
+          if (
+            !ragdolls.push(
+              n,
+              dx,
+              dz,
+              (PANG_THROW_MS + knockbackNs * PANG_THROW_MS_PER_NS) * (isHead ? HEAD_THROW_K : 1),
+            )
+          ) {
             n.x += dx * PANG_STEP_BACK_M;
             n.z += dz * PANG_STEP_BACK_M;
           }
           break;
         case EffectKind.DANCE:
           if (this.dancers.some(d => d.npc === n)) break;
-          crowd.stare(n, 0.1, e.s); // stops them where they are
-          this.dancers.push({ npc: n, leftS: e.s });
+          crowd.stare(n, 0.1, e.s * (isHead ? HEAD_DANCE_K : 1)); // stops them where they are
+          this.dancers.push({ npc: n, leftS: e.s * (isHead ? HEAD_DANCE_K : 1) });
           break;
       }
   }
@@ -1060,19 +1159,14 @@ export class Pickadoll {
 
   // what the fotanglar on the ground do to who comes by
   private stepSpikes(dt: number) {
-    const { game, player, crowd, fx, cars, rnd } = this.g,
+    const { game, player, crowd, fx, cars } = this.g,
       { spikes, limping, spikeWorld } = this;
     this.spikeHurtS -= dt;
     // you, on foot and on the ground: a jump clears them
     spikeWorld.walker = !game.inCar && player.y <= 0 ? player : null;
     const step = stepSpikes(spikes, dt, spikeWorld, this.spikeStep);
     // a car that rolls over one gets a flat tyre, the police's and your own too; one flat per car
-    for (let n = 0; n < step.cars.length; n++) {
-      const c = cars[step.cars[n]];
-      if (c.flat !== NO_FLAT || this.spared(c)) continue;
-      c.flat = step.wheels[n];
-      if (c === game.pcar) this.g.toast(FLAT_LINES[Math.floor(rnd() * FLAT_LINES.length)] + ' A tyre is flat.', 3);
-    }
+    for (let n = 0; n < step.cars.length; n++) this.burst(cars[step.cars[n]], step.wheels[n]);
     for (const i of step.people) {
       const n = crowd.npcs[i];
       if (limping.some(l => l.npc === n)) continue;

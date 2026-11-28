@@ -9,6 +9,7 @@ import {
   type Spike,
   type SpikeWorld,
   stepSpikes,
+  tyreHit,
   wheelOver,
 } from '../../../../src/game/sim/spikes';
 
@@ -116,6 +117,28 @@ describe('stepSpikes', () => {
     stepSpikes(spikes, 0.1, world({ people: [{ x: 0, z: 0 }], walker: { x: 0, z: 0 } }), out);
     stepSpikes(spikes, 0.1, world(), out);
     expect(out).toEqual(newSpikeStep());
+  });
+});
+
+describe('tyreHit', () => {
+  // a car facing north, its axles 1.5 m ahead of its centre and 1.4 m behind it
+  const car = { x: 0, z: 0, h: 0, T: { handling: { wheelbaseM: 2.9, rearAxleM: 1.4 } } };
+
+  it('names the tyre a low hit by an axle lands on', () => {
+    expect(tyreHit(car, { x: -0.9, z: -1.5 }, 0.3)).toBe(0); // front left
+    expect(tyreHit(car, { x: 0.9, z: 1.7 }, 0.4)).toBe(3); // rear right
+  });
+
+  it('is none for a hit on the body: too high, or between the axles', () => {
+    expect(tyreHit(car, { x: -0.9, z: -1.5 }, 1)).toBeNull();
+    expect(tyreHit(car, { x: -0.9, z: 0 }, 0.3)).toBeNull();
+  });
+
+  it("follows each car's own axles, as a tractor's with its rear axle far back", () => {
+    const tractor = { ...car, T: { handling: { wheelbaseM: 2.2, rearAxleM: 1.7 } } }; // 0.5 m ahead, 1.7 m behind
+    expect(tyreHit(tractor, { x: 0.9, z: -0.5 }, 0.3)).toBe(1);
+    expect(tyreHit(tractor, { x: -0.9, z: 1.7 }, 0.7)).toBe(2);
+    expect(tyreHit(tractor, { x: 0.9, z: -1.5 }, 0.3)).toBeNull();
   });
 });
 

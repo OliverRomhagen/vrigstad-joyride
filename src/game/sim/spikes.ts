@@ -1,12 +1,16 @@
-// Fotanglar (#17, lab: pickadoll): spikes that lie where they were thrown for a while. This file says where one comes
-// to lie and who is on one each step; what that does to them (a limp, a puncture, a hurt foot) is decided by the page
-// module, ../pickadoll.ts. Plain data, metres and seconds.
+// Fotanglar (#17, lab: pickadoll): spikes that lie where they were thrown for a while, and which tyre a shot bursts
+// (tyreHit). This file says where one comes to lie and who is on one each step; what that does to them (a limp, a
+// puncture, a hurt foot) is decided by the page module, ../pickadoll.ts. Plain data, metres and seconds.
 import { WHEEL, type Wheel } from '../cars';
+import type { Handling } from './handling';
 import { HitKind, type ShotHit } from './shots';
 
 export const SPIKES_MAX = 140, // on the ground at once; the oldest go first
   SPIKE_S = 60, // one lies this long
   SPIKE_OFF_WALL_M = 0.3; // one that hits a wall or a car drops this far out from it
+// a shot that lands this low on a car's side, and this near one of its axles, is on a tyre
+const TYRE_TALL_M = 0.8, // the tractor's big rear wheels reach about this high
+  TYRE_REACH_M = 0.45; // along the car, either side of the axle
 const SPIKE_STEP_M = 0.55, // a foot within this of one steps on it
   SPIKE_WHEEL_M = 1.3, // a car's middle within this of one drives over it
   SPIKE_CAR_MIN_MS = 1; // a car standing on one is fine until it rolls
@@ -49,6 +53,24 @@ export function wheelOver(c: { x: number; z: number; h: number }, p: { x: number
     right = dx * Math.cos(c.h) + dz * Math.sin(c.h) >= 0;
   if (front) return right ? WHEEL.FRONT_RIGHT : WHEEL.FRONT_LEFT;
   return right ? WHEEL.REAR_RIGHT : WHEEL.REAR_LEFT;
+}
+
+/**
+ * The tyre a hit on a car lands on, or null when it lands on the body: low on its side, near the front or the rear
+ * axle. `upM` is the hit's height above the ground.
+ */
+export function tyreHit(
+  c: { x: number; z: number; h: number; T: { handling: Pick<Handling, 'wheelbaseM' | 'rearAxleM'> } },
+  p: { x: number; z: number },
+  upM: number,
+): Wheel | null {
+  if (upM > TYRE_TALL_M) return null;
+  // along the car from its centre, where its axles are measured from: the front one ahead, the rear one behind
+  const along = (p.x - c.x) * Math.sin(c.h) - (p.z - c.z) * Math.cos(c.h),
+    { wheelbaseM, rearAxleM } = c.T.handling,
+    nearFront = Math.abs(along - (wheelbaseM - rearAxleM)) <= TYRE_REACH_M,
+    nearRear = Math.abs(along + rearAxleM) <= TYRE_REACH_M;
+  return nearFront || nearRear ? wheelOver(c, p) : null;
 }
 
 /**

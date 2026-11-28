@@ -16,6 +16,22 @@ const TRACER_THICK_M = 0.06, // a fast shot's streak: thicker than the shot, or 
   TRACER_COLOUR = '#fff1c2',
   STREAK_S = 0.07, // the last stretch of a fast shot's streak stays this long where it ended
   STREAKS_MAX = 24; // of those at once; the oldest goes first
+// an impact: a shot is drawn where it was when the frame began, so the last place it is seen is up to a frame's flight
+// short of what it hits. It is drawn on the surface instead for a moment, squashing flat, and its splat grows in
+const IMPACT_S = 0.05,
+  IMPACT_FLAT = 0.35, // the squashed ball's depth, as a share of its round one
+  IMPACTS_MAX = 32, // at once; the oldest goes first
+  POP_S = 0.08, // a new splat grows to its size in this long,
+  POP_FROM = 0.6, // from this share of it
+  POPS_MAX = 48;
+// droplets: a few bits fly off where a shot stops, out from the surface and falling, and shrink away
+const DROPS_PER_HIT = 5,
+  DROPS_MAX = 120, // at once; the oldest goes first
+  DROP_R_M = 0.025,
+  DROP_S = [0.15, 0.25], // each lasts between these
+  DROP_OUT_MS = [1.5, 3.5], // out from the surface, between these
+  DROP_SIDE_MS = 2, // and along it, up to this
+  DROP_GRAVITY_MS2 = 9.8;
 const ARC_MAX = 64, // dots in a throw's arc
   ARC_DOT_M = 0.045;
 const ARM_M = 0.6, // the player's arm, shoulder to hand (models.ts)
@@ -30,6 +46,12 @@ const BODY_HALF_DEPTH_M = 0.15,
   BODY_LOW_M = 0.9,
   BODY_HIGH_M = 1.4,
   BODY_SPLAT_MAX_M = 0.2;
+// a headshot's splat goes on the head's box instead (personParts in ./models.ts: 0.27 m, its middle 1.62 m up), and
+// smaller, to fit a face
+const HEAD_SPLAT_OUT_M = 0.14, // 5 mm off the head's faces (0.135), as the body's sit off the torso, and inside the hair's
+  HEAD_LOW_M = 1.6, // no lower, or its lower edge hangs in the air under the chin: the model has no neck
+  HEAD_HIGH_M = 1.7,
+  HEAD_SPLAT_MAX_M = 0.12;
 
 export interface ShotFxDeps {
   scene: THREE.Scene;
@@ -37,6 +59,35 @@ export interface ShotFxDeps {
   coarse: boolean;
   groundAt(x: number, z: number): number;
   rnd(): number; // its own stream: the shape of the splat
+  calmMotion: { readonly matches: boolean }; // prefers-reduced-motion: an impact doesn't squash, and a splat doesn't grow
+}
+
+/** A shot that landed, drawn on the surface it hit for a moment. */
+interface Impact {
+  at: THREE.Vector3;
+  normal: THREE.Vector3;
+  scale: number; // of the shot ball's geometry
+  colour: THREE.Color;
+  leftS: number;
+}
+
+/** A droplet in the air. */
+interface Drop {
+  at: THREE.Vector3;
+  v: THREE.Vector3; // m/s
+  colour: THREE.Color;
+  lifeS: number;
+  leftS: number;
+}
+
+/** A splat growing to its size: an instance of the splats' mesh, or a mesh of its own on a car or a person. */
+interface Pop {
+  index: number; // in the splats' mesh; -1 for `mesh`
+  mesh: THREE.Mesh | null;
+  at: THREE.Vector3;
+  turn: THREE.Quaternion;
+  full: THREE.Vector3; // its scale when grown
+  leftS: number;
 }
 
 const _m = new THREE.Matrix4(),
@@ -45,6 +96,7 @@ const _m = new THREE.Matrix4(),
   _p = new THREE.Vector3(),
   _n = new THREE.Vector3(),
   _s = new THREE.Vector3(),
+  _grow = new THREE.Vector3(), // sizeSplat's own, so a pop can be handed _s
   _c = new THREE.Color(),
   Z = new THREE.Vector3(0, 0, 1),
   UP = new THREE.Vector3(0, 1, 0);
@@ -56,6 +108,13 @@ export class ShotFx {
   private readonly tracers: THREE.InstancedMesh;
   private readonly ended: { at: THREE.Matrix4; leftS: number }[] = []; // streaks of shots that have landed
   private nextEnded = 0;
+  private readonly impacts: Impact[] = [];
+  private nextImpact = 0;
+  private readonly pops: Pop[] = [];
+  private nextPop = 0;
+  private readonly drops: Drop[] = [];
+  private nextDrop = 0;
+  private readonly dropMesh: THREE.InstancedMesh;
   private readonly splats: THREE.InstancedMesh;
   private readonly spikes: THREE.InstancedMesh;
   private readonly arc: THREE.InstancedMesh;
@@ -118,6 +177,17 @@ export class ShotFx {
     );
     this.gun.castShadow = true;
     g.scene.add(this.arc, this.arcEnd);
+    this.dropMesh = new THREE.InstancedMesh(
+      new THREE.IcosahedronGeometry(DROP_R_M, 0),
+      new THREE.MeshBasicMaterial(),
+      DROPS_MAX,
+    );
+    this.dropMesh.setColorAt(0, _c.set('#ffffff')); // the colour buffer, before the first frame compiles the material
+    this.dropMesh.count = 0;
+    this.dropMesh.visible = false; // none in the air: no draw call
+    this.dropMesh.frustumCulled = false;
+    this.dropMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    g.scene.add(this.dropMesh);
     for (const mesh of [this.shots, this.splats]) {
       mesh.setColorAt(0, _c.set('#ffffff')); // makes the colour buffer before the first frame compiles the material
       mesh.count = 0;
@@ -165,6 +235,8 @@ export class ShotFx {
     tracerM: (s: S) => number,
     dt: number,
   ) {
+    this.growSplats(dt);
+    this.flyDrops(dt);
     const n = Math.min(shots.length, SHOTS_MAX);
     if (!n && !this.shots.count && !this.tracers.count) return; // nothing in the air, and nothing was: no buffers to send
     let balls = 0,
@@ -184,6 +256,20 @@ export class ShotFx {
       const r = radiusM(s) / SHOT_R_M;
       this.shots.setMatrixAt(balls, _m.makeScale(r, r, r).setPosition(s.x, s.y + (s.lying ? radiusM(s) : 0), s.z));
       this.shots.setColorAt(balls++, this.linear(colour(s)));
+    }
+    // the shots that just landed, on the surface they hit: flattening against it, quick to start and slowing
+    const calm = this.g.calmMotion.matches;
+    for (const e of this.impacts) {
+      if (e.leftS <= 0) continue;
+      if (balls < SHOTS_MAX) {
+        const t = 1 - e.leftS / IMPACT_S,
+          flat = calm ? 1 : 1 - (1 - IMPACT_FLAT) * (1 - (1 - t) * (1 - t));
+        _q.setFromUnitVectors(Z, e.normal);
+        _p.copy(e.at).addScaledVector(e.normal, SHOT_R_M * e.scale * flat); // resting on the surface, not in it
+        this.shots.setMatrixAt(balls, _m.compose(_p, _q, _s.set(e.scale, e.scale, e.scale * flat)));
+        this.shots.setColorAt(balls++, e.colour);
+      }
+      e.leftS -= dt;
     }
     this.shots.count = balls;
     this.shots.instanceMatrix.needsUpdate = true;
@@ -214,6 +300,124 @@ export class ShotFx {
     e.at.compose(_p, _q, _s.set(TRACER_THICK_M, TRACER_THICK_M, long));
     e.leftS = STREAK_S;
     this.tracers.count = Math.max(this.tracers.count, 1); // so the next drawShots doesn't take the air for empty
+  }
+
+  /**
+   * A shot of radius `radiusM` stopped on what `hit` says: it is drawn there for a moment, squashing against the surface,
+   * so it is seen to arrive rather than to vanish a little short of it.
+   */
+  impact(hit: Pick<ShotHit, 'x' | 'y' | 'z' | 'nx' | 'ny' | 'nz'>, radiusM: number, colour: string) {
+    if (this.impacts.length < IMPACTS_MAX)
+      this.impacts.push({
+        at: new THREE.Vector3(),
+        normal: new THREE.Vector3(),
+        scale: 1,
+        colour: new THREE.Color(),
+        leftS: 0,
+      });
+    const e = this.impacts[this.nextImpact];
+    this.nextImpact = (this.nextImpact + 1) % IMPACTS_MAX;
+    e.at.set(hit.x, hit.y, hit.z);
+    e.normal.set(hit.nx, hit.ny, hit.nz);
+    if (e.normal.lengthSq() < 1e-6) e.normal.copy(UP);
+    e.normal.normalize();
+    e.scale = radiusM / SHOT_R_M;
+    e.colour.copy(this.linear(colour));
+    e.leftS = IMPACT_S;
+    this.shots.count = Math.max(this.shots.count, 1); // so the next drawShots doesn't take the air for empty
+  }
+
+  /**
+   * A few droplets fly off where a shot stopped: out from the surface `hit` faces and a little along it, falling, in
+   * `colour`. None for someone who asked for less motion.
+   */
+  spray(hit: Pick<ShotHit, 'x' | 'y' | 'z' | 'nx' | 'ny' | 'nz'>, colour: string) {
+    if (this.g.calmMotion.matches) return;
+    const { rnd } = this.g;
+    _n.set(hit.nx, hit.ny, hit.nz);
+    if (_n.lengthSq() < 1e-6) _n.copy(UP);
+    _n.normalize();
+    for (let k = 0; k < DROPS_PER_HIT; k++) {
+      if (this.drops.length < DROPS_MAX)
+        this.drops.push({
+          at: new THREE.Vector3(),
+          v: new THREE.Vector3(),
+          colour: new THREE.Color(),
+          lifeS: 0,
+          leftS: 0,
+        });
+      const d = this.drops[this.nextDrop];
+      this.nextDrop = (this.nextDrop + 1) % DROPS_MAX;
+      d.at.set(hit.x, hit.y, hit.z).addScaledVector(_n, DROP_R_M * 2);
+      d.v.set(rnd() * 2 - 1, rnd() * 2 - 1, rnd() * 2 - 1).multiplyScalar(DROP_SIDE_MS);
+      d.v.addScaledVector(_n, DROP_OUT_MS[0] + rnd() * (DROP_OUT_MS[1] - DROP_OUT_MS[0]) - d.v.dot(_n));
+      d.v.y = Math.max(0, d.v.y); // off a wall, a car or a person none starts downwards, into the ground below
+      d.colour.copy(this.linear(colour));
+      d.lifeS = d.leftS = DROP_S[0] + rnd() * (DROP_S[1] - DROP_S[0]);
+    }
+    this.dropMesh.visible = true;
+  }
+
+  private flyDrops(dt: number) {
+    if (!this.dropMesh.visible) return;
+    let n = 0;
+    for (const d of this.drops) {
+      if (d.leftS <= 0) continue;
+      d.leftS -= dt;
+      d.v.y -= DROP_GRAVITY_MS2 * dt;
+      d.at.addScaledVector(d.v, dt);
+      const k = Math.max(0, d.leftS / d.lifeS); // shrinks away as it goes
+      this.dropMesh.setMatrixAt(n, _m.makeScale(k, k, k).setPosition(d.at));
+      this.dropMesh.setColorAt(n++, d.colour);
+    }
+    this.dropMesh.count = n;
+    this.dropMesh.visible = n > 0;
+    this.dropMesh.instanceMatrix.needsUpdate = true;
+    if (this.dropMesh.instanceColor) this.dropMesh.instanceColor.needsUpdate = true;
+  }
+
+  // a splat just left starts small and grows to its size, quick at first: `index` in the splats' mesh, or a mesh of its own
+  private pop(index: number, mesh: THREE.Mesh | null, at: THREE.Vector3, turn: THREE.Quaternion, full: THREE.Vector3) {
+    if (this.g.calmMotion.matches) return;
+    if (this.pops.length < POPS_MAX)
+      this.pops.push({
+        index: -1,
+        mesh: null,
+        at: new THREE.Vector3(),
+        turn: new THREE.Quaternion(),
+        full: new THREE.Vector3(),
+        leftS: 0,
+      });
+    const e = this.pops[this.nextPop];
+    this.nextPop = (this.nextPop + 1) % POPS_MAX;
+    if (e.leftS > 0) this.sizeSplat(e, 1); // the oldest, still growing, is finished at once
+    e.index = index;
+    e.mesh = mesh;
+    e.at.copy(at);
+    e.turn.copy(turn);
+    e.full.copy(full);
+    e.leftS = POP_S;
+    this.sizeSplat(e, POP_FROM);
+  }
+
+  private growSplats(dt: number) {
+    for (const e of this.pops) {
+      if (e.leftS <= 0) continue;
+      e.leftS -= dt;
+      const t = Math.min(1, 1 - e.leftS / POP_S);
+      this.sizeSplat(e, e.leftS <= 0 ? 1 : POP_FROM + (1 - POP_FROM) * (1 - (1 - t) ** 3));
+    }
+  }
+
+  // a growing splat at share k of its size
+  private sizeSplat(e: Pop, k: number) {
+    _grow.copy(e.full).multiplyScalar(k);
+    if (e.mesh) {
+      e.mesh.scale.copy(_grow);
+      return;
+    }
+    this.splats.setMatrixAt(e.index, _m.compose(e.at, e.turn, _grow));
+    this.splats.instanceMatrix.needsUpdate = true;
   }
 
   /**
@@ -284,6 +488,7 @@ export class ShotFx {
     this.splats.instanceMatrix.needsUpdate = true;
     if (this.splats.instanceColor) this.splats.instanceColor.needsUpdate = true;
     this.splatted++;
+    this.pop(i, null, _p, _q, _s);
   }
 
   // _m: a quad of radius r at the hit, facing along _n and turned about it
@@ -308,29 +513,42 @@ export class ShotFx {
     mesh.updateMatrixWorld();
     target.updateWorldMatrix(true, false);
     target.attach(mesh); // keeps it where it is in the world, as the target's child
+    this.pop(-1, mesh, mesh.position, mesh.quaternion, mesh.scale);
   }
 
   /** Leaves a splat on a person's body, on the side the shot came from: (dx, dz) is the way the shot flew, `y` its height. */
-  splatOnPerson(person: THREE.Object3D, dx: number, dz: number, y: number, r: number, colour: string, turn: number) {
+  splatOnPerson(
+    person: THREE.Object3D,
+    dx: number,
+    dz: number,
+    y: number,
+    r: number,
+    colour: string,
+    turn: number,
+    isHead = false, // a headshot: on the head, not the body
+  ) {
     person.updateWorldMatrix(true, false);
     // the way back to the shooter, in the person's own axes
     _n.set(-dx, 0, -dz).transformDirection(_m.copy(person.matrixWorld).invert());
     const up = THREE.MathUtils.clamp(
-      _p.set(person.position.x, y, person.position.z).applyMatrix4(_m).y,
-      BODY_LOW_M,
-      BODY_HIGH_M,
-    );
+        _p.set(person.position.x, y, person.position.z).applyMatrix4(_m).y,
+        isHead ? HEAD_LOW_M : BODY_LOW_M,
+        isHead ? HEAD_HIGH_M : BODY_HIGH_M,
+      ),
+      halfDepth = isHead ? HEAD_SPLAT_OUT_M : BODY_HALF_DEPTH_M,
+      halfWidth = isHead ? HEAD_SPLAT_OUT_M : BODY_HALF_WIDTH_M;
     const mesh = this.stick(colour);
     if (Math.abs(_n.z) >= Math.abs(_n.x)) {
-      mesh.position.set(0, up, Math.sign(_n.z) * BODY_HALF_DEPTH_M);
+      mesh.position.set(0, up, Math.sign(_n.z) * halfDepth);
       _n.set(0, 0, Math.sign(_n.z) || 1);
     } else {
-      mesh.position.set(Math.sign(_n.x) * BODY_HALF_WIDTH_M, up, 0);
+      mesh.position.set(Math.sign(_n.x) * halfWidth, up, 0);
       _n.set(Math.sign(_n.x), 0, 0);
     }
     mesh.quaternion.setFromUnitVectors(Z, _n).multiply(_spin.setFromAxisAngle(Z, turn * Math.PI * 2));
-    mesh.scale.setScalar(Math.min(r, BODY_SPLAT_MAX_M) * 2);
+    mesh.scale.setScalar(Math.min(r, isHead ? HEAD_SPLAT_MAX_M : BODY_SPLAT_MAX_M) * 2);
     person.add(mesh);
+    this.pop(-1, mesh, mesh.position, mesh.quaternion, mesh.scale);
   }
 
   private shown(o: THREE.Object3D) {

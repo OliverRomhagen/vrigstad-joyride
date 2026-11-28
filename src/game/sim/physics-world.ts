@@ -50,6 +50,13 @@ const RESPAWN_CHECK_STEPS = 60;
  * at the edge from leaving and joining over and over (m)
  */
 const PROP_LEAVE_MARGIN_M = 20;
+/**
+ * a standing mover comes loose when its outline comes this near a car, the player or a person, where they'll be at
+ * the end of the frame: a moose at 4 m/s goes 7 cm a step, and the world's kinematic bodies don't touch each other (m)
+ */
+const MOVER_TOUCH_M = 0.1;
+/** a mover's outline is looked at every this far along it, for what it meets (m) */
+const MOVER_SAMPLE_M = 0.25;
 /** props are found by a grid of cells this size (m) */
 const PROP_CELL_M = 16;
 /** cell keys are numbers: (column + offset) * stride + row + offset, for any column and row within ±offset */
@@ -77,6 +84,11 @@ export interface PropSpec {
    * its stand PHYSICS.TARGET_RESET_S after it's knocked, however near the player is.
    */
   isTarget?: boolean;
+  /**
+   * It moves while it stands, along a path the caller gives it every frame (`moveStanding`): a moving target. In the
+   * world from the start, as a target, and anchored to a body the world moves rather than a fixed one.
+   */
+  moves?: boolean;
 }
 
 /** A person the world holds while they're near the player, standing: `scale` is their size, 1 the standard person. */
@@ -134,6 +146,12 @@ export interface PropPose {
 export interface PhysicsWorldOptions {
   data: WorldData;
   heightfield: Ground;
+  /**
+   * The ground as drawn, curbs, pavements and road lifts included, which the people, the cars and the player stand on:
+   * up to half a metre above the heightfield on a pavement. Their bodies stand on it, or a shot at a drawn head passes
+   * over its capsule. The heightfield's own height without it.
+   */
+  groundAt?(x: number, z: number): number;
   props: readonly PropSpec[];
   /** more fixed boxes, such as the shooting range's bank: each its middle and half its size (m) */
   blocks?: readonly { x: number; y: number; z: number; hx: number; hy: number; hz: number }[];
@@ -170,7 +188,8 @@ export class PhysicsWorld {
   readonly loosened: number[] = [];
   private readonly R: Rapier;
   private readonly world: InstanceType<Rapier['World']>;
-  private readonly heightAt: (x: number, z: number) => number;
+  /** the ground as drawn, where the people, the cars and the player stand (PhysicsWorldOptions.groundAt) */
+  private readonly standAt: (x: number, z: number) => number;
   private readonly props: readonly PropSpec[];
   /** each prop's reach from its middle across the ground: half its footprint's diagonal (m) */
   private readonly propReach: Float64Array;
@@ -182,6 +201,25 @@ export class PhysicsWorld {
   /** each loose prop's pose before the last step, 7 numbers a prop (x, y, z, qx, qy, qz, qw), for drawnPose */
   private readonly prevPose: Float64Array;
   private readonly hasPrev: Uint8Array;
+  /**
+   * where each prop stands now, 4 numbers a prop (x, the middle's y, z, rotationY): where its spec puts it, or for one
+   * that moves, where `moveStanding` last put it
+   */
+  private readonly stand: Float64Array;
+  /** the props that move while they stand, by index */
+  private readonly movers: number[] = [];
+  /**
+   * each mover's stand at the end of the last frame's steps, 4 numbers a prop as in `stand`, which this frame's move
+   * starts from
+   */
+  private readonly standFrom: Float64Array;
+  /**
+   * how far each mover reaches along its own x, behind and ahead of its middle, 2 numbers a prop (m): a running moose
+   * is 3 m long on a post 10 cm wide
+   */
+  private readonly moverSpan: Float64Array;
+  /** each mover's velocity over the last frame's steps, 3 numbers a prop (m/s): it keeps it when it's knocked loose */
+  private readonly standVelocity: Float64Array;
   /** where the player is, on foot or in a car: a prop in sight of it isn't put back */
   private viewerX = 0;
   private viewerZ = 0;
@@ -213,9 +251,9 @@ export class PhysicsWorld {
   private stepCount = 0;
   private lastStepMs = 0;
 
-  constructor(R: Rapier, { data, heightfield, props, blocks = [] }: PhysicsWorldOptions) {
+  constructor(R: Rapier, { data, heightfield, groundAt, props, blocks = [] }: PhysicsWorldOptions) {
     this.R = R;
-    this.heightAt = (x, z) => heightfield.heightAt(x, z);
+    this.standAt = groundAt ?? ((x, z) => heightfield.heightAt(x, z));
     this.props = props;
     this.propReach = Float64Array.from(props, p => Math.hypot(p.widthM, p.depthM) / 2);
     this.propBodies = props.map(() => null);
@@ -223,7 +261,28 @@ export class PhysicsWorld {
     this.prevPose = new Float64Array(props.length * 7);
     this.hasPrev = new Uint8Array(props.length);
     this.looseAtStep = new Uint32Array(props.length);
+    this.stand = new Float64Array(props.length * 4);
+    this.standFrom = new Float64Array(props.length * 4);
+    this.standVelocity = new Float64Array(props.length * 3);
+    this.moverSpan = new Float64Array(props.length * 2);
     props.forEach((p, i) => {
+      const k = i * 4;
+      this.stand[k] = this.standFrom[k] = p.x;
+      this.stand[k + 1] = this.standFrom[k + 1] = p.baseY + p.heightM / 2;
+      this.stand[k + 2] = this.standFrom[k + 2] = p.z;
+      this.stand[k + 3] = this.standFrom[k + 3] = p.rotationY;
+      if (p.moves) {
+        this.movers.push(i);
+        let back = p.widthM / 2,
+          ahead = p.widthM / 2;
+        for (const part of p.parts ?? []) {
+          back = Math.max(back, part.hx - part.x);
+          ahead = Math.max(ahead, part.x + part.hx);
+        }
+        this.moverSpan[i * 2] = back;
+        this.moverSpan[i * 2 + 1] = ahead;
+        return; // not in the grid, which is for finding props by where they stand for good
+      }
       const key = cellKey(Math.floor(p.x / PROP_CELL_M), Math.floor(p.z / PROP_CELL_M)),
         cell = this.propCells.get(key);
       if (cell) cell.push(i);
@@ -248,7 +307,7 @@ export class PhysicsWorld {
     for (const b of blocks)
       this.world.createCollider(R.ColliderDesc.cuboid(b.hx, b.hy, b.hz).setTranslation(b.x, b.y, b.z), fixed);
     props.forEach((p, i) => {
-      if (p.isTarget) this.join(i);
+      if (p.isTarget || p.moves) this.join(i);
     });
     this.world.step(); // ray casts read the broad phase, which a step builds: one now, so they work before the first frame
   }
@@ -279,7 +338,7 @@ export class PhysicsWorld {
         half = Math.max(0.01, car.T.lengthM / 2 - r);
       if (!body) {
         body = this.world.createRigidBody(
-          R.RigidBodyDesc.kinematicPositionBased().setTranslation(car.x, this.heightAt(car.x, car.z) + r, car.z),
+          R.RigidBodyDesc.kinematicPositionBased().setTranslation(car.x, this.standAt(car.x, car.z) + r, car.z),
         );
         // a capsule lies along the body's z, and the body turns so that z points where the car does
         const collider = this.world.createCollider(
@@ -290,7 +349,7 @@ export class PhysicsWorld {
         this.carByCollider.set(collider.handle, car);
       }
       // the game's heading h points the car at (sin h, -cos h); a turn of π - h about y takes z there
-      const target = this.aim(body, car.x, this.heightAt(car.x, car.z) + r, car.z, Math.PI - car.h);
+      const target = this.aim(body, car.x, this.standAt(car.x, car.z) + r, car.z, Math.PI - car.h);
       target.radius = r;
       target.spine = half;
       if (target.moving) this.joinNear(car.x, car.z); // a parked car has joined what is near it already
@@ -303,7 +362,7 @@ export class PhysicsWorld {
         this.targets.delete(body);
       }
     if (player) {
-      const y = this.heightAt(player.x, player.z) + PERSON_RADIUS_M + PLAYER_HALF_HEIGHT_M;
+      const y = this.standAt(player.x, player.z) + PERSON_RADIUS_M + PLAYER_HALF_HEIGHT_M;
       this.aim(this.playerBody, player.x, y, player.z, Number.NaN);
     } else this.aim(this.playerBody, 0, -1000, 0, Number.NaN); // in a car: out of the way
     this.playerAway = !player;
@@ -326,7 +385,7 @@ export class PhysicsWorld {
     for (const p of people) {
       if (p.down || Math.hypot(p.x - near.x, p.z - near.z) > PERSON_JOIN_M) continue;
       seen.add(p);
-      const y = this.heightAt(p.x, p.z) + (PERSON_RADIUS_M + PLAYER_HALF_HEIGHT_M) * p.scale;
+      const y = this.standAt(p.x, p.z) + (PERSON_RADIUS_M + PLAYER_HALF_HEIGHT_M) * p.scale;
       let body = this.personBodies.get(p);
       if (!body) {
         body = this.world.createRigidBody(R.RigidBodyDesc.kinematicPositionBased().setTranslation(p.x, y, p.z));
@@ -353,6 +412,33 @@ export class PhysicsWorld {
     return this.personBodies.size;
   }
 
+  /**
+   * Moves prop i's stand to (x, z), on ground at `baseY`, turned `rotationY`: for a prop that `moves`, once a frame
+   * before `step`, which spreads the move over its steps. While it stands, the next step takes it there, so a shot
+   * meets it where it is drawn; knocked loose, it falls from where it was, and it is put back where its stand is then.
+   */
+  moveStanding(i: number, x: number, baseY: number, z: number, rotationY: number) {
+    const k = i * 4;
+    this.stand[k] = x;
+    this.stand[k + 1] = baseY + this.props[i].heightM / 2;
+    this.stand[k + 2] = z;
+    this.stand[k + 3] = rotationY;
+    const from = this.standFrom;
+    if (Math.hypot(x - from[k], z - from[k + 2]) <= TELEPORT_M) return;
+    // put there, not moved: it jumps, as a car does (`aim`), rather than sweep through what is between
+    from[k] = x;
+    from[k + 1] = this.stand[k + 1];
+    from[k + 2] = z;
+    from[k + 3] = rotationY;
+    const body = this.propBodies[i];
+    if (!body || this.loose[i]) return;
+    _v.x = x;
+    _v.y = from[k + 1];
+    _v.z = z;
+    body.setTranslation(_v, true);
+    body.setRotation(yaw(rotationY), true);
+  }
+
   /** Runs the steps this frame's time asks for; returns how many ran. */
   step(dt: number, now: () => number = () => 0) {
     const t0 = now();
@@ -364,6 +450,7 @@ export class PhysicsWorld {
       // a change of gravity wakes nothing by itself: a prop asleep in mid-air at zero gravity would stay there
       for (const i of this.loosened) this.propBodies[i]?.wakeUp();
     }
+    if (steps > 0) this.loosenMoversMeeting();
     // Each car and the player cover this frame's move evenly over its steps: Rapier gives a kinematic body the whole
     // move in the first step it's told of, so at 30 fps a car would hit a mailbox at twice its speed, then stand still.
     for (let k = 1; k <= steps; k++) {
@@ -382,6 +469,7 @@ export class PhysicsWorld {
         // anchored box it is already inside of, which Rapier pushes out sideways: at speed, or a glancing hit, it passed through
         this.loosenAhead(_v.x, _v.z, angle, t, Math.hypot(t.x - t.fromX, t.z - t.fromZ) / steps);
       }
+      for (const i of this.movers) this.moveMover(i, f);
       for (const i of this.loosened) this.keepPrev(i);
       this.world.step(this.events);
       this.events.drainCollisionEvents(this.loosenTouched);
@@ -390,6 +478,7 @@ export class PhysicsWorld {
         this.leaveFar();
       }
     }
+    if (steps > 0) this.endMoverSteps(steps);
     if (steps > 0)
       for (const t of this.targets.values())
         if (t.moving) {
@@ -425,11 +514,12 @@ export class PhysicsWorld {
   propPose(i: number, out: PropPose) {
     const body = this.propBodies[i];
     if (!body) {
-      const p = this.props[i],
-        q = yaw(p.rotationY);
-      out.x = p.x;
-      out.y = p.baseY + p.heightM / 2;
-      out.z = p.z;
+      const s = this.stand,
+        k = i * 4,
+        q = yaw(s[k + 3]);
+      out.x = s[k];
+      out.y = s[k + 1];
+      out.z = s[k + 2];
       out.qx = q.x;
       out.qy = q.y;
       out.qz = q.z;
@@ -451,7 +541,8 @@ export class PhysicsWorld {
   /**
    * Where to draw prop i this frame: for a loose one, between its pose before the last step and its pose now, as far
    * as this frame is into the next step. Physics steps at 60 Hz; on a 120 Hz screen a falling prop would otherwise move
-   * every other frame. It is drawn up to one step behind Rapier.
+   * every other frame. It is drawn up to one step behind Rapier. A mover that stands is drawn where Rapier has it, not
+   * blended, as a shot meets it there: on a 120 Hz screen it moves every other frame.
    */
   drawnPose(i: number, out: PropPose) {
     this.propPose(i, out);
@@ -635,27 +726,104 @@ export class PhysicsWorld {
       for (let r = r0; r <= r1; r++) {
         const cell = this.propCells.get(cellKey(c, r));
         if (!cell) continue;
-        for (const i of cell) {
-          if (!this.propBodies[i] || this.loose[i]) continue;
-          const p = this.props[i],
-            along = Math.max(-car.spine, Math.min(car.spine, (p.x - x) * ux + (p.z - z) * uz)),
-            gap = Math.hypot(p.x - (x + ux * along), p.z - (z + uz * along)) - car.radius - this.propReach[i];
-          if (gap < margin) this.setLoose(i);
+        for (const i of cell) this.loosenIfNear(i, x, z, ux, uz, car, margin);
+      }
+    for (const i of this.movers) this.loosenIfNear(i, x, z, ux, uz, car, margin);
+  }
+
+  /** Knocks prop i loose if it's anchored and within `margin` of the car's capsule at (x, z), along (ux, uz). */
+  private loosenIfNear(i: number, x: number, z: number, ux: number, uz: number, car: Target, margin: number) {
+    if (!this.propBodies[i] || this.loose[i]) return;
+    const px = this.stand[i * 4],
+      pz = this.stand[i * 4 + 2],
+      along = Math.max(-car.spine, Math.min(car.spine, (px - x) * ux + (pz - z) * uz)),
+      gap = Math.hypot(px - (x + ux * along), pz - (z + uz * along)) - car.radius - this.propReach[i];
+    if (gap < margin) this.setLoose(i);
+  }
+
+  /**
+   * Takes standing mover i a share `f` of the way from where the last frame's steps left it to its stand now. Rapier
+   * gives a kinematic body the whole move in the first step it's told of, as for the cars in `step`.
+   */
+  private moveMover(i: number, f: number) {
+    const body = this.propBodies[i];
+    if (!body || this.loose[i]) return;
+    const s = this.stand,
+      from = this.standFrom,
+      k = i * 4;
+    _v.x = from[k] + (s[k] - from[k]) * f;
+    _v.y = from[k + 1] + (s[k + 1] - from[k + 1]) * f;
+    _v.z = from[k + 2] + (s[k + 2] - from[k + 2]) * f;
+    body.setNextKinematicTranslation(_v);
+    const turn = Math.atan2(Math.sin(s[k + 3] - from[k + 3]), Math.cos(s[k + 3] - from[k + 3])); // the short way round
+    body.setNextKinematicRotation(yaw(from[k + 3] + turn * f));
+  }
+
+  /**
+   * Knocks loose each standing mover whose outline, where this frame takes it, meets a car, the player or a person
+   * where this frame takes them, moving or still. Kinematic bodies don't touch each other, and `loosenAhead` only runs
+   * for what moves: without this, a moose would slide through a parked car. Its outline is a line along its own x, as
+   * long as its boxes reach, looked at every MOVER_SAMPLE_M.
+   */
+  private loosenMoversMeeting() {
+    const s = this.stand;
+    for (const i of this.movers) {
+      if (!this.propBodies[i] || this.loose[i]) continue;
+      const k = i * 4,
+        ax = Math.cos(s[k + 3]), // the mover's own x, turned about the vertical
+        az = -Math.sin(s[k + 3]),
+        back = this.moverSpan[i * 2],
+        ahead = this.moverSpan[i * 2 + 1],
+        samples = Math.ceil((back + ahead) / MOVER_SAMPLE_M);
+      meeting: for (const [body, t] of this.targets) {
+        if (body === this.playerBody && this.playerAway) continue;
+        const person = Number.isNaN(t.angle), // the player or a person: a capsule standing up
+          radius = person ? PERSON_RADIUS_M : t.radius,
+          spine = person ? 0 : t.spine,
+          ux = person ? 0 : Math.sin(t.angle),
+          uz = person ? 0 : Math.cos(t.angle);
+        for (let n = 0; n <= samples; n++) {
+          const along = -back + ((back + ahead) * n) / samples,
+            px = s[k] + ax * along,
+            pz = s[k + 2] + az * along,
+            on = Math.max(-spine, Math.min(spine, (px - t.x) * ux + (pz - t.z) * uz));
+          if (Math.hypot(px - (t.x + ux * on), pz - (t.z + uz * on)) - radius < MOVER_TOUCH_M) {
+            this.setLoose(i);
+            break meeting;
+          }
         }
       }
+    }
+  }
+
+  /** After a frame's steps: each mover's velocity over them, and where the next frame's move starts from. */
+  private endMoverSteps(steps: number) {
+    const s = this.stand,
+      from = this.standFrom,
+      v = this.standVelocity,
+      dt = steps * PHYSICS_STEP_S;
+    for (const i of this.movers) {
+      const k = i * 4,
+        j = i * 3;
+      for (let a = 0; a < 3; a++) v[j + a] = this.loose[i] ? 0 : (s[k + a] - from[k + a]) / dt;
+      for (let a = 0; a < 4; a++) from[k + a] = s[k + a];
+    }
   }
 
   /**
    * Puts prop i in the world, anchored exactly where it is drawn, as a mailbox on its post: fixed, so it neither settles
-   * nor tips on a slope, until a car reaches it (`loosenAhead`) or a loose prop touches it (`loosenTouched`).
+   * nor tips on a slope, until a car reaches it (`loosenAhead`) or a loose prop touches it (`loosenTouched`). One that
+   * `moves` is anchored to a kinematic body instead, which the world takes along its path (`moveMover`).
    */
   private join(i: number) {
     const { R } = this,
       p = this.props[i];
+    const s = this.stand,
+      k = i * 4;
     const body = this.world.createRigidBody(
-      R.RigidBodyDesc.fixed()
-        .setTranslation(p.x, p.baseY + p.heightM / 2, p.z)
-        .setRotation(yaw(p.rotationY)),
+      (p.moves ? R.RigidBodyDesc.kinematicPositionBased() : R.RigidBodyDesc.fixed())
+        .setTranslation(s[k], s[k + 1], s[k + 2])
+        .setRotation(yaw(s[k + 3])),
     );
     const collider = this.world.createCollider(
       R.ColliderDesc.cuboid(p.widthM / 2, p.heightM / 2, p.depthM / 2)
@@ -710,12 +878,15 @@ export class PhysicsWorld {
         if (Math.hypot(t.x - this.viewerX, t.z - this.viewerZ) < far) continue;
         if (Math.hypot(p.x - this.viewerX, p.z - this.viewerZ) < far) continue; // nor where it reappears
       }
-      body.setBodyType(R.RigidBodyType.Fixed, false);
-      _v.x = p.x;
-      _v.y = p.baseY + p.heightM / 2;
-      _v.z = p.z;
+      // back on its stand: one that moves, where its path has got to, and on along it from the next step
+      body.setBodyType(p.moves ? R.RigidBodyType.KinematicPositionBased : R.RigidBodyType.Fixed, false);
+      const s = this.stand,
+        sk = i * 4;
+      _v.x = s[sk];
+      _v.y = s[sk + 1];
+      _v.z = s[sk + 2];
       body.setTranslation(_v, false);
-      body.setRotation(yaw(p.rotationY), false);
+      body.setRotation(yaw(s[sk + 3]), false);
       this.loose[i] = 0;
       this.hasPrev[i] = 0;
       loosened.splice(k, 1);
@@ -724,16 +895,17 @@ export class PhysicsWorld {
 
   /** Whether prop i's stand is free of the cars, the player, the people and the other loose props. */
   private standClear(i: number) {
-    const p = this.props[i];
+    const x = this.stand[i * 4],
+      z = this.stand[i * 4 + 2];
     for (const [body, t] of this.targets) {
       if (body === this.playerBody && this.playerAway) continue;
-      if (Math.hypot(t.x - p.x, t.z - p.z) < TARGET_CLEAR_M) return false;
+      if (Math.hypot(t.x - x, t.z - z) < TARGET_CLEAR_M) return false;
     }
     for (const j of this.loosened) {
       const body = this.propBodies[j];
       if (j === i || !body) continue;
       const at = body.translation();
-      if (Math.hypot(at.x - p.x, at.z - p.z) < TARGET_CLEAR_PROP_M) return false;
+      if (Math.hypot(at.x - x, at.z - z) < TARGET_CLEAR_PROP_M) return false;
     }
     return true;
   }
@@ -773,7 +945,7 @@ export class PhysicsWorld {
       const i = joined[k],
         p = props[i],
         body = this.propBodies[i];
-      if (!body || p.isTarget || this.loose[i]) continue;
+      if (!body || p.isTarget || p.moves || this.loose[i]) continue;
       if (this.looseNear(p.x, p.z)) continue; // a knocked prop beside it would slide through where it stood
       if (forShots && Math.hypot(p.x - this.viewerX, p.z - this.viewerZ) < shotKeepM) continue;
       let near = false;
@@ -812,6 +984,18 @@ export class PhysicsWorld {
     const body = this.propBodies[i];
     if (!body) return;
     body.setBodyType(this.R.RigidBodyType.Dynamic, true);
+    if (this.props[i].moves) {
+      // it goes on as it was moving: a running moose falls forward
+      const v = this.standVelocity,
+        j = i * 3;
+      _v.x = v[j];
+      _v.y = v[j + 1];
+      _v.z = v[j + 2];
+      body.setLinvel(_v, true);
+      // but not its turn: knocked at the end of its run as it turns about, it would fall spinning
+      _v.x = _v.y = _v.z = 0;
+      body.setAngvel(_v, true);
+    }
     body.enableCcd(true); // thrown at 20 to 40 m/s, it would pass through a wall, which is one triangle thick
   }
 }

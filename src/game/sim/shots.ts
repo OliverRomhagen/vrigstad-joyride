@@ -10,12 +10,11 @@ import { SurfaceKind } from './physics-world';
 export const WeaponId = {
   ARTPUFFRA: 'artpuffra',
   PICKADOLL: 'pickadoll',
-  PEPPRAPUFFRA: 'pepprapuffra',
+  KPISTEN: 'kpisten',
   HAGELBOSSA: 'hagelbossa',
-  POTATISKANON: 'potatiskanon',
   MINIGUN: 'minigun',
   GULDARTPUFFRA: 'guldartpuffra',
-  PUFFRA: 'puffra',
+  KNALLEN: 'knallen',
   LUFTGEVAR: 'luftgevar',
   ALGSTUDSARE: 'algstudsare',
   GRANAT: 'granat',
@@ -31,6 +30,7 @@ export interface Weapon extends AmmoRule {
   coolS: number; // between shots
   auto: boolean; // fires for as long as the trigger is held
   pellets: number; // shots per pull
+  burst: number; // times a pull fires, BURST_GAP_S apart, before the weapon waits coolS: 1 for once
   spreadRad: number; // each shot leaves within this angle of the aim
   shotMassKg: number; // what a shot weighs, at the game's scale, not a real bullet's: times speedMs, the push its hit gives (knockbackOf)
   damage: number; // what a hit does to a car's damage, with an ammo that damages (EffectKind.DAMAGE)
@@ -56,6 +56,7 @@ export const WEAPONS = [
     coolS: 0.08,
     auto: false,
     pellets: 1,
+    burst: 1,
     spreadRad: 0.012,
     shotMassKg: 0.3125,
     damage: 0.5,
@@ -76,6 +77,7 @@ export const WEAPONS = [
     coolS: 0.1,
     auto: false,
     pellets: 1,
+    burst: 1,
     spreadRad: 0.006,
     shotMassKg: 0.571,
     damage: 2,
@@ -90,16 +92,17 @@ export const WEAPONS = [
     ammo: null,
   },
   {
-    id: WeaponId.PEPPRAPUFFRA,
-    name: 'Pepprapuffra',
-    speedMs: 60,
-    coolS: 0.07,
-    auto: true,
+    id: WeaponId.KPISTEN,
+    name: 'Kpisten',
+    speedMs: 70,
+    coolS: 0.4,
+    auto: false,
     pellets: 1,
-    spreadRad: 0.045,
-    shotMassKg: 0.333,
-    damage: 1,
-    splatM: 0.45,
+    burst: 3,
+    spreadRad: 0.015,
+    shotMassKg: 0.36,
+    damage: 1.2,
+    splatM: 0.42,
     blastM: 0,
     bounces: 0,
     thrown: false,
@@ -116,31 +119,12 @@ export const WEAPONS = [
     coolS: 0.8,
     auto: false,
     pellets: 8,
+    burst: 1,
     spreadRad: 0.09,
     shotMassKg: 0.436,
     damage: 1.2,
     splatM: 0.4,
     blastM: 0,
-    bounces: 0,
-    thrown: false,
-    fuseS: 0,
-    shotM: 0.07,
-    tracerM: 0,
-    scope: 0,
-    ammo: null,
-  },
-  {
-    id: WeaponId.POTATISKANON,
-    name: 'Potatiskanon',
-    speedMs: 26,
-    coolS: 1.2,
-    auto: false,
-    pellets: 1,
-    spreadRad: 0.01,
-    shotMassKg: 6.15,
-    damage: 8,
-    splatM: 2.2,
-    blastM: 4,
     bounces: 0,
     thrown: false,
     fuseS: 0,
@@ -156,6 +140,7 @@ export const WEAPONS = [
     coolS: 0.03,
     auto: true,
     pellets: 1,
+    burst: 1,
     spreadRad: 0.055,
     shotMassKg: 0.213,
     damage: 0.8,
@@ -177,6 +162,7 @@ export const WEAPONS = [
     coolS: 0.08,
     auto: false,
     pellets: 1,
+    burst: 1,
     spreadRad: 0.012,
     shotMassKg: 0.4,
     damage: 0.6,
@@ -190,18 +176,20 @@ export const WEAPONS = [
     scope: 0,
     ammo: null,
   },
-  // fast shots: they arrive nearly as you fire and are drawn as a streak. The plain pistol of #17's ladder
+  // fast shots: they arrive nearly as you fire and are drawn as a streak. Knallen is the magnum: slow to fire, and
+  // its push (120 N·s) knocks people flat and nudges a parked car, where the pickadoll's (40) only marks it
   {
-    id: WeaponId.PUFFRA,
-    name: 'Puffra',
+    id: WeaponId.KNALLEN,
+    name: 'Knallen',
     speedMs: 320,
-    coolS: 0.13,
+    coolS: 0.6,
     auto: false,
     pellets: 1,
-    spreadRad: 0.004,
-    shotMassKg: 0.1625,
-    damage: 2.6,
-    splatM: 0.25,
+    burst: 1,
+    spreadRad: 0.002,
+    shotMassKg: 0.375,
+    damage: 6,
+    splatM: 0.35,
     blastM: 0,
     bounces: 0,
     thrown: false,
@@ -219,6 +207,7 @@ export const WEAPONS = [
     coolS: 0.7,
     auto: false,
     pellets: 1,
+    burst: 1,
     spreadRad: 0.001,
     shotMassKg: 0.141,
     damage: 1.2,
@@ -240,6 +229,7 @@ export const WEAPONS = [
     coolS: 1.4,
     auto: false,
     pellets: 1,
+    burst: 1,
     spreadRad: 0,
     shotMassKg: 0.263,
     damage: 10,
@@ -261,6 +251,7 @@ export const WEAPONS = [
     coolS: 0.9,
     auto: false,
     pellets: 1,
+    burst: 1,
     spreadRad: 0.01,
     shotMassKg: 8,
     damage: 6,
@@ -281,6 +272,7 @@ export const WEAPONS = [
     coolS: 1,
     auto: false,
     pellets: 7,
+    burst: 1,
     spreadRad: 0.16,
     shotMassKg: 0,
     damage: 0,
@@ -312,10 +304,13 @@ const CAST_STEP_M = 2; // with a world's ray cast, a shot's path is cast in stra
 const WALL_MAX_M = 9; // houses are taken to be this tall: a shot above it flies over
 const PERSON_TALL_M = 1.85; // a standard person, to the top of the head
 const CAR_TALL_M = 1.5;
+const HEAD_FROM_K = 0.83, // a hit this share of a person's height up, or higher, is on the head: from 1.54 m on a 1.85 m person
+  HEAD_SIDE_M = 0.15; // and no further than this from their middle, across the shot's way: past it is a shoulder
 const WALL_PROBE_M = 0.05; // the radius of the circle that feels for a wall
 const SLOPE_STEP_M = 0.5; // the ground's slope where a shot lands is read over this distance
 const AIM_ROUNDS = 4; // aimAtMoving: the drift and the time in the air settle each other in this many rounds
 export const SHOTS_MAX = 256; // in the air at once
+export const BURST_GAP_S = 0.06; // between the shots of a burst
 
 /** One shot in the air. Metres and m/s; y is up. */
 export interface Shot {
@@ -402,8 +397,16 @@ const _probe = { x: 0, z: 0 },
 /** The push a weapon's hit gives, in N·s: what its shot weighs times the speed it leaves at. A faster weapon pushes harder. */
 export const knockbackOf = (w: Pick<Weapon, 'shotMassKg' | 'speedMs'>) => w.shotMassKg * w.speedMs;
 
-const CAR_HOLD_NS = 60, // a parked car's brakes hold against a smaller push: a pistol's shot marks it, a potato shoves it
+const CAR_HOLD_NS = 60, // a parked car's brakes hold against a smaller push: a light shot marks it, a magnum's or a rifle's shoves it
   CAR_SLIDE_M_PER_NS = 0.0035; // past that, it slides this far for each N·s of the push
+
+/**
+ * A hit `upM` above a person's feet, `sideM` to the side of their middle (across the shot's way), is on their head;
+ * `scale` is their size, 1 for the standard person.
+ */
+export function onHead(upM: number, sideM: number, scale: number): boolean {
+  return upM >= HEAD_FROM_K * PERSON_TALL_M * scale && Math.abs(sideM) <= HEAD_SIDE_M * scale;
+}
 
 /**
  * A parked car pushed along (dx, dz) by `knockbackNs`: it slides when the push beats its brakes. A car that drives stays
@@ -744,7 +747,9 @@ function miss(x: number, y: number, z: number, dx: number, dy: number, dz: numbe
 
 /**
  * The yaw and pitch that send a shot at `speedMs` from (x, y, z) through (tx, ty, tz), allowing for its drop: the
- * flattest way there, or 45° up when the point is out of reach.
+ * flattest way there. Out of reach it goes no higher than it must: along the line to the point, or, where that is
+ * lower, as high as just reaches that far on level ground. The second meets the flattest way at the edge of reach,
+ * so the aim doesn't jump as the crosshair crosses it, and the sky gets the line's own pitch, not a 45° lob.
  */
 export function aimAt(
   speedMs: number,
@@ -767,7 +772,7 @@ export function aimAt(
     flat < 0.01
       ? Math.sign(up) * (Math.PI / 2)
       : reach < 0
-        ? Math.PI / 4
+        ? Math.max(Math.atan2(up, flat), Math.atan(v2 / (GRAVITY_MS2 * flat)))
         : Math.atan((v2 - Math.sqrt(reach)) / (GRAVITY_MS2 * flat));
   return out;
 }

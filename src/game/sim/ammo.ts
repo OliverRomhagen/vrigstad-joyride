@@ -16,6 +16,7 @@ export const EffectKind = {
   DANCE: 'dance',
   SPIKES: 'spikes',
   SPATTER: 'spatter',
+  PUNCTURE: 'puncture',
 } as const;
 export type EffectKind = (typeof EffectKind)[keyof typeof EffectKind];
 
@@ -36,12 +37,15 @@ export type Effect =
   // it lands as a fotangel, which lies on the ground (./spikes.ts) and does nothing else where it lands
   | { kind: typeof EffectKind.SPIKES }
   // a blast leaves this many more splats around where it went off
-  | { kind: typeof EffectKind.SPATTER; drops: number };
+  | { kind: typeof EffectKind.SPATTER; drops: number }
+  // a hit on a car's tyre bursts it (Car.flat), as a fotangel does
+  | { kind: typeof EffectKind.PUNCTURE };
 
 export interface Ammo {
   id: AmmoId;
   name: string;
   colours: readonly string[]; // what it marks with; a shot rolls one of them (sRGB)
+  flightColour?: string; // the shot in the air, when its mark's colour would be lost against the ground (sRGB)
   anyWeapon: boolean; // every weapon fires it, unless the weapon names its own ammo (Weapon.ammo)
   effects: readonly Effect[];
 }
@@ -71,12 +75,14 @@ export const AMMOS = [
     id: AmmoId.PANG,
     name: 'Pang',
     colours: ['#2b2b2b'],
+    flightColour: '#f3ead2', // a pale streak: the dark scuff's own colour is hardly seen in flight
     anyWeapon: true,
     effects: [
       { kind: EffectKind.SPLAT, sizeK: 0.45, onPeople: false },
       { kind: EffectKind.THROW },
       { kind: EffectKind.SHOVE },
       { kind: EffectKind.DAMAGE },
+      { kind: EffectKind.PUNCTURE },
     ],
   },
   // a prank: who is hit dances for a while
