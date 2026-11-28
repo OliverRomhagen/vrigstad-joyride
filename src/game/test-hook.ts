@@ -51,6 +51,8 @@ export interface TestHookDeps {
     runs: readonly Pick<BoundaryRun, 'kind' | 'p'>[];
     draw: { meshes: readonly unknown[]; triangles: number };
     drives: { meshes: readonly unknown[] };
+    /** the boundaries and the paving are built after the first frame: until then they are empty */
+    ready: boolean;
     ms: number;
   };
   debugPlots: boolean;
@@ -104,7 +106,7 @@ export function installTestHook(g: TestHookDeps) {
     };
   }
   function plotsState() {
-    const { layout, runs, draw, drives, ms } = g.plots;
+    const { layout, runs, draw, drives, ready, ms } = g.plots;
     const boundaryM = [0, 0, 0, 0, 0];
     for (const r of runs)
       for (let i = 2; i < r.p.length; i += 2)
@@ -121,6 +123,7 @@ export function installTestHook(g: TestHookDeps) {
       drivewayMeshes: drives.meshes.length,
       triangles: draw.triangles,
       buildMs: Math.round(ms),
+      ready,
       debug: g.debugPlots,
     };
   }

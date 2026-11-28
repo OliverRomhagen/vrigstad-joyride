@@ -173,7 +173,9 @@ test.describe('game (index.html)', () => {
     expect(f.meshes).toBeGreaterThan(0);
     expect(f.meshes).toBeLessThanOrEqual(16 * 36); // per 400 m cell at most one per model (14, FurnitureModelId; raise this with the next model) and per lamp glass (2), and the 2200 m world spans 6 × 6 cells
     expect(f.debug).toBe(true);
-    // every house that fronts a street has a plot (#401), most a driveway, and some edges are closed
+    // every house that fronts a street has a plot (#401), most a driveway, and some edges are closed; the boundaries
+    // and the paving are built after the first frame
+    await expect.poll(async () => (await state(page)).plots.ready).toBe(true);
     const { plots: p } = await state(page);
     expect(p.plots).toBeGreaterThan(400);
     expect(p.driveways.mapped + p.driveways.generated).toBeGreaterThan(0.95 * p.plots);

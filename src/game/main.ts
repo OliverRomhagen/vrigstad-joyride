@@ -35,7 +35,7 @@ import { houseFronts } from '../world/furniture/houses';
 import { layoutPlots, propertyLineM } from '../world/plots';
 import { PlotOutlines } from '../world/mesh/plot-outlines';
 import { PlotBoundaries } from '../world/mesh/plot-boundaries';
-import { drivewaySurface, industrialFences, layoutBoundaries } from '../world/plot-boundaries';
+import { type BoundaryRun, drivewaySurface, industrialFences, layoutBoundaries } from '../world/plot-boundaries';
 import { DrivewaySurfaces } from '../world/mesh/driveways';
 import { treeSpots } from '../world/trees';
 import { layoutShore } from '../world/shore';
@@ -330,15 +330,18 @@ const furniture = (function () {
 // ---------- plots: the ground each house owns, its driveway and the hedges, fences and walls round it, and the fences round industrial land, inferred (#401) ----------
 // after the furniture: the hedges make room for the mailboxes
 const DEBUG_PLOTS = new URLSearchParams(location.search).get('debug') === 'plots';   // ?debug=plots outlines the plots and driveways
-const plots = (function () {
-  const t0 = performance.now(), layout = street.plotLayout;   // laid out with the streetscape, which lowers the curb at their driveways
+// the boundaries, the industrial fences and the driveways' paving cost a good part of the page's start: they are built
+// after the first frame, behind the intro, and test-hook readers wait for `ready`
+const plots = { layout: street.plotLayout, runs: [] as BoundaryRun[], draw: { meshes: [] as THREE.Mesh[], triangles: 0 }, drives: { meshes: [] as THREE.Mesh[] }, ready: false, ms: street.plotMs };   // laid out with the streetscape, which lowers the curb at their driveways
+if (DEBUG_PLOTS) scene.add(new PlotOutlines(plots.layout, groundAt).mesh);
+requestAnimationFrame(() => setTimeout(() => {
+  const t0 = performance.now(), layout = plots.layout;
   const mailboxes = furniture.layout.placements.filter(p => p.kind === 'mailbox' || p.kind === 'mailbox-stand');
-  const runs = [...layoutBoundaries(layout, ri => street.sides[ri].profile, mailboxes), ...industrialFences({ data: D, roads, buildings, keepOut: yard.outlines, inWater })];
-  const draw = new PlotBoundaries(runs, { groundAt }); scene.add(...draw.meshes);
-  const drives = new DrivewaySurfaces(layout, { groundAt, surfaceOf: p => drivewaySurface(p, street.sides[p.ri].profile) }); scene.add(...drives.meshes);
-  if (DEBUG_PLOTS) scene.add(new PlotOutlines(layout, groundAt).mesh);
-  return { layout, runs, draw, drives, ms: street.plotMs + performance.now() - t0 };
-})();
+  plots.runs = [...layoutBoundaries(layout, ri => street.sides[ri].profile, mailboxes), ...industrialFences({ data: D, roads, buildings, keepOut: yard.outlines, inWater })];
+  plots.draw = new PlotBoundaries(plots.runs, { groundAt }); scene.add(...plots.draw.meshes);
+  plots.drives = new DrivewaySurfaces(layout, { groundAt, surfaceOf: p => drivewaySurface(p, street.sides[p.ri].profile) }); scene.add(...plots.drives.meshes);
+  plots.ms += performance.now() - t0; plots.ready = true;
+}));
 
 // the kiosk's and the cats' menus (src/game/kiosk-cat-menus.ts); trisslott is declared further down
 const kioskCatMenus = new KioskCatMenus({ game, player, colony, health, openMenu, esc, toast, scratch: () => trisslott.scratch(), wallet, nearPlace, showHeart, drawPets, drawTreats, drawHealth });
