@@ -17,7 +17,7 @@ export interface Weapon {
   blastM: number; // a hit also reaches everyone within this radius; 0 for none
   bounces: number; // how many times a shot bounces off the ground, a wall or a car before it stops
   thrown: boolean; // lobbed by hand, not fired
-  fuseS: number; // it goes off this long after it leaves, wherever it is by then; until then it only bounces and lies. 0 for none
+  fuseS: number; // it goes off this long after it leaves, wherever it is by then, or at once on a person; until then it only bounces and lies. 0 for none
   zone: '' | 'spikes'; // what it leaves on the ground where it lands: spikes are fotanglar
   shotM: number; // the radius it is drawn with
   tracerM: number; // drawn as a streak this long behind it, not as a ball: for a shot too fast to see. 0 for a ball
