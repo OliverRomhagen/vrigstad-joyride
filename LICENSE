@@ -24,7 +24,7 @@ Third-party components keep their own licenses:
 - Fonts: Barlow and Barlow Condensed © 2017 The Barlow Project Authors,
   under the SIL Open Font License 1.1 (full text below), served beside the
   pages from their npm packages (src/fonts/barlow.ts).
-- Icons in the wiki: Lucide (ISC License, full text below; some icons are
+- Icons in the game and the wiki: Lucide (ISC License, full text below; some icons are
   from Feather, MIT License, as its text says), drawn from the npm package
   @lucide/svelte.
 
@@ -249,8 +249,8 @@ DAMAGES, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 FROM, OUT OF THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM
 OTHER DEALINGS IN THE FONT SOFTWARE.
 
-Lucide (icons in the wiki)
---------------------------
+Lucide (icons in the game and the wiki)
+---------------------------------------
 Source: https://lucide.dev
 
 ISC License
