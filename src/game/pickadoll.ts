@@ -78,8 +78,11 @@ const INTRO_AFTER_S = 5.5; // the lab's own line comes this long after Start, on
 const PANG_THROW_MS = 5, // a person leaves at this, plus PANG_THROW_PER_POWER_MS for each point of the weapon's power
   PANG_THROW_PER_POWER_MS = 2.5,
   PANG_CAR_SHOVE_M = 0.14, // a parked car slides this far per point of power
-  PANG_CAR_DMG = 2; // and takes this much damage per point of power
-const SCUFF = '#2b2b2b'; // the mark a pang hit leaves
+  PANG_CAR_DMG = 2, // and takes this much damage per point of power
+  PANG_STEP_BACK_M = 0.5, // with too many down already, who is hit is only knocked this far back
+  BLAST_SHARE = 0.6; // a blast reaches those around the hit with this share of its push and damage
+const SCUFF = '#2b2b2b', // the mark a pang hit leaves
+  SCUFF_K = 0.45; // its size, as a share of the weapon's splat: a scuff, not a splash
 const STARE_S = 2.5; // someone hit by gegga stops and looks at you this long
 const DANCE_S = 6,
   DANCE_SPIN_RADS = 7,
@@ -109,7 +112,9 @@ const GUN_M: Record<(typeof WEAPONS)[number]['id'], readonly [number, number]> =
   fotanglar: [0.12, 0.16],
 };
 const HIT_MARK_S = 0.1; // the crosshair's ticks stay this long after a hit on a person or a car, then fade (index.html)
-const BLAST_DROPS = 7; // a blast of gegga leaves this many more splats around the hit
+const BLAST_DROPS = 7, // a blast of gegga leaves this many more splats around the hit,
+  DROP_REACH_K = [0.3, 1], // between these shares of the blast's radius from it,
+  DROP_SIZE_K = [0.2, 0.5]; // each this share of the weapon's splat
 // fotanglar: they lie where they land for a while (./sim/spikes.ts). Someone who steps on one hops on and walks
 // slowly; a car that drives over one gets a flat tyre (Car.flat); you are hurt, unless you jump over
 const FLAT_LINES = ['”PANG! Dä va däcket, dä.”', '”Punka! Klart dä skulle hända nu.”', '”Nu small dä i ett däck.”'],
@@ -719,28 +724,28 @@ export class Pickadoll {
       car = hit.kind === 'car' ? this.world.cars[hit.target] : null;
     if (person) this.hitPerson(person, s.flavour, hit.dx, hit.dz, hit.y, weapon.power, weapon.splatM, colour, s.seed);
     else if (car) this.hitCar(car, s.flavour, hit, weapon.power, weapon.splatM, colour, s.seed);
-    else fx.splat(hit, s.flavour === 'gegga' ? weapon.splatM : weapon.splatM * 0.45, colour, s.seed);
+    else fx.splat(hit, s.flavour === 'gegga' ? weapon.splatM : weapon.splatM * SCUFF_K, colour, s.seed);
     if (person || car) this.mark();
     if (!weapon.blastM) return;
     const { push } = this;
     for (const n of crowd.npcs) {
       if (n === person || n.down || !blastPush(hit.x, hit.z, weapon.blastM, n.x, n.z, push)) continue;
-      this.hitPerson(n, s.flavour, push.dx, push.dz, hit.y + 1, weapon.power * 0.6, weapon.splatM, colour, rnd());
+      this.hitPerson(n, s.flavour, push.dx, push.dz, hit.y + 1, weapon.power * BLAST_SHARE, weapon.splatM, colour, rnd());
       this.mark();
     }
     if (s.flavour === 'pang')
       for (const c of this.world.cars)
         if (c !== car && blastPush(hit.x, hit.z, weapon.blastM, c.x, c.z, push))
-          this.shoveCar(c, push.dx, push.dz, weapon.power * 0.6);
+          this.shoveCar(c, push.dx, push.dz, weapon.power * BLAST_SHARE);
     if (s.flavour === 'gegga')
       for (let i = 0; i < BLAST_DROPS; i++) {
         const a = rnd() * Math.PI * 2,
-          reach = weapon.blastM * (0.3 + rnd() * 0.7),
+          reach = weapon.blastM * (DROP_REACH_K[0] + rnd() * (DROP_REACH_K[1] - DROP_REACH_K[0])),
           x = hit.x + Math.cos(a) * reach,
           z = hit.z + Math.sin(a) * reach;
         fx.splat(
           { kind: 'ground', x, y: this.g.world.groundAt(x, z), z, nx: 0, ny: 1, nz: 0 },
-          weapon.splatM * (0.2 + rnd() * 0.3),
+          weapon.splatM * (DROP_SIZE_K[0] + rnd() * (DROP_SIZE_K[1] - DROP_SIZE_K[0])),
           colour,
           rnd(),
         );
@@ -772,8 +777,8 @@ export class Pickadoll {
     } else if (flavour === 'pang') {
       // too many down already: they are only knocked a step back
       if (!ragdolls.push(n, dx, dz, PANG_THROW_MS + power * PANG_THROW_PER_POWER_MS)) {
-        n.x += dx * 0.5;
-        n.z += dz * 0.5;
+        n.x += dx * PANG_STEP_BACK_M;
+        n.z += dz * PANG_STEP_BACK_M;
       }
     } else if (!this.dancers.some(d => d.npc === n)) {
       crowd.stare(n, 0.1, DANCE_S); // stops them where they are
@@ -791,7 +796,7 @@ export class Pickadoll {
     turn: number,
   ) {
     if (flavour === 'pang') this.shoveCar(c, hit.dx, hit.dz, power);
-    this.g.fx.splatOn(c.mesh, hit, flavour === 'gegga' ? splatM : splatM * 0.45, colour, turn);
+    this.g.fx.splatOn(c.mesh, hit, flavour === 'gegga' ? splatM : splatM * SCUFF_K, colour, turn);
   }
 
   // the cars a crash spares (crashes.ts): Plåt-Pelle's for sale, which also stand still, and the one you drive in god mode
