@@ -7,7 +7,7 @@ import type { FurnitureLayout } from '../world/furniture/placement';
 import type { ShoreLayout } from '../world/shore';
 import type { StreetscapeLayout } from '../world/streetscape';
 import type { WaterBodies } from '../world/water-shapes';
-import type { Car } from './cars';
+import { type Car, CarMode } from './cars';
 import type { Health } from './health';
 import type { PlayerState } from './player';
 import type { Sky } from './render/sky';
@@ -208,7 +208,7 @@ export function installTestHook(g: TestHookDeps) {
         startGapM,
         lift: g.lift && { x: g.lift.x, z: g.lift.z, inX: g.lift.inX, inZ: g.lift.inZ },
         forSale: cars.filter(c => c.saleKr).map(c => ({ x: c.x, z: c.z, h: c.h, kr: c.saleKr })), // Skroten's lot
-        traffic: cars.filter(c => c.mode === 'ai').map(c => ({ type: c.type, vehicle: vehicleVisuals.state(c) })),
+        traffic: cars.filter(c => c.mode === CarMode.AI).map(c => ({ type: c.type, vehicle: vehicleVisuals.state(c) })),
         clouds: skyDome.state(),
         hour: g.day.hour,
         night: g.day.night,

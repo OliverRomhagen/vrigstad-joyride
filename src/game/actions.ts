@@ -1,7 +1,7 @@
 // What pressing E does (walk into a place, pet a cat, open the kiosk, get in or out of a car, steal one), and where you end up after Gripen! or a knock-out.
 // Moved from src/game/main.ts (#177); main.ts passes in the places, the cats' menus, the police, what the HUD draws and whether the player's mesh shows. No three.js or DOM here.
 import { wrap } from '../world/math';
-import type { Car } from './cars';
+import { type Car, CarMode } from './cars';
 import type { Cat } from './cats';
 import { fine, fmtKr, pay, type Wallet } from './economy';
 import { type Health, HP_MAX, wakeSpot, wrecked } from './health';
@@ -62,7 +62,7 @@ export interface ActionsDeps {
 }
 
 // a car you can get straight back into: one you got out of, while it still drives
-const enterable = (c: Car) => c.mode === 'idle' && !wrecked(c);
+const enterable = (c: Car) => c.mode === CarMode.IDLE && !wrecked(c);
 
 /** What E does, and putting you back on your feet. */
 export class Actions {
@@ -83,7 +83,7 @@ export class Actions {
   leaveCar = () => {
     const { game, placeCar, showPlayer } = this.g;
     const c = game.pcar!;
-    c.mode = 'idle';
+    c.mode = CarMode.IDLE;
     c.v = c.slip = c.drift = c.boost = c.thr = c.st = 0;
     placeCar(c);
     game.pcar = null;
@@ -171,7 +171,7 @@ export class Actions {
       offerCar(c);
       return;
     }
-    if (c.mode === 'ai') {
+    if (c.mode === CarMode.AI) {
       driverOut(c);
       toast(
         pick([
@@ -200,7 +200,7 @@ export class Actions {
       game.stolen++;
       drawStolen();
     }
-    c.mode = 'player';
+    c.mode = CarMode.PLAYER;
     c.vh = c.h;
     c.slip = c.drift = c.boost = c.loose = c.thr = c.st = 0;
     game.pcar = c;

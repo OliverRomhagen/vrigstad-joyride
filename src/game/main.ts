@@ -36,7 +36,7 @@ import { treeSpots } from '../world/trees';
 import { layoutShore } from '../world/shore';
 import { Water } from '../world/water';
 import { WaterBodies } from '../world/water-shapes';
-import { type Car, type CarMode, Fleet, newCar, TURBO_AT } from './cars';
+import { type Car, CarMode, Fleet, newCar, TURBO_AT } from './cars';
 import { CatColony } from './cats';
 import { Hud } from './hud';
 import { Input } from './input';
@@ -226,7 +226,7 @@ else for (const err of tunables.override(tuneParam ?? '')) console.warn('?tune='
 let displayCar: RenderedCar | null = null;
 function carName(c: Car) { return vehicleVisuals.definition(meshed(c))?.name || c.T.name; }
 // the car parked by Torget, next to where you start; first, so the parked cars and traffic keep clear of it (#409)
-(function () { const o = { x: HOME.x + 7, z: HOME.z + 3 }; collide(o, 2.6); displayCar = addCar(selectedVehicle?.archetype || 'volvo', o.x, o.z, 0.6, 'parked', selectedVehicle?.id ?? 'volvo240'); })();
+(function () { const o = { x: HOME.x + 7, z: HOME.z + 3 }; collide(o, 2.6); displayCar = addCar(selectedVehicle?.archetype || 'volvo', o.x, o.z, 0.6, CarMode.PARKED, selectedVehicle?.id ?? 'volvo240'); })();
 fleet.parkCars();   // parked cars along streets and driveways
 for (let i = 0; i < 18; i++) spawnTraffic(null);
 // Skroten's cars for sale (src/game/skroten.ts): real cars on its lot, in the paint the yard gave them, so they roll nothing
@@ -299,7 +299,7 @@ const jumpOk = () => !game.inCar && !places.inside && game.titleCardT <= 0;   //
 const health = newHealth();
 const wallet = newWallet();
 const wanted = new Wanted({ roads, rnd, pick, removeCar, drive, toast,
-  spawnCar: (x, z, h) => addCar('polis', x, z, h, 'police'),
+  spawnCar: (x, z, h) => addCar('polis', x, z, h, CarMode.POLICE),
   drawStars: () => drawStars(), showEvading: on => $('stars').classList.toggle('evading', on), caught: n => busted(n),
   get lyingLow() { return !!places.inside; }, get god() { return health.god; } });
 

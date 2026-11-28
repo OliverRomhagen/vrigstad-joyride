@@ -65,7 +65,8 @@ const PARK_AWAY_TRIES = 300; // tries at a far kerbside spot before giving up
 
 type Point = { x: number; z: number };
 /** Who drives a car: nobody yet (`parked`), nobody since you got out (`idle`), traffic (`ai`), the police, or you. */
-export type CarMode = 'parked' | 'idle' | 'ai' | 'police' | 'player';
+export const CarMode = { PARKED: 'parked', IDLE: 'idle', AI: 'ai', POLICE: 'police', PLAYER: 'player' } as const;
+export type CarMode = (typeof CarMode)[keyof typeof CarMode];
 /** A car. `h` is where its nose points and `vh` its line of travel (rad, 0 is north; they differ in a slide), `v` its speed along `vh` (m/s). */
 export interface Car extends Point {
   type: CarType;
@@ -231,7 +232,7 @@ export class Fleet {
           if (this.g.inCar) return 'Get out of the car first.';
           const o = { x: this.g.player.x + CAR_BY_YOU_M, z: this.g.player.z };
           this.g.buildings.collide(o, PARK_CLEAR_M);
-          const c = this.g.addCar(type, o.x, o.z, facing(), 'parked', id === type ? null : id);
+          const c = this.g.addCar(type, o.x, o.z, facing(), CarMode.PARKED, id === type ? null : id);
           c.owned = true;
           this.noReplacement.add(c);
           return 'Parked a ' + carName(c) + ' next to you.';
@@ -243,7 +244,7 @@ export class Fleet {
   /** Parks Skroten's cars for sale on its lot, at their asking price. Selling one back to Skroten parks no new car in the village. */
   parkForSale(lot: readonly CarForSale[]) {
     for (const s of lot) {
-      const c = this.g.addCar(s.type, s.x, s.z, s.h, 'parked', s.model === s.type ? null : s.model, s.colour); // the tractor's model is its type: it has none of its own
+      const c = this.g.addCar(s.type, s.x, s.z, s.h, CarMode.PARKED, s.model === s.type ? null : s.model, s.colour); // the tractor's model is its type: it has none of its own
       c.saleKr = s.kr;
       this.noReplacement.add(c);
     }
@@ -310,7 +311,7 @@ export class Fleet {
     if (buildings.collide(o, PARK_CLEAR_M) || water.inWater(ox, oz) || !canPark(ox, oz)) return false;
     if (farFrom && Math.hypot(ox - farFrom.x, oz - farFrom.z) < SPAWN_AWAY_M) return false;
     if (!this.isClear(ox, oz)) return false;
-    this.g.addCar(this.civType(), ox, oz, Math.atan2(dx, -dz) + (side < 0 ? Math.PI : 0), 'parked');
+    this.g.addCar(this.civType(), ox, oz, Math.atan2(dx, -dz) + (side < 0 ? Math.PI : 0), CarMode.PARKED);
     return true;
   }
   // traffic that follows the street network
@@ -359,7 +360,7 @@ export class Fleet {
       if (farFrom && Math.hypot(p[0] - farFrom.x, p[1] - farFrom.z) < SPAWN_AWAY_M) continue;
       if (!this.isClear(p[0], p[1])) continue;
       const type = rnd() < 0.5 ? 'volvo' : rnd() < 0.7 ? 'saab' : 'epa';
-      return Object.assign(this.g.addCar(type, p[0], p[1], 0, 'ai'), { ri, a, dir: 1, t: 0, first: true });
+      return Object.assign(this.g.addCar(type, p[0], p[1], 0, CarMode.AI), { ri, a, dir: 1, t: 0, first: true });
     }
   }
   updateTraffic(c: TrafficCar, dt: number) {
@@ -552,13 +553,13 @@ export class Fleet {
         nx /= L;
         nz /= L;
         const push = apart - d,
-          oh = o.mode === 'ai' ? o.h : o.vh; // traffic steers by h alone
+          oh = o.mode === CarMode.AI ? o.h : o.vh; // traffic steers by h alone
         crash(c, o, impactSpeed(vx - Math.sin(oh) * o.v, vz + Math.cos(oh) * o.v, nx, nz));
         c.x += nx * push;
         c.z += nz * push;
-        if (Math.abs(c.v) > 6 && o.mode === 'police') rammed(c, o);
+        if (Math.abs(c.v) > 6 && o.mode === CarMode.POLICE) rammed(c, o);
         // a parked car gives a little; one for sale on Skroten's lot stands like a wall, as nothing would stop it leaving the yard
-        if ((o.mode === 'parked' || o.mode === 'idle') && !o.saleKr) {
+        if ((o.mode === CarMode.PARKED || o.mode === CarMode.IDLE) && !o.saleKr) {
           o.x -= nx * push * 0.4;
           o.z -= nz * push * 0.4;
           pushBodyOut(o, this.collideBuildings); // or shove by shove it would go through a wall or a fence

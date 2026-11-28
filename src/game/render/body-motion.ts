@@ -1,12 +1,13 @@
 import type * as THREE from 'three';
 import { clamp, wrap } from '../../world/math';
+import { CarMode } from '../cars';
 import type { Suspension } from '../sim/vehicle-spec';
 import { type BodyForces, type BodyState, restingBody, stepBody } from './suspension';
 
 // Reads only what the simulation already has: position, direction of travel and speed. The ride height comes
 // from the mesh, which placeCar puts on the ground. Traffic ('ai') steers by h alone; drive() keeps vh for the rest.
 type Car = { mesh: THREE.Object3D; mode: string; x: number; z: number; h: number; vh: number; v: number };
-const travel = (car: Car) => (car.mode === 'ai' ? car.h : car.vh);
+const travel = (car: Car) => (car.mode === CarMode.AI ? car.h : car.vh);
 type Entry = {
   car: Car;
   suspension: Suspension;

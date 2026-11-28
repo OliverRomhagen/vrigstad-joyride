@@ -2,6 +2,7 @@
 // Moved from src/game/main.ts (#177); main.ts passes in what the HUD reads from the rest of the game.
 import type { Label } from '../world/data';
 import type { RoadNetwork } from '../world/roads';
+import { CarMode } from './cars';
 import { fmtKr, TRISS_KR } from './economy';
 import { LOW_HP } from './health';
 import { MAX_STARS } from './police';
@@ -165,8 +166,8 @@ export class Hud {
       const dx = c.x - T.x,
         dz = c.z - T.z;
       if (c === pcar || Math.abs(dx) > MR || Math.abs(dz) > MR) continue;
-      mctx.fillStyle = c.mode === 'police' ? (blink ? '#2f6bff' : '#ff3b30') : '#ffffff';
-      const s = c.mode === 'police' ? 12 : 6;
+      mctx.fillStyle = c.mode === CarMode.POLICE ? (blink ? '#2f6bff' : '#ff3b30') : '#ffffff';
+      const s = c.mode === CarMode.POLICE ? 12 : 6;
       mctx.fillRect(q(dx) - s / 2, q(dz) - s / 2, s, s);
     }
     mctx.lineWidth = 3;

@@ -3,7 +3,7 @@
 // DOM over the canvas. Moved from src/game/main.ts (#177); main.ts passes in the modules it steps.
 import type * as THREE from 'three';
 import { clamp } from '../world/math';
-import type { Car, Fleet, TrafficCar } from './cars';
+import { type Car, CarMode, type Fleet, type TrafficCar } from './cars';
 import { CRASH_COOL_S, type Health, impactSpeed, regen, runOverHurt } from './health';
 import type { Input } from './input';
 import type { Places } from './places';
@@ -211,7 +211,7 @@ export class GameLoop {
             const out = player.y > player.floor ? Math.min(apart - d, AIR_PUSH_MS * dt) : apart - d;
             player.x += (dx / d) * out;
             player.z += (dz / d) * out;
-            const a = c.mode === 'ai' ? c.h : c.vh,
+            const a = c.mode === CarMode.AI ? c.h : c.vh,
               n = runOverHurt(impactSpeed(Math.sin(a) * c.v, -Math.cos(a) * c.v, -dx / d, -dz / d)); // the car's speed towards you
             if (n > 0 && game.clockS - this.runOverAt >= CRASH_COOL_S) {
               this.runOverAt = game.clockS;
@@ -248,7 +248,7 @@ export class GameLoop {
     g.updateSmoke(dt, T);
     g.updateBanknotes(dt);
     g.updateConfetti(dt);
-    for (const c of cars) if (c.mode === 'ai') g.updateTraffic(c as TrafficCar, dt); // spawnTraffic gives every 'ai' car its place on the road
+    for (const c of cars) if (c.mode === CarMode.AI) g.updateTraffic(c as TrafficCar, dt); // spawnTraffic gives every 'ai' car its place on the road
     g.updateNpcs(T, dt);
     g.updateCats(T, dt);
     if (g.wanted.update(dt, T, player.speed)) {

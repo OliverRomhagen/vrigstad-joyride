@@ -1,6 +1,7 @@
 // The player on foot: walking, wading, jumping, and where you stand when you get out of a car or start over.
 // Moved from src/game/main.ts (#177); main.ts keeps the mesh, the collisions, being run over and what E does. No three.js or DOM here.
 import { clamp, wrap } from '../world/math';
+import { CarMode } from './cars';
 import { bodyRadius, type CarBody, nearestOnSpine, PERSON_RADIUS_M } from './sim/car-body';
 import type { VehicleSpec } from './sim/vehicle-spec';
 
@@ -50,7 +51,7 @@ export function carInReach<C extends CarNearby>(p: Point, cars: readonly C[], on
   let best: C | null = null,
     bd = REACH_M;
   for (const c of cars) {
-    if (c.mode === 'police' || (only && !only(c))) continue;
+    if (c.mode === CarMode.POLICE || (only && !only(c))) continue;
     const d = Math.hypot(c.x - p.x, c.z - p.z);
     if (d < bd) {
       bd = d;
