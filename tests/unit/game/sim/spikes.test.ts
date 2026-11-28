@@ -51,6 +51,13 @@ describe('stepSpikes', () => {
     expect(spikes).toEqual([]);
   });
 
+  it('is used up one at a time by a car over two', () => {
+    const spikes = [spike(0, 0), spike(0.4, 0)],
+      out = stepSpikes(spikes, 0.1, world({ cars: [{ x: 0.2, z: 0, v: 10, h: 0 }] }), newSpikeStep());
+    expect(out.cars).toEqual([0]);
+    expect(spikes).toHaveLength(1);
+  });
+
   it('is left for the next car by one that cannot get a flat', () => {
     const spikes = [spike()],
       out = newSpikeStep(),

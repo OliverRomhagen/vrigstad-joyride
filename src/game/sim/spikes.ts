@@ -86,6 +86,7 @@ export function stepSpikes(spikes: Spike[], dt: number, world: SpikeWorld, out: 
         if (
           Math.abs(c.v) > SPIKE_CAR_MIN_MS &&
           Math.hypot(c.x - s.x, c.z - s.z) < SPIKE_WHEEL_M &&
+          !out.cars.includes(k) && // one flat per car: a second spike under it this step stays
           (world.canPuncture?.(k) ?? true)
         ) {
           out.cars.push(k);
