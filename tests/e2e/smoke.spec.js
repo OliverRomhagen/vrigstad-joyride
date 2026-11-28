@@ -233,13 +233,15 @@ test.describe('game (index.html)', () => {
     expect(errors).toEqual([]);
   });
 
-  test('ragdolls are on for everyone, without a lab flag', async ({ page }) => {
+  test('ragdolls and the cel-shaded style are on for everyone, and their old lab flags are ignored', async ({
+    page,
+  }) => {
     const errors = watchErrors(page);
     await page.setViewportSize({ width: 640, height: 360 }); // checks only the hook; keep software WebGL affordable
-    // One page load: the old lab flag is ignored, so ragdolls are on without it and the lab list stays empty.
-    await page.goto('/index.html?lab=ragdoll');
+    // One page load for both retired flags: neither shows up as an experiment, nor switches its feature off.
+    await page.goto('/index.html?lab=ragdoll,toon');
     await page.locator('#go').click();
-    expect(await state(page)).toMatchObject({ lab: [], ragdolls: 0 }); // nobody knocked over yet
+    expect(await state(page)).toMatchObject({ lab: [], ragdolls: 0, styled: true }); // nobody knocked over yet
     expect(errors).toEqual([]);
   });
 
@@ -259,6 +261,9 @@ test.describe('game (index.html)', () => {
     await expect(page.locator('#intro')).toBeHidden();
     expect(await state(page)).toMatchObject({ started: true, styled: true }); // cel-shaded with no flag (#206)
     await expect(page.locator('#toast')).toContainText('Find a car'); // only Start shows this
+    await frames(page, 10); // the toon shaders compile and the ink lines are built on its first frames; an error there is logged
+    expect(await page.evaluate(() => document.getElementById('gl').getContext('webgl2').getError())).toBe(0);
+    await page.screenshot({ path: testInfo.outputPath('game-toon.png') });
     await expect(page.locator('#sign')).toBeVisible();
     await expect(page.locator('#street')).toContainText('Torget');
     await expect(page.locator('#stars')).toHaveText('★★★');
@@ -278,19 +283,6 @@ test.describe('game (index.html)', () => {
     const notice = await page.request.get('/media/vehicles/NOTICE.txt');
     expect(notice.ok()).toBe(true);
     expect(await notice.text()).toContain('Vehicle models by Axel Tidehorn');
-    expect(errors).toEqual([]);
-  });
-
-  test('draws the cel-shaded style by default, and ignores the old ?lab=toon', async ({ page }, testInfo) => {
-    const errors = watchErrors(page);
-    await page.goto('/index.html?lab=toon');
-    await page.locator('#go').click();
-    expect(await state(page)).toMatchObject({ started: true, lab: [] });
-    // the style is the game's look now; the old flag must neither switch it off nor show up as an experiment
-    await expect.poll(async () => (await state(page)).styled).toBe(true);
-    await frames(page, 10); // the toon shaders compile and the ink lines are built on its first frames; an error there is logged
-    expect(await page.evaluate(() => document.getElementById('gl').getContext('webgl2').getError())).toBe(0);
-    await page.screenshot({ path: testInfo.outputPath('game-toon.png') });
     expect(errors).toEqual([]);
   });
 

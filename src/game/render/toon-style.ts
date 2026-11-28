@@ -40,9 +40,11 @@ const INK_OPACITY = 0.67;
 // village's shells (one mesh at Torget).
 export const INK_PULL = 0.001;
 // What the lines cost is drawing them: they were nearly all of what the style adds to a frame (#413). So the lines of
-// a small thing (a car, a person, a sign: a bounding sphere under INK_SMALL_M) are drawn only this near the camera (m),
-// where they are more than a pixel or two; and the lines of a mesh as wide as the village (its house shells) are cut
-// into squares INK_CELL_M across, each its own object, so the ones behind the camera or off screen are culled.
+// a small thing (a car, a person, a sign: a mesh whose bounding sphere, scaled as it's drawn, is under INK_SMALL_M) are
+// drawn only while its nearest side is this near the camera (m), where they are more than a pixel or two; and the
+// lines of a mesh as wide as the village (its house shells) are cut into squares INK_CELL_M across, each its own
+// object, so the ones behind the camera or off screen are culled. Small is decided on the whole mesh before it's cut:
+// a square that holds one house is a piece of the village, not a small thing, and keeps its lines at any distance.
 /** How near the camera a small thing's ink is drawn (m): on desktop, and on a touch screen. */
 export const INK_NEAR_M = 60,
   INK_NEAR_COARSE_M = 40;
@@ -137,8 +139,10 @@ export class ToonStyle {
   private readonly inkGeometries = new WeakMap<THREE.BufferGeometry, THREE.BufferGeometry[]>();
   // apart, so a geometry two meshes share gets each its own lines, whichever is inked first
   private readonly footlessInkGeometries = new WeakMap<THREE.BufferGeometry, THREE.BufferGeometry[]>();
-  // every mesh the style has looked at for ink, once: a mesh added later (a car's model, once it loads) is looked at
-  // when it first turns up, and nothing is walked twice a frame
+  // every mesh the style has inked, or found under INK_FLAG and not to be inked (glass): a mesh added later (a car's
+  // model, once it loads) is inked when it first turns up. A mesh with no flag above it isn't added, so each frame it
+  // walks up its parents again (a few reads per mesh), and gets its lines once it's moved under a flagged group, or a
+  // group above it is flagged
   private readonly inkChecked = new WeakSet<THREE.Mesh>();
   private readonly inkNearM: number;
   private readonly eye = new THREE.Vector3(); // the camera, this frame
@@ -163,6 +167,9 @@ export class ToonStyle {
     // read on the mesh itself, not inherited as INK_FLAG is: it says how this mesh is built
     const footless = !!object.userData[INK_NO_FEET_FLAG],
       cache = footless ? this.footlessInkGeometries : this.inkGeometries;
+    if (!object.geometry.boundingSphere) object.geometry.computeBoundingSphere();
+    object.updateWorldMatrix(true, false); // placed and scaled now, though it may not have been drawn yet
+    const small = (object.geometry.boundingSphere?.radius ?? 0) * object.matrixWorld.getMaxScaleOnAxis() < INK_SMALL_M;
     let pieces = cache.get(object.geometry);
     if (!pieces) {
       pieces = inkPieces(
@@ -175,23 +182,26 @@ export class ToonStyle {
       const lines = new THREE.LineSegments(piece, this.inkMaterial);
       lines.renderOrder = 10;
       lines.raycast = () => {};
-      if ((piece.boundingSphere?.radius ?? 0) < INK_SMALL_M) lines.userData[INK_SMALL_FLAG] = true;
+      if (small) lines.userData[INK_SMALL_FLAG] = true;
       object.add(lines);
       lines.updateWorldMatrix(false, false); // placed now, so its first distance isn't from the origin
     }
   }
   private readonly swapIn = (object: THREE.Object3D) => {
     if (object.userData[INK_SMALL_FLAG]) {
-      // from where its lines are, not its origin: a piece of the village's shells has its origin at Torget
+      // from where its lines are, not its origin, and to their nearest side, as drawn: a thing scaled up is that big
       const sphere = (object as THREE.LineSegments).geometry.boundingSphere;
-      if (sphere) _v.copy(sphere.center).applyMatrix4(object.matrixWorld);
-      else _v.setFromMatrixPosition(object.matrixWorld);
-      object.visible = _v.distanceTo(this.eye) < this.inkNearM;
+      let radius = 0;
+      if (sphere) {
+        _v.copy(sphere.center).applyMatrix4(object.matrixWorld);
+        radius = sphere.radius * object.matrixWorld.getMaxScaleOnAxis();
+      } else _v.setFromMatrixPosition(object.matrixWorld);
+      object.visible = _v.distanceTo(this.eye) - radius < this.inkNearM;
       return;
     }
-    if (object instanceof THREE.Mesh && !this.inkChecked.has(object)) {
+    if (object instanceof THREE.Mesh && !this.inkChecked.has(object) && underInkFlag(object)) {
       this.inkChecked.add(object);
-      if (underInkFlag(object)) this.addInk(object);
+      this.addInk(object);
     }
     if (object instanceof THREE.HemisphereLight) this.scaleLight(object, TOON_FILL_SCALE);
     else if (object instanceof THREE.DirectionalLight) this.scaleLight(object, TOON_SUN_SCALE);
@@ -219,11 +229,19 @@ export class ToonStyle {
   }
 
   render(scene: THREE.Scene, camera: THREE.Camera) {
+    // where everything is this frame: three only updates the scene's and the camera's matrices inside render, after
+    // the ink is judged by them, so a respawn or a switch to the cockpit would hide the ink near the new place for a
+    // frame. Updated here instead, and three is told not to do it again for this draw
+    const autoUpdate = scene.matrixWorldAutoUpdate;
+    if (autoUpdate) scene.updateMatrixWorld();
+    camera.updateWorldMatrix(true, false);
     this.eye.setFromMatrixPosition(camera.matrixWorld);
     try {
+      scene.matrixWorldAutoUpdate = false;
       scene.traverse(this.swapIn); // inside the try: a throw halfway through the swap is put back too
       this.renderer.render(scene, camera);
     } finally {
+      scene.matrixWorldAutoUpdate = autoUpdate;
       for (let i = 0; i < this.swapped.length; i++) this.swapped[i].material = this.originals[i];
       for (let i = 0; i < this.lights.length; i++) this.lights[i].intensity = this.intensities[i];
       this.swapped.length = 0;

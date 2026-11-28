@@ -99,7 +99,10 @@ export class GameLoop {
     this.g = g;
   }
 
-  /** Draws every later frame through a style: the cel-shaded one (#206). */
+  /**
+   * Draws every frame through a style: the cel-shaded one (#206). Set before the first frame, not later; it's a setter
+   * rather than a dep so the page can leave the style off, which the Graphics setting is for (#402).
+   */
   drawThrough(style: Pick<ToonStyle, 'render'>) {
     this.style = style;
   }
@@ -286,7 +289,7 @@ export class GameLoop {
     g.timeFrame(workStart);
   };
 
-  // through the style when one is on (?lab=toon), so pausing keeps the look
+  // through the style when it's on, so pausing keeps the look
   private draw() {
     const { scene, camera, renderer } = this.g;
     if (this.style) this.style.render(scene, camera);
