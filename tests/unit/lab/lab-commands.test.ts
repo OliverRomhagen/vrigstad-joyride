@@ -52,7 +52,7 @@ describe('lab commands', () => {
       .sort()
       .join(', ');
     expect(c.run('lab on warp')).toBe(`No experiment called warp. Pick one of: ${known}. Usage: lab on <experiment>`);
-    expect(c.run('lab on')).toBe('Usage: lab on <experiment>');
+    expect(c.run('lab on')).toBe('experiment is missing. Usage: lab on <experiment>');
     expect(c.run('lab toon')).toBe('No subcommand called toon. Usage: lab [on|off <experiment>]');
     expect(reloads).toEqual([]);
   });
