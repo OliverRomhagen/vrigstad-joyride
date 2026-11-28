@@ -5,7 +5,7 @@ import X from '@lucide/svelte/icons/x';
 import { MediaQuery } from 'svelte/reactivity';
 import Nightfall from '#lib/Nightfall.svelte';
 import { GAME_URL } from '#lib/site';
-import { goto } from '$app/navigation';
+import { goto, onNavigate } from '$app/navigation';
 import { resolve } from '$app/paths';
 import { page } from '$app/state';
 import '#lib/wiki.css';
@@ -20,7 +20,7 @@ let { data, children } = $props();
 let scrollY = $state(0);
 const scrolled = $derived(scrollY > 16);
 
-// by route, not by path: while prerendering, SvelteKit's paths are relative ('./map'), so a page's pathname never equals
+// by route, not by path: while prerendering, SvelteKit's paths are relative ('./garage'), so a page's pathname never equals
 // resolve()'s, and the HTML would get the wrong frame and no aria-current until the page hydrates
 const here = (route: string, slug?: string) =>
   page.route.id === route && (slug === undefined || page.params.slug === slug);
@@ -34,6 +34,25 @@ const closeMenu = () => history.back();
 // a window wider than a phone's shows the sidebar instead: the same width as in the styles below. Read in the browser only
 // (the drawer's effect), never while prerendering, where no width is known.
 const wide = new MediaQuery('width > 47.5em');
+
+// Going into the garage and coming out of it, the page changes whole, from a page of text to a yard that fills the window:
+// the browser's view transition carries one into the other (the animation itself is in wiki.css). A browser without view
+// transitions, or a visitor who asks for less motion, gets the plain change of page; so does every other navigation, which
+// stays instant, and the drawer, which isn't a change of page.
+onNavigate(navigation => {
+  const garage = navigation.to?.route.id === '/garage' || navigation.from?.route.id === '/garage';
+  if (!garage || navigation.shallow || !document.startViewTransition) return;
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const root = document.documentElement;
+  return new Promise<void>(resolve => {
+    root.dataset.transition = 'garage';
+    const transition = document.startViewTransition(async () => {
+      resolve();
+      await navigation.complete;
+    });
+    transition.finished.finally(() => delete root.dataset.transition);
+  });
+});
 
 // the dialog follows page.state; its own Escape (cancel) goes back instead of closing it behind the history's back
 function drawer(dialog: HTMLDialogElement) {
@@ -85,65 +104,71 @@ function drawer(dialog: HTMLDialogElement) {
   <h2>From the game</h2>
   <ul>
     <li><a href={resolve('/map')} aria-current={here('/map') ? 'page' : undefined}>The map</a></li>
+    <li><a href={resolve('/garage')}>The garage</a></li>
   </ul>
 {/snippet}
 
-<a class="skip" href="#main">Skip to the page</a>
-<!-- the page is at least as tall as the window: the shell takes what room there is, so the village at nightfall stands at
+{#if here('/garage')}
+  <!-- the garage is a scene that fills the window: no wiki frame around it -->
+  {@render children()}
+{:else}
+  <a class="skip" href="#main">Skip to the page</a>
+  <!-- the page is at least as tall as the window: the shell takes what room there is, so the village at nightfall stands at
        the window's bottom on a short page too -->
-<div class="page">
-  <div class="shell">
-    <header class={['top', { scrolled }]}>
-      <a class="brand" href={resolve('/')}><span>Vrigstad</span> <b>wiki</b></a>
-      <button
-        type="button"
-        class="menu"
-        aria-haspopup="dialog"
-        aria-expanded={menuOpen}
-        aria-controls="wiki-drawer"
-        onclick={openMenu}
-      >
-        <Menu size="1em" strokeWidth={2.5} />
-        Menu
-      </button>
-      <a class="play" rel="external" href={GAME_URL}
-        ><span>Play <span class="play-long">the game</span></span> <ArrowRight size="1em" strokeWidth={2.5} /></a
-      >
-    </header>
-    <nav class="side" aria-label="Wiki">{@render links()}</nav>
-    <!-- tabindex: so the skip link can move the keyboard's focus here -->
-    <main id="main" tabindex="-1">{@render children()}</main>
+  <div class="page">
+    <div class="shell">
+      <header class={['top', { scrolled }]}>
+        <a class="brand" href={resolve('/')}><span>Vrigstad</span> <b>wiki</b></a>
+        <button
+          type="button"
+          class="menu"
+          aria-haspopup="dialog"
+          aria-expanded={menuOpen}
+          aria-controls="wiki-drawer"
+          onclick={openMenu}
+        >
+          <Menu size="1em" strokeWidth={2.5} />
+          Menu
+        </button>
+        <a class="play" rel="external" href={GAME_URL}
+          ><span>Play <span class="play-long">the game</span></span> <ArrowRight size="1em" strokeWidth={2.5} /></a
+        >
+      </header>
+      <nav class="side" aria-label="Wiki">{@render links()}</nav>
+      <!-- tabindex: so the skip link can move the keyboard's focus here -->
+      <main id="main" tabindex="-1">{@render children()}</main>
+    </div>
+    <!-- the credit is written on the dark ground the village stands on -->
+    <footer>
+      <Nightfall />
+      <p>
+        Map data © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>. Vrigstad is a real
+        village in Småland; the game and this wiki are made with affection for it.
+      </p>
+    </footer>
   </div>
-  <!-- the credit is written on the dark ground the village stands on -->
-  <footer>
-    <Nightfall />
-    <p>
-      Map data © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>. Vrigstad is a real
-      village in Småland; the game and this wiki are made with affection for it.
-    </p>
-  </footer>
-</div>
 
-<!-- a click on the backdrop lands on the dialog itself, outside the panel inside it -->
-<!-- biome-ignore lint/a11y/useKeyWithClickEvents: the keyboard closes the dialog with Escape (oncancel) and its Close button -->
-<dialog
-  id="wiki-drawer"
-  class="drawer"
-  aria-label="Wiki"
-  {@attach drawer}
-  oncancel={e => {
-    e.preventDefault();
-    closeMenu();
-  }}
-  onclick={e => e.target === e.currentTarget && closeMenu()}
->
-  <!-- data-sveltekit-replacestate: a link in the drawer takes the drawer's place in the history, so going back from the
+  <!-- a click on the backdrop lands on the dialog itself, outside the panel inside it -->
+  <!-- biome-ignore lint/a11y/useKeyWithClickEvents: the keyboard closes the dialog with Escape (oncancel) and its Close button -->
+  <dialog
+    id="wiki-drawer"
+    class="drawer"
+    aria-label="Wiki"
+    {@attach drawer}
+    oncancel={e => {
+      e.preventDefault();
+      closeMenu();
+    }}
+    onclick={e => e.target === e.currentTarget && closeMenu()}
+  >
+    <!-- data-sveltekit-replacestate: a link in the drawer takes the drawer's place in the history, so going back from the
        next page doesn't open the drawer again -->
-  <nav class="drawer-panel" aria-label="Wiki" data-sveltekit-replacestate>
-    <button type="button" class="drawer-close" onclick={closeMenu}><X size="1em" strokeWidth={2.5} /> Close</button>
-    {@render links()}
-  </nav>
-</dialog>
+    <nav class="drawer-panel" aria-label="Wiki" data-sveltekit-replacestate>
+      <button type="button" class="drawer-close" onclick={closeMenu}><X size="1em" strokeWidth={2.5} /> Close</button>
+      {@render links()}
+    </nav>
+  </dialog>
+{/if}
 
 <style>
 /* the first thing the Tab key reaches: past the header and the sidebar to the page, shown only while it has the focus */

@@ -80,6 +80,11 @@ export interface SkrotenMeshDeps {
   coarse: boolean; // a phone: the cars keep their simple shapes, the models cost too many triangles, and nothing casts a shadow
   /** A car model's loaded scene, shared with the cars on the road (VehicleVisuals.template); read, never changed. */
   carModel(definition: { id: string; url: string }): Promise<THREE.Object3D>;
+  /**
+   * Where Plåt-Pelle stands, in the yard's own metres (u along the road, v into the yard): his place in the game
+   * (OWNER_UV) when left out. The wiki's garage stands him right by the ring, where a window of any shape shows him.
+   */
+  ownerUV?: { u: number; v: number };
 }
 
 /** The yard and Plåt-Pelle; `update` turns him towards you. */
@@ -340,9 +345,10 @@ export class SkrotenMeshes {
     scene.add(...built);
 
     const owner = platPelle();
-    const at = yardToWorld(OWNER_UV.u, OWNER_UV.v);
+    const { u, v } = g.ownerUV ?? OWNER_UV;
+    const at = yardToWorld(u, v);
     owner.position.set(at.x, heightAt(at.x, at.z), at.z);
-    const road = yardToWorld(OWNER_UV.u, OWNER_UV.v - 1);
+    const road = yardToWorld(u, v - 1);
     this.ownerH = Math.atan2(road.x - at.x, at.z - road.z); // looks towards the road until you come
     owner.rotation.y = -this.ownerH;
     scene.add(owner);
@@ -390,7 +396,7 @@ export class SkrotenMeshes {
     this.nearCars = group;
   }
 
-  /** Turns Plåt-Pelle towards you while you are near. */
+  /** Turns Plåt-Pelle towards you while you are near, and swaps the yard's cars for their models as you come. */
   update(dt: number, you: { x: number; z: number }) {
     const fromMiddle = Math.hypot(you.x - this.middle.x, you.z - this.middle.z);
     if (this.loadNear && fromMiddle < CAR_LOAD_M) {
