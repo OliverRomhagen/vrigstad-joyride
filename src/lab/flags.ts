@@ -1,6 +1,7 @@
 // Lab flags: which opt-in experiments are switched on (#227).
-// Gameplay asks a LabFlags, never the URL or storage, so the menu (#78) and the console (#218) can set the same flags later.
-// The game reads them once, at page load, so until experiments can start and stop while it runs, a change takes a reload.
+// Gameplay asks a LabFlags, never the URL or storage, so the menu (#78) can set the same flags later.
+// The game reads them once, at page load, so until experiments can start and stop while it runs, a change takes a reload:
+// the console's `lab on <id>` (lab-commands.ts, #501) writes the URL with withLabFlag and reloads.
 
 /** One experiment: its id in `?lab=`, an English name, and one line on what it costs. */
 export interface LabExperiment {
@@ -36,6 +37,41 @@ export function parseLabFlags(search: string): LabId[] {
     }
   }
   return [...on];
+}
+
+/**
+ * A query string with one parameter set, or taken out with null. Every other parameter stays exactly as it was written
+ * (`?dev` stays `?dev`, `at=1,2` keeps its comma), which URLSearchParams would rewrite; only an empty part (`?a&&b`)
+ * goes. The value is written as given, so it must need no encoding. A parameter that repeats ends up once, where the
+ * first one was; a new one goes last. With nothing left the answer is ''.
+ */
+export function withParam(search: string, name: string, value: string | null): string {
+  let placed = false;
+  const parts = search
+    .replace(/^\?/, '')
+    .split('&')
+    .filter(Boolean)
+    .flatMap(part => {
+      if (!new URLSearchParams(part).has(name)) return [part];
+      if (placed || value === null) return [];
+      placed = true;
+      return [`${name}=${value}`];
+    });
+  if (!placed && value !== null) parts.push(`${name}=${value}`);
+  return parts.length ? '?' + parts.join('&') : '';
+}
+
+/**
+ * A query string with one experiment switched on or off, to load the page with (see withParam for what stays). The
+ * experiments that are on end up in one `lab` parameter; ids that aren't experiments are dropped, as parseLabFlags
+ * ignores them. With nothing on the parameter goes.
+ */
+export function withLabFlag(search: string, id: LabId, on: boolean): string {
+  const ids = new Set(parseLabFlags(search));
+  if (on) ids.add(id);
+  else ids.delete(id);
+  const lab = LAB_EXPERIMENTS.map(e => e.id).filter(i => ids.has(i));
+  return withParam(search, 'lab', lab.length ? lab.join(',') : null);
 }
 
 /** The experiments switched on for this page load. Everything is off by default. */

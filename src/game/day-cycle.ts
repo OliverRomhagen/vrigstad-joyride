@@ -3,8 +3,8 @@
 // Plain data and functions: src/game/render/daylight.ts turns a Sky into lights and sky colours.
 import { clamp } from '../world/math';
 import { type SunPosition, sunAt } from '../world/sun';
-import { num } from './command-args';
-import { type Commands, UsageError } from './commands';
+import { arg, choice, command, described, either, group, num, optional } from './command-args';
+import type { Commands } from './commands';
 
 export const DAWN_H = 5,
   DUSK_H = 19; // local clock hours the day runs between
@@ -122,21 +122,26 @@ export function skyAt(c: DayClock, out: Sky): Sky {
 }
 
 // ---------- the dev console's `time` (#575) ----------
-// the words `time` takes in place of an hour
-const MOMENTS = { DAWN: 'dawn', NOON: 'noon', DUSK: 'dusk', NIGHT: 'night' } as const;
-const PACES = { HOLD: 'hold', RUN: 'run', SPEED: 'speed' } as const;
-const TIME_WORDS: readonly string[] = [...Object.values(MOMENTS), ...Object.values(PACES)];
 const NOON_H = 12;
 const NIGHT_MID = 0.5; // halfway through the skip, where the light is dimmest
+// the words `time` takes in place of an hour, and where each puts the clock
+const MOMENTS = { DAWN: 'dawn', NOON: 'noon', DUSK: 'dusk', NIGHT: 'night' } as const;
+type Moment = (typeof MOMENTS)[keyof typeof MOMENTS];
+const MOMENT_NAMES: readonly Moment[] = Object.values(MOMENTS);
+const MOMENT_AT: Readonly<Record<Moment, { hour: number; night: number }>> = {
+  [MOMENTS.DAWN]: { hour: DAWN_H, night: 0 },
+  [MOMENTS.NOON]: { hour: NOON_H, night: 0 },
+  [MOMENTS.DUSK]: { hour: DUSK_H, night: 0 },
+  [MOMENTS.NIGHT]: { hour: DUSK_H, night: NIGHT_MID },
+};
 
-// the console's own number arguments, for their parsing (a comma works as the decimal mark) and their range errors
-const SPEED_ARG = num('speed', { min: MIN_SPEED, max: MAX_SPEED });
-const HOUR_ARG = num('hour', { min: DAWN_H, max: DUSK_H });
-
-/** 16.5, 16,5 or 16:30 as an hour inside the day; throws a UsageError for anything else. */
-function parseHour(w: string): number {
-  const clock = /^(\d{1,2}):([0-5]\d)$/.exec(w);
-  return HOUR_ARG.parse(clock ? String(Number(clock[1]) + Number(clock[2]) / 60) : w);
+/** An hour inside the day, as 16.5, 16,5 or 16:30. */
+function clockTime<N extends string>(name: N) {
+  const hour = num(name, { min: DAWN_H, max: DUSK_H }); // for its parsing and its range error
+  return arg(name, w => {
+    const clock = /^(\d{1,2}):([0-5]\d)$/.exec(w);
+    return hour.parse(clock ? String(Number(clock[1]) + Number(clock[2]) / 60) : w);
+  });
 }
 
 const twoDigits = (n: number) => String(n).padStart(2, '0');
@@ -161,30 +166,46 @@ export function registerDayCommands(
   pace: DayPace,
   applyLight: () => void,
 ) {
-  const jump = (hour: number, night = 0) => {
-    c.hour = hour;
-    c.night = night;
-    applyLight();
+  const setRunning = (running: boolean) => {
+    pace.running = running;
+    return clockLine(c, pace);
   };
-  commands.register('time', {
-    usage: `[hour|${Object.values(MOMENTS).join('|')}|${PACES.HOLD}|${PACES.RUN}|${PACES.SPEED} <times>]`,
-    help: 'show or set the time of day, hold the clock, or speed it up',
-    details: `Hours run from ${DAWN_H} to ${DUSK_H}, as 16.5 or 16:30. The night is a ${NIGHT_S} s skip from dusk to dawn: night jumps to its middle.`,
-    examples: ['time', 'time 16:30', 'time dusk', 'time hold', 'time speed 20'],
-    complete: index => (index === 0 ? TIME_WORDS : []),
-    run: a => {
-      const what = a[0]?.toLowerCase();
-      if (a.length > (what === PACES.SPEED ? 2 : 1)) throw new UsageError('Too many words.');
-      if (what === undefined) return clockLine(c, pace);
-      if (what === PACES.HOLD || what === PACES.RUN) pace.running = what === PACES.RUN;
-      else if (what === PACES.SPEED) {
-        pace.speed = SPEED_ARG.parse(a[1] ?? '');
-      } else if (what === MOMENTS.DAWN) jump(DAWN_H);
-      else if (what === MOMENTS.NOON) jump(NOON_H);
-      else if (what === MOMENTS.DUSK) jump(DUSK_H);
-      else if (what === MOMENTS.NIGHT) jump(DUSK_H, NIGHT_MID);
-      else jump(parseHour(what));
-      return clockLine(c, pace);
-    },
-  });
+  commands.register(
+    'time',
+    group({
+      help: 'show or set the time of day, hold the clock, or speed it up',
+      details: `The night is a ${NIGHT_S} s skip from dusk to dawn: night jumps to its middle.`,
+      examples: ['time', 'time 16:30', 'time dusk', 'time hold', 'time speed 20'],
+      args: [
+        optional(
+          described(
+            either('when', clockTime('hour'), choice('moment', MOMENT_NAMES)),
+            `an hour from ${DAWN_H} to ${DUSK_H}, as 16.5 or 16:30, or ${MOMENT_NAMES.join(', ')}`,
+          ),
+        ),
+      ],
+      run: ({ when }) => {
+        if (when !== undefined) {
+          const at = typeof when === 'number' ? { hour: when, night: 0 } : MOMENT_AT[when];
+          c.hour = at.hour;
+          c.night = at.night;
+          applyLight();
+        }
+        return clockLine(c, pace);
+      },
+      subcommands: {
+        hold: command({ help: 'stop the clock where it is', args: [], run: () => setRunning(false) }),
+        run: command({ help: 'let the clock run again', args: [], run: () => setRunning(true) }),
+        speed: command({
+          help: 'run the clock this many times faster',
+          examples: ['time speed 20', 'time speed 1'],
+          args: [num('factor', { min: MIN_SPEED, max: MAX_SPEED })],
+          run: ({ factor }) => {
+            pace.speed = factor;
+            return clockLine(c, pace);
+          },
+        }),
+      },
+    }),
+  );
 }
