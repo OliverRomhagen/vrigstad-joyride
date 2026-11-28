@@ -85,6 +85,57 @@ describe('PhysicsWorld', () => {
     w.dispose();
   });
 
+  it('takes a prop out of the world again once no car is near it, and keeps one that was knocked', () => {
+    const w = world(flat, [mailbox(10, 0), mailbox(10, 15)]),
+      c = car(8, 7.5);
+    w.follow([c], null, c);
+    c.x += 1; // a car passes between them: both join, anchored
+    w.follow([c], null, c);
+    expect([...w.joined].sort()).toEqual([0, 1]);
+    // the second is knocked, away from the first; the car drives off, out of the join distance and its margin
+    w.knockProp(1, 10, 0.6, 15, 0, 0, 30);
+    c.x = -90;
+    w.follow([c], null, c);
+    for (let i = 0; i < 60; i++) w.step(PHYSICS_STEP_S);
+    expect(w.joined).toEqual([1]); // the anchored one has left; the knocked one stays until it's back on its stand
+    expect(w.propPose(0, pose()).x).toBe(10); // back to data, standing where it's drawn
+    w.dispose();
+  });
+
+  it('keeps an anchored prop in the world while a knocked one lies beside it', () => {
+    const w = world(flat, [mailbox(10, 0), mailbox(10, 1.5)]),
+      c = car(-1, 4);
+    w.follow([c], null, c);
+    c.x += 1;
+    w.follow([c], null, c);
+    w.knockProp(1, 10, 0.6, 1.5, 0, 0, 5); // tipped over beside the first
+    c.x = -90;
+    w.follow([c], null, c);
+    for (let i = 0; i < 60; i++) w.step(PHYSICS_STEP_S);
+    expect([...w.joined].sort()).toEqual([0, 1]); // else the knocked one could slide through where the first stood
+    w.dispose();
+  });
+
+  it('draws a falling prop between its last two steps, as far as the frame is into the next', () => {
+    const w = world(flat, [mailbox(10, 0)]),
+      c = car(-1);
+    w.follow([c], null, c);
+    c.x += 1;
+    w.follow([c], null, c);
+    w.knockProp(0, 10, 1.2, 0, 0, 20, 30); // up and away
+    for (let i = 0; i < 5; i++) w.step(PHYSICS_STEP_S);
+    const before = w.propPose(0, pose());
+    w.step(PHYSICS_STEP_S);
+    const after = w.propPose(0, pose());
+    w.step(PHYSICS_STEP_S / 2); // half a step: a 120 Hz frame with no step in it
+    const drawn = w.drawnPose(0, pose());
+    expect(after.z).not.toBeCloseTo(before.z, 2); // it moved in that step
+    expect(drawn.z).toBeCloseTo((before.z + after.z) / 2, 6);
+    expect(drawn.y).toBeCloseTo((before.y + after.y) / 2, 6);
+    expect(Math.hypot(drawn.qx, drawn.qy, drawn.qz, drawn.qw)).toBeCloseTo(1, 6);
+    w.dispose();
+  });
+
   it('leaves the props out of the world until a car drives near, not the player', () => {
     const w = world(bumpy, [mailbox(10, 0), mailbox(60, 0)]);
     for (let i = 0; i < 30; i++) w.step(PHYSICS_STEP_S);

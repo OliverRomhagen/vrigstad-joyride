@@ -6,9 +6,18 @@ import type { WorldData } from '../world/data';
 import type { FurnitureKind, FurnitureModelId } from '../world/furniture/definitions';
 import type { FurniturePlacement } from '../world/furniture/placement';
 import { FURNITURE_MODELS, type StreetFurniture } from '../world/mesh/street-furniture';
+import { boxGeo, paintMat } from './render/models';
 import { PhysicsProps } from './render/physics-props';
+import { ShootingRangeMeshes } from './render/shooting-range';
 import type { CarBody } from './sim/car-body';
-import { PhysicsWorld, type PhysicsWorldOptions, type PropSpec, type Rapier } from './sim/physics-world';
+import {
+  type PersonBody,
+  PhysicsWorld,
+  type PhysicsWorldOptions,
+  type PropSpec,
+  type Rapier,
+} from './sim/physics-world';
+import { rangeBlocks, targetSpecs } from './sim/shooting-range';
 
 /** what a car can knock over, and what each weighs (kg) */
 const PROP_MASS_KG: Partial<Record<FurnitureKind, number>> = {
@@ -35,6 +44,8 @@ export interface RapierLabDeps {
   placements: readonly FurniturePlacement[];
   furniture: Pick<StreetFurniture, 'detach' | 'reattach'>;
   cars: readonly CarBody[];
+  /** the pedestrians, with ?lab=pickadoll: the ones near the player join the world, for shots to hit. Null without */
+  people: readonly PersonBody[] | null;
   player: { x: number; z: number };
   inCar(): boolean;
   /** the car the player drives, while in one */
@@ -59,6 +70,13 @@ export interface RapierLabState {
   readonly stepMs: number;
   /** the steps run since the world was built */
   readonly steps: number;
+  /** the people near the player that the world holds */
+  readonly people: number;
+  /** the shooting range's targets (#545), and how many are down right now */
+  readonly targets: number;
+  readonly targetsDown: number;
+  /** the world itself, for the weapons' ray casts (?lab=pickadoll); not for the test hook */
+  world: PhysicsWorld;
 }
 
 /** A model's size: across, front to back and up from its foot (m), from its own geometry, as a stand's width depends on its boxes. */
@@ -121,8 +139,15 @@ export async function startRapierLab(g: RapierLabDeps): Promise<RapierLabState> 
         : undefined,
     });
   }
+  // the shooting range's targets go after the street furniture, so the furniture's indices match its placements
+  const targets = targetSpecs(g.groundAt).map(t => specs.push(t) - 1);
   const t1 = performance.now();
-  const world = new PhysicsWorld(R, { data: g.data, heightfield: g.heightfield, props: specs });
+  const world = new PhysicsWorld(R, {
+    data: g.data,
+    heightfield: g.heightfield,
+    props: specs,
+    blocks: rangeBlocks(g.groundAt),
+  });
   const buildMs = performance.now() - t1;
   const draw = new PhysicsProps({
     scene: g.scene,
@@ -131,11 +156,15 @@ export async function startRapierLab(g: RapierLabDeps): Promise<RapierLabState> 
     placements,
     heights: specs.map(s => s.heightM),
   });
+  const range = new ShootingRangeMeshes({ scene: g.scene, groundAt: g.groundAt, boxGeo, paintMat, world, targets });
   const now = () => performance.now();
   g.addFrameUpdate(dt => {
-    world.follow(g.cars, g.inCar() ? null : g.player, g.playerCar() ?? g.player);
+    const viewer = g.playerCar() ?? g.player;
+    world.follow(g.cars, g.inCar() ? null : g.player, viewer);
+    if (g.people) world.followPeople(g.people, viewer);
     world.step(dt, now);
     draw.update();
+    range.update();
   });
   console.info(
     `Lab: rapier ready in ${Math.round(loadMs)} ms, its world built in ${Math.round(buildMs)} ms, ${specs.length} props`,
@@ -159,5 +188,15 @@ export async function startRapierLab(g: RapierLabDeps): Promise<RapierLabState> 
     get steps() {
       return world.steps;
     },
+    get people() {
+      return world.people;
+    },
+    targets: targets.length,
+    get targetsDown() {
+      let n = 0;
+      for (const i of targets) if (world.isLoose(i)) n++;
+      return n;
+    },
+    world,
   };
 }

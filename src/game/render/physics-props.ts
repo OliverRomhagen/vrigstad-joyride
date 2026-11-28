@@ -12,7 +12,7 @@ const _pose: PropPose = { x: 0, y: 0, z: 0, qx: 0, qy: 0, qz: 0, qw: 1 };
 export interface PhysicsPropsDeps {
   scene: THREE.Scene;
   furniture: Pick<StreetFurniture, 'detach' | 'reattach'>;
-  world: Pick<PhysicsWorld, 'loosened' | 'isLoose' | 'isAwake' | 'propPose'>;
+  world: Pick<PhysicsWorld, 'loosened' | 'isLoose' | 'isAwake' | 'drawnPose'>;
   /** the placement behind each of the world's props, in the same order */
   placements: readonly FurniturePlacement[];
   /** each prop's height (m): the body's middle is this far above the model's foot */
@@ -22,12 +22,15 @@ export interface PhysicsPropsDeps {
 export class PhysicsProps {
   private readonly g: PhysicsPropsDeps;
   private readonly drawn: (THREE.Object3D | null)[];
+  /** whether each prop was awake when last drawn */
+  private readonly propAwakeWhenDrawn: Uint8Array;
   /** the props drawn on their own, by index */
   private readonly detached: number[] = [];
 
   constructor(g: PhysicsPropsDeps) {
     this.g = g;
     this.drawn = g.placements.map(() => null);
+    this.propAwakeWhenDrawn = new Uint8Array(g.placements.length);
   }
 
   /** Moves every knocked prop's model to its body, taking it out of its batch the first time it leaves its stand. */
@@ -42,6 +45,7 @@ export class PhysicsProps {
       this.detached.splice(k, 1);
     }
     for (const i of world.loosened) {
+      if (i >= placements.length) continue; // not street furniture: the shooting range's targets, drawn by their own
       let model = this.drawn[i];
       if (!model) {
         model = furniture.detach(placements[i]);
@@ -49,8 +53,10 @@ export class PhysicsProps {
         scene.add(model);
         this.drawn[i] = model;
         this.detached.push(i);
-      } else if (!world.isAwake(i)) continue;
-      const p = world.propPose(i, _pose);
+      } else if (!world.isAwake(i) && !this.propAwakeWhenDrawn[i]) continue;
+      // once more the frame it falls asleep: the last frame drew it blended, a little short of where it rests
+      this.propAwakeWhenDrawn[i] = world.isAwake(i) ? 1 : 0;
+      const p = world.drawnPose(i, _pose);
       model.quaternion.set(p.qx, p.qy, p.qz, p.qw);
       _v.set(0, -heights[i] / 2, 0).applyQuaternion(model.quaternion);
       model.position.set(p.x + _v.x, p.y + _v.y, p.z + _v.z);

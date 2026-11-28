@@ -343,6 +343,26 @@ test.describe('game (index.html)', () => {
     expect(errors).toEqual([]);
   });
 
+  test('?lab=rapier,pickadoll sends shots through Rapier, and they land', async ({ page }) => {
+    const errors = watchErrors(page);
+    await page.setViewportSize({ width: 640, height: 360 });
+    await page.goto('/index.html?lab=rapier,pickadoll');
+    await page.locator('#go').click();
+    // both load behind their flags, and a failure only warns: wait until the shots ask Rapier
+    await expect
+      .poll(async () => (await state(page)).pickadoll?.throughPhysics ?? false, { timeout: 60_000 })
+      .toBe(true);
+    expect((await state(page)).rapier).toMatchObject({ targets: 7, targetsDown: 0 }); // the range's, standing (#545)
+    await frames(page, 3);
+    await page.keyboard.press('KeyH'); // you start on Hands: H takes out the pickadoll
+    await expect.poll(async () => (await state(page)).pickadoll.holstered).toBe(false);
+    await page.keyboard.down('KeyX');
+    await expect.poll(async () => (await state(page)).pickadoll.fired).toBeGreaterThan(0);
+    await page.keyboard.up('KeyX');
+    await expect.poll(async () => (await state(page)).pickadoll.hits).toBeGreaterThan(0); // the ray cast met something
+    expect(errors).toEqual([]);
+  });
+
   test('?lab=toon draws the cel-shaded style without errors', async ({ page }, testInfo) => {
     const errors = watchErrors(page);
     await page.goto('/index.html?lab=toon');

@@ -34,7 +34,7 @@ const mailbox = (x: number, z: number): PropSpec => ({
 const car = (x: number, z = 0): CarBody => ({ x, z, h: Math.PI / 2, T: { lengthM: 4.8, widthM: 1.75 } });
 
 describe('registerPhysicsTunables', () => {
-  it('registers gravity and the props’ join and respawn numbers, with the values the world uses', () => {
+  it('registers gravity, the props’ join and respawn numbers and the targets’ reset, with the values the world uses', () => {
     expect(
       t
         .keys()
@@ -45,6 +45,7 @@ describe('registerPhysicsTunables', () => {
       'physics.prop-join-distance',
       'physics.prop-respawn-distance',
       'physics.prop-respawn-time',
+      'physics.target-reset-time',
     ]);
     expect(t.get('physics.gravity')).toBe(9.81);
     expect(t.get('physics.prop-join-distance')).toBe(PHYSICS.PROP_JOIN_M);
