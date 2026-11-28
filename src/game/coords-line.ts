@@ -73,10 +73,10 @@ export class CoordsLine implements CoordsView {
       }, COPIED_S * 1000);
     };
     const { clipboard } = this.d;
-    if (!clipboard) return done('Can’t copy here: use coords in the console');
+    if (!clipboard) return done('Can’t copy here: add ?dev and type coords in the console');
     clipboard.writeText(this.link()).then(
       () => done('Copied'),
-      () => done('Can’t copy here: use coords in the console'),
+      () => done('Can’t copy here: add ?dev and type coords in the console'),
     );
   }
 }
