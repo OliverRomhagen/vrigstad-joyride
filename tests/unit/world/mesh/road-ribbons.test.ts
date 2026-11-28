@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 import { BridgeIndex } from '../../../../src/world/bridges';
 import { ROAD_WIDTH_M, RoadClass, Surface, surfaceOf } from '../../../../src/world/data';
-import { RoadRibbons, ribbonLiftM, SURFACE_BLEND_M, TILE_M } from '../../../../src/world/mesh/road-ribbons';
+import { cutAt, RoadRibbons, ribbonLiftM, SURFACE_BLEND_M, TILE_M } from '../../../../src/world/mesh/road-ribbons';
 import { type Point, RoadNetwork, roadLiftM } from '../../../../src/world/roads';
 import { makeWorld } from '../fixture';
 
@@ -217,10 +217,12 @@ describe('RoadRibbons by surface (#399)', () => {
 });
 
 describe('RoadRibbons where the surface changes (#399)', () => {
-  // a gravel track leaving the middle of an asphalt street, north from (0, 0), and a second street continuing the first
+  // a gravel track leaving the middle of an asphalt street, north from (0, 0), and a second street continuing the first.
+  // The track's second node is 2 m past the street's edge, so a sampled vertex falls inside the fade
+  const edgeM = ROAD_WIDTH_M[RoadClass.STREET] / 2;
   const lines = [
     { c: RoadClass.STREET, n: '', p: [-30, 0, 0, 0, 30, 0] },
-    { c: RoadClass.TRACK, n: '', p: [0, 0, 0, -30] },
+    { c: RoadClass.TRACK, n: '', p: [0, 0, 0, -(edgeM + 2), 0, -30] },
     { c: RoadClass.STREET, n: '', p: [30, 0, 60, 0] },
   ];
   const ribbons = new RoadRibbons(new RoadNetwork(makeWorld({ r: lines }), terrainAt(0)), terrainAt(0), {
@@ -236,21 +238,46 @@ describe('RoadRibbons where the surface changes (#399)', () => {
   };
   const asphalt = ribbons.surfaceColour(Surface.ASPHALT, new THREE.Color()),
     gravel = ribbons.surfaceColour(Surface.GRAVEL, new THREE.Color());
+  const expectColour = (c: THREE.Color, want: THREE.Color) => {
+    for (const k of ['r', 'g', 'b'] as const) expect(c[k]).toBeCloseTo(want[k], 5);
+  };
 
-  it('fades the softer road in from the harder one over SURFACE_BLEND_M, and no further', () => {
+  it('fades the softer road in from the harder road’s edge over SURFACE_BLEND_M, and no further', () => {
     const track = meshOf(RoadClass.TRACK),
       pos = track.geometry.getAttribute('position');
-    let atJunction = 0;
+    const seen = new Set<string>();
     for (let i = 0; i < pos.count; i++) {
       const along = -pos.getZ(i), // the track runs north from the junction, towards -z
-        c = colourAt(track, i);
-      if (along < 0.01) {
-        atJunction++;
-        expect(c.r).toBeCloseTo(asphalt.r, 5);
-      } else if (along >= SURFACE_BLEND_M) expect(c.r).toBeCloseTo(gravel.r, 5);
-      else expect(c.r).toBeGreaterThan(Math.min(asphalt.r, gravel.r) - 1e-6);
+        t = Math.min(1, Math.max(0, (along - edgeM) / SURFACE_BLEND_M));
+      expectColour(colourAt(track, i), new THREE.Color().lerpColors(asphalt, gravel, t));
+      for (const [name, at] of [
+        ['edge', edgeM],
+        ['inside', edgeM + 2],
+        ['end', edgeM + SURFACE_BLEND_M],
+      ] as const)
+        if (Math.abs(along - at) < 1e-4) seen.add(name);
     }
-    expect(atJunction).toBeGreaterThan(0);
+    // a vertex at each end of the fade, whatever the sampling, and the one in the middle of it
+    expect([...seen].sort()).toEqual(['edge', 'end', 'inside']);
+  });
+
+  it('cuts a polyline at the distances that fall inside it, and nowhere else', () => {
+    expect(
+      cutAt(
+        [
+          [0, 0],
+          [10, 0],
+          [10, 10],
+        ],
+        [-1, 0, 4, 10, 15, 25],
+      ),
+    ).toEqual([
+      [0, 0],
+      [4, 0],
+      [10, 0],
+      [10, 5],
+      [10, 10],
+    ]);
   });
 
   it('leaves the harder road, and roads meeting one of their own surface, as they are', () => {
