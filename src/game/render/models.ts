@@ -271,16 +271,23 @@ export const BAR_BLUE = col(0x2f6bff),
   BAR_RED = col(0xff3b30);
 export const barMat = new THREE.MeshBasicMaterial({ color: BAR_BLUE.clone() }),
   barGeo = new THREE.BoxGeometry(1.1, 0.16, 0.3);
-export function personParts(shirt: string, pants: string, hair?: string | null, arms?: boolean, castsShadow = false) {
+export function personParts(
+  shirt: string,
+  pants: string,
+  hair: string | null | undefined,
+  skin: string,
+  arms?: boolean,
+  castsShadow = false,
+) {
   // arms: separate meshes that swing from the shoulder (two more draw calls, so only the player has them)
   hair = hair || '#5a4632';
-  const bk = shirt + hair + (arms ? '+arms' : ''),
+  const bk = shirt + hair + skin + (arms ? '+arms' : ''),
     body = cached(bk, () =>
       boxGeo(
         (
           [
             [0.5, 0.65, 0.28, 0, 1.13, 0, shirt],
-            [0.27, 0.27, 0.27, 0, 1.62, 0, '#e2b796'],
+            [0.27, 0.27, 0.27, 0, 1.62, 0, skin],
             [0.29, 0.1, 0.29, 0, 1.78, 0, hair],
           ] as BoxPart[]
         ).concat(
