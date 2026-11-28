@@ -1,6 +1,6 @@
 import '../three-legacy';
 import * as THREE from 'three';
-import { ROAD_WIDTH_M, type Surface, surfaceOf } from '../data';
+import { ROAD_WIDTH_M, type RoadClass, Surface, surfaceOf } from '../data';
 import type { Heightfield } from '../heightfield';
 import { resample, ribbonEdges, STEP_M } from '../polyline';
 import { type Point, type RoadNetwork, roadLiftM } from '../roads';
@@ -17,6 +17,26 @@ export interface RoadRibbonOptions {
   /** roads that draw their own surface and get no ribbon: the footbridges, whose decks are the walking surface */
   skip?: (ri: number) => boolean;
 }
+
+/** how soft each surface is: the softer of two roads that meet sits lower, so the harder one draws on top */
+const SOFTNESS: Readonly<Record<Surface, number>> = {
+  [Surface.UNKNOWN]: 0,
+  [Surface.ASPHALT]: 0,
+  [Surface.CONCRETE]: 0,
+  [Surface.PAVING]: 1,
+  [Surface.GRAVEL]: 2,
+  [Surface.UNPAVED]: 3,
+  [Surface.GRASS]: 3,
+};
+/**
+ * each step of SOFTNESS lowers a ribbon this far below its class's lift (m): roads of one class share a mesh and a
+ * polygon offset, so without it two surfaces meeting at a node fight where their ends overlap. 3 steps stay under the
+ * 3 cm between classes, so a bigger class still draws on top
+ */
+const SURFACE_LIFT_STEP_M = 0.006;
+
+/** Height of a road's ribbon above the terrain (m): its class's lift, less a little for a softer surface. */
+export const ribbonLiftM = (c: RoadClass, surface: Surface) => roadLiftM(c) - SOFTNESS[surface] * SURFACE_LIFT_STEP_M;
 
 /** bridge roads are cut every metre, so the ribbon follows the deck's crest (m) */
 const BRIDGE_STEP_M = 1;
@@ -44,7 +64,7 @@ export class RoadRibbons {
    * by a `color` attribute, which the patches need too (surfaceColour gives it)
    */
   readonly materials: (THREE.Material | undefined)[] = [];
-  private readonly linear = new Map<number, THREE.Color>();
+  private readonly linearBySurface = new Map<Surface, THREE.Color>();
   private readonly surfaceColours: Readonly<Record<Surface, number>>;
 
   constructor(
@@ -96,8 +116,9 @@ export class RoadRibbons {
       if (skip?.(ri)) return;
       const out = positions[r.c],
         from = out.length,
-        c = this.surfaceColour(surfaceOf(r));
-      ribbon(ri, out, r.p, ROAD_WIDTH_M[r.c], roadLiftM(r.c));
+        surface = surfaceOf(r),
+        c = this.linear(surface);
+      ribbon(ri, out, r.p, ROAD_WIDTH_M[r.c], ribbonLiftM(r.c, surface));
       for (let k = from; k < out.length; k += 3) colours[r.c].push(c.r, c.g, c.b);
       if (r.c < 2) ribbon(ri, positions[CENTRE_LINE], r.p, CENTRE_LINE_WIDTH_M, CENTRE_LINE_LIFT_M);
     });
@@ -130,12 +151,17 @@ export class RoadRibbons {
     });
   }
 
-  /** A surface's linear colour, as the ribbons' `color` attribute holds it, for patches drawn with their materials. */
-  surfaceColour(surface: Surface): THREE.Color {
-    let c = this.linear.get(surface);
+  /** A surface's linear colour, as the ribbons' `color` attribute holds it, copied into `out`, for patches drawn with their materials. */
+  surfaceColour(surface: Surface, out: THREE.Color): THREE.Color {
+    return out.copy(this.linear(surface));
+  }
+
+  /** the cached colour itself: callers inside the class only read it */
+  private linear(surface: Surface): THREE.Color {
+    let c = this.linearBySurface.get(surface);
     if (!c) {
       c = new THREE.Color(this.surfaceColours[surface]).convertSRGBToLinear();
-      this.linear.set(surface, c);
+      this.linearBySurface.set(surface, c);
     }
     return c;
   }

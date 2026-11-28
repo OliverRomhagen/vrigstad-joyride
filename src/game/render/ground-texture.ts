@@ -167,8 +167,8 @@ export class GroundTexture {
       ctx.lineWidth = 2 * LAKE_BANK_PAINT_M * K;
       shoreLines();
       ctx.restore();
-      const surfaces = D.r.map(r => surfaceOf(r)),
-        used = [...new Set(surfaces)];
+      const surfaceByRoad = D.r.map(r => surfaceOf(r)),
+        used = [...new Set(surfaceByRoad)];
       for (const pass of [2, 1, 0])
         for (const c of [5, 4, 3, 2, 1, 0]) {
           // 2: soft outer edge of the verge, 1: gravel verge, 0: the road
@@ -184,7 +184,7 @@ export class GroundTexture {
           };
           if (pass) stroke(pass === 2 ? 'rgba(179,167,140,.35)' : '#b3a78c', () => true);
           // the road one path per surface, so roads of one surface still join without a seam
-          else for (const sf of used) stroke(ROAD_PAINT[sf], ri => surfaces[ri] === sf);
+          else for (const sf of used) stroke(ROAD_PAINT[sf], ri => surfaceByRoad[ri] === sf);
         }
       ctx.shadowColor = 'rgba(0,0,0,.45)';
       ctx.shadowBlur = 3 * K; // contact shadow around every footprint

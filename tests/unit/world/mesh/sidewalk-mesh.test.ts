@@ -22,7 +22,7 @@ describe('SidewalkMesh road patches (#399)', () => {
         surface: new THREE.MeshLambertMaterial(),
         markings: new THREE.MeshLambertMaterial(),
         roadMaterials: [undefined, undefined, ribbon],
-        roadColour: s => (s === Surface.PAVING ? paving : asphalt),
+        roadColour: (s, out) => out.copy(s === Surface.PAVING ? paving : asphalt),
       },
     );
     const [m] = mesh.meshes.filter(x => x.material === ribbon);
