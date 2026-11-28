@@ -18,6 +18,7 @@ import { ShoutingDrivers } from './render/shouting-drivers';
 import data from '../../data/vrigstad.json';
 import '../fonts/barlow';
 import { LabFlags } from '../lab/flags';
+import { registerLabCommands } from '../lab/lab-commands';
 import { BridgeIndex } from '../world/bridges';
 import { BuildingIndex } from '../world/buildings';
 import { ROAD_WIDTH_M as ROAD_W, type WorldData } from '../world/data';
@@ -359,6 +360,9 @@ wanted.registerCommands(commands);
 registerHealthCommands(commands, health, drawHealth);
 registerCarDamageCommand(commands, () => (game.inCar ? game.pcar : null));
 registerTunableCommands(commands, tunables);
+// lab on <id> writes ?lab= and loads the page again, with ?at= so you start where you stand (or where the car you drive does)
+registerLabCommands(commands, { lab, search: () => location.search, reload: search => { location.search = search; },
+  at: () => { const o = game.inCar && game.pcar ? game.pcar : player; return [o.x.toFixed(1), o.z.toFixed(1), view.camYaw.toFixed(2), view.camPitch.toFixed(2)].join(','); } });
 // go <place>: you, or the car you drive, straight there, out of any safehouse first
 places.registerCommands(commands, (x, z, name, h) => { leaveHouse(); const c = game.inCar ? game.pcar : null;
   if (c) { c.x = x; c.z = z; if (h !== undefined) c.h = h; c.v = c.slip = c.drift = c.boost = 0; c.vh = c.h; placeCar(meshed(c)); } else { player.x = x; player.z = z; player.speed = 0; } return 'You are at ' + name + '.'; },
