@@ -3,7 +3,9 @@
 import * as THREE from 'three';
 import { col } from '../../world/three-legacy';
 import type { BoxPart } from '../box-part';
+import { isMetallicPaint } from '../sim/paint-jobs';
 import { INK_FLAG } from './ink-flag';
+import { METALLIC_FINISH, setFlakes } from './paint-flakes';
 
 /** One part of a model: a geometry and its sRGB colour; the colour attribute is left out when the parts have none. */
 type Part = [geometry: THREE.BufferGeometry, colour?: string];
@@ -96,6 +98,13 @@ function extrude(pts: number[][], width: number, bevel: number) {
 }
 export const paintMat = new THREE.MeshLambertMaterial({ vertexColors: true });
 export const carMat = new THREE.MeshPhongMaterial({ vertexColors: true, shininess: 60, specular: col(0x555555) }); // glossy paint and glass
+// a stand-in in a metallic paint: its painted parts (paintGroups) shine and sparkle as a model's paint does, through this second
+// material; shared by every such stand-in, as the colour is in the geometry
+const metallicCarMat = new THREE.MeshStandardMaterial({ vertexColors: true, ...METALLIC_FINISH });
+setFlakes(metallicCarMat, true);
+/** The material a stand-in in this paint wears: the glossy one, or for a metallic paint the glossy one and the metallic one by group. */
+export const carMatFor = (paint: string): THREE.Material | THREE.Material[] =>
+  isMetallicPaint(paint) ? [carMat, metallicCarMat] : carMat;
 export const GLASS = '#26323a';
 const TYRE = '#1c1c1c';
 const lamps = (z: number): BoxPart[] => [
@@ -266,7 +275,37 @@ const cached = (key: string, make: () => THREE.BufferGeometry) => {
   geoCache[key] ||= make();
   return geoCache[key];
 };
-export const carGeo = (t: string, c: string) => cached(t + c, () => softCar(t, c));
+export const carGeo = (t: string, c: string) =>
+  cached(t + c, () => (isMetallicPaint(c) ? paintGroups(softCar(t, c), c) : softCar(t, c)));
+// splits a merged stand-in into groups by colour: its parts in `paint` take material 1 (carMatFor's metallic one), the rest 0
+function paintGroups(g: THREE.BufferGeometry, paint: string) {
+  const colours = g.attributes.color!,
+    p = new THREE.Color(paint).convertSRGBToLinear(),
+    isPaint = (i: number) =>
+      Math.abs(colours.getX(i) - p.r) + Math.abs(colours.getY(i) - p.g) + Math.abs(colours.getZ(i) - p.b) < 1e-4;
+  let start = 0;
+  for (
+    let i = 3;
+    i <= colours.count;
+    i += 3 // a triangle at a time: mergeGeo leaves the geometry non-indexed
+  )
+    if (i === colours.count || isPaint(i) !== isPaint(start)) {
+      g.addGroup(start, i - start, isPaint(start) ? 1 : 0);
+      start = i;
+    }
+  return g;
+}
+/** The procedural car's painted panels only, with no glass, wheels or lamps, to project decals onto (render/paint-decals.ts); null for the tractor, which has none of its own. */
+export const carShellGeo = (t: string) =>
+  t === 'traktor' || !PROFILES[t]
+    ? null
+    : cached('shell:' + t, () => {
+        const P = PROFILES[t]!;
+        return mergeGeo([
+          [extrude(P.body, P.w, 0.07), '#ffffff'],
+          [extrude(P.roof, P.gw + 0.04, 0.03), '#ffffff'],
+        ]);
+      });
 export const BAR_BLUE = col(0x2f6bff),
   BAR_RED = col(0xff3b30);
 export const barMat = new THREE.MeshBasicMaterial({ color: BAR_BLUE.clone() }),

@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { Car } from '../../../src/game/cars';
-import { fmtKr, RESPRAY_KR, UPGRADE_KR } from '../../../src/game/economy';
+import { DECAL_KR, fmtKr, RESPRAY_KR, SPECIAL_PAINT_KR, UPGRADE_KR } from '../../../src/game/economy';
 import type { MenuItem } from '../../../src/game/pets';
+import { WORKSHOP_PAINTS } from '../../../src/game/sim/paint-jobs';
 import { noMods } from '../../../src/game/sim/upgrades';
 import { specFor } from '../../../src/game/sim/vehicle-spec';
 import { carsForSale, OWNER_LINES, paintName, Skroten, type SkrotenDeps } from '../../../src/game/skroten';
@@ -25,6 +26,7 @@ function skroten(o: { car?: Partial<Car>; model?: string; stars?: number; kr?: n
     T: specFor('volvo'),
     color: specFor('volvo').cols[0]!,
     mods: noMods(),
+    decal: null,
     dmg: 0,
     x: 0,
     z: 0,
@@ -46,6 +48,7 @@ function skroten(o: { car?: Partial<Car>; model?: string; stars?: number; kr?: n
     liftAt: LIFT,
     modelId: () => o.model,
     carName: () => 'Volvo 240',
+    warmPaint: c => void calls.push('warm ' + c.type),
     wallet,
     sellCar: c => {
       calls.push('sold ' + c.type);
@@ -269,7 +272,7 @@ describe('Plåt-Pelle upgrades the car on the lift', () => {
     expect(t.s.liftRepairKr()).toBe(0);
     expect(t.s.open()).toBe(true);
     expect(t.menu()!.title).toBe('Plåt-Pelle: ”Fin Volvo 240! Va ska ja göra mä den?”');
-    expect(keys(t)).toEqual(['engine', 'springs', 'body', 'paint', 'out', 'no']);
+    expect(keys(t)).toEqual(['engine', 'springs', 'body', 'paint', 'special', 'decal', 'out', 'no']);
   });
 
   it('opens nothing and says nothing for a whole police car or with the police after you, so E gets you out', () => {
@@ -306,11 +309,11 @@ describe('Plåt-Pelle upgrades the car on the lift', () => {
     expect(t.g.game.pcar!.mods).toEqual({ engine: true, springs: false, body: false });
     expect(t.wallet.kr).toBe(2000 - UPGRADE_KR.engine);
     expect(t.calls.at(-1)).toContain('Nu går ho!');
-    expect(keys(t)).toEqual(['springs', 'body', 'paint', 'out', 'no']);
+    expect(keys(t)).toEqual(['springs', 'body', 'paint', 'special', 'decal', 'out', 'no']);
     t.choose('body');
     t.choose('springs');
     expect(t.g.game.pcar!.mods).toEqual({ engine: true, springs: true, body: true });
-    expect(keys(t)).toEqual(['paint', 'out', 'no']);
+    expect(keys(t)).toEqual(['paint', 'special', 'decal', 'out', 'no']);
   });
 
   it('fits nothing once the police are after you, and closes the menu after a refused job', () => {
@@ -325,16 +328,6 @@ describe('Plåt-Pelle upgrades the car on the lift', () => {
     const before = t.menu();
     t.choose('springs'); // the same, stale menu: nothing reopened it
     expect(t.menu()).toBe(before);
-  });
-
-  it('goes back to the lift menu when you say no to a respray', () => {
-    const t = skroten({ kr: 500 });
-    t.driveOntoLift();
-    t.s.open();
-    t.choose('paint');
-    t.choose('no');
-    expect(t.menu()!.kind).toBe('skrot-lift');
-    expect(t.wallet.kr).toBe(500);
   });
 
   it('has a word for tuning an EPA-traktor', () => {
@@ -374,6 +367,93 @@ describe('Plåt-Pelle upgrades the car on the lift', () => {
     expect(t.g.game.pcar!.color).toBe(cols[1]);
     expect(t.wallet.kr).toBe(500 - RESPRAY_KR);
     expect(t.menu()!.kind).toBe('skrot-lift');
+  });
+});
+
+describe("Plåt-Pelle's limited paint jobs", () => {
+  const onLift = (kr: number) => {
+    const t = skroten({ kr });
+    t.driveOntoLift();
+    t.s.open();
+    return t;
+  };
+
+  it('sprays one of his special paints, which no car comes in', () => {
+    const t = onLift(1000);
+    t.choose('special');
+    expect(t.calls).toContain('warm volvo'); // the drawing gets ready while he offers them
+    expect(t.menu()!.kind).toBe('skrot-special');
+    expect(t.menu()!.items.map(([, label]) => label.replace(/<[^>]+>/g, ''))).toEqual([
+      ...WORKSHOP_PAINTS.map(p => p.name),
+      'Nä, inte idag',
+    ]);
+    t.choose('p0');
+    expect(t.g.game.pcar!.color).toBe(WORKSHOP_PAINTS[0]!.paint);
+    expect(t.wallet.kr).toBe(1000 - SPECIAL_PAINT_KR);
+    expect(t.menu()!.kind).toBe('skrot-lift');
+    t.choose('special');
+    expect(t.menu()!.items).toHaveLength(WORKSHOP_PAINTS.length); // the paint it has is left out
+  });
+
+  it('resprays a specially painted car in any of its stock colours, which takes the special paint off', () => {
+    const t = onLift(1000);
+    t.choose('special');
+    t.choose('p0');
+    t.choose('paint');
+    expect(t.menu()!.items).toHaveLength(specFor('volvo').cols.length + 1); // every stock colour, and no
+    t.choose('p0');
+    expect(t.g.game.pcar!.color).toBe(specFor('volvo').cols[0]);
+  });
+
+  it('paints a decal on, swaps it for another, and takes it off for free', () => {
+    const t = onLift(2000);
+    t.choose('decal');
+    expect(t.menu()!.items.map(([k]) => k)).toEqual(['flames', 'stripes', 'rally-number', 'no']);
+    t.choose('flames');
+    expect(t.g.game.pcar!.decal).toBe('flames');
+    expect(t.wallet.kr).toBe(2000 - DECAL_KR);
+    expect(t.calls.at(-1)).toContain('Flammor!');
+    t.choose('decal');
+    expect(t.menu()!.items.map(([k]) => k)).toEqual(['stripes', 'rally-number', 'off', 'no']);
+    t.choose('stripes');
+    expect(t.g.game.pcar!.decal).toBe('stripes');
+    t.choose('decal');
+    t.choose('off');
+    expect(t.g.game.pcar!.decal).toBeNull();
+    expect(t.calls.at(-1)).not.toContain('riksdaler'); // free: no −0 riksdaler
+    expect(t.wallet.kr).toBe(2000 - 2 * DECAL_KR);
+  });
+
+  it('paints no decal on a tractor, which has no panels for one', () => {
+    const t = skroten({
+      car: { type: 'traktor', T: specFor('traktor'), color: specFor('traktor').cols[0]! },
+      kr: 2000,
+    });
+    t.driveOntoLift();
+    t.s.open();
+    expect(t.menu()!.items.map(([k]) => k)).not.toContain('decal');
+    expect(t.menu()!.items.map(([k]) => k)).toContain('special');
+  });
+
+  it('goes back to the lift menu when you say no in a paint menu', () => {
+    for (const sub of ['paint', 'special', 'decal']) {
+      const t = onLift(1000);
+      t.choose(sub);
+      t.choose('no');
+      expect(t.menu()!.kind).toBe('skrot-lift');
+      expect(t.wallet.kr).toBe(1000);
+    }
+  });
+
+  it('paints nothing you cannot pay for', () => {
+    const t = onLift(100);
+    t.choose('decal');
+    t.choose('flames');
+    expect(t.g.game.pcar!.decal).toBeNull();
+    t.s.open();
+    t.choose('special');
+    t.choose('p0');
+    expect(t.wallet.kr).toBe(100);
   });
 });
 

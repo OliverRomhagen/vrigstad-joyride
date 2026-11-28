@@ -804,7 +804,7 @@ test.describe('game (index.html)', () => {
     expect(errors).toEqual([]);
   });
 
-  test('Plåt-Pelle mends, tunes and resprays a car on the lift in his workshop', async ({ page }, testInfo) => {
+  test('Plåt-Pelle mends, tunes, resprays and paints flames on a car on the lift', async ({ page }, testInfo) => {
     const errors = watchErrors(page);
     await page.setViewportSize({ width: 640, height: 360 });
     await page.goto('/index.html?dev');
@@ -849,6 +849,13 @@ test.describe('game (index.html)', () => {
     await expect(page.locator('#kr')).toHaveText('710 riksdaler');
     expect((await state(page)).carColor).not.toBe(carColor);
     await page.screenshot({ path: testInfo.outputPath('game-skroten-resprayed.png') });
+    // and flames, which only the workshop paints
+    await page.locator('#kmenu button', { hasText: 'Dekor' }).click();
+    await page.locator('#kmenu button', { hasText: 'Flammor' }).click();
+    await expect(page.locator('#kr')).toHaveText('210 riksdaler');
+    expect((await state(page)).carDecal).toBe('flames');
+    const v = (await state(page)).activeVehicle;
+    if (v?.status === 'loaded') expect(v.decals).toBeGreaterThan(0); // projected onto the model, not only set on the car
     await page.locator('#kmenu button', { hasText: 'Kliv ur' }).click(); // E on the lift opens the menu, so getting out is on it
     await expect.poll(async () => (await state(page)).inCar).toBe(false);
     expect(errors).toEqual([]);

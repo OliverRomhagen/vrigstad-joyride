@@ -38,6 +38,8 @@ export const REPAIR_MIN_KR = 50; // he picks up a spanner for no less
 // His upgrades on the lift, the same price for every car: cheaper than a car, dearer than a few trisslotter
 export const UPGRADE_KR: Readonly<Record<Upgrade, number>> = { engine: 600, springs: 400, body: 500 };
 export const RESPRAY_KR = 150;
+export const SPECIAL_PAINT_KR = 400; // one of his special paints, which no car comes in
+export const DECAL_KR = 500; // flames, stripes or a rally number
 
 /** How many tickets the trisslott vinstplan counts its wins in. */
 export const TRISS_TICKETS = 100_000;

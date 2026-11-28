@@ -5,7 +5,8 @@
 import * as THREE from 'three';
 import type { GameState, ViewState } from '../state';
 import type { RenderedCar } from './car-meshes';
-import { BODY_NODE } from './vehicle-registry';
+import { DECAL_NODE } from './paint-decals';
+import { BODY_NODE, isPaintedPanel } from './vehicle-registry';
 
 /** The car's cabin in its body's frame (m; -z is forward, +y up, x to the right): its glass from the belt line to the roof. */
 interface Cabin {
@@ -265,7 +266,12 @@ export class Cockpit {
   private interior: ReturnType<typeof buildInterior> | null = null;
   private readonly eye = new THREE.Vector3();
   private readonly hiddenGlass: THREE.Object3D[] = [];
-  private readonly clipped: { mesh: THREE.Mesh; material: THREE.Material | THREE.Material[] }[] = []; // and their own materials
+  // the painted meshes, their own materials and the clipped clones put on them in their place
+  private readonly clipped: {
+    mesh: THREE.Mesh;
+    material: THREE.Material | THREE.Material[];
+    clones: THREE.Material | THREE.Material[];
+  }[] = [];
   // in the body's frame, what of the body is cut away: what is over the belt line, behind the windscreen's foot and ahead of
   // the rear window, all three, so the bonnet and the boot lid stay where they rise over the belt line (most cars' do)
   private readonly cabinPlanes = [new THREE.Plane(), new THREE.Plane(), new THREE.Plane()];
@@ -329,13 +335,21 @@ export class Cockpit {
     belt.set(new THREE.Vector3(0, -1, 0), cabin.belt + CLIP_OVER_BELT_M);
     screen.set(new THREE.Vector3(0, 0, -1), cabin.front);
     rearWindow.set(new THREE.Vector3(0, 0, 1), -cabin.rear);
-    const painted = (o: THREE.Object3D) => o === car.body || o.name === BODY_NODE || o.name.startsWith(BODY_NODE + '_');
+    // a decal bought while inside stays unclipped until you sit in again: the lift's menu is open then, the view hardly matters
+    const painted = (o: THREE.Object3D) => o === car.body || isPaintedPanel(o.name) || o.name === DECAL_NODE;
     body.traverse(o => {
       if (!(o instanceof THREE.Mesh) || !painted(o)) return;
-      this.clipped.push({ mesh: o, material: o.material });
+      // cut only where all three agree; Material.copy drops a shader patch, so the clone takes the paint's flakes along
       const own = (m: THREE.Material) =>
-        Object.assign(m.clone(), { clippingPlanes: this.clips, clipIntersection: true }); // cut only where all three agree
-      o.material = Array.isArray(o.material) ? o.material.map(own) : own(o.material);
+        Object.assign(m.clone(), {
+          clippingPlanes: this.clips,
+          clipIntersection: true,
+          onBeforeCompile: m.onBeforeCompile,
+          customProgramCacheKey: m.customProgramCacheKey,
+        });
+      const clones = Array.isArray(o.material) ? o.material.map(own) : own(o.material);
+      this.clipped.push({ mesh: o, material: o.material, clones });
+      o.material = clones;
     });
     const { camera } = this.g;
     this.normalNear = camera.near;
@@ -350,13 +364,14 @@ export class Cockpit {
     for (const o of this.hiddenGlass) o.visible = true;
     this.hiddenGlass.length = 0;
     let resprayed = false; // inside, a respray goes onto the clipped clones: the materials put back still wear the old paint
-    for (const { mesh, material } of this.clipped) {
-      const was = [material].flat();
-      [mesh.material].flat().forEach((m, i) => {
-        resprayed ||= recoloured(m, was[i]);
+    for (const { mesh, material, clones } of this.clipped) {
+      const was = [material].flat(),
+        swapped = mesh.material !== clones; // a respray of the simple car swaps in its new paint's material (CarMeshes.repaint): it stays
+      [clones].flat().forEach((m, i) => {
+        resprayed ||= !swapped && recoloured(m, was[i]);
         m.dispose();
       });
-      mesh.material = material;
+      if (!swapped) mesh.material = material;
     }
     this.clipped.length = 0;
     if (resprayed) this.g.repaint(this.car);

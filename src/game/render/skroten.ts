@@ -28,7 +28,7 @@ import {
 } from '../skroten-yard';
 import { boxGeo, carGeo, mergeGeo, type Person, paintMat, personParts } from './models';
 import { ringMaterial, SKROT_COLOUR } from './places';
-import { BODY_NODE, CIVILIAN_CAR_TYPES, VEHICLES } from './vehicle-registry';
+import { BODY_NODE, CIVILIAN_CAR_TYPES, isPaintedPanel, VEHICLES } from './vehicle-registry';
 
 const LIFT_RING_FLOAT_M = 0.02; // the lift's ring stands this far off the floor
 const PANEL_M = 3; // a sheet of the fence, and the gap between its posts
@@ -876,7 +876,7 @@ function flatten(root: THREE.Object3D) {
   };
   root.traverse(n => {
     if (!(n instanceof THREE.Mesh)) return;
-    const isPaint = !!body && under(n, body) && (n === body || n.name.startsWith(BODY_NODE + '_')), // as VehicleVisuals.paint picks it
+    const isPaint = !!body && under(n, body) && isPaintedPanel(n.name), // as VehicleVisuals.paint picks it
       src = n.geometry as THREE.BufferGeometry,
       idx = src.index,
       P = src.attributes.position!,

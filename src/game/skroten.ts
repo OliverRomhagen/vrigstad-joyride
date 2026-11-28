@@ -1,10 +1,23 @@
 // Skroten buys the car you drive in (#76): drive onto its ring, press E, and Plåt-Pelle makes an offer by the car's model and damage.
-// He mends and upgrades the car you drive onto the workshop's lift, and sells the cars on his lot: press E by one for his price. Neither with the police after you, and he never buys a police car.
+// He mends, upgrades and paints the car you drive onto the workshop's lift (special paints and decals too), and sells the cars on his lot: press E by one for his price. Neither with the police after you, and he never buys a police car.
 // On foot you can talk to him. main.ts passes in the menu plate, the wallet and what happens to the car. No three.js or DOM here.
 import type { Car, CarForSale } from './cars';
-import { carPrice, earn, fmtKr, pay, RESPRAY_KR, repairPrice, salePrice, UPGRADE_KR, type Wallet } from './economy';
+import {
+  carPrice,
+  DECAL_KR,
+  earn,
+  fmtKr,
+  pay,
+  RESPRAY_KR,
+  repairPrice,
+  SPECIAL_PAINT_KR,
+  salePrice,
+  UPGRADE_KR,
+  type Wallet,
+} from './economy';
 import type { MenuItem } from './pets';
 import { tooFastToGetOut } from './player';
+import { DECAL_NAMES, DECAL_ORDER, type Decal, WORKSHOP_PAINTS } from './sim/paint-jobs';
 import { UPGRADE_ORDER, UPGRADES, type Upgrade } from './sim/upgrades';
 import type { CarType } from './sim/vehicle-spec';
 import { LIFT_RING_M, OWNER_UV, type YardCar, yardHeading, yardToWorld } from './skroten-yard';
@@ -26,6 +39,11 @@ const UPGRADE_DONE: Readonly<Record<Upgrade, string>> = {
   engine: '”Nu går ho! Säj inte till snuten va ja gjort.”',
   springs: '”Nu ligger ho som klistrad på vägen.”',
   body: '”Ja har svetsat in lite extra plåt. Nu tål ho en smäll.”',
+};
+const DECAL_DONE: Readonly<Record<Decal, string>> = {
+  flames: '”Flammor! Nu ser den snabb ut, i alla fall.”',
+  stripes: '”Rallyränder. Nu ä dä bara å hitta en grusväg.”',
+  'rally-number': '”Sextinie. Dä va mitt nummer när ja körde folkrace. Hehe.”',
 };
 const EPA_TUNED =
   '”En trimmad EPA? Dä har ja aldrig gjort förut. Aldrig nånsin. Å knappen under ratten har du inte fått av mej.”'; // the key for the switch is on the speed plate (prompt.ts)
@@ -58,9 +76,18 @@ export interface SkrotenDeps {
   liftAt: { readonly x: number; readonly z: number } | null; // the middle of the workshop's lift bay; null with no workshop
   modelId(c: Car): string | undefined; // the model the car wears, if it has one
   carName(c: Car): string;
+  warmPaint(c: Car): void; // gets the drawing ready for his special paints on c, while he offers them, so buying one doesn't stall
   wallet: Wallet; // the HUD shows whatever it holds
   sellCar(c: Car): void; // puts you on foot beside the car, and takes the car away
   getOut(): void; // puts you on foot beside the car you drive
+}
+
+// one choice on a lift menu: its key, its line, its price, and the job, which says what he says
+interface LiftChoice {
+  key: string;
+  label: string;
+  kr: number;
+  done: () => string;
 }
 
 /** Skroten's offer and the sale. */
@@ -144,7 +171,7 @@ export class Skroten {
     return true;
   };
 
-  // the lift's menu: mending, the upgrades the car hasn't got, and a respray; it comes back after each job, for the next
+  // the lift's menu: mending, the upgrades the car hasn't got, a respray, his special paints and decals; it comes back after each job, for the next
   private openLift(c: Car) {
     const { openMenu, toast, carName } = this.g,
       no = this.refusesLift(c);
@@ -159,6 +186,8 @@ export class Skroten {
       if (!c.mods[u])
         items.push([u, UPGRADE_NAMES[u] + ' <small>' + fmtKr(UPGRADE_KR[u]) + ' · ' + upgradeHelp(u, c) + '</small>']);
     if (otherPaints(c).length) items.push(['paint', 'Lacka om <small>' + fmtKr(RESPRAY_KR) + '</small>']);
+    items.push(['special', 'Speciallack <small>' + fmtKr(SPECIAL_PAINT_KR) + ' · only here</small>']);
+    if (c.type !== 'traktor') items.push(['decal', 'Dekor <small>' + fmtKr(DECAL_KR) + ' · only here</small>']); // a tractor has no panels to paint them on
     items.push(['out', 'Kliv ur'], ['no', 'Nä, dä får va']); // E on the lift opens this menu, so getting out is on it
     openMenu(
       'skrot-lift',
@@ -169,53 +198,108 @@ export class Skroten {
       items,
       k => {
         if (k === 'paint') this.openPaint(c);
+        else if (k === 'special') this.openSpecialPaint(c);
+        else if (k === 'decal') this.openDecal(c);
         else if (k === 'out') {
-          if (this.onLift(c) && !tooFastToGetOut(c)) this.g.getOut(); // as E asks: the menu's stay() runs only now and then
+          if (this.readyOnLift(c)) this.g.getOut(); // as E asks: the menu's stay() runs only now and then
         } else if (k === 'fix' ? this.repair(c, fix) : isUpgrade(k) && this.upgrade(c, k)) this.openLift(c);
       },
-      () => this.onLift(c) && !tooFastToGetOut(c),
+      () => this.readyOnLift(c),
     );
     return true;
   }
 
   private openPaint(c: Car) {
-    const { openMenu } = this.g,
-      paints = otherPaints(c);
-    openMenu(
+    this.openChoices(
+      c,
       'skrot-paint',
-      OWNER_SAYS + '”Vicken färg ska den ha? ' + fmtKr(RESPRAY_KR) + ', vilken du vill.”',
-      [
-        ...paints.map((p, i): MenuItem => ['p' + i, '<i class="swatch" style="--paint:' + p + '"></i>' + paintName(p)]),
-        ['no', 'Nä, den ä fin som den ä'],
-      ],
-      k => {
-        const p = k.startsWith('p') ? paints[Number(k.slice(1))] : undefined;
-        if (!p) {
-          if (k === 'no') this.openLift(c); // back to the lift's menu
-          return;
-        }
-        if (
-          this.work(c, RESPRAY_KR, () => {
-            c.color = p;
-            return '”Snyggt! Som från fabriken.”';
-          })
-        )
-          this.openLift(c);
-      },
-      () => this.onLift(c) && !tooFastToGetOut(c),
+      '”Vicken färg ska den ha? ' + fmtKr(RESPRAY_KR) + ', vilken du vill.”',
+      otherPaints(c).map((p, i) => ({
+        key: 'p' + i,
+        label: swatch(p) + paintName(p),
+        kr: RESPRAY_KR,
+        done: () => {
+          c.color = p;
+          return '”Snyggt! Som från fabriken.”';
+        },
+      })),
+      'Nä, den ä fin som den ä',
     );
+  }
+
+  // his special paints, which only this lift sells
+  private openSpecialPaint(c: Car) {
+    this.g.warmPaint(c);
+    this.openChoices(
+      c,
+      'skrot-special',
+      '”Specialfäääj! De kan du inte hitta nån annanstans. ' +
+        fmtKr(SPECIAL_PAINT_KR) +
+        ', å du får det fräsigaste åket i stan.”',
+      WORKSHOP_PAINTS.filter(p => p.paint !== c.color).map(({ paint, name }, i) => ({
+        key: 'p' + i,
+        label: swatch(paint) + name,
+        kr: SPECIAL_PAINT_KR,
+        done: () => {
+          c.color = paint;
+          return '”' + name + '! Den kommer folk å prata om.”';
+        },
+      })),
+      'Nä, inte idag',
+    );
+  }
+
+  // his decals, and taking one off for free
+  private openDecal(c: Car) {
+    const put = (decal: Decal | null) => () => {
+      c.decal = decal;
+      return decal ? DECAL_DONE[decal] : '”Bort mä den. Dä kostar inget.”';
+    };
+    const choices: LiftChoice[] = DECAL_ORDER.filter(d => d !== c.decal).map(d => ({
+      key: d,
+      label: DECAL_NAMES[d],
+      kr: DECAL_KR,
+      done: put(d),
+    }));
+    if (c.decal) choices.push({ key: 'off', label: 'Ta bort dekoren <small>free</small>', kr: 0, done: put(null) });
+    this.openChoices(
+      c,
+      'skrot-decal',
+      '”Lite dekor? ' + fmtKr(DECAL_KR) + '. Ja målar för hand, så den blir som ingen annans.”',
+      choices,
+      'Nä, inte idag',
+    );
+  }
+
+  // one of the lift's smaller menus: a job per choice, then back to the lift's menu, as `no` goes back without one
+  private openChoices(c: Car, kind: string, says: string, choices: readonly LiftChoice[], no: string) {
+    this.g.openMenu(
+      kind,
+      OWNER_SAYS + says,
+      [...choices.map((ch): MenuItem => [ch.key, ch.label]), ['no', no]],
+      k => {
+        const ch = choices.find(x => x.key === k);
+        if (ch ? this.work(c, ch.kr, ch.done) : k === 'no') this.openLift(c);
+      },
+      () => this.readyOnLift(c),
+    );
+  }
+
+  // the car stands still on the lift: what keeps its menus open, and what a job or getting out asks first
+  private readyOnLift(c: Car) {
+    return this.onLift(c) && !tooFastToGetOut(c);
   }
 
   // each job is checked and priced again at the moment of paying: stars can come while the menu is open, and the car can drive off
   // before it closes. `done` does the job once it's paid for, and says what he says. True when it was done.
   private work(c: Car, kr: number, done: () => string): boolean {
     const { toast, wallet } = this.g;
-    if (!this.onLift(c) || tooFastToGetOut(c)) return false;
+    if (!this.readyOnLift(c)) return false;
     const no = this.refusesLift(c);
     if (no) toast(no, 3.5);
     else if (!pay(wallet, kr)) toast(SHORT(kr), 3.5);
     else {
-      toast(OWNER_SAYS + done() + ' −' + fmtKr(kr) + '.', 4);
+      toast(OWNER_SAYS + done() + (kr ? ' −' + fmtKr(kr) + '.' : ''), 4);
       return true;
     }
     return false;
@@ -331,6 +415,9 @@ export function carsForSale(lot: readonly YardCar[], typeOf: (model: string) => 
   }
   return out;
 }
+
+// a paint's colour as a square in the menu
+const swatch = (paint: string) => '<i class="swatch" style="--paint:' + paint + '"></i>';
 
 const isUpgrade = (k: string): k is Upgrade => (UPGRADE_ORDER as readonly string[]).includes(k);
 const pct = (share: number) => Math.round(share * 100) + ' %';

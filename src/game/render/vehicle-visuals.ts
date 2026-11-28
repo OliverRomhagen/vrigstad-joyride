@@ -1,11 +1,23 @@
 import * as THREE from 'three';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { BEACON_PARTS, BODY_NODE, type VehicleId, vehicleDefinition, WHEEL_NODES } from './vehicle-registry';
+import { type Decal, isMetallicPaint } from '../sim/paint-jobs';
+import { decalMeshes, disposeDecal, type Panel, sideSpanByRays } from './paint-decals';
+import { METALLIC_FINISH, setFlakes } from './paint-flakes';
+import {
+  BEACON_PARTS,
+  BODY_NODE,
+  GLASS_PREFIX,
+  isPaintedPanel,
+  type VehicleId,
+  vehicleDefinition,
+  WHEEL_NODES,
+} from './vehicle-registry';
 
 type Car = { mesh: THREE.Object3D; x: number; z: number; h: number; saleKr?: number };
 type Definition = NonNullable<ReturnType<typeof vehicleDefinition>>;
 type Wheel = { pivot: THREE.Group; spin: THREE.Group; front: boolean };
+type Finish = { metalness: number; roughness: number };
 type View = {
   car: Car;
   definition: Definition;
@@ -23,6 +35,8 @@ type View = {
   travel: number;
   distance: number;
   color?: string;
+  decal: Decal | null; // Plåt-Pelle's decal, and its meshes on the loaded model's body
+  decals: THREE.Mesh[];
 };
 const DETAIL_RANGE_M = 120,
   DETAIL_KEEP_M = 15, // a detailed car keeps its model until it is this much further away than the next candidate, so it doesn't pop back and forth
@@ -125,6 +139,7 @@ export class VehicleVisuals {
         view.status = 'loaded';
         this.onBody?.(view.car, sprung);
         if (view.color) this.paint(view.car, view.color);
+        if (view.decal) this.dress(view);
         this.updateVisibility(view);
       })
       .catch(error => {
@@ -145,19 +160,87 @@ export class VehicleVisuals {
     view.color = color;
     if (!view.root) return;
     const body = view.root.getObjectByName(BODY_NODE);
+    const metallic = isMetallicPaint(color);
     const recolor = (material: THREE.MeshStandardMaterial) => {
       // the driver's view's clipped clone is the cockpit's own (cockpit.ts): recoloured where it is, as a clone would keep a
       // copy of its clip planes, frozen where the cut was, and the cockpit disposes it and repaints these when you leave
       const clipped = !!material.clippingPlanes?.length,
         m = clipped || view.materials.has(material) ? material : material.clone();
       m.color.set(color).convertSRGBToLinear();
+      m.userData.paintFinish ??= { metalness: m.metalness, roughness: m.roughness }; // the model's own, for any other paint
+      const base = m.userData.paintFinish as Finish;
+      m.metalness = metallic ? METALLIC_FINISH.metalness : base.metalness;
+      m.roughness = metallic ? METALLIC_FINISH.roughness : base.roughness;
+      setFlakes(m, metallic);
       if (!clipped) view.materials.add(m);
       return m;
     };
     body?.traverse(node => {
-      if (!(node instanceof THREE.Mesh) || (node !== body && !node.name.startsWith(BODY_NODE + '_'))) return;
+      if (!(node instanceof THREE.Mesh) || !isPaintedPanel(node.name)) return;
       node.material = Array.isArray(node.material) ? node.material.map(recolor) : recolor(node.material);
     });
+  }
+  /** Puts Plåt-Pelle's decal on the car's model, or takes it off (null); `paint` is the car's colour, which the stripes' colour follows. */
+  decorate(car: Car, decal: Decal | null, paint: string) {
+    const view = this.records.get(car);
+    if (!view || view.definition.police) return;
+    view.decal = decal;
+    view.color = paint;
+    if (view.root) this.dress(view);
+  }
+  // the decal projected onto the model's painted panels, measured in the car's frame and hung on the sprung body, so it rolls with it
+  private dress(view: View) {
+    disposeDecal(view.decals);
+    view.decals = [];
+    const root = view.root,
+      frame = root?.parent,
+      body = root?.getObjectByName(BODY_NODE);
+    if (!view.decal || !frame || !body) return;
+    // measured with the springs at rest: projected while the body rolls or pitches, the decal would stay skewed on it for good
+    const sprung = body.parent!,
+      rest = { y: sprung.position.y, x: sprung.rotation.x, z: sprung.rotation.z };
+    sprung.position.y = sprung.rotation.x = sprung.rotation.z = 0;
+    try {
+      frame.updateMatrixWorld(true);
+      const toFrame = frame.matrixWorld.clone().invert(),
+        panels: Panel[] = [];
+      body.traverse(node => {
+        if (!(node instanceof THREE.Mesh) || !isPaintedPanel(node.name)) return;
+        panels.push({ geometry: node.geometry, toFrame: toFrame.clone().multiply(node.matrixWorld) });
+      });
+      const glass = new THREE.Box3(),
+        part = new THREE.Box3();
+      root.traverse(node => {
+        if (!(node instanceof THREE.Mesh) || !node.name.startsWith(GLASS_PREFIX)) return;
+        node.geometry.boundingBox ?? node.geometry.computeBoundingBox();
+        glass.union(part.copy(node.geometry.boundingBox!).applyMatrix4(toFrame.clone().multiply(node.matrixWorld)));
+      });
+      const solid: THREE.Object3D[] = [],
+        paint = new Set<THREE.Object3D>();
+      root.traverse(node => {
+        if (!(node instanceof THREE.Mesh) || node.name.startsWith(GLASS_PREFIX)) return;
+        solid.push(node);
+        if (isPaintedPanel(node.name)) paint.add(node);
+      });
+      const toBody = toFrame.clone().multiply(body.matrixWorld).invert();
+      view.decals = decalMeshes(
+        view.decal,
+        view.color ?? '#ffffff',
+        panels,
+        glass.isEmpty() ? null : glass,
+        sideSpanByRays(solid, paint, frame.matrixWorld),
+        'rallyNumber' in view.definition ? view.definition.rallyNumber : undefined,
+      );
+      for (const m of view.decals) {
+        m.geometry.applyMatrix4(toBody); // into the geometry, not the mesh's transform, which can't hold a shear
+        body.add(m);
+      }
+    } finally {
+      sprung.position.y = rest.y;
+      sprung.rotation.x = rest.x;
+      sprung.rotation.z = rest.z;
+      frame.updateMatrixWorld(true);
+    }
   }
   attach(car: Car, id: VehicleId, fallback: THREE.Mesh, color?: string) {
     const definition = vehicleDefinition(id)!;
@@ -169,6 +252,8 @@ export class VehicleVisuals {
       wheels: [],
       materials: new Set(),
       beacons: [],
+      decal: null,
+      decals: [],
       selected: false,
       removed: false,
       x: car.x,
@@ -252,6 +337,7 @@ export class VehicleVisuals {
             spin: w.spin.rotation.x,
           })),
           fallback: view.fallback.visible,
+          decals: view.decals.length, // the decal's meshes built on the model: an empty projection would show nothing
         }
       : null;
   }
@@ -260,6 +346,7 @@ export class VehicleVisuals {
     if (!view) return;
     view.removed = true;
     view.root?.removeFromParent();
+    disposeDecal(view.decals);
     for (const m of view.materials) m.dispose();
     this.views.splice(this.views.indexOf(view), 1);
     this.records.delete(car);

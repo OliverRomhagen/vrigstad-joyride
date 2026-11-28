@@ -5,6 +5,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { beforeAll, describe, expect, it } from 'vitest';
 import type { RenderedCar } from '../../../../src/game/render/car-meshes';
 import { Cockpit, needleAngle } from '../../../../src/game/render/cockpit';
+import { DECAL_NODE } from '../../../../src/game/render/paint-decals';
 import { BODY_NODE } from '../../../../src/game/render/vehicle-registry';
 
 let template: THREE.Group;
@@ -123,6 +124,51 @@ describe('Cockpit (the driver’s view, lab: cockpit)', () => {
     expect(glass.visible).toBe(true);
     expect((body as THREE.Mesh).material).toBe(paint);
     expect(camera.near).toBe(0.8);
+  });
+
+  it('keeps a shader patch on the clipped paint, so a metallic paint still sparkles from inside', () => {
+    const { car, body } = volvo();
+    const paint = (body as THREE.Mesh).material as THREE.Material,
+      patch = () => {},
+      key = () => 'paint-flakes';
+    Object.assign(paint, { onBeforeCompile: patch, customProgramCacheKey: key });
+    const { k } = cockpit(car);
+    k.toggle();
+    k.update();
+    const own = (body as THREE.Mesh).material as THREE.Material;
+    expect(own).not.toBe(paint);
+    expect(own.onBeforeCompile).toBe(patch); // Material.copy alone would drop it
+    expect(own.customProgramCacheKey).toBe(key);
+  });
+
+  it('clips a decal with the body it is painted on, and puts its material back when you leave', () => {
+    const { car, body } = volvo();
+    const own = new THREE.MeshBasicMaterial(),
+      decal = Object.assign(new THREE.Mesh(new THREE.PlaneGeometry(), own), { name: DECAL_NODE });
+    body.add(decal);
+    const { k } = cockpit(car);
+    k.toggle();
+    k.update();
+    expect(decal.material).not.toBe(own);
+    expect((decal.material as THREE.Material).clippingPlanes).toHaveLength(3);
+    k.toggle();
+    k.update();
+    expect(decal.material).toBe(own);
+  });
+
+  it('keeps a material the simple car was given while inside, as a respray swaps it for the new paint', () => {
+    const { car } = volvo();
+    car.mesh.children[1]!.visible = false; // the model hidden: you sit in the simple car
+    car.body.visible = true;
+    const { k } = cockpit(car);
+    k.toggle();
+    k.update();
+    expect((car.body.material as THREE.Material).clippingPlanes).toHaveLength(3); // a clipped clone is on it
+    const fresh = new THREE.MeshPhongMaterial();
+    car.body.material = fresh; // as CarMeshes.repaint does
+    k.toggle();
+    k.update();
+    expect(car.body.material).toBe(fresh);
   });
 
   it('paints the model again when you leave after a respray inside, and only then', () => {
