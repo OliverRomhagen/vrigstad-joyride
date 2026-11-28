@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 import { BridgeIndex } from '../../../../src/world/bridges';
-import { ROAD_WIDTH_M, RoadClass, Surface } from '../../../../src/world/data';
-import { RoadRibbons, SURFACE_BLEND_M, TILE_M } from '../../../../src/world/mesh/road-ribbons';
+import { ROAD_WIDTH_M, RoadClass, Surface, surfaceOf } from '../../../../src/world/data';
+import { RoadRibbons, ribbonLiftM, SURFACE_BLEND_M, TILE_M } from '../../../../src/world/mesh/road-ribbons';
 import { type Point, RoadNetwork, roadLiftM } from '../../../../src/world/roads';
 import { makeWorld } from '../fixture';
 
@@ -132,7 +132,8 @@ describe('RoadRibbons after the move to polyline.ts', () => {
     for (const l of lines) {
       const p: Point[] = [];
       for (let i = 0; i < l.p.length; i += 2) p.push([l.p[i], l.p[i + 1]]);
-      legacyRibbon(want[l.c], wantUv[l.c], p, ROAD_WIDTH_M[l.c], roadLiftM(l.c), hilly);
+      // softer surfaces sit a little lower since #399; the sampling is what this pins
+      legacyRibbon(want[l.c], wantUv[l.c], p, ROAD_WIDTH_M[l.c], ribbonLiftM(l.c, surfaceOf(l)), hilly);
       if (l.c < 2) legacyRibbon(want[6], wantUv[6], p, 0.2, 0.3, hilly);
     }
     const got = ribbons.meshes.map(m => Array.from(m.geometry.getAttribute('position').array as Float32Array));
@@ -177,8 +178,8 @@ describe('RoadRibbons by surface (#399)', () => {
     expect((street.material as THREE.MeshLambertMaterial).color.getHex()).toBe(0xffffff);
     const pos = street.geometry.getAttribute('position'),
       col = street.geometry.getAttribute('color'),
-      paving = ribbons.surfaceColour(Surface.PAVING),
-      asphalt = ribbons.surfaceColour(Surface.ASPHALT);
+      paving = ribbons.surfaceColour(Surface.PAVING, new THREE.Color()),
+      asphalt = ribbons.surfaceColour(Surface.ASPHALT, new THREE.Color());
     expect(col.count).toBe(pos.count);
     // the paving street is first in the data, so its vertices lead the buffer: 30 m at 6 m a step, five quads of six
     const pavingVertices = 5 * 6;
@@ -187,6 +188,22 @@ describe('RoadRibbons by surface (#399)', () => {
       expect([col.getX(i), col.getY(i), col.getZ(i)]).toEqual([want.r, want.g, want.b].map(v => Math.fround(v)));
     }
     expect(paving.equals(new THREE.Color(SURFACE_COLOURS[Surface.PAVING]).convertSRGBToLinear())).toBe(true);
+  });
+
+  it('sits a softer surface lower than a harder one of its class, so the harder draws on top where they meet', () => {
+    const pos = street.geometry.getAttribute('position');
+    // flat terrain at 0: the first five quads are the paving street, the rest the asphalt one
+    const pavingY = pos.getY(0),
+      asphaltY = pos.getY(pos.count - 1);
+    expect(asphaltY).toBeCloseTo(roadLiftM(RoadClass.STREET), 6);
+    expect(asphaltY - pavingY).toBeGreaterThan(0.004);
+    // still above the class below it
+    expect(pavingY).toBeGreaterThan(roadLiftM(RoadClass.SERVICE));
+  });
+
+  it('copies a surface colour out, so a caller that changes it changes nothing else', () => {
+    const out = ribbons.surfaceColour(Surface.PAVING, new THREE.Color()).multiplyScalar(0.5);
+    expect(ribbons.surfaceColour(Surface.PAVING, new THREE.Color()).equals(out)).toBe(false);
   });
 
   it('maps the asphalt in world space, so overlapping ribbons show the same speckle', () => {
@@ -217,8 +234,8 @@ describe('RoadRibbons where the surface changes (#399)', () => {
     const col = m.geometry.getAttribute('color');
     return new THREE.Color(col.getX(i), col.getY(i), col.getZ(i));
   };
-  const asphalt = ribbons.surfaceColour(Surface.ASPHALT),
-    gravel = ribbons.surfaceColour(Surface.GRAVEL);
+  const asphalt = ribbons.surfaceColour(Surface.ASPHALT, new THREE.Color()),
+    gravel = ribbons.surfaceColour(Surface.GRAVEL, new THREE.Color());
 
   it('fades the softer road in from the harder one over SURFACE_BLEND_M, and no further', () => {
     const track = meshOf(RoadClass.TRACK),

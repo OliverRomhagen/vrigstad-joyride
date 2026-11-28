@@ -51,9 +51,10 @@ export interface SidewalkMeshOptions {
   roadMaterials?: readonly (THREE.Material | undefined)[];
   /**
    * the linear colour the ribbons give a surface (RoadRibbons.surfaceColour): the ribbons' materials are white and
-   * vertex-coloured, so the patches drawn with them carry the colour of their own road's surface (#399)
+   * vertex-coloured, so the patches drawn with them carry the colour of their own road's surface (#399). Copied into
+   * `out`, which it returns
    */
-  roadColour?: (surface: Surface) => THREE.Color;
+  roadColour?: (surface: Surface, out: THREE.Color) => THREE.Color;
 }
 
 /** The colour of a triangle of the streetscape surface, sRGB. */
@@ -184,7 +185,7 @@ export class SidewalkMesh {
       for (const m of batchByChunk(
         patch,
         material,
-        (t, out) => out.copy(roadColour?.(patch.surface[t]) ?? linear(colours.road)),
+        (t, out) => roadColour?.(patch.surface[t], out) ?? out.copy(linear(colours.road)),
         Infinity,
       )) {
         const uv = worldUv(m.geometry.getAttribute('position').array, m.position.x, m.position.z);

@@ -630,7 +630,7 @@ export function addStreetscapeMeshes(
     markings: paint,
     debugSources: debug,
     roadMaterials: ribbons.materials,
-    roadColour: s => ribbons.surfaceColour(s),
+    roadColour: (s, out) => ribbons.surfaceColour(s, out),
   });
   const parking = new ParkingMesh(layout, D, heightfield, { surface, markings: paint, debugSources: debug });
   const meshes = [...sidewalks.meshes, ...parking.meshes];
