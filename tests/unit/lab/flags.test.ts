@@ -23,40 +23,40 @@ describe('parseLabFlags', () => {
 
 describe('withLabFlag', () => {
   it('adds the parameter to a query string without one', () => {
-    expect(withLabFlag('', 'toon', true)).toBe('?lab=toon');
-    expect(withLabFlag('?dev', 'toon', true)).toBe('?dev&lab=toon');
-    expect(withLabFlag('?lab=', 'toon', true)).toBe('?lab=toon');
+    expect(withLabFlag('', 'cockpit', true)).toBe('?lab=cockpit');
+    expect(withLabFlag('?dev', 'cockpit', true)).toBe('?dev&lab=cockpit');
+    expect(withLabFlag('?lab=', 'cockpit', true)).toBe('?lab=cockpit');
   });
 
   it('adds a second id, in the order of LAB_EXPERIMENTS', () => {
-    expect(withLabFlag('?lab=toon', 'hello', true)).toBe('?lab=hello,toon');
+    expect(withLabFlag('?lab=cockpit', 'hello', true)).toBe('?lab=hello,cockpit');
     expect(withLabFlag('?lab=hello', 'hello', true)).toBe('?lab=hello');
   });
 
   it('removes one id and keeps the rest', () => {
-    expect(withLabFlag('?lab=hello,toon', 'hello', false)).toBe('?lab=toon');
-    expect(withLabFlag('?lab=toon', 'hello', false)).toBe('?lab=toon');
+    expect(withLabFlag('?lab=hello,cockpit', 'hello', false)).toBe('?lab=cockpit');
+    expect(withLabFlag('?lab=cockpit', 'hello', false)).toBe('?lab=cockpit');
   });
 
   it('drops the parameter with the last id', () => {
-    expect(withLabFlag('?lab=toon', 'toon', false)).toBe('');
-    expect(withLabFlag('?dev&lab=toon&time=16', 'toon', false)).toBe('?dev&time=16');
+    expect(withLabFlag('?lab=cockpit', 'cockpit', false)).toBe('');
+    expect(withLabFlag('?dev&lab=cockpit&time=16', 'cockpit', false)).toBe('?dev&time=16');
   });
 
   it('leaves the other parameters exactly as written, where they were', () => {
     const search = '?dev&at=12.5,-3,1.2&lab=hello&tune=driving.grip:8,vehicle.volvo.top-speed:45&wind=250%2C7';
-    expect(withLabFlag(search, 'toon', true)).toBe(search.replace('lab=hello', 'lab=hello,toon'));
+    expect(withLabFlag(search, 'cockpit', true)).toBe(search.replace('lab=hello', 'lab=hello,cockpit'));
     expect(withLabFlag(search, 'hello', false)).toBe(search.replace('&lab=hello', ''));
-    expect(withLabFlag('?label=x&lab=toon', 'toon', false)).toBe('?label=x');
+    expect(withLabFlag('?label=x&lab=cockpit', 'cockpit', false)).toBe('?label=x');
   });
 
   it('gathers repeated lab parameters into the first, without the ids that are not experiments', () => {
-    expect(withLabFlag('?lab=nope,toon&dev&lab=hello', 'toon', true)).toBe('?lab=hello,toon&dev');
+    expect(withLabFlag('?lab=nope,cockpit&dev&lab=hello', 'cockpit', true)).toBe('?lab=hello,cockpit&dev');
     expect(withLabFlag('?lab=nope&dev', 'hello', false)).toBe('?dev');
   });
 
   it('reads back as the flags it wrote', () => {
-    expect(parseLabFlags(withLabFlag('?dev', 'toon', true))).toEqual(['toon']);
+    expect(parseLabFlags(withLabFlag('?dev', 'cockpit', true))).toEqual(['cockpit']);
   });
 });
 
