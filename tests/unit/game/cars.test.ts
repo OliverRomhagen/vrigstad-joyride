@@ -17,7 +17,7 @@ import { BuildingKind, ROAD_WIDTH_M, RoadClass, type WorldData } from '../../../
 import { makeRnd } from '../../../src/world/random';
 import { RoadNetwork } from '../../../src/world/roads';
 import { Water } from '../../../src/world/water';
-import { makeWorld, square } from '../world/fixture';
+import { centred, makeWorld, square } from '../world/fixture';
 
 const DT = 1 / 60;
 const SIZE_M = 2000; // big enough that no test reaches the map's edge
@@ -32,7 +32,7 @@ function car(type: CarType, x: number, z: number, h: number, mode: CarMode): Car
 }
 
 function fleet(world: Partial<WorldData> = { r: [MAIN_ROAD] }, canPark = (_x: number, _z: number) => true) {
-  const data = makeWorld({ size: SIZE_M, ...world });
+  const data = makeWorld({ bounds: centred(SIZE_M), ...world });
   const roads = new RoadNetwork(data, { heightAt: () => 0 });
   const base = makeRnd(1);
   let rolls = 0; // how often the game's main stream was rolled
@@ -51,7 +51,7 @@ function fleet(world: Partial<WorldData> = { r: [MAIN_ROAD] }, canPark = (_x: nu
     roads,
     buildings: new BuildingIndex(data),
     water: new Water(data, roads),
-    half: SIZE_M / 2,
+    bounds: centred(SIZE_M),
     rnd,
     pick: a => a[Math.floor(rnd() * a.length)],
     addCar: (type, x, z, h, mode, model) => {

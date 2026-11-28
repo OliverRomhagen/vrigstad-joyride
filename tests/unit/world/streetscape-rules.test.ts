@@ -19,7 +19,7 @@ import {
   sideSpecOf,
   VERGE_M,
 } from '../../../src/world/streetscape-rules';
-import { makeWorld, square } from './fixture';
+import { centred, makeWorld, square } from './fixture';
 
 const flat = { heightAt: () => 0 };
 const house = (x: number, z: number): Building => ({ p: square(x, z, 8), h: 5, k: 0 });
@@ -34,7 +34,7 @@ const street = (extra: Partial<Road> = {}): Road => ({
 const TORGET = { t: 'Torget', x: 0, z: 0, k: 'p' };
 
 function classify(world: Partial<WorldData>, overrides = {}) {
-  const data = makeWorld({ size: 400, ...world });
+  const data = makeWorld({ bounds: centred(400), ...world });
   return classifyStreetscape(data, new RoadNetwork(data, flat), new BuildingIndex(data), overrides);
 }
 

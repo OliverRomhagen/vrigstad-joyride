@@ -3,7 +3,7 @@ import { type Building, BuildingKind, type Road, RoadClass, RoadUse } from '../.
 import { houseFronts } from '../../../../src/world/furniture/houses';
 import { Heightfield } from '../../../../src/world/heightfield';
 import { RoadNetwork } from '../../../../src/world/roads';
-import { makeWorld, square } from '../fixture';
+import { centred, makeWorld, square } from '../fixture';
 
 // An eastbound street along z = 0 from x = -200 to 200: south (+z) is its right.
 const STREET: Road = { c: RoadClass.STREET, n: 'Villagatan', p: [-200, 0, 200, 0], i: 1 };
@@ -14,7 +14,7 @@ const house = (x: number, z: number, side = 10, k: BuildingKind = BuildingKind.O
 });
 
 function fronts(b: Building[], r: Road[] = [STREET], eligible = (_ri: number) => true) {
-  const data = makeWorld({ size: 1000, b, r });
+  const data = makeWorld({ bounds: centred(1000), b, r });
   return houseFronts(data, new RoadNetwork(data, new Heightfield(data)), eligible);
 }
 

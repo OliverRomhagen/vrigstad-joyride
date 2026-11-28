@@ -59,10 +59,10 @@ church.push(church[0]);
 const street = way(
   1,
   [
-    [1000, 0],
-    [1200, 0],
-    [1200, 10],
-    [1000, 10],
+    [1400, 0],
+    [1600, 0],
+    [1600, 10],
+    [1400, 10],
   ],
   {
     highway: 'residential',
@@ -158,6 +158,30 @@ const elements = [
     ],
     { highway: 'residential', lit: 'automatic' }, // neither yes nor no: left out
   ),
+  way(
+    40,
+    [
+      [1200, 400],
+      [1300, 400],
+    ],
+    { highway: 'raceway', name: 'Hagabanan' },
+  ),
+  way(
+    42,
+    [
+      [1250, 390],
+      [1250, 410],
+    ],
+    { highway: 'footway', bridge: 'yes', layer: '1' }, // over the raceway
+  ),
+  way(
+    41,
+    [
+      [-200, 1050],
+      [-200, 1150],
+    ],
+    { highway: 'residential' }, // crosses the south edge, which stays at z 1100
+  ),
 ];
 
 // The tests' own table of moved outlines, in place of process.py's: way id -> [dx, dz, centroid x, centroid z].
@@ -187,6 +211,30 @@ let log = '';
 
 beforeAll(() => {
   ({ out, log } = runProcess(elements));
+});
+
+describe('tools/process.py world bounds', () => {
+  it('writes the rectangle and its elevation grid, 25 m apart', () => {
+    expect(out.bounds).toEqual([-1100, -1100, 1500, 1100]);
+    expect(out.nx).toBe(105);
+    expect(out.nz).toBe(89);
+    expect(out.elev).toHaveLength(105 * 89);
+  });
+
+  it('keeps the south edge at z 1100', () => {
+    expect(out.r.find(r => r.i === 41)?.p).toEqual([-200, 1050, -200, 1100]);
+  });
+
+  it('keeps the raceway out of the road network', () => {
+    expect(out.r.some(r => r.i === 40)).toBe(false);
+  });
+
+  it('keeps a footbridge over the raceway on the ground, as a plain footway', () => {
+    const r = out.r.find(r => r.i === 42);
+    expect(r?.c).toBe(5);
+    expect(r?.br).toBeUndefined();
+    expect(log).toContain('bridges over the raceway, kept on the ground: 1');
+  });
 });
 
 describe('tools/process.py street furniture data', () => {
@@ -267,8 +315,8 @@ describe('tools/process.py streetscape data', () => {
   it('keeps OSM ids, piece numbers and the way direction through clipping', () => {
     const pieces = out.r.filter(r => r.i === 1);
     expect(pieces.map(r => r.j)).toEqual([0, 1]);
-    expect(pieces[0].p).toEqual([1000, 0, 1100, 0]); // eastward, as mapped
-    expect(pieces[1].p).toEqual([1100, 10, 1000, 10]); // westward, as mapped
+    expect(pieces[0].p).toEqual([1400, 0, 1500, 0]); // eastward, as mapped, cut at the world's east edge
+    expect(pieces[1].p).toEqual([1500, 10, 1400, 10]); // westward, as mapped
     // so the sidewalk stays on the way's own left in both pieces
     for (const r of pieces) expect(r.sw).toEqual([SideState.PRESENT, SideState.ABSENT]);
     expect(out.r.find(r => r.i === 5)?.j).toBeUndefined();

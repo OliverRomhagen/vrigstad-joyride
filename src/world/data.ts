@@ -119,12 +119,15 @@ export interface Label {
   k: string;
 }
 
+/** world bounds [x0, z0, x1, z1] (m): west, north, east and south edges; the origin is at Torget, not the middle */
+export type WorldBounds = [number, number, number, number];
+
 export interface WorldData {
-  /** side of the square world (m) */
-  size: number;
-  /** elevation samples per side */
-  n: number;
-  /** row-major heights in decimetres */
+  bounds: WorldBounds;
+  /** elevation samples along x (west to east) and along z (north to south), on square cells from edge to edge */
+  nx: number;
+  nz: number;
+  /** row-major heights in decimetres: nz rows of nx, from the north-west corner */
   elev: number[];
   b: Building[];
   r: Road[];

@@ -156,6 +156,27 @@ test.describe('game (index.html)', () => {
     expect(errors).toEqual([]);
   });
 
+  test("reaches east to Hagabanan: ?at= puts you at the motocross track's start gate, on the ground (#117)", async ({
+    page,
+  }, testInfo) => {
+    const errors = watchErrors(page);
+    await page.goto('/index.html?at=1288,420,1.6,0.3');
+    await page.setViewportSize({ width: 640, height: 360 }); // keep software WebGL affordable
+    await expectWebGL(page);
+    const s = await state(page);
+    // past the old square's edge at x 1100: not clamped back to it
+    expect(s.x).toBeCloseTo(1288, 1);
+    expect(s.z).toBeCloseTo(420, 1);
+    // the club area lies 27-39 m above Torget's ground
+    expect(Number.isFinite(s.water.ground)).toBe(true);
+    expect(s.water.ground).toBeGreaterThan(20);
+    expect(s.water.level).toBeNull();
+    await page.locator('#go').click();
+    await frames(page, 5);
+    await page.screenshot({ path: testInfo.outputPath('game-hagabanan.png') });
+    expect(errors).toEqual([]);
+  });
+
   test('places street lamps, benches and bins and reports them on the hook, also in the debug view', async ({
     page,
   }, testInfo) => {
@@ -171,7 +192,7 @@ test.describe('game (index.html)', () => {
     for (const k of ['wheelie-bin', 'mailbox', 'street-cabinet']) expect(f.byKind[k]).toBeGreaterThan(0);
     expect(f.bySource.osm + f.bySource.override + f.bySource.procedural).toBe(f.total);
     expect(f.meshes).toBeGreaterThan(0);
-    expect(f.meshes).toBeLessThanOrEqual(16 * 36); // per 400 m cell at most one per model (14, FurnitureModelId; raise this with the next model) and per lamp glass (2), and the 2200 m world spans 6 × 6 cells
+    expect(f.meshes).toBeLessThanOrEqual(16 * 42); // per 400 m cell at most one per model (14, FurnitureModelId; raise this with the next model) and per lamp glass (2), and the 2600 × 2200 m world spans 7 × 6 cells
     expect(f.debug).toBe(true);
     await page.locator('#go').click();
     await frames(page, 5);

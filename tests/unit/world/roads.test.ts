@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { ROAD_WIDTH_M, RoadClass } from '../../../src/world/data';
 import { nodeKey, RoadNetwork, roadLiftM } from '../../../src/world/roads';
-import { makeWorld } from './fixture';
+import { centred, makeWorld } from './fixture';
 
 const terrainAt = (heightM: number) => ({ heightAt: () => heightM });
 // a primary road along z = 0, from x = -40 to 40
@@ -76,9 +76,12 @@ describe('junctions', () => {
 describe('forEachSegmentNear', () => {
   it('finds a segment filed in a neighbouring cell, which a lookup in the one cell would miss', () => {
     // a road along x = 70, beyond the 14 m margin of the 0..50 cell; a point at x = 45 is 25 m from it
-    const roads = new RoadNetwork(makeWorld({ size: 400, r: [{ c: RoadClass.STREET, n: '', p: [70, -40, 70, 40] }] }), {
-      heightAt: () => 0,
-    });
+    const roads = new RoadNetwork(
+      makeWorld({ bounds: centred(400), r: [{ c: RoadClass.STREET, n: '', p: [70, -40, 70, 40] }] }),
+      {
+        heightAt: () => 0,
+      },
+    );
     expect(roads.nearestRoad(45, 0).ri).toBe(-1);
     const seen = new Set<number>();
     roads.forEachSegmentNear(45, 0, 30, (_ax, _az, _bx, _bz, ri) => seen.add(ri));

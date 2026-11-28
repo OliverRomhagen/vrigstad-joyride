@@ -1381,9 +1381,11 @@ export function sidewalkCentreM(
 
 // ---------- terrain cutting ----------
 export interface GridLike {
-  /** samples per side */
-  samples: number;
-  sampleCoord(i: number): number;
+  /** samples along x and along z, on square cells */
+  nx: number;
+  nz: number;
+  sampleCoordX(i: number): number;
+  sampleCoordZ(j: number): number;
 }
 
 /**
@@ -1392,9 +1394,9 @@ export interface GridLike {
  * Heightfield.heightAt does. Input and output are flat [x, z × 3, ...].
  */
 export function cutToTerrain(tris: readonly number[], grid: GridLike): number[] {
-  const x0 = grid.sampleCoord(0);
-  const cell = grid.sampleCoord(1) - x0;
-  const n = grid.samples;
+  const x0 = grid.sampleCoordX(0);
+  const z0 = grid.sampleCoordZ(0);
+  const cell = grid.sampleCoordX(1) - x0;
   const out: number[] = [];
   const clip = (poly: number[][], a: number, b: number, c: number) => {
     // keep a·u + b·v + c >= 0
@@ -1413,11 +1415,11 @@ export function cutToTerrain(tris: readonly number[], grid: GridLike): number[] 
     return res;
   };
   for (let t = 0; t < tris.length; t += 6) {
-    const uv = [0, 2, 4].map(k => [(tris[t + k] - x0) / cell, (tris[t + k + 1] - x0) / cell]);
+    const uv = [0, 2, 4].map(k => [(tris[t + k] - x0) / cell, (tris[t + k + 1] - z0) / cell]);
     const i0 = Math.max(0, Math.floor(Math.min(uv[0][0], uv[1][0], uv[2][0])));
-    const i1 = Math.min(n - 2, Math.floor(Math.max(uv[0][0], uv[1][0], uv[2][0])));
+    const i1 = Math.min(grid.nx - 2, Math.floor(Math.max(uv[0][0], uv[1][0], uv[2][0])));
     const j0 = Math.max(0, Math.floor(Math.min(uv[0][1], uv[1][1], uv[2][1])));
-    const j1 = Math.min(n - 2, Math.floor(Math.max(uv[0][1], uv[1][1], uv[2][1])));
+    const j1 = Math.min(grid.nz - 2, Math.floor(Math.max(uv[0][1], uv[1][1], uv[2][1])));
     for (let i = i0; i <= i1; i++) {
       for (let j = j0; j <= j1; j++) {
         const cellPoly = clip(clip(clip(clip(uv, 1, 0, -i), -1, 0, i + 1), 0, 1, -j), 0, -1, j + 1);
@@ -1429,7 +1431,7 @@ export function cutToTerrain(tris: readonly number[], grid: GridLike): number[] 
             const [p, q, r] = [piece[0], piece[k], piece[k + 1]];
             // clipping repeats a corner where an edge lies on a cut line: drop the slivers it leaves
             if (Math.abs((q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0])) < 1e-12) continue;
-            for (const v of [p, q, r]) out.push(x0 + v[0] * cell, x0 + v[1] * cell);
+            for (const v of [p, q, r]) out.push(x0 + v[0] * cell, z0 + v[1] * cell);
           }
         }
       }

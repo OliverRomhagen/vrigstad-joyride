@@ -89,7 +89,7 @@ import { SunStreaks } from './render/sun-streaks';
 const D = data as unknown as WorldData;
 // every id asked for is in index.html
 const $ = (id: string) => document.getElementById(id) as HTMLElement;
-const S = D.size, HALF = S / 2;
+const BOUNDS = D.bounds;
 // seeded streams: rnd() drives the world and gameplay; side systems get their own stream so they don't shift its rolls
 const rnd = makeRnd(57355);
 const pick = <T>(a: readonly T[]) => a[Math.floor(rnd() * a.length)];
@@ -140,7 +140,7 @@ function updateDaylight(dt: number) { if (game.started && stepClock(dayClock, da
 
 // ---------- ground texture (also feeds the minimap: src/game/render/ground-texture.ts) ----------
 const ground = new GroundTexture(D, { coarse, maxTextureSize: renderer.capabilities.maxTextureSize, maxAnisotropy, shore });
-const { canvas: tex2d, texture, K, P } = ground;
+const { canvas: tex2d, texture, K, Px, Pz } = ground;
 
 // ---------- terrain (its mesh, and the roads', buildings', streetscape's and trees': src/game/render/world-meshes.ts) ----------
 const terrainMesh = addTerrain(scene, heightfield, texture);
@@ -186,7 +186,7 @@ const walkOffset = (ri: number, side: number) => { const onBridge = bridges.walk
 bridges.fitWalkways(R, (ri, side) => (side < 0 ? street.sides[ri].left : street.sides[ri].right).sidewalk === 'present');
 const bridgeMeshes = addBridges(scene, bridges, heightfield);
 // the forests' trees and the street trees, with a soft shadow under each baked into the ground texture (the minimap shows them too)
-const allTreeSpots = addTrees(scene, forestSpots, street.layout.trees, heightfield, HALF);   // every tree drawn, [x, z, scale, ...]: the street furniture keeps clear of them too
+const allTreeSpots = addTrees(scene, forestSpots, street.layout.trees, heightfield, BOUNDS);   // every tree drawn, [x, z, scale, ...]: the street furniture keeps clear of them too
 ground.bakeTreeShadows(allTreeSpots, blobTex);
 
 // ---------- cars ----------
@@ -205,7 +205,7 @@ function addCar(type: CarType, x: number, z: number, h: number, mode: CarMode, a
   return fleet.add(carMeshes.attach(newCar(type, x, z, h, mode, T, colour ?? pick(T.cols)), assetId ?? undefined));
 }
 function removeCar(c: Car) { carMeshes.detach(meshed(c)); fleet.remove(c); }
-const fleet = new Fleet({ roads, buildings, water, half: HALF, rnd, pick, addCar: (t, x, z, h, m, model, colour) => addCar(t, x, z, h, m, model as VehicleId | null | undefined, colour), placeCar: c => placeCar(meshed(c)), crash: (c, o, impact) => crashes.crash(c, o, impact),
+const fleet = new Fleet({ roads, buildings, water, bounds: BOUNDS, rnd, pick, addCar: (t, x, z, h, m, model, colour) => addCar(t, x, z, h, m, model as VehicleId | null | undefined, colour), placeCar: c => placeCar(meshed(c)), crash: (c, o, impact) => crashes.crash(c, o, impact),
   canPark: (x, z) => streetIndex!.surfaceAt(x, z) === null,   // streetIndex is built before parkCars runs
   rammed: c => { if (c === game.pcar && game.ramCool <= 0) { game.ramCool = 6; wanted.addStar(pickLine(WANTED_LINES) + ' Ramming a police car. That will not help.'); } },
   get player() { return player; }, get inCar() { return game.inCar; } });
@@ -268,7 +268,7 @@ const ragdollMeshes = new RagdollMeshes({ scene, groundAt, geoCache, boxGeo, pai
 
 // ---------- cats: lounge by the house walls, wander a little, bolt from cars and running feet (src/game/cats.ts) ----------
 // the getters are read when the cats use them, so they can name things declared further down
-const colony = new CatColony({ scene, buildings, inWater, groundAt, half: HALF, coarse, geoCache, boxGeo, paintMat, blob, cars, toast,
+const colony = new CatColony({ scene, buildings, inWater, groundAt, bounds: BOUNDS, coarse, geoCache, boxGeo, paintMat, blob, cars, toast,
   get player() { return player; }, get keys() { return keys; }, get joy() { return joy; }, get kmenu() { return kmenu; }, get inCar() { return game.inCar; }, get pcar() { return game.pcar && meshed(game.pcar); }, get inside() { return places.inside; },
   useTreat() { if (game.treats <= 0) return false; game.treats--; drawTreats(); return true; }, scratched() { hurtPlayer(CAT_SCRATCH_HP); } });
 const { cats } = colony, updateCats = colony.update.bind(colony), catFirst = colony.catFirst.bind(colony), nearCat = colony.nearest.bind(colony);
@@ -392,7 +392,7 @@ const { keys, joy } = input;
 
 // ---------- HUD (src/game/hud.ts) ----------
 // the getters are read when the HUD uses them, so they can name things that change during play
-const hud = new Hud({ get canChangeView() { return !!cockpit && game.inCar; }, $, ground: tex2d, P, K, paintBridgeRoads: ctx => ground.paintBridgeRoads(ctx), roads, labels: D.labels, cars, places: places.list,
+const hud = new Hud({ get canChangeView() { return !!cockpit && game.inCar; }, $, ground: tex2d, Px, Pz, K, paintBridgeRoads: ctx => ground.paintBridgeRoads(ctx), roads, labels: D.labels, cars, places: places.list,
   get stars() { return wanted.stars; }, get pcar() { return game.pcar; }, get blink() { return loop.blink; }, get kr() { return wallet.kr; } });
 // a declaration, not a bound const, so the sections above can pass toast on before the HUD exists
 function toast(msg: string, secs?: number, cls?: string) { hud.toast(msg, secs, cls); }
@@ -420,7 +420,7 @@ function hurtPlayer(n: number) { if (!canHurt(health, n)) return; const was = he
 const prompt = new ActionPrompt({ $, game, places, wanted, get menuOpen() { return !kmenu.hidden; }, coarse, nearPlace, skrotenBuys: () => skroten.buys(), skrotenLiftRepairKr: () => skroten.liftRepairKr(), nearOwner: () => skroten.nearOwner(nearestCar()), nearCat, nearestCar, catFirst, carName, esc });
 
 // ---------- main loop (src/game/loop.ts) ----------
-const loop = new GameLoop({ $, renderer, scene, camera, canvas, coarse, half: HALF, game, view, player, health, input, places, wanted, cars, startCam: START_CAM, barMat, barColours: [BAR_BLUE, BAR_RED], cameraRig: { update: placeCamera },
+const loop = new GameLoop({ $, renderer, scene, camera, canvas, coarse, bounds: BOUNDS, game, view, player, health, input, places, wanted, cars, startCam: START_CAM, barMat, barColours: [BAR_BLUE, BAR_RED], cameraRig: { update: placeCamera },
   get toasting() { return hud.toasting; }, inWater, collide, groundAt, drive, updateTraffic, knockedOut, hurtPlayer, shake, toast, hideTitleCard: () => hud.hideTitleCard(),
   updateTrisslott: dt => trisslott.update(dt), updatePlaces: dt => { placeMeshes.update(dt); skrotenMeshes.update(dt, player); }, updateDriftFx, updateVehicles: (T, dt) => { vehicleVisuals.update(T, dt); priceTags.update(); }, updateSmoke, updateBanknotes: dt => banknotes.update(dt), updateConfetti: dt => confetti.update(dt), updateNpcs: (T, dt) => { updateNpcs(T, dt); ragdolls.update(dt); ragdollMeshes.update(); }, updateCats,
   updateDrivers: (T, dt) => drivers.update(T, dt), updateBodies: (T, dt) => bodyMotion.update(T, dt), updateDaylight, drawHearts, updateHud: dt => hud.update(dt), drawMini,

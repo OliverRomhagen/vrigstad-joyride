@@ -29,7 +29,7 @@ import {
   StreetscapeIndex,
 } from '../../../src/world/streetscape';
 import { CURB_RESIDENTIAL_M, classifyStreetscape, SIDEWALK_RESIDENTIAL_M } from '../../../src/world/streetscape-rules';
-import { makeWorld, square } from './fixture';
+import { centred, makeWorld, square } from './fixture';
 
 // A 400 m world with uneven ground: a 5 × 5 grid, samples 100 m apart, heights in decimetres, so nothing is planar.
 const BUMPY = [0, 30, 5, 40, 10, 20, 0, 35, 15, 25, 5, 45, 10, 30, 0, 30, 10, 20, 0, 40, 15, 0, 25, 5, 20];
@@ -44,7 +44,7 @@ const street = (p: number[], extra: Partial<Road> = {}): Road => ({
 });
 
 function build(world: Partial<WorldData>, avoidTrees?: number[]) {
-  const data = makeWorld({ size: 400, n: 5, elev: BUMPY, ...world });
+  const data = makeWorld({ bounds: centred(400), nx: 5, nz: 5, elev: BUMPY, ...world });
   const heightfield = new Heightfield(data);
   const roads = new RoadNetwork(data, heightfield);
   const buildings = new BuildingIndex(data);
@@ -379,13 +379,35 @@ describe('buildStreetscape: parking', () => {
   });
 
   it('cuts any triangle into planar pieces of the same area', () => {
-    const grid = { samples: 5, sampleCoord: (i: number) => -200 + 100 * i };
+    const grid = {
+      nx: 5,
+      nz: 5,
+      sampleCoordX: (i: number) => -200 + 100 * i,
+      sampleCoordZ: (j: number) => -200 + 100 * j,
+    };
     const tri = [-170, -130, 140, -20, -10, 160];
     const out = cutToTerrain(tri, grid);
     let a = 0;
     for (let t = 0; t < out.length; t += 6) a += polygonArea(out.slice(t, t + 6));
     expect(a).toBeCloseTo(polygonArea(tri), 6);
     expect(out.length / 6).toBeGreaterThan(8);
+  });
+
+  it('cuts along the rows of a grid whose rows start elsewhere than its columns', () => {
+    // columns from x -200 and rows from z -150, 100 m apart: rows at z -150, -50, 50 and 150
+    const grid = {
+      nx: 5,
+      nz: 4,
+      sampleCoordX: (i: number) => -200 + 100 * i,
+      sampleCoordZ: (j: number) => -150 + 100 * j,
+    };
+    const out = cutToTerrain([-170, -130, 140, -20, -10, 140], grid);
+    for (let t = 0; t < out.length; t += 6) {
+      const rows = [1, 3, 5].map(k => (out[t + k] + 150) / 100);
+      // every piece lies inside one row of cells
+      expect(Math.max(...rows) - Math.min(...rows)).toBeLessThanOrEqual(1 + 1e-9);
+      expect(Math.floor(Math.min(...rows) + 1e-9)).toBe(Math.floor(Math.max(...rows) - 1e-9));
+    }
   });
 });
 

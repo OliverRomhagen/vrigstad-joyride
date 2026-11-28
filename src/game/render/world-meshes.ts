@@ -4,7 +4,7 @@
 import * as THREE from 'three';
 import type { BridgeIndex } from '../../world/bridges';
 import { type BuildingShape, HOUSE_MAX_M2, HOUSE_MIN_M2, type PointXZ } from '../../world/buildings';
-import type { WorldData } from '../../world/data';
+import type { WorldBounds, WorldData } from '../../world/data';
 import type { Heightfield } from '../../world/heightfield';
 import { BridgeMesh } from '../../world/mesh/bridge-mesh';
 import { type EmitVertex, PaintedBuildingShells } from '../../world/mesh/building-shells';
@@ -687,7 +687,7 @@ export function addTrees(
   forestSpots: readonly number[],
   streetTrees: StreetscapeLayout['trees'],
   heightfield: Heightfield,
-  HALF: number,
+  bounds: WorldBounds,
 ) {
   const hAt = (x: number, z: number) => heightfield.heightAt(x, z);
   // street trees (mapped and inferred) join the forest's instanced meshes as birches, the deciduous kind
@@ -729,12 +729,13 @@ export function addTrees(
     kind = (i: number) => (i >= FOREST_N || hash(spots[i * 3], spots[i * 3 + 1], 1) < BIRCH_SHARE ? 1 : 0);
   // one InstancedMesh per kind and cell, so the main and shadow passes cull whole cells (three bounds an InstancedMesh by its instances)
   const TREE_CELL_M = 400,
-    cellOf = (v: number) => Math.floor((v + HALF) / TREE_CELL_M);
+    [x0, z0] = bounds,
+    cellOf = (v: number, origin: number) => Math.floor((v - origin) / TREE_CELL_M);
   KINDS.forEach((kd, ki) => {
     const cells = new Map<string, number[]>();
     for (let i = 0; i < N; i++)
       if (kind(i) === ki) {
-        const k = cellOf(spots[i * 3]) + ',' + cellOf(spots[i * 3 + 1]);
+        const k = cellOf(spots[i * 3], x0) + ',' + cellOf(spots[i * 3 + 1], z0);
         let l = cells.get(k);
         if (!l) {
           l = [];

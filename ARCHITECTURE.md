@@ -194,14 +194,14 @@ Short records so settled questions stay settled. Add one when you make a choice 
 
 ## Coordinates and data
 
-Metres; origin 57.3555° N, 14.4756° E; x east, z south, y up; the world spans −1100..1100 on x and z.
+Metres; origin 57.3555° N, 14.4756° E; x east, z south, y up; the world spans x −1100..1500 and z −1100..1100 (`bounds`), so Torget is not its middle.
 
 `data/vrigstad.json`:
 
 | Key | Content |
 |---|---|
-| `size`, `n` | World side in metres (2200) and elevation grid size (89 × 89, 25 m spacing) |
-| `elev` | Row-major heights in **decimetres** |
+| `bounds`, `nx`, `nz` | World edges `[x0, z0, x1, z1]` in metres (`[-1100, -1100, 1500, 1100]`) and the elevation samples along x and z (105 × 89, 25 m apart) |
+| `elev` | Row-major heights in **decimetres**, `nz` rows of `nx` from the north-west corner |
 | `b` | Buildings: `p` flat `[x, z, x, z, ...]` footprint, `h` height (guessed), `k` kind |
 | `r` | Roads: `c` class, `n` street name, `p` polyline; optional `i` OSM way id, `j` piece number when clipping split the way, `s` service/footway use, `sf` surface, `w` width, `lt` lit (1 yes, 2 no), and per side [left, right] of the way's own direction: `sw` sidewalk state, `sww` width, `ssf` surface, `pk` street parking, `po` its orientation |
 | `w` | Water polygons |

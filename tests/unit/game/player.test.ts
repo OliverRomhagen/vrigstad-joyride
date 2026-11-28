@@ -15,13 +15,15 @@ import {
   walk,
 } from '../../../src/game/player';
 import { specFor } from '../../../src/game/sim/vehicle-spec';
+import type { WorldBounds } from '../../../src/world/data';
 
 const you = (x = 0, z = 0): PlayerState => ({ x, z, y: 0, vy: 0, floor: 0, h: 0, speed: 0, phase: 0 });
 const car = (x: number, z: number, mode = 'parked', h = 0, v = 0) => ({ x, z, h, v, mode });
 const onFoot = { run: false, wet: false, still: false };
 // walks `secs` in 10 ms frames
-function walkFor(p: PlayerState, secs: number, mx: number, my: number, yaw: number, o = onFoot, half = 1100) {
-  for (let t = 0; t < secs - 1e-9; t += 0.01) walk(p, 0.01, mx, my, yaw, o, half);
+const WORLD: WorldBounds = [-1100, -1100, 1500, 1100];
+function walkFor(p: PlayerState, secs: number, mx: number, my: number, yaw: number, o = onFoot, bounds = WORLD) {
+  for (let t = 0; t < secs - 1e-9; t += 0.01) walk(p, 0.01, mx, my, yaw, o, bounds);
 }
 
 describe('player', () => {
@@ -79,8 +81,17 @@ describe('player', () => {
     walkFor(p, 1, 0, 1, 0, { ...onFoot, still: true });
     expect(p).toMatchObject({ x: 0, z: 0, speed: 0 });
     const e = you(0, -95);
-    walkFor(e, 2, 0, 1, 0, onFoot, 100);
+    walkFor(e, 2, 0, 1, 0, onFoot, [-100, -100, 100, 100]);
     expect(e.z).toBe(-98);
+  });
+
+  it('keeps you inside a world that is wider to the east than the west', () => {
+    const east = you(1495, 0);
+    walkFor(east, 2, 1, 0, 0); // facing north, so right is east
+    expect(east.x).toBe(1498);
+    const west = you(-1095, 0);
+    walkFor(west, 2, -1, 0, 0);
+    expect(west.x).toBe(-1098);
   });
 
   it('hops about 0.85 m and lands after 0.65 s, the same at any frame rate', () => {

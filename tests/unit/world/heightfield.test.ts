@@ -85,11 +85,56 @@ describe('sampleHeight', () => {
   });
 });
 
-describe('sampleCoord', () => {
-  it('puts the samples where heightAt reads them, from edge to edge', () => {
+describe('sampleCoordX and sampleCoordZ', () => {
+  it('put the samples where heightAt reads them, from edge to edge', () => {
     const field = new Heightfield(makeWorld({ elev: EAST_SLOPE }));
-    expect([0, 1, 2].map(i => field.sampleCoord(i))).toEqual([-50, 0, 50]);
-    for (let i = 0; i < 3; i++) expect(field.heightAt(field.sampleCoord(i), 0)).toBeCloseTo(field.sampleHeight(i, 1));
+    expect([0, 1, 2].map(i => field.sampleCoordX(i))).toEqual([-50, 0, 50]);
+    expect([0, 1, 2].map(j => field.sampleCoordZ(j))).toEqual([-50, 0, 50]);
+    for (let i = 0; i < 3; i++) expect(field.heightAt(field.sampleCoordX(i), 0)).toBeCloseTo(field.sampleHeight(i, 1));
+  });
+});
+
+describe('Heightfield on a rectangle', () => {
+  // 100 m east to west and 50 m north to south, 3 × 2 samples 50 m apart: rising 1 m every 50 m eastwards and 10 m
+  // southwards, so a mixed-up axis reads a different height
+  const RECT = makeWorld({ bounds: [-50, 0, 50, 50], nx: 3, nz: 2, elev: [0, 10, 20, 100, 110, 120] });
+
+  it('counts and places the samples along each axis', () => {
+    const field = new Heightfield(RECT);
+    expect([field.nx, field.nz]).toEqual([3, 2]);
+    expect([0, 1, 2].map(i => field.sampleCoordX(i))).toEqual([-50, 0, 50]);
+    expect([0, 1].map(j => field.sampleCoordZ(j))).toEqual([0, 50]);
+  });
+
+  it('reads the four corners and the middle of an edge', () => {
+    const field = new Heightfield(RECT);
+    expect(field.heightAt(-50, 0)).toBeCloseTo(0);
+    expect(field.heightAt(50, 0)).toBeCloseTo(2);
+    expect(field.heightAt(-50, 50)).toBeCloseTo(10);
+    expect(field.heightAt(50, 50)).toBeCloseTo(12);
+    expect(field.heightAt(0, 25)).toBeCloseTo(6); // half way down the west edge of the east cell
+    expect(field.sampleHeight(2, 1)).toBeCloseTo(12);
+  });
+
+  it('holds the edge height outside the rectangle, on each side', () => {
+    const field = new Heightfield(RECT);
+    expect(field.heightAt(1000, 1000)).toBe(field.heightAt(50, 50));
+    expect(field.heightAt(-1000, -1000)).toBe(field.heightAt(-50, 0));
+    expect(field.heightAt(0, -500)).toBe(field.heightAt(0, 0));
+    expect(field.heightAt(500, 25)).toBe(field.heightAt(50, 25));
+  });
+
+  it('refines only the cells a cut asks for, each where it is', () => {
+    // a cut that lowers the east cell (x 0 to 50) by 3 m and leaves the west one alone
+    const east = {
+      detail: (x0: number) => (x0 >= 0 ? 4 : 0),
+      cutAt: (x: number, _z: number, base: number) => (x > 0 ? base - 3 : base),
+    };
+    const field = new Heightfield(RECT, { cut: east });
+    expect(field.cellDetail(0, 0)).toBe(0);
+    expect(field.cellDetail(1, 0)).toBeGreaterThan(0);
+    expect(field.heightAt(25, 25)).toBeCloseTo(new Heightfield(RECT).heightAt(25, 25) - 3);
+    expect(field.heightAt(-25, 25)).toBeCloseTo(new Heightfield(RECT).heightAt(-25, 25));
   });
 });
 

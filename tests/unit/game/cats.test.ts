@@ -25,7 +25,7 @@ function colony(water: (x: number, z: number) => boolean = () => false) {
     buildings: { collide: () => false, grid: new Map(), footprints: [] } as unknown as BuildingIndex,
     inWater: water,
     groundAt: () => 0,
-    half: 1100,
+    bounds: [-1100, -1100, 1100, 1100],
     coarse: false,
     geoCache: {},
     boxGeo: () => new THREE.BufferGeometry(),

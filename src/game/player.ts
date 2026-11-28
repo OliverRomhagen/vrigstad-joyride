@@ -1,6 +1,8 @@
 // The player on foot: walking, wading, jumping, and where you stand when you get out of a car or start over.
 // Moved from src/game/main.ts (#177); main.ts keeps the mesh, the collisions, being run over and what E does. No three.js or DOM here.
-import { clamp, wrap } from '../world/math';
+import { clampInside } from '../world/bounds';
+import type { WorldBounds } from '../world/data';
+import { wrap } from '../world/math';
 import { bodyRadius, type CarBody, nearestOnSpine, PERSON_RADIUS_M } from './sim/car-body';
 import type { VehicleSpec } from './sim/vehicle-spec';
 
@@ -85,7 +87,7 @@ export function standAt(p: PlayerState, x: number, z: number) {
 }
 
 /** One frame on foot. `mx` / `my` is the move intent (right / forward, -1..1) relative to the camera's `yaw`; `still` while you
- *  can't move (inside a safehouse, under a title card). `half` is half the map's width (m). */
+ *  can't move (inside a safehouse, under a title card). `bounds` is the world's [x0, z0, x1, z1] (m). */
 export function walk(
   p: PlayerState,
   dt: number,
@@ -93,7 +95,7 @@ export function walk(
   my: number,
   yaw: number,
   o: { run: boolean; wet: boolean; still: boolean },
-  half: number,
+  bounds: WorldBounds,
 ) {
   const mag = Math.min(1, Math.hypot(mx, my));
   if (mag > MOVE_MIN && !o.still) {
@@ -103,8 +105,9 @@ export function walk(
       dz = fz * my + fx * mx,
       L = Math.hypot(dx, dz);
     const sp = (o.wet ? WADE_MS : o.run ? RUN_MS : WALK_MS) * mag;
-    p.x = clamp(p.x + (dx / L) * sp * dt, -half + EDGE_M, half - EDGE_M);
-    p.z = clamp(p.z + (dz / L) * sp * dt, -half + EDGE_M, half - EDGE_M);
+    p.x += (dx / L) * sp * dt;
+    p.z += (dz / L) * sp * dt;
+    clampInside(bounds, p, EDGE_M);
     p.h += wrap(Math.atan2(dx, -dz) - p.h) * Math.min(1, dt * TURN_K);
     p.speed = sp;
     p.phase += sp * dt * STRIDE_K;

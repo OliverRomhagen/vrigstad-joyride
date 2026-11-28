@@ -1,8 +1,9 @@
 // The cars as the game rules see them: the driving model the player and the police share, traffic that follows the street network, and the cars parked along the streets.
 // Moved from src/game/main.ts (#177, #283); main.ts passes in how a car is made with its meshes (addCar) and placed (placeCar), what a crash does to you and what ramming the police does. No three.js or DOM here.
 // The Fleet owns the list of cars (#297): main.ts's addCar makes one with newCar, gives it its meshes, then adds it.
+import { clampInside, insideBounds } from '../world/bounds';
 import type { BuildingIndex } from '../world/buildings';
-import { ROAD_WIDTH_M as ROAD_W } from '../world/data';
+import { ROAD_WIDTH_M as ROAD_W, type WorldBounds } from '../world/data';
 import { clamp, wrap } from '../world/math';
 import { nodeKey, type RoadNetwork } from '../world/roads';
 import type { Water } from '../world/water';
@@ -167,7 +168,7 @@ export interface FleetDeps {
   roads: Pick<RoadNetwork, 'lines' | 'junctions' | 'driveable' | 'nearestRoad'>;
   buildings: Pick<BuildingIndex, 'collide'>;
   water: Pick<Water, 'inWater'>;
-  half: number; // half the map's side (m)
+  bounds: WorldBounds; // the world's [x0, z0, x1, z1] (m)
   rnd: () => number; // the game's seeded stream, so the rolls stay in the order they were
   pick: <T>(a: readonly T[]) => T;
   addCar: (
@@ -288,7 +289,7 @@ export class Fleet {
       roads: { lines: R },
       buildings,
       water,
-      half: HALF,
+      bounds,
       canPark,
     } = this.g;
     const r = pick(R);
@@ -304,7 +305,7 @@ export class Fleet {
       side = rnd() < 0.5 ? 1 : -1,
       off = (ROAD_W[r.c] / 2 + 1.35) * side;
     const o = { x: a[0] + (b[0] - a[0]) * t - dz * off, z: a[1] + (b[1] - a[1]) * t + dx * off };
-    if (Math.abs(o.x) > HALF - 20 || Math.abs(o.z) > HALF - 20) return false;
+    if (!insideBounds(bounds, o.x, o.z, 20)) return false;
     const ox = o.x,
       oz = o.z;
     if (buildings.collide(o, PARK_CLEAR_M) || water.inWater(ox, oz) || !canPark(ox, oz)) return false;
@@ -425,7 +426,7 @@ export class Fleet {
   }
   // shared driving model for the player and the police; only the player passes canDrift
   drive(c: Car, thr: number, steer: number, brake: boolean, dt: number, canDrift = false) {
-    const { roads, water, half: HALF, crash, rammed, placeCar } = this.g,
+    const { roads, water, bounds, crash, rammed, placeCar } = this.g,
       cars = this.cars;
     c.thr = thr = Math.abs(thr - c.thr) < 0.02 ? thr : approach(c.thr, thr, c.T.handling.throttleResponseS, dt);
     c.st = approach(c.st, steer, steerResponseOf(c), dt); // weight: speed and heading answer a little late
@@ -519,8 +520,7 @@ export class Fleet {
     } // gripping, the car turns about its rear axle; sliding, the rear swings out instead
     c.x += Math.sin(c.vh) * c.v * dt;
     c.z -= Math.cos(c.vh) * c.v * dt;
-    c.x = clamp(c.x, -HALF + 4, HALF - 4);
-    c.z = clamp(c.z, -HALF + 4, HALF - 4);
+    clampInside(bounds, c, 4);
     const vx = Math.sin(c.vh) * c.v,
       vz = -Math.cos(c.vh) * c.v,
       bx = c.x,

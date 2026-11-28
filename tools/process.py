@@ -2,9 +2,12 @@ import collections, json, math, os, re, struct, sys, zlib
 
 data_dir, out_path = sys.argv[1], sys.argv[2]
 LAT0, LON0 = 57.3555, 14.4756
-S = 2200.0            # square side in metres
-HALF = S / 2
-N = 89                # elevation grid (25 m spacing)
+# world bounds (m): the origin stays at Torget, and the east edge reaches past Hagabanan (#117) while staying inside the
+# one elevation tile (its east edge is x ≈ 1585)
+X0, Z0, X1, Z1 = -1100, -1100, 1500, 1100
+GRID_M = 25           # elevation sample spacing
+NX = round((X1 - X0) / GRID_M) + 1
+NZ = round((Z1 - Z0) / GRID_M) + 1
 MLAT = 111360.0
 MLON = 111320.0 * math.cos(math.radians(LAT0))
 
@@ -69,23 +72,23 @@ def elev(lat, lon):
 
 
 grid = []
-for j in range(N):
-    z = -HALF + S * j / (N - 1)
+for j in range(NZ):
+    z = Z0 + GRID_M * j
     row = []
-    for i in range(N):
-        x = -HALF + S * i / (N - 1)
+    for i in range(NX):
+        x = X0 + GRID_M * i
         row.append(elev(LAT0 - z / MLAT, LON0 + x / MLON))
     grid.append(row)
 # one 3x3 smoothing pass
 sm = []
-for j in range(N):
+for j in range(NZ):
     row = []
-    for i in range(N):
+    for i in range(NX):
         acc = cnt = 0
         for dj in (-1, 0, 1):
             for di in (-1, 0, 1):
                 jj, ii = j + dj, i + di
-                if 0 <= jj < N and 0 <= ii < N:
+                if 0 <= jj < NZ and 0 <= ii < NX:
                     wgt = 4 if (dj == 0 and di == 0) else 1
                     acc += grid[jj][ii] * wgt; cnt += wgt
         row.append(acc / cnt)
@@ -94,33 +97,32 @@ elev_flat = [round(v * 10) for row in sm for v in row]   # decimetres
 
 # ---------- geometry helpers ----------
 def inside(p):
-    return abs(p[0]) <= HALF and abs(p[1]) <= HALF
+    return X0 <= p[0] <= X1 and Z0 <= p[1] <= Z1
 
 
 def clip_poly(pts):
-    def clip(pts, axis, sign):
+    def clip(pts, axis, sign, edge):   # keeps sign * v <= sign * edge
         out = []
         for i in range(len(pts)):
             a, b = pts[i - 1], pts[i]
-            ia, ib = sign * a[axis] <= HALF, sign * b[axis] <= HALF
+            ia, ib = sign * a[axis] <= sign * edge, sign * b[axis] <= sign * edge
             if ia != ib:
-                t = (sign * HALF - a[axis]) / (b[axis] - a[axis])
+                t = (edge - a[axis]) / (b[axis] - a[axis])
                 out.append((a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1])))
             if ib:
                 out.append(b)
         return out
-    for axis in (0, 1):
-        for sign in (1, -1):
-            if not pts:
-                return []
-            pts = clip(pts, axis, sign)
+    for axis, sign, edge in ((0, 1, X1), (0, -1, X0), (1, 1, Z1), (1, -1, Z0)):
+        if not pts:
+            return []
+        pts = clip(pts, axis, sign, edge)
     return pts
 
 
 def clip_seg(a, b):
     t0, t1 = 0.0, 1.0
     dx, dz = b[0] - a[0], b[1] - a[1]
-    for p, q in ((-dx, a[0] + HALF), (dx, HALF - a[0]), (-dz, a[1] + HALF), (dz, HALF - a[1])):
+    for p, q in ((-dx, a[0] - X0), (dx, X1 - a[0]), (-dz, a[1] - Z0), (dz, Z1 - a[1])):
         if p == 0:
             if q < 0: return None
         else:
@@ -393,9 +395,11 @@ for e in d['elements']:                       # de-duplicate by (type, id), so t
     seen.add(key)
     if not complete(e): skipped[e['type']] += 1; continue
     elements.append(e)
+# highway=raceway (Hagabanan's track) is left out on purpose: as a road it would get traffic, parked cars, kerbs and
+# full road speed (#117)
 ROAD = {'primary': 0, 'primary_link': 0, 'secondary': 1, 'tertiary': 1,
         'residential': 2, 'unclassified': 2, 'living_street': 2, 'road': 2,
-        'service': 3, 'pedestrian': 3, 'raceway': 3, 'track': 4, 'path': 5, 'footway': 5, 'cycleway': 5}
+        'service': 3, 'pedestrian': 3, 'track': 4, 'path': 5, 'footway': 5, 'cycleway': 5}
 LAND = {'residential': 0, 'farmland': 1, 'meadow': 1, 'industrial': 2, 'recreation_ground': 3, 'grass': 3,
         'cemetery': 4, 'forest': 5}
 LEIS = {'pitch': 6, 'playground': 3, 'sports_centre': 3, 'park': 3}
@@ -456,6 +460,21 @@ def add_parking(e, t, outers, inners):
         try: a['cap'] = int(t['capacity'])
         except (KeyError, ValueError): pass
         parking_areas.append(a)
+
+
+def segments_cross(a, b, c, d):
+    def side(p, q, r): return (q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0])
+    return side(a, b, c) * side(a, b, d) < 0 and side(c, d, a) * side(c, d, b) < 0
+
+
+# Hagabanan's track (highway=raceway), kept out of the roads. Until the track is built (#117), a footbridge over it has
+# no deck to stand on and nothing under it to cross, so it is drawn as a plain footway on the ground.
+RACEWAY_SEGS = [(q[i - 1], q[i]) for q in (geom(e) for e in elements if e.get('tags', {}).get('highway') == 'raceway')
+                for i in range(1, len(q))]
+
+
+def crosses_raceway(pts):
+    return any(segments_cross(pts[i - 1], pts[i], c, d) for i in range(1, len(pts)) for c, d in RACEWAY_SEGS)
 
 
 def point_in(ring, p):
@@ -557,7 +576,9 @@ for e in elements:
         pk, po = street_parking(t)
         if any(pk): extra['pk'] = pk
         if any(po): extra['po'] = po
-        if t.get('bridge', 'no') != 'no':
+        if t.get('bridge', 'no') != 'no' and crosses_raceway(pts):
+            report['bridges over the raceway, kept on the ground'] += 1
+        elif t.get('bridge', 'no') != 'no':
             br = {}                                # layer is kept to confirm grade separation, never read as height
             if re.fullmatch(r'-?\d+', t.get('layer', '')): br['l'] = int(t['layer'])
             if t.get('bicycle') == 'designated': br['cy'] = 1
@@ -622,7 +643,7 @@ for nid in sorted(nodes_by_id):
     else:
         kerbs.append({'i': nid, 'x': round(x, 1), 'z': round(z, 1), 'kb': kb})
 
-out = {'size': S, 'n': N, 'elev': elev_flat, 'b': buildings, 'r': roads, 'w': water, 'ww': waterways, 'l': land,
+out = {'bounds': [X0, Z0, X1, Z1], 'nx': NX, 'nz': NZ, 'elev': elev_flat, 'b': buildings, 'r': roads, 'w': water, 'ww': waterways, 'l': land,
        'labels': [{'t': k, 'x': v[0], 'z': v[1], 'k': v[2]} for k, v in labels.items()]}
 if parking_areas: out['pa'] = parking_areas
 if parking_spaces: out['ps'] = parking_spaces
@@ -702,6 +723,7 @@ print(f'trees: {len(trees)} points ({report["tree rows"]} tree rows, sampled eve
 surf = collections.Counter(r.get('sf', 0) for r in carriage)
 br = [r for r in roads if 'br' in r]
 print(f'bridges: {len(br)} pieces ' + ', '.join(f"{r['i']} (class {r['c']}, {round(length(list(zip(r['p'][::2], r['p'][1::2]))), 1)} m)" for r in br))
+print(f'bridges over the raceway, kept on the ground: {report["bridges over the raceway, kept on the ground"]}')
 print(f'carriageway surface tags: {sum(v for k, v in surf.items() if k)} of {len(carriage)} pieces')
 
 # ---------- street furniture coverage (#144; tools/furniture-report.ts adds what the game generates) ----------
