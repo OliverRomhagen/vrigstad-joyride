@@ -840,6 +840,9 @@ export class Pickadoll {
         if (hit.fliesOn) continue; // it flies on
         const tracerM = WEAPONS[s.weapon].tracerM;
         if (tracerM) fx.endStreak(x, y, z, hit.x, hit.y, hit.z, tracerM);
+        // seen on what it hit for a moment, not gone a little short of it; not one that went off, nor a fotangel, which lies there
+        else if (!hit.wentOff && !effectOf(AMMOS[s.ammo], EffectKind.SPIKES))
+          fx.impact(hit, WEAPONS[s.weapon].shotM, this.flightColourOf(s));
       }
       this.spareShots.push(s);
       this.shots[i] = this.shots[this.shots.length - 1];
