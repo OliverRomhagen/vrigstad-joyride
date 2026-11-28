@@ -150,9 +150,9 @@ describe('placeFurniture: lamps along roads', () => {
     expect(lamps.some(l => l.z > 0) && lamps.some(l => l.z < 0)).toBe(true);
   });
 
-  it('follows context: outskirts get nothing, residential streets lamps only, short ones none', () => {
+  it('follows context: outskirts get no lamps, residential streets lamps only, short ones none', () => {
     const outer = place({ world: { r: [MAIN()] }, profiles: [sides('outskirts')] });
-    expect(outer.placements).toEqual([]);
+    expect(kinds(outer.placements, 'street-lamp')).toEqual([]);
     const res = place({ world: { r: [road(RoadClass.STREET, [-200, 0, 200, 0])] } });
     expect(kinds(res.placements, 'street-lamp').length).toBeGreaterThan(0);
     expect(res.placements.every(p => p.kind === 'street-lamp' && p.modelId === 'lamp-arm-short')).toBe(true);
@@ -464,6 +464,72 @@ describe('placeFurniture: by the houses (#305)', () => {
     });
     expect(kinds(placements, 'mailbox-stand')).toEqual([]);
     expect(kinds(placements, 'mailbox').length).toBe(4);
+  });
+});
+
+describe('placeFurniture: along the country roads (#305)', () => {
+  it('lines an outer primary road with posts on both sides, about every 50 m, facing the road', () => {
+    const { placements } = place({ world: { r: [MAIN()] }, profiles: [sides('outskirts')] });
+    const posts = kinds(placements, 'roadside-post');
+    for (const sgn of [-1, 1]) {
+      const side = posts.filter(p => Math.sign(p.z) === sgn);
+      expect(side.length).toBeGreaterThanOrEqual(10); // 600 m of road
+      const xs = side.map(p => p.x).sort((a, b) => a - b);
+      const gaps = xs.slice(1).map((x, i) => x - xs[i]);
+      for (const gap of gaps) {
+        expect(gap).toBeGreaterThanOrEqual(50 - 2 * 4 - 1e-9);
+        expect(gap).toBeLessThanOrEqual(50 + 2 * 4 + 1e-9);
+      }
+      expect(Math.max(...gaps) - Math.min(...gaps)).toBeGreaterThan(2); // jittered, not all shifted alike
+    }
+    for (const p of posts) {
+      expect(Math.abs(p.z)).toBeCloseTo(ROAD_WIDTH_M[RoadClass.PRIMARY] / 2 + 0.6, 6); // just past the carriageway
+      const [fx, fz] = facing(p.rotationY);
+      expect(Math.abs(fx)).toBeLessThan(1e-9);
+      expect(Math.sign(fz)).toBe(-Math.sign(p.z)); // the reflector to the road
+      expect(p.source).toBe('procedural');
+    }
+  });
+
+  it('puts none in the built-up area, nor along streets and tracks in the outskirts', () => {
+    expect(kinds(place({ world: { r: [MAIN()] } }).placements, 'roadside-post')).toEqual([]); // residential
+    for (const c of [RoadClass.STREET, RoadClass.TRACK]) {
+      const { placements } = place({ world: { r: [road(c, [-300, 0, 300, 0])] }, profiles: [sides('outskirts')] });
+      expect(kinds(placements, 'roadside-post')).toEqual([]);
+    }
+  });
+
+  it('keeps posts out of a farm track’s or service road’s mouth too, but not where a road only continues', () => {
+    for (const c of [RoadClass.SERVICE, RoadClass.TRACK]) {
+      // the main road from x = -300 gets a post about every 50 m from x = -275, so one would stand by x = 25
+      const main = road(RoadClass.PRIMARY, [-300, 0, 25, 0, 300, 0], { i: 1000 }),
+        side = road(c, [25, 0, 25, 200]);
+      const { placements } = place({ world: { r: [main, side] }, profiles: [sides('outskirts'), sides('outskirts')] });
+      const posts = kinds(placements, 'roadside-post');
+      expect(posts.length).toBeGreaterThan(0);
+      for (const p of posts) expect(Math.abs(p.x - 25)).toBeGreaterThanOrEqual(10);
+    }
+    // the main road in two pieces that meet at x = 0, as OSM splits a way: no gap there beyond the usual spacing. The
+    // western piece is 282 m, so its last post stands about 7 m from the join, where a junction keep would drop it
+    const west = road(RoadClass.PRIMARY, [-282, 0, 0, 0], { i: 1001 }),
+      east = road(RoadClass.PRIMARY, [0, 0, 300, 0], { i: 1002 });
+    const split = kinds(
+      place({ world: { r: [west, east] }, profiles: [sides('outskirts'), sides('outskirts')] }).placements,
+      'roadside-post',
+    );
+    const xs = split
+      .filter(p => p.z > 0)
+      .map(p => p.x)
+      .sort((a, b) => a - b);
+    for (let i = 1; i < xs.length; i++) expect(xs[i] - xs[i - 1]).toBeLessThanOrEqual(50 + 2 * 4 + 2 * 2 + 1e-9);
+  });
+
+  it('keeps posts out of a side road’s mouth', () => {
+    const side = road(RoadClass.STREET, [0, 0, 0, 200]);
+    const { placements } = place({ world: { r: [MAIN(), side] }, profiles: [sides('outskirts'), sides('outskirts')] });
+    const posts = kinds(placements, 'roadside-post');
+    expect(posts.length).toBeGreaterThan(0);
+    for (const p of posts) expect(Math.hypot(p.x, p.z)).toBeGreaterThanOrEqual(10);
   });
 });
 

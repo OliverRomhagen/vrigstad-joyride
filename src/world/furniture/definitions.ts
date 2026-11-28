@@ -9,7 +9,9 @@ export type FurnitureKind =
   | 'wheelie-bin'
   | 'mailbox'
   | 'mailbox-stand'
-  | 'street-cabinet';
+  | 'street-cabinet'
+  // along the country roads (#305)
+  | 'roadside-post';
 /** every model src/world/mesh/street-furniture.ts can build, so a misspelt id is a compile error */
 export type FurnitureModelId =
   | 'lamp-arm'
@@ -25,7 +27,8 @@ export type FurnitureModelId =
   | 'mailbox-stand-4'
   | 'mailbox-stand-5'
   | 'mailbox-stand-6'
-  | 'street-cabinet';
+  | 'street-cabinet'
+  | 'roadside-post';
 /** where a road or place is, for what furniture it gets; see context.ts */
 export type FurnitureContext = 'torget' | 'centre' | 'main' | 'residential' | 'outer' | 'path';
 /** osm: drawn where OpenStreetMap maps it; override: local knowledge in overrides.ts; procedural: a rule placed it */
@@ -156,6 +159,20 @@ export const FURNITURE: Readonly<Record<FurnitureKind, FurnitureDefinition>> = {
     dedupeRadiusM: 4,
     junctionKeepM: 3,
     maxSlopeDeg: 12,
+  },
+  // #305: along the country roads
+  'roadside-post': {
+    kind: 'roadside-post',
+    modelId: 'roadside-post',
+    widthM: 0.12,
+    depthM: 0.12,
+    heightM: 1.05,
+    clearanceM: 0.2,
+    carriagewayClearanceM: 0.4,
+    treeClearanceM: 0.5,
+    dedupeRadiusM: 10,
+    junctionKeepM: 2, // posts.ts keeps them out of a real junction's mouth; Placer's junctions include plain OSM splits
+    maxSlopeDeg: 25,
   },
 };
 
