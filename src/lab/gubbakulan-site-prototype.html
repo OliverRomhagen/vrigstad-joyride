@@ -1,0 +1,324 @@
+<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- THROWAWAY PROTOTYPE for #631 (map #629): three layouts for the Gubbakulan site, drawn on data/vrigstad.json around x −290, z 1049. Open this file in a browser; #a, #b, #c pick the layout. Never merged. -->
+<title>Gubbakulan Site Plan</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: an orienteering sheet (fixed paper colours, both themes) beside a field-notes column; a floating bar swaps the three site layouts. */
+:root {
+  --bg: #eef0ea; --fg: #1d2219; --muted: #5d6656; --line: #cfd4c6; --panel: #f8f9f5; --accent: #b0127c;
+  --paper: #fbfbf6; --forest: #ffffff; --open: #f7d36a; --rough: #fbe9a8; --contour: #a8662a; --ink: #1b1b1b;
+  --road: #d98a3a; --over: #b0127c; --green: #74b86a; --industrial: #c9c4bb;
+  --display: "Barlow Condensed", "Arial Narrow", sans-serif;
+  --body: "IBM Plex Sans", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #161a14; --fg: #e6e9df; --muted: #9aa392; --line: #2f362b; --panel: #1e231b; --accent: #f06cc4; color-scheme: dark } }
+:root[data-theme="dark"] { --bg: #161a14; --fg: #e6e9df; --muted: #9aa392; --line: #2f362b; --panel: #1e231b; --accent: #f06cc4; color-scheme: dark }
+body { background: var(--bg); color: var(--fg); font-family: var(--body); line-height: 1.5; }
+.wrap { max-width: 1240px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 20px 120px; display: grid; gap: 18px; }
+header { display: grid; gap: 4px; }
+.eyebrow { font: 500 12px/1.2 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+h1 { font: 700 clamp(30px, 5vw, 46px)/1 var(--display); letter-spacing: .01em; margin: 0; text-wrap: balance; }
+h1 span { color: var(--accent); }
+.lede { margin: 6px 0 0; max-width: 72ch; color: var(--muted); }
+.grid { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr); gap: 18px; align-items: start; }
+@media (max-width: 860px) { .grid { grid-template-columns: minmax(0, 1fr); } }
+.sheet { background: var(--paper); border: 1px solid #c7c3b0; border-radius: 3px; overflow: hidden; color: #1b1b1b; position: relative; }
+.sheet svg { display: block; width: 100%; height: auto; touch-action: manipulation; }
+.sheet-foot { display: flex; flex-wrap: wrap; gap: 6px 16px; justify-content: space-between; padding: 8px 12px; border-top: 1px solid #ddd8c4; font: 400 12px/1.4 var(--mono); color: #4b4a40; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 14px; }
+.legend i { display: inline-block; width: 14px; height: 10px; vertical-align: -1px; margin-right: 5px; border: 1px solid #0003; }
+.notes { display: grid; gap: 14px; min-width: 0; }
+.vname { font: 700 30px/1 var(--display); margin: 0; }
+.vtag { font: 500 13px/1.4 var(--mono); color: var(--accent); margin: 0; }
+.pitch { margin: 0; }
+section.block { border-top: 1px solid var(--line); padding-top: 10px; display: grid; gap: 6px; }
+section.block h3 { font: 600 13px/1.2 var(--mono); letter-spacing: .07em; text-transform: uppercase; color: var(--muted); margin: 0; }
+ul.props { margin: 0; padding: 0; list-style: none; display: grid; gap: 5px; }
+ul.props li { display: grid; grid-template-columns: 22px minmax(0,1fr); gap: 8px; }
+ul.props b { font-weight: 600; }
+.num { font: 600 12px/20px var(--mono); color: var(--accent); border: 1.5px solid var(--accent); border-radius: 50%; width: 20px; height: 20px; text-align: center; }
+dl.facts { display: grid; grid-template-columns: max-content minmax(0,1fr); gap: 4px 12px; margin: 0; }
+dl.facts dt { font: 500 13px/1.5 var(--mono); color: var(--muted); }
+dl.facts dd { margin: 0; }
+.signboard { background: #6b2a1c; color: #f3e9d2; font: 700 22px/1.05 var(--display); letter-spacing: .12em; padding: 10px 14px; border-radius: 2px; text-align: center; text-transform: uppercase; box-shadow: inset 0 0 0 3px #4a1c12; }
+.signboard small { display: block; font: 600 13px/1.3 var(--display); letter-spacing: .2em; opacity: .8; margin-top: 4px; }
+.plaque { background: #3b3f36; color: #e8e6d9; padding: 12px 14px; border-radius: 2px; font-size: 14px; box-shadow: inset 0 0 0 2px #2a2d26; }
+.plaque strong { display: block; font: 700 18px/1.1 var(--display); letter-spacing: .08em; text-transform: uppercase; margin-bottom: 4px; }
+.ask { background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: 12px 14px; display: grid; gap: 6px; }
+.ask ol { margin: 0; padding-left: 20px; display: grid; gap: 4px; }
+.bar { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(14px + env(safe-area-inset-bottom, 0px)); display: flex; gap: 4px; background: var(--fg); padding: 5px; border-radius: 999px; box-shadow: 0 6px 24px #0004; max-width: calc(100vw - 32px); }
+.bar button { appearance: none; border: 0; background: transparent; color: var(--bg); font: 600 15px/1 var(--display); letter-spacing: .04em; padding: 10px 14px; border-radius: 999px; cursor: pointer; white-space: nowrap; }
+.bar button[aria-pressed="true"] { background: var(--accent); color: #fff; }
+.bar button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (max-width: 460px) { .bar button { padding: 9px 10px; font-size: 14px; } .bar button .long { display: none; } }
+.readout { position: absolute; top: 8px; left: 8px; font: 500 12px/1 var(--mono); background: #fbfbf6e6; padding: 5px 7px; border: 1px solid #ccc7b2; border-radius: 2px; color: #333; pointer-events: none; }
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Throwaway prototype · ticket #631 · map #629</div>
+    <h1>Gubbakulan, <span id="htitle">before it’s rebuilt</span></h1>
+    <p class="lede">Three ways the overgrown site could look, drawn on the game’s own data around the real spot at x −290, z 1049: roads, the stale OSM building, forest and 1 m contours from the elevation grid. Flip between them with the bar at the bottom, then pick one or take parts from each.</p>
+  </header>
+  <div class="grid">
+    <div>
+      <div class="sheet">
+        <div class="readout" id="readout">x −290 · z 1049</div>
+        <svg id="map" viewBox="-385 975 215 140" role="img" aria-label="Top-down plan of the Gubbakulan site"></svg>
+        <div class="sheet-foot">
+          <div class="legend">
+            <span><i style="background:#fff"></i>forest</span>
+            <span><i style="background:#f7d36a"></i>open grass</span>
+            <span><i style="background:#fbe9a8"></i>rough / young trees</span>
+            <span><i style="background:#1b1b1b"></i>building, trace</span>
+            <span><i style="background:#b0127c"></i>proposal</span>
+          </div>
+          <span>1 m contours · north up · hover for x, z</span>
+        </div>
+      </div>
+    </div>
+    <aside class="notes" id="notes" aria-live="polite"></aside>
+  </div>
+  <div class="ask">
+    <div class="eyebrow">What this prototype settles</div>
+    <ol>
+      <li>The site: the real spot (all three use it; nothing forces a move) or somewhere else.</li>
+      <li>Which traces are there, and how faithful they are to the 1983–2012 photos.</li>
+      <li>The area you enter to find it, and whether you can see it from Växjövägen.</li>
+      <li>What happens to the stale OSM building (way 99744960) the game draws on the spot today.</li>
+      <li>The sign’s and the plaque’s Swedish text.</li>
+    </ol>
+  </div>
+</div>
+
+<nav class="bar" aria-label="Site layout">
+  <button type="button" id="btn-a" data-v="a">A <span class="long">· Ruinen</span></button>
+  <button type="button" id="btn-b" data-v="b">B <span class="long">· Skogen tog den</span></button>
+  <button type="button" id="btn-c" data-v="c">C <span class="long">· Festplatsen</span></button>
+</nav>
+
+<script>
+const D = {"b":[[-297.4,1064.7,-301.5,1074.1,-284.3,1081.7,-280.1,1072.3],[-503.0,1003.8,-493.1,995.7,-465.0,1029.9,-474.8,1038.0],[-175.3,1051.0,-160.3,989.4,-118.1,999.6,-133.1,1061.3],[-154.3,966.3,-133.3,883.1,-92.7,893.4,-103.1,934.8,-113.7,976.6],[-177.0,1080.9,-174.4,1070.1,-154.3,1075.0,-157.0,1085.8],[-94.4,1031.5,-90.1,998.7,-58.5,1002.9,-60.3,1016.6,-72.9,1015.0,-75.4,1033.9],[-93.2,1070.7,-92.6,1051.8,-60.2,1052.8,-60.8,1071.7]],"r":[[5,"",[-126.8,672.2,-127.2,675.0,-130.4,683.5,-132.6,688.5,-134.1,697.0,-132.8,714.3,-132.9,733.6,-134.7,749.2,-139.4,772.8,-177.2,919.8,-210.1,1051.0,-222.2,1100.0]],[2,"",[-457.6,1041.0,-447.3,1034.9,-424.6,1014.2,-410.6,1010.1,-394.9,1010.5,-382.6,1017.6,-379.1,1028.4,-372.1,1066.2,-365.9,1100.0]],[5,"",[-20.3,969.7,-97.7,957.4]],[2,"K\u00e4llebergsv\u00e4gen",[-75.7,897.8,-77.7,909.7,-79.9,923.7,-97.7,957.4,-109.3,1039.3,-116.7,1100.0]],[4,"",[-158.5,899.4,-177.2,919.8,-194.0,942.0,-209.4,965.3,-224.9,998.8,-232.6,1023.3,-236.4,1045.2,-239.1,1060.7,-244.2,1090.3,-250.0,1100.0]],[3,"",[-197.6,1053.1,-210.1,1051.0,-236.4,1045.2,-279.0,1035.9]],[0,"V\u00e4xj\u00f6v\u00e4gen",[-176.1,968.5,-197.6,1053.1,-209.5,1100.0]],[0,"V\u00e4xj\u00f6v\u00e4gen",[-133.7,796.7,-155.2,885.7]],[0,"V\u00e4xj\u00f6v\u00e4gen",[-155.2,885.7,-158.5,899.4,-169.8,943.6,-176.1,968.5]]],"l":[[2,[-31.6,1100.0,-22.2,853.4,-19.1,737.6,-29.8,720.1,-44.9,707.4,-63.6,703.0,-98.9,704.8,-109.5,710.9,-124.6,778.0,-172.6,978.4,-202.0,1100.0]],[2,[-514.3,1001.1,-467.7,964.7,-429.2,1014.0,-475.8,1050.4]],[5,[-297.5,707.2,-265.3,717.8,-194.4,773.0,-221.4,801.3,-217.6,834.9,-167.4,839.0,-215.1,1036.2,-235.4,1100.0,-352.2,1100.0,-373.5,988.5,-382.6,880.2,-361.9,727.9]]],"e":[[-525.0,850.0,194.2],[-500.0,850.0,194.4],[-475.0,850.0,194.5],[-450.0,850.0,194.4],[-425.0,850.0,194.5],[-400.0,850.0,195.4],[-375.0,850.0,197.5],[-350.0,850.0,200.8],[-325.0,850.0,204.5],[-300.0,850.0,207.3],[-275.0,850.0,208.5],[-250.0,850.0,208.4],[-225.0,850.0,207.5],[-200.0,850.0,205.9],[-175.0,850.0,203.9],[-150.0,850.0,202.0],[-125.0,850.0,200.6],[-100.0,850.0,199.9],[-75.0,850.0,199.6],[-525.0,875.0,194.0],[-500.0,875.0,194.2],[-475.0,875.0,194.4],[-450.0,875.0,194.4],[-425.0,875.0,194.6],[-400.0,875.0,195.6],[-375.0,875.0,197.8],[-350.0,875.0,201.4],[-325.0,875.0,205.4],[-300.0,875.0,208.2],[-275.0,875.0,209.4],[-250.0,875.0,209.4],[-225.0,875.0,208.7],[-200.0,875.0,207.3],[-175.0,875.0,205.4],[-150.0,875.0,203.2],[-125.0,875.0,201.4],[-100.0,875.0,200.2],[-75.0,875.0,199.7],[-525.0,900.0,193.8],[-500.0,900.0,194.0],[-475.0,900.0,194.2],[-450.0,900.0,194.4],[-425.0,900.0,194.7],[-400.0,900.0,195.7],[-375.0,900.0,197.9],[-350.0,900.0,201.6],[-325.0,900.0,205.8],[-300.0,900.0,208.7],[-275.0,900.0,209.9],[-250.0,900.0,210.0],[-225.0,900.0,209.5],[-200.0,900.0,208.4],[-175.0,900.0,206.6],[-150.0,900.0,204.3],[-125.0,900.0,202.0],[-100.0,900.0,200.5],[-75.0,900.0,199.8],[-525.0,925.0,193.7],[-500.0,925.0,193.9],[-475.0,925.0,194.2],[-450.0,925.0,194.4],[-425.0,925.0,194.7],[-400.0,925.0,195.7],[-375.0,925.0,197.8],[-350.0,925.0,201.4],[-325.0,925.0,205.6],[-300.0,925.0,208.6],[-275.0,925.0,209.9],[-250.0,925.0,210.2],[-225.0,925.0,210.0],[-200.0,925.0,209.2],[-175.0,925.0,207.5],[-150.0,925.0,205.0],[-125.0,925.0,202.5],[-100.0,925.0,200.8],[-75.0,925.0,199.9],[-525.0,950.0,193.6],[-500.0,950.0,193.8],[-475.0,950.0,194.1],[-450.0,950.0,194.3],[-425.0,950.0,194.7],[-400.0,950.0,195.6],[-375.0,950.0,197.5],[-350.0,950.0,200.7],[-325.0,950.0,204.8],[-300.0,950.0,207.9],[-275.0,950.0,209.5],[-250.0,950.0,210.1],[-225.0,950.0,210.0],[-200.0,950.0,209.4],[-175.0,950.0,207.8],[-150.0,950.0,205.3],[-125.0,950.0,202.6],[-100.0,950.0,200.8],[-75.0,950.0,200.0],[-525.0,975.0,193.3],[-500.0,975.0,193.7],[-475.0,975.0,194.0],[-450.0,975.0,194.3],[-425.0,975.0,194.7],[-400.0,975.0,195.4],[-375.0,975.0,196.9],[-350.0,975.0,199.8],[-325.0,975.0,203.5],[-300.0,975.0,206.8],[-275.0,975.0,208.7],[-250.0,975.0,209.6],[-225.0,975.0,209.7],[-200.0,975.0,209.0],[-175.0,975.0,207.4],[-150.0,975.0,205.0],[-125.0,975.0,202.5],[-100.0,975.0,200.7],[-75.0,975.0,199.9],[-525.0,1000.0,193.0],[-500.0,1000.0,193.5],[-475.0,1000.0,193.9],[-450.0,1000.0,194.2],[-425.0,1000.0,194.6],[-400.0,1000.0,195.2],[-375.0,1000.0,196.4],[-350.0,1000.0,198.7],[-325.0,1000.0,202.2],[-300.0,1000.0,205.4],[-275.0,1000.0,207.6],[-250.0,1000.0,208.7],[-225.0,1000.0,208.9],[-200.0,1000.0,208.2],[-175.0,1000.0,206.6],[-150.0,1000.0,204.3],[-125.0,1000.0,202.0],[-100.0,1000.0,200.5],[-75.0,1000.0,199.7],[-525.0,1025.0,192.5],[-500.0,1025.0,193.2],[-475.0,1025.0,193.7],[-450.0,1025.0,194.0],[-425.0,1025.0,194.5],[-400.0,1025.0,195.0],[-375.0,1025.0,196.0],[-350.0,1025.0,197.9],[-325.0,1025.0,201.0],[-300.0,1025.0,204.1],[-275.0,1025.0,206.2],[-250.0,1025.0,207.4],[-225.0,1025.0,207.7],[-200.0,1025.0,207.0],[-175.0,1025.0,205.5],[-150.0,1025.0,203.4],[-125.0,1025.0,201.4],[-100.0,1025.0,200.1],[-75.0,1025.0,199.6],[-525.0,1050.0,192.0],[-500.0,1050.0,192.8],[-475.0,1050.0,193.5],[-450.0,1050.0,193.9],[-425.0,1050.0,194.4],[-400.0,1050.0,194.9],[-375.0,1050.0,195.7],[-350.0,1050.0,197.4],[-325.0,1050.0,200.1],[-300.0,1050.0,202.8],[-275.0,1050.0,204.8],[-250.0,1050.0,205.9],[-225.0,1050.0,206.2],[-200.0,1050.0,205.6],[-175.0,1050.0,204.2],[-150.0,1050.0,202.4],[-125.0,1050.0,200.8],[-100.0,1050.0,199.8],[-75.0,1050.0,199.3],[-525.0,1075.0,191.6],[-500.0,1075.0,192.5],[-475.0,1075.0,193.2],[-450.0,1075.0,193.8],[-425.0,1075.0,194.3],[-400.0,1075.0,194.9],[-375.0,1075.0,195.7],[-350.0,1075.0,197.2],[-325.0,1075.0,199.4],[-300.0,1075.0,201.7],[-275.0,1075.0,203.3],[-250.0,1075.0,204.3],[-225.0,1075.0,204.5],[-200.0,1075.0,204.0],[-175.0,1075.0,202.8],[-150.0,1075.0,201.4],[-125.0,1075.0,200.2],[-100.0,1075.0,199.5],[-75.0,1075.0,199.1],[-525.0,1100.0,191.4],[-500.0,1100.0,192.3],[-475.0,1100.0,193.1],[-450.0,1100.0,193.7],[-425.0,1100.0,194.2],[-400.0,1100.0,194.9],[-375.0,1100.0,195.7],[-350.0,1100.0,197.1],[-325.0,1100.0,199.1],[-300.0,1100.0,201.0],[-275.0,1100.0,202.4],[-250.0,1100.0,203.2],[-225.0,1100.0,203.4],[-200.0,1100.0,202.9],[-175.0,1100.0,201.9],[-150.0,1100.0,200.8],[-125.0,1100.0,199.8],[-100.0,1100.0,199.2],[-75.0,1100.0,199.0]]};
+// The stale 2011 building (OSM way 99744960), corners in game metres; ~20 x 10 m, the size of the dance pavilion in the 2007 photo.
+const STALE = [-297, 1065, -302, 1074, -284, 1082, -280, 1072];
+const NODE = [-289.8, 1049.1];
+const DRIVE_END = [-279, 1036], DRIVE_START = [-198, 1053];
+const PLAQUE = 'Här låg Vrigstad IF:s festplats, först kallad Lunden, där det dansades från 1934. 1965 tog Göran Lundin och Garvis orkester över och platsen blev Gubbakulan, dit Sveriges största artister kom. När Carola spelade kom över 5 000 personer. Byggnaderna revs våren 2012.';
+
+// a rectangle as a polygon: centre, size, rotation (deg, clockwise on the map)
+function rect(cx, cz, w, d, deg) {
+  const a = deg * Math.PI / 180, c = Math.cos(a), s = Math.sin(a), out = [];
+  for (const [u, v] of [[-w/2,-d/2],[w/2,-d/2],[w/2,d/2],[-w/2,d/2]]) out.push(cx + u*c - v*s, cz + u*s + v*c);
+  return out;
+}
+function blob(cx, cz, rx, rz, wob, seed) {
+  const out = []; let s = seed;
+  const r = () => (s = (s * 16807) % 2147483647) / 2147483647;
+  for (let i = 0; i < 24; i++) { const a = i / 24 * Math.PI * 2, k = 1 + (r() - .5) * wob; out.push(cx + Math.cos(a) * rx * k, cz + Math.sin(a) * rz * k); }
+  return out;
+}
+// The stale footprint's long axis runs about 24° (from its NW corner to its SE corner).
+const SLAB_DEG = Math.atan2(1082 - 1074, -284 + 302) * 180 / Math.PI;
+const slabC = [(-297 - 302 - 284 - 280) / 4, (1065 + 1074 + 1082 + 1072) / 4];
+
+const V = {
+  a: {
+    name: 'A · Ruinen', tag: 'faithful ruin, laid out as the photos show it',
+    pitch: 'The clearing is still there, kept open by the old festival ground, and you can read the venue from what’s left: the pavilion’s floor, kiosk pads round the grass, the concert stage’s footing. The stale OSM building becomes the dance-floor slab, since it is the pavilion’s size and was mapped while the venue stood.',
+    clearing: blob(-292, 1046, 46, 40, .18, 7), rough: [], openKind: 'open',
+    props: [
+      { n: 1, poly: STALE, k: 'slab', label: 'Dance-floor slab', text: 'raised timber floor on the stale footprint (20 × 10 m), stumps of the peeled log posts, rotten railing, steps in front' },
+      { n: 2, poly: rect(-283.5, 1080, 6, 3.5, SLAB_DEG), k: 'trace', label: 'Orchestra stage', text: 'the small enclosed stage at the pavilion’s back end, roof gone, framed opening still standing' },
+      { n: 3, multi: [rect(-318, 1030, 4, 3, 10), rect(-305, 1018, 4, 3, -5), rect(-288, 1013, 4, 3, 0), rect(-272, 1020, 4, 3, 15)], k: 'trace', label: 'Kiosk pads', text: 'four concrete pads round the grass where the Falu-red sheds stood; one still has its hatch frame' },
+      { n: 4, poly: rect(-322, 1058, 11, 8, 24), k: 'trace', label: 'Concert-stage footing', text: 'the 1983 steel-roofed stage: a concrete footing, a leaning lamp post and a broken string of round lamps' },
+      { n: 5, pt: [-281, 1039], k: 'post', label: 'Gate posts and sign', text: 'two leaning posts where the driveway ends, the hand-painted board still hanging between them' },
+      { n: 6, pt: [-296, 1060], k: 'plaque', label: 'Plaque', text: 'on a boulder by the slab’s steps' },
+    ],
+    zone: { c: [-292, 1046], r: 40, label: 'the whole clearing' },
+    road: 'Yes. The driveway is a straight 80 m corridor, so drivers on Växjövägen glimpse the gate posts.',
+    sight: true,
+    stale: 'Drop it from the drawn buildings and reuse its footprint as the dance-floor slab.',
+    drive: 'Drivable to the gate posts; the clearing is open grass, so a car can roll in.',
+    sign: ['Gubbakulan', 'hand-painted board on the gate'],
+    rebuild: 'The best fit: every trace marks where its building goes back.',
+  },
+  b: {
+    name: 'B · Skogen tog den', tag: 'the forest took it back; almost nothing left',
+    pitch: 'Fourteen years of birch and spruce have closed the clearing. The last stretch of driveway is overgrown, so you leave the car and walk in, and finding the mossy slab in a small glade is the whole reward. No building, no gate, a sign face-down in the ferns.',
+    clearing: blob(-291, 1066, 17, 15, .25, 3), rough: [blob(-290, 1052, 34, 30, .3, 11)], openKind: 'open',
+    props: [
+      { n: 1, poly: STALE, k: 'slab', label: 'Dance-floor slab', text: 'half-buried in moss, a few post stumps; the only clear trace' },
+      { n: 2, pt: [-276, 1048], k: 'post', label: 'Fallen sign', text: 'face-down in the ferns between the driveway’s end and the glade; only “…BAKULAN” readable' },
+      { n: 3, pt: [-298, 1060], k: 'plaque', label: 'Plaque', text: 'on a boulder at the glade’s edge' },
+    ],
+    zone: { c: slabC, r: 14, label: 'on foot, on the slab' },
+    road: 'No. The driveway ends in young trees; nothing shows from Växjövägen.',
+    sight: false, overgrown: [[-279, 1036], [-266, 1039]],
+    stale: 'Drop it from the drawn buildings; the slab keeps its footprint.',
+    drive: 'The last 15 m of driveway becomes a footpath (young birches block cars).',
+    sign: ['…bakulan', 'board face-down in the ferns'],
+    rebuild: 'Weakest fit: the rebuild would first have to clear the forest, which could be part of the unlock.',
+  },
+  c: {
+    name: 'C · Festplatsen', tag: 'signposted from the road, an open festival meadow at the end',
+    pitch: 'A faded sign at the Växjövägen turn-off is the hook: drivers going south see it at speed. The driveway opens on a wide, rough meadow, the old festival ground, with a row of lamp posts and a sagging string of round lamps across it. It is empty, which makes it the obvious plot for the rebuild.',
+    clearing: [-345, 1000, -300, 990, -255, 996, -246, 1030, -255, 1088, -300, 1094, -342, 1080, -352, 1040], rough: [], openKind: 'rough',
+    props: [
+      { n: 1, poly: STALE, k: 'slab', label: 'Dance-floor slab', text: 'concrete plinth on the stale footprint, posts gone' },
+      { n: 2, line: [[-330, 1015], [-312, 1022], [-294, 1029], [-276, 1036]], k: 'lamps', label: 'Lamp posts', text: 'four leaning posts with a sagging string of round lamps between them, as in the 1983 concert photo' },
+      { n: 3, poly: rect(-335, 1052, 12, 9, 80), k: 'trace', label: 'Concert-stage footing', text: 'at the meadow’s west end, facing the open grass where the crowd stood' },
+      { n: 4, pt: [-201, 1046], k: 'post', label: 'Road sign', text: 'at the turn-off from Växjövägen: a faded board on two posts, visible driving south' },
+      { n: 5, pt: [-262, 1030], k: 'plaque', label: 'Plaque', text: 'where the driveway meets the meadow' },
+      { n: 6, poly: rect(-262, 1050, 14, 22, 0), k: 'ruts', label: 'Wheel ruts', text: 'the old grass parking, pressed into the turf' },
+    ],
+    zone: { c: [-298, 1042], r: 50, label: 'entering the meadow' },
+    road: 'Yes, twice: the road sign at the turn-off, then the meadow opening at the driveway’s end.',
+    sight: true,
+    stale: 'Drop it from the drawn buildings and reuse its footprint as the dance-floor slab.',
+    drive: 'Drivable all the way in; the meadow is rough grass at the off-road speed cap.',
+    sign: ['Gubbakulan', 'dans · lördagar kl 20'],
+    rebuild: 'Strong fit: an empty plot with room for the pavilion, stage and kiosks.',
+  },
+};
+
+// ---------- map drawing ----------
+const NS = 'http://www.w3.org/2000/svg';
+const svg = document.getElementById('map');
+const el = (tag, attrs, parent) => { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); (parent || svg).appendChild(e); return e; };
+const path = p => { let s = 'M' + p[0] + ' ' + p[1]; for (let i = 2; i < p.length; i += 2) s += 'L' + p[i] + ' ' + p[i+1]; return s + 'Z'; };
+const line = p => { let s = 'M' + p[0] + ' ' + p[1]; for (let i = 2; i < p.length; i += 2) s += 'L' + p[i] + ' ' + p[i+1]; return s; };
+function inPoly(x, z, p) { let c = false; for (let i = 0, j = p.length - 2; i < p.length; j = i, i += 2) { const xi = p[i], zi = p[i+1], xj = p[j], zj = p[j+1]; if ((zi > z) !== (zj > z) && x < (xj - xi) * (z - zi) / (zj - zi) + xi) c = !c; } return c; }
+function segDist(x, z, p) { let best = 1e9; for (let i = 2; i < p.length; i += 2) { const ax = p[i-2], az = p[i-1], bx = p[i], bz = p[i+1], dx = bx - ax, dz = bz - az, l = dx*dx + dz*dz; let t = l ? ((x-ax)*dx + (z-az)*dz) / l : 0; t = Math.max(0, Math.min(1, t)); best = Math.min(best, Math.hypot(x - ax - t*dx, z - az - t*dz)); } return best; }
+
+const base = el('g', {}), overlay = el('g', {});
+el('rect', { x: -385, y: 975, width: 215, height: 140, fill: '#ffffff' }, base);
+const LU = { 2: '#c9c4bb', 3: '#f7d36a', 5: null, 0: '#e9dcc6', 1: '#fbe9a8' };
+for (const [k, p] of D.l) if (LU[k]) el('path', { d: path(p), fill: LU[k], opacity: .8 }, base);
+const forests = D.l.filter(l => l[0] === 5).map(l => l[1]);
+const clearLayer = el('g', {}, base);
+// contours by marching squares over the 25 m grid
+(function contours() {
+  const xs = [...new Set(D.e.map(e => e[0]))].sort((a,b) => a-b), zs = [...new Set(D.e.map(e => e[1]))].sort((a,b) => a-b);
+  const H = {}; for (const [x, z, h] of D.e) H[x + ',' + z] = h;
+  const g = el('g', { fill: 'none', stroke: '#a8662a', 'stroke-linecap': 'round' }, base);
+  for (let lv = 192; lv <= 210; lv++) {
+    let d = '';
+    for (let j = 0; j < zs.length - 1; j++) for (let i = 0; i < xs.length - 1; i++) {
+      const x0 = xs[i], x1 = xs[i+1], z0 = zs[j], z1 = zs[j+1];
+      const c = [[x0,z0,H[x0+','+z0]],[x1,z0,H[x1+','+z0]],[x1,z1,H[x1+','+z1]],[x0,z1,H[x0+','+z1]]];
+      if (c.some(q => q[2] === undefined)) continue;
+      const pts = [];
+      for (let e = 0; e < 4; e++) { const a = c[e], b = c[(e+1)%4]; if ((a[2] < lv) !== (b[2] < lv)) { const t = (lv - a[2]) / (b[2] - a[2]); pts.push([a[0] + t*(b[0]-a[0]), a[1] + t*(b[1]-a[1])]); } }
+      for (let k = 0; k + 1 < pts.length; k += 2) d += `M${pts[k][0].toFixed(1)} ${pts[k][1].toFixed(1)}L${pts[k+1][0].toFixed(1)} ${pts[k+1][1].toFixed(1)}`;
+    }
+    if (d) el('path', { d, 'stroke-width': lv % 5 ? .45 : .9, opacity: .85 }, g);
+  }
+})();
+const treeLayer = el('g', { fill: '#74b86a' }, base);
+const roadLayer = el('g', { fill: 'none', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }, base);
+const RW = { 0: 9, 1: 8, 2: 6, 3: 4, 4: 3, 5: 1.6 };
+for (const [c, , p] of D.r) if (c < 4) el('path', { d: line(p), stroke: '#1b1b1b', 'stroke-width': RW[c] + 1.2 }, roadLayer);
+for (const [c, , p] of D.r) el('path', { d: line(p), stroke: c <= 1 ? '#d98a3a' : c >= 4 ? '#1b1b1b' : '#fbfbf6', 'stroke-width': c >= 4 ? 0 : RW[c], 'stroke-dasharray': c >= 4 ? '' : '' }, roadLayer);
+for (const [c, , p] of D.r) if (c >= 4) el('path', { d: line(p), stroke: '#1b1b1b', 'stroke-width': .6, 'stroke-dasharray': '3 1.5' }, roadLayer);
+const bldLayer = el('g', {}, base);
+for (const p of D.b) if (!(Math.abs(p[0] + 297) < 1 && Math.abs(p[1] - 1065) < 1)) el('path', { d: path(p), fill: '#1b1b1b' }, bldLayer);
+// world edge (z = 1100) and outside
+el('rect', { x: -385, y: 1100, width: 215, height: 15, fill: 'url(#hatch)' }, base);
+const defs = el('defs', {});
+const pat = el('pattern', { id: 'hatch', width: 4, height: 4, patternUnits: 'userSpaceOnUse', patternTransform: 'rotate(45)' }, defs);
+el('rect', { width: 4, height: 4, fill: '#ece9dc' }, pat); el('line', { x1: 0, y1: 0, x2: 0, y2: 4, stroke: '#b9b39c', 'stroke-width': 1.2 }, pat);
+el('line', { x1: -385, y1: 1100, x2: -170, y2: 1100, stroke: '#b0127c', 'stroke-width': .9, 'stroke-dasharray': '6 3' }, base);
+const lbl = (x, z, t, o = {}) => { const e = el('text', Object.assign({ x, y: z, 'font-family': 'IBM Plex Mono, monospace', 'font-size': 4, fill: '#4b4a40' }, o), base); e.textContent = t; return e; };
+lbl(-382, 1105.5, 'edge of the playable square · z = 1100', { fill: '#b0127c', 'font-size': 3.6 });
+lbl(-186, 990, 'Växjövägen (rv 30)', { transform: 'rotate(76 -186 990)', 'font-size': 4, fill: '#1b1b1b' });
+lbl(-240, 1030, 'driveway', { 'font-size': 3.4, transform: 'rotate(-12 -240 1030)' });
+// scale bar
+el('rect', { x: -380, y: 1092, width: 50, height: 2, fill: '#1b1b1b' }, base); el('rect', { x: -355, y: 1092, width: 25, height: 2, fill: '#fbfbf6', stroke: '#1b1b1b', 'stroke-width': .5 }, base);
+lbl(-380, 1090, '0', { 'font-size': 3.4 }); lbl(-336, 1090, '50 m', { 'font-size': 3.4 });
+
+// deterministic tree dots in the mapped forest, kept 4 m clear of roads (the game keeps them clear too)
+const treeSpots = [];
+(function () { let s = 57355; const r = () => (s = (s * 16807) % 2147483647) / 2147483647;
+  for (let z = 902; z < 1100; z += 6) for (let x = -478; x < -82; x += 6) { const tx = x + r() * 5, tz = z + r() * 5, k = .7 + r() * .8;
+    if (!forests.some(f => inPoly(tx, tz, f))) continue; if (D.r.some(([c, , p]) => segDist(tx, tz, p) < RW[c] / 2 + 4)) continue; treeSpots.push([tx, tz, k]); } })();
+
+function draw(key) {
+  const v = V[key];
+  clearLayer.replaceChildren(); treeLayer.replaceChildren(); overlay.replaceChildren();
+  for (const r of v.rough) el('path', { d: path(r), fill: '#fbe9a8' }, clearLayer);
+  el('path', { d: path(v.clearing), fill: v.openKind === 'rough' ? '#fbe9a8' : '#f7d36a', stroke: '#c9a33a', 'stroke-width': .5 }, clearLayer);
+  for (const [x, z, k] of treeSpots) {
+    if (inPoly(x, z, v.clearing)) continue;
+    const young = v.rough.some(r => inPoly(x, z, r));
+    el('circle', { cx: x.toFixed(1), cy: z.toFixed(1), r: (young ? .9 : 1.5) * k, opacity: young ? .9 : .75 }, treeLayer);
+  }
+  if (key === 'b') for (let i = 0; i < 26; i++) { const a = i * 2.4, rr = 6 + (i * 7) % 22, x = -290 + Math.cos(a) * rr, z = 1056 + Math.sin(a) * rr * .8; if (!inPoly(x, z, v.clearing)) el('circle', { cx: x, cy: z, r: .9, opacity: .9 }, treeLayer); }
+  // the stale building, as the game draws it today
+  el('path', { d: path(STALE), fill: 'none', stroke: '#1b1b1b', 'stroke-width': .7, 'stroke-dasharray': '2 1.5' }, overlay);
+  if (v.overgrown) { const [a, b] = v.overgrown; el('path', { d: `M${a[0]} ${a[1]}L${b[0]} ${b[1]}`, stroke: '#1b1b1b', 'stroke-width': .9, 'stroke-dasharray': '3 2', fill: 'none' }, overlay);
+    el('path', { d: `M${DRIVE_END[0]} ${DRIVE_END[1]}m-5 -3l0 6`, stroke: '#b0127c', 'stroke-width': 1.4 }, overlay); }
+  if (v.sight) { el('path', { d: `M${DRIVE_START[0]} ${DRIVE_START[1] - 6}L${DRIVE_END[0]} ${DRIVE_END[1] - 4}L${DRIVE_END[0]} ${DRIVE_END[1] + 6}L${DRIVE_START[0]} ${DRIVE_START[1] + 5}Z`, fill: '#b0127c', opacity: .09 }, overlay);
+    el('path', { d: `M${DRIVE_START[0] - 2} ${DRIVE_START[1]}L${DRIVE_END[0] + 4} ${DRIVE_END[1] + 1}`, stroke: '#b0127c', 'stroke-width': .7, 'stroke-dasharray': '1.5 2', fill: 'none', 'marker-end': 'url(#arrow)' }, overlay); }
+  const z = v.zone;
+  el('circle', { cx: z.c[0], cy: z.c[1], r: z.r, fill: 'none', stroke: '#b0127c', 'stroke-width': 1.3 }, overlay);
+  const zt = el('text', { x: z.c[0] + z.r * .72 + 2, y: z.c[1] - z.r * .72 - 2, fill: '#b0127c', 'font-family': 'IBM Plex Mono, monospace', 'font-size': 3.8, 'font-weight': 500 }, overlay); zt.textContent = 'found: ' + z.label;
+  for (const p of v.props) {
+    let at;
+    const ink = p.k === 'slab' ? '#1b1b1b' : '#3a3a3a';
+    if (p.poly) { el('path', { d: path(p.poly), fill: p.k === 'slab' ? '#8a8a7a' : p.k === 'ruts' ? 'none' : '#bdb9a8', stroke: ink, 'stroke-width': p.k === 'ruts' ? .6 : .9, 'stroke-dasharray': p.k === 'ruts' ? '1 1.5' : '' }, overlay);
+      at = [0, 1].map(o => p.poly.filter((_, i) => i % 2 === o).reduce((a, b) => a + b) / (p.poly.length / 2)); }
+    if (p.multi) { for (const q of p.multi) el('path', { d: path(q), fill: '#bdb9a8', stroke: ink, 'stroke-width': .8 }, overlay); at = [p.multi[1][0], p.multi[1][1] - 4]; }
+    if (p.line) { el('path', { d: 'M' + p.line.map(q => q.join(' ')).join('L'), stroke: '#3a3a3a', 'stroke-width': .5, fill: 'none', 'stroke-dasharray': '1 1' }, overlay);
+      for (const q of p.line) el('circle', { cx: q[0], cy: q[1], r: 1.2, fill: '#1b1b1b' }, overlay); at = p.line[1]; }
+    if (p.pt) { at = p.pt;
+      if (p.k === 'plaque') el('rect', { x: at[0] - 1.6, y: at[1] - 1.6, width: 3.2, height: 3.2, fill: '#1b1b1b', transform: `rotate(45 ${at[0]} ${at[1]})` }, overlay);
+      else { el('rect', { x: at[0] - 2.5, y: at[1] - .6, width: 5, height: 1.2, fill: '#6b2a1c' }, overlay); el('circle', { cx: at[0] - 2.5, cy: at[1], r: .9, fill: '#1b1b1b' }, overlay); el('circle', { cx: at[0] + 2.5, cy: at[1], r: .9, fill: '#1b1b1b' }, overlay); } }
+    const nx = at[0] + 4.5, nz = at[1] - 4.5;
+    el('line', { x1: at[0], y1: at[1], x2: nx - 1.9, y2: nz + 1.9, stroke: '#b0127c', 'stroke-width': .5 }, overlay);
+    el('circle', { cx: nx, cy: nz, r: 2.6, fill: '#fbfbf6', stroke: '#b0127c', 'stroke-width': .6 }, overlay);
+    const t = el('text', { x: nx, y: nz + 1.3, 'text-anchor': 'middle', 'font-family': 'IBM Plex Mono, monospace', 'font-size': 3.6, 'font-weight': 600, fill: '#b0127c' }, overlay); t.textContent = p.n;
+  }
+  el('circle', { cx: NODE[0], cy: NODE[1], r: 1, fill: '#b0127c' }, overlay);
+  const nt = el('text', { x: NODE[0] + 2, y: NODE[1] + 4.5, 'font-family': 'IBM Plex Mono, monospace', 'font-size': 3, fill: '#b0127c', 'text-anchor': 'start' }, overlay); nt.textContent = 'OSM node “Gubbakulan”';
+  el('path', { d: `M-177 990l0 -9M-177 981l-2 3M-177 981l2 3`, stroke: '#1b1b1b', 'stroke-width': .8, fill: 'none' }, overlay);
+  const nn = el('text', { x: -177, y: 996, 'text-anchor': 'middle', 'font-family': 'Barlow Condensed, sans-serif', 'font-size': 5.5, 'font-weight': 700, fill: '#1b1b1b' }, overlay); nn.textContent = 'N';
+  notes(key);
+}
+const mk = el('marker', { id: 'arrow', viewBox: '0 0 6 6', refX: 5, refY: 3, markerWidth: 5, markerHeight: 5, orient: 'auto' }, defs);
+el('path', { d: 'M0 0L6 3L0 6Z', fill: '#b0127c' }, mk);
+
+const esc = s => s.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]);
+function notes(key) {
+  const v = V[key];
+  document.getElementById('notes').innerHTML = `
+    <div><h2 class="vname">${esc(v.name)}</h2><p class="vtag">${esc(v.tag)}</p></div>
+    <p class="pitch">${esc(v.pitch)}</p>
+    <section class="block"><h3>What’s there</h3><ul class="props">${v.props.map(p => `<li><span class="num">${p.n}</span><span><b>${esc(p.label)}</b>: ${esc(p.text)}</span></li>`).join('')}</ul></section>
+    <section class="block"><h3>Finding it</h3><dl class="facts">
+      <dt>Found by</dt><dd>${esc(v.zone.label)} (${v.zone.r} m around the circle’s centre)</dd>
+      <dt>From the road</dt><dd>${esc(v.road)}</dd>
+      <dt>By car</dt><dd>${esc(v.drive)}</dd>
+      <dt>Stale building</dt><dd>${esc(v.stale)}</dd>
+      <dt>Rebuild</dt><dd>${esc(v.rebuild)}</dd></dl></section>
+    <section class="block"><h3>Sign</h3><div class="signboard">${esc(v.sign[0])}${key === 'c' ? `<small>${esc(v.sign[1])}</small>` : ''}</div><p style="margin:0;color:var(--muted);font-size:13px">${key === 'c' ? 'Faded board at the turn-off.' : esc(v.sign[1][0].toUpperCase() + v.sign[1].slice(1)) + '.'}</p></section>
+    <section class="block"><h3>Plaque (same in all three)</h3><div class="plaque"><strong>Gubbakulan</strong>${esc(PLAQUE)}</div><p style="margin:0;color:var(--muted);font-size:13px">Sourced facts only, from the research findings; 1934 and 1965, not 1963.</p></section>`;
+  document.getElementById('htitle').textContent = v.name.split(' · ')[1].toLowerCase() === 'ruinen' ? 'a ruin you can read' : key === 'b' ? 'taken back by the forest' : 'an empty festival meadow';
+}
+
+function show(key) {
+  if (!V[key]) key = 'a';
+  for (const b of document.querySelectorAll('.bar button')) b.setAttribute('aria-pressed', String(b.dataset.v === key));
+  draw(key);
+}
+for (const b of document.querySelectorAll('.bar button')) b.addEventListener('click', () => { location.hash = b.dataset.v; });
+addEventListener('hashchange', () => show(location.hash.slice(1)));
+show(location.hash.slice(1));
+
+const ro = document.getElementById('readout');
+svg.addEventListener('pointermove', e => { const pt = svg.createSVGPoint(); pt.x = e.clientX; pt.y = e.clientY; const p = pt.matrixTransform(svg.getScreenCTM().inverse());
+  ro.textContent = `x ${Math.round(p.x)} · z ${Math.round(p.y)}`.replace(/-/g, '−'); });
+</script>
