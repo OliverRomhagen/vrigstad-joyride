@@ -19,6 +19,8 @@ import data from '../../data/vrigstad.json';
 import '../fonts/barlow';
 import { LabFlags } from '../lab/flags';
 import { registerLabCommands } from '../lab/lab-commands';
+import { CoordsLine } from './coords-line';
+import { atParam, registerCoordsCommands, type Viewpoint } from './sim/coords';
 import { BridgeIndex } from '../world/bridges';
 import { BuildingIndex } from '../world/buildings';
 import { ROAD_WIDTH_M as ROAD_W, type WorldData } from '../world/data';
@@ -361,8 +363,9 @@ registerHealthCommands(commands, health, drawHealth);
 registerCarDamageCommand(commands, () => (game.inCar ? game.pcar : null));
 registerTunableCommands(commands, tunables);
 // lab on <id> writes ?lab= and loads the page again, with ?at= so you start where you stand (or where the car you drive does)
-registerLabCommands(commands, { lab, search: () => location.search, reload: search => { location.search = search; },
-  at: () => { const o = game.inCar && game.pcar ? game.pcar : player; return [o.x.toFixed(1), o.z.toFixed(1), view.camYaw.toFixed(2), view.camPitch.toFixed(2)].join(','); } });
+registerLabCommands(commands, { lab, search: () => location.search, reload: search => { location.search = search; }, at: () => atParam(spotNow()) });
+// where you stand (or the car you drive does) and where the camera looks: ?at= for lab on, and for the coordinates line further down
+function spotNow(): Viewpoint { const o = game.inCar && game.pcar ? game.pcar : player; return { x: o.x, z: o.z, yaw: view.camYaw, pitch: view.camPitch }; }
 // go <place>: you, or the car you drive, straight there, out of any safehouse first
 places.registerCommands(commands, (x, z, name, h) => { leaveHouse(); const c = game.inCar ? game.pcar : null;
   if (c) { c.x = x; c.z = z; if (h !== undefined) c.h = h; c.v = c.slip = c.drift = c.boost = 0; c.vh = c.h; placeCar(meshed(c)); } else { player.x = x; player.z = z; player.speed = 0; } return 'You are at ' + name + '.'; },
@@ -402,6 +405,10 @@ function drawHealth() { hud.drawHealth(health.hp, game.inCar && game.pcar ? game
 // the title card (Gripen!, Däckad!) stays up this long
 function titleCard(title: string, msg: string) { hud.showTitleCard(title, msg); game.titleCardT = 3; }
 
+// ---------- coordinates under the minimap: ?debug=coords or the console's coords, a tap copies an ?at= link (src/game/coords-line.ts) ----------
+const coordsLine = new CoordsLine({ el: $('coords'), roads, where: spotNow, location, clipboard: navigator.clipboard, shown: new URLSearchParams(location.search).get('debug') === 'coords' });
+registerCoordsCommands(commands, coordsLine);
+
 // ---------- stealing and getting caught (the wanted level and the police: src/game/police.ts) ----------
 // the driver of a car you steal gets out, and stands there shouting for a while (src/game/render/shouting-drivers.ts)
 const drivers = new ShoutingDrivers({ scene, groundAt, personParts, pick }), driverOut = drivers.driverOut;
@@ -424,7 +431,7 @@ const loop = new GameLoop({ $, renderer, scene, camera, canvas, coarse, half: HA
   get toasting() { return hud.toasting; }, inWater, collide, groundAt, drive, updateTraffic, knockedOut, hurtPlayer, shake, toast, hideTitleCard: () => hud.hideTitleCard(),
   updateTrisslott: dt => trisslott.update(dt), updatePlaces: dt => { placeMeshes.update(dt); skrotenMeshes.update(dt, player); }, updateDriftFx, updateVehicles: (T, dt) => { vehicleVisuals.update(T, dt); priceTags.update(); }, updateSmoke, updateBanknotes: dt => banknotes.update(dt), updateConfetti: dt => confetti.update(dt), updateNpcs: (T, dt) => { updateNpcs(T, dt); ragdolls.update(dt); ragdollMeshes.update(); }, updateCats,
   updateDrivers: (T, dt) => drivers.update(T, dt), updateBodies: (T, dt) => bodyMotion.update(T, dt), updateDaylight, drawHearts, updateHud: dt => hud.update(dt), drawMini,
-  updateSign, catRideLines: () => crashes.catRideLines(), closeMenuIfLeft: () => menuPlate.closeIfLeft(), updatePrompt: () => prompt.update(), drawHealth,
+  updateSign: T => { updateSign(T); coordsLine.update(); }, catRideLines: () => crashes.catRideLines(), closeMenuIfLeft: () => menuPlate.closeIfLeft(), updatePrompt: () => prompt.update(), drawHealth,
   timeFrame: workStart => { if (!debugOverlay) return; const t = performance.now(); debugOverlay.frame(t, t - workStart, renderer.info); } });
 $('go').addEventListener('click', loop.startGame);
 // ---------- capture hook: with ?capture, the game's internals for the teaser and poster rig (src/game/capture-hook.ts, tools/trailer) ----------

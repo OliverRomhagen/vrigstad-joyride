@@ -646,7 +646,7 @@ test.describe('game (index.html)', () => {
     expect(errors).toEqual([]);
   });
 
-  test('with ?dev, the console opens with §, its keys never move the player, Tab completes, kr and mynt add money, tune set changes a tunable, stars and god work, adopt cat gives you a cat, fps shows frame times and errors, errors clear empties them (and L makes it rain)', async ({
+  test('with ?dev, the console opens with §, its keys never move the player, Tab completes, kr and mynt add money, tune set changes a tunable, stars and god work, coords shows where you stand, adopt cat gives you a cat, fps shows frame times and errors, errors clear empties them (and L makes it rain)', async ({
     page,
   }) => {
     await page.goto('/index.html');
@@ -691,6 +691,12 @@ test.describe('game (index.html)', () => {
     expect(await state(page)).toMatchObject({ stars: 2 });
     await expect(await run('stars 0')).toHaveText('Not wanted.');
     await expect(await run('god')).toHaveText('God mode on.');
+    await expect(page.locator('#coords')).toBeHidden(); // #637: the coordinates line, off until asked for
+    await expect(await run('coords on')).toHaveText(/^Coordinates on/);
+    await expect(page.locator('#coords span')).toHaveText(/^x -?\d+\.\d {2}z -?\d+\.\d {2}[NESW]{1,2} \d+°$/);
+    await expect(await run('coords')).toHaveText(/\/index\.html\?dev&at=-?\d+\.\d,-?\d+\.\d,-?\d+\.\d\d,\d\.\d\d$/);
+    await expect(await run('coords off')).toHaveText('Coordinates off.');
+    await expect(page.locator('#coords')).toBeHidden();
     await expect(await run('adopt --help')).toHaveText(
       'adopt <cat>: adopt a new random pet of that kind\nExamples:\n  adopt cat',
     ); // every command answers --help
