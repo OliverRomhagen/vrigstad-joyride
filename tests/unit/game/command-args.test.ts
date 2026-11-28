@@ -13,7 +13,7 @@ import {
   toggle,
   word,
 } from '../../../src/game/command-args';
-import { Commands, UsageError } from '../../../src/game/commands';
+import { Commands, refuse, UsageError } from '../../../src/game/commands';
 
 const PLACES = ['torget', 'Slättsjön', 'skroten'] as const;
 
@@ -111,6 +111,22 @@ describe('command', () => {
     c.register('say', command({ help: 'x', access: 'player', args: [rest('words')], run: ({ words }) => words }));
     expect(c.run('wanted 2')).toBe('stars works in dev mode only (?dev).');
     expect(c.run('say hej')).toBe('hej');
+  });
+
+  it('passes a refusal from run through to the registry, and a plain line as done', () => {
+    const owned = ['volvo'];
+    const c = withCommand(
+      command({
+        help: 'buy a car',
+        args: [choice('car', ['volvo', 'saab'])],
+        run: ({ car }) =>
+          owned.includes(car) ? refuse('already-owned', `You already own the ${car}.`) : `Bought the ${car}.`,
+      }),
+    );
+    expect(c.execute('t volvo')).toEqual({ ok: false, text: 'You already own the volvo.', code: 'already-owned' });
+    expect(c.run('t volvo')).toBe('You already own the volvo.');
+    expect(c.execute('t saab')).toEqual({ ok: true, text: 'Bought the saab.' });
+    expect(c.execute('t')).toEqual({ ok: false, text: 'car is missing. Usage: t <car>', code: 'usage' });
   });
 
   it("shows each described argument, the details and the examples in the command's help", () => {
@@ -300,6 +316,21 @@ describe('a group that runs by itself', () => {
     expect(c.run('fuel half')).toBe('30 L');
     expect(c.run('fuel FILL')).toBe('Full.');
     expect(c.run('fuel')).toBe('60 L');
+  });
+
+  it('passes a refusal from its own run through to the registry', () => {
+    const c = new Commands();
+    c.register(
+      'fuel',
+      group({
+        help: 'show or set the fuel',
+        args: [optional(int('litres'))],
+        run: ({ litres }) => (litres === undefined ? '10 L' : refuse('no-pump', 'No pump here.')),
+        subcommands: { fill: command({ help: 'fill the tank', args: [], run: () => 'Full.' }) },
+      }),
+    );
+    expect(c.execute('fuel')).toEqual({ ok: true, text: '10 L' });
+    expect(c.execute('fuel 20')).toEqual({ ok: false, text: 'No pump here.', code: 'no-pump' });
   });
 
   it('shows both in its usage line and its help', () => {

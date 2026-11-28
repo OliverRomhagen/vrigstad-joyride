@@ -83,9 +83,9 @@ they change never touch the DOM, so every step below runs in a unit test.
 ### `tune set driving.grip 8`: a group over a registry
 
 1. **The box** (`src/game/devconsole.ts`) sends the line to `commands.run(line)`, with source `console`.
-2. **`Commands.run`** (`src/game/commands.ts`) splits it into words, finds `tune` (an alias would resolve to it
-   here), and checks its access. Then `descend` follows the words that name subcommands: `tune` is a `group()`, so
-   `set` picks its `set`, and `driving.grip 8` is left as the arguments.
+2. **`Commands.execute`** (`src/game/commands.ts`), which `run` calls for the line's text, splits it into words,
+   finds `tune` (an alias would resolve to it here), and checks its access. Then `descend` follows the words that
+   name subcommands: `tune` is a `group()`, so `set` picks its `set`, and `driving.grip 8` is left as the arguments.
 3. **The hooks** each get the call, `{ name: 'tune', args: ['set', 'driving.grip', '8'], source: 'console' }`, and
    call `next()` to go on.
 4. **`command()`** (`src/game/command-args.ts`) parses the arguments it was built with:
@@ -116,8 +116,8 @@ as a cheat code or a lab flag, sets the same field and gets the same three rules
 ```ts
 const lines: { text: string; source: CallSource }[] = [];
 const stop = commands.use((call, next) => {
-  const answer = next(); // runs the command, and any hooks inside this one
-  lines.push({ text: `${[call.name, ...call.args].join(' ')} → ${answer}`, source: call.source });
+  const answer = next(); // runs the command, and any hooks inside this one: { ok, text }
+  lines.push({ text: `${[call.name, ...call.args].join(' ')} → ${answer.text}`, source: call.source });
   return answer;
 });
 ```
@@ -133,7 +133,8 @@ line.
    function beside the rule (see [The shape](#the-shape)).
 2. Build it with `command()`: a `help` line of up to 80 characters, `examples` that start with its name, and typed
    `args`, so parsing, the usage line and Tab come for free.
-3. Keep `run` to reading its values and calling the module's API, and return one line to show.
+3. Keep `run` to reading its values and calling the module's API, and return one line to show, or
+   `refuse(code, reason)` when the module's rule said no.
 4. Call the register function in the module's unit test: a missing help line or a bad example fails there, in
    seconds, rather than when the page starts.
 5. Call it once from `src/game/main.ts`, next to the others. `help` lists the command; nothing else needs to change.
@@ -198,6 +199,16 @@ commands.register('go', command({
   pass through the hooks: it changes nothing.
 - **A command is thin.** It reads its arguments and calls the module's own API, and the rule lives in the module,
   where a unit test reaches it without the console. `run` returns one line to show (English: it is UI text), or ''.
+- **A run is done or refused.** A string from `run` means the command was done. When it understood the line but the
+  game's rules said no, it returns `refuse('no-car-in-reach', 'No car in reach.')` (`src/game/commands.ts`): the
+  refusal's name, kebab-case, and the reason as the line to show. Code that reacts to a refusal (a tutorial, a sound,
+  a test) matches on the name in `outcome.code`, never on the sentence, which stays free to be reworded. The registry's
+  own refusals are named in `REFUSAL`: `unknown-command`, `not-allowed`, `usage` and `hook`. A refusal is a returned value, not an exception: the rule that says no is a plain function that other code
+  calls too. Bad arguments still throw a `UsageError`. `commands.execute(line, source)` gives the caller the whole
+  `Outcome`, `{ ok, text, code }`, and `commands.run(line, source)` only its `text`, for a caller that just shows the line,
+  such as the console box. Not `ok`: a refusal by the command or by a hook, a `UsageError`, an unknown command and
+  one that isn't allowed here. Everything else is `ok`, an empty line and an answer to `--help` included. No command
+  returns a refusal yet; the player commands (#366) are the first.
 - `register` returns a function that takes the command out again, for a lab experiment that stops or a module that
   goes away.
 
@@ -212,13 +223,19 @@ it doesn't exist. Multiplayer (#1) adds its own question here (host only, or a v
 
 ```ts
 const stop = commands.use((call, next) => {    // call: { name, args, source }
-  if (call.source === 'url' && call.name === 'kr') return 'Not from a link.';
-  return next();                               // run the command and the hooks inside this one
+  if (call.source === 'url' && call.name === 'kr') return 'Not from a link.';   // a refusal: { ok: false, text, code: 'hook' }
+  return next();                               // run the command and the hooks inside this one: { ok, text }
 });
 ```
 
-A hook wraps every command that runs: it can look at the call, refuse it, change or record the result. The first one added is the
-outermost. This is where cross-cutting work goes, so no command has to know about it:
+A hook wraps every command that runs: it can look at the call, refuse it, change or record the result. Its type is
+`Hook = (call: Call, next: () => Outcome) => Outcome | string`. `next()` gives the run's `Outcome`, and a hook that
+lets the command run returns it. Whatever a hook that never called `next()` returns stopped the command, so it counts
+as a refusal: a plain string is the short form above (`hook`), and `refuse(code, reason)` names its own refusal. An
+Outcome that says it was done is a `hook` refusal too, since the command never ran. A string or an Outcome from a hook
+that did call `next()` only changes the line shown; whether the run was done, and its refusal's name, stay what
+`next()` said. The first one added is the outermost. This is where cross-cutting work goes, so no command has to know
+about it:
 
 | Hook | What it does | Issue |
 |---|---|---|
@@ -233,10 +250,13 @@ console itself.
 What a hook can rely on, and what it can't yet:
 
 - **`next()` runs the command once.** A hook that calls it twice (a retry, a timing hook that measures twice) gets the
-  same line back the second time, or the same error if the command threw; the command doesn't run again.
-- **A hook can't tell a failed run from a good one.** A `UsageError` reaches the hooks as a finished "… Usage: …" line,
-  and a command that throws skips the code after `next()` in every hook. The Record hook needs to know which runs
-  changed the sim, so it brings a result that says so (`{ ok, text }` or similar) when it is built.
+  same outcome back the second time, or the same error if the command threw; the command doesn't run again.
+- **A hook can tell a run that was done from one that wasn't.** `next().ok` is false for a refusal, by the command or
+  by a hook inside this one, and for a `UsageError`, which reaches the hooks as a finished "… Usage: …" line. So the
+  Record hook can keep only the runs with `ok`. `ok` says the command did what it was asked, not that it changed the
+  sim: `tune get` is `ok` too, so the Record hook still has to know which commands change the sim.
+- **A command that throws skips the code after `next()`** in every hook, unless the hook catches the error. A hook
+  that must see every run wraps `next()` in `try`.
 - **A command that runs another line** through the registry starts a call of its own, with source `console` unless it
   passes one. Record and Network would take that line as typed by a person and keep it twice. A command that runs lines
   passes `call.source` on, and the Record hook keeps only the outermost call; both come with the Record hook.
@@ -256,13 +276,14 @@ A line is split on spaces; there is no quoting. A `rest` argument gets the words
 
 Planned, and built with the first command that needs it (`bench`, step 6), so no code waits unused:
 
-- A command defines one of `run(values, call): string` or `runAsync(values, call): Promise<string>`; `command()` takes
-  either, so typed arguments work the same.
-- The registry offers both: `commands.run(line)` stays synchronous and answers an async command with a pointer to
-  `runAsync`; `commands.runAsync(line)` runs either kind, a sync one as an answer that is already there. The console box
-  calls `runAsync`; tests and `?cmd=` lines can call `run` for commands they know are sync.
-- A hook's `next()` then returns `string | Promise<string>`. A hook that only looks at the call or refuses it doesn't
-  change; one that reads the result (timing, the Log) handles both.
+- A command defines one of `run(values, call): string | Outcome` or
+  `runAsync(values, call): Promise<string | Outcome>`; `command()` takes either, so typed arguments work the same.
+- The registry offers both: `commands.run(line)` and `commands.execute(line)` stay synchronous and answer an async
+  command with a pointer to `runAsync`; `commands.runAsync(line)` runs either kind, a sync one as an answer that is
+  already there. The console box calls `runAsync`; tests and `?cmd=` lines can call `run` for commands they know are
+  sync.
+- A hook's `next()` then returns `Outcome | Promise<Outcome>`. A hook that only looks at the call or refuses it
+  doesn't change; one that reads the result (timing, the Log) handles both.
 - An async answer lands between frames, whenever the job ends. With #49, a replay records the intent the command
   queued, never when its answer came back.
 

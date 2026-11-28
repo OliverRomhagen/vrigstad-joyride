@@ -1,6 +1,6 @@
 // Typed arguments for console commands (#218): a command lists its arguments once, and gets their parsing, its usage
 // line and Tab completion from that list. Pure: no DOM, no three.js. docs/console.md has the contract.
-import { type Access, type Call, type Command, UsageError } from './commands';
+import { type Access, type Call, type Command, type Outcome, UsageError } from './commands';
 
 /** One argument: its name, how to read it from a word, and the words that fit it, for Tab. */
 export interface Arg<N extends string, T> {
@@ -197,7 +197,8 @@ export interface TypedCommand<A extends readonly AnyArg[]> {
   access?: Access;
   aliases?: readonly string[];
   args: A;
-  run(values: ArgValues<A>, call: Call): string;
+  /** returns the line to show, or `refuse(…)` when the game's rules said no, as Command.run does */
+  run(values: ArgValues<A>, call: Call): string | Outcome;
 }
 
 /**
@@ -260,7 +261,7 @@ export interface GroupSpec<A extends readonly AnyArg[] = readonly []> {
   /** with `run`: the group's own arguments, for a line whose first word names no subcommand */
   args?: A;
   /** with `args`: what the group does by itself, as a command()'s run: `time` and `time 16:30` beside `time hold` */
-  run?(values: ArgValues<A>, call: Call): string;
+  run?(values: ArgValues<A>, call: Call): string | Outcome;
 }
 
 /**
