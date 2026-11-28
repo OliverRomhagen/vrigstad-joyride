@@ -3,6 +3,7 @@
 // The layout comes from skroten-yard.ts; the static parts are baked into one mesh, so the yard costs a handful of draw calls.
 import * as THREE from 'three';
 import { makeRnd } from '../../world/random';
+import { col, srgb } from '../../world/three-legacy';
 import type { BoxPart } from '../box-part';
 import {
   type Carport,
@@ -542,7 +543,7 @@ function dirtyAsphalt(w: number, h: number) {
 
 // an sRGB colour darkened by k
 function shade(hex: string, k: number) {
-  return '#' + new THREE.Color(hex).multiplyScalar(k).getHexString();
+  return '#' + srgb(hex).multiplyScalar(k).getHexString();
 }
 
 // a shipping container, length w along x and width d along z, standing on y = 0: corrugated sides, corner posts and rails, and at +x
@@ -869,7 +870,7 @@ function flatten(root: THREE.Object3D) {
     rest: THREE.BufferGeometry[] = [],
     v = new THREE.Vector3(),
     nm = new THREE.Matrix3(),
-    white = new THREE.Color(1, 1, 1);
+    white = col(0xffffff);
   const under = (n: THREE.Object3D, a: THREE.Object3D) => {
     for (let o: THREE.Object3D | null = n; o; o = o.parent) if (o === a) return true;
     return false;

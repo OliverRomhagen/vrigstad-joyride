@@ -18,6 +18,7 @@ import {
   sunCover,
   windOffset,
 } from '../../world/clouds';
+import { srgb } from '../../world/three-legacy';
 import { approach } from '../sim/handling';
 
 export interface SkyOptions {
@@ -150,9 +151,9 @@ export class Sky {
         EROSION: EROSION.toFixed(3),
       },
       uniforms: {
-        top: { value: new THREE.Color(top) },
-        hor: { value: new THREE.Color(horizon) },
-        sunC: { value: new THREE.Color(sunColour) },
+        top: { value: srgb(top) },
+        hor: { value: srgb(horizon) },
+        sunC: { value: srgb(sunColour) },
         sunDir: { value: sunDir },
         camPos: { value: new THREE.Vector3() },
         wind: { value: new THREE.Vector2() },

@@ -5,6 +5,7 @@
 // The sun's direction is the day cycle's (SUN_DIR, shared, not copied) and its strength the day cycle's direct light
 // times the clouds' shade, so the streaks, the disc, the sky's glow and the shadows all follow one sun.
 import * as THREE from 'three';
+import { col } from '../../world/three-legacy';
 
 /**
  * The lab's five rays, measured for a 16:9 frame: angle off the fan's axis (rad), length and width (in frame heights,
@@ -140,7 +141,7 @@ function discTexture() {
 }
 
 const _axis = new THREE.Vector3();
-const _white = new THREE.Color(1, 1, 1);
+const _white = col(0xffffff);
 
 /**
  * Owns the streak quad and the sun disc; add `object` to the scene once, call `update` every frame after the camera is

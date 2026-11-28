@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { LEGACY_LIGHT } from '../../world/three-legacy';
+import { LEGACY_LIGHT, srgb } from '../../world/three-legacy';
 import type { Sky } from '../day-cycle';
 
 const SUN_I = 0.95,
@@ -9,14 +9,14 @@ const lin = (c: number) => new THREE.Color(c).convertSRGBToLinear();
 // Light colours are linear. The sky, fog and clear colours stay sRGB: three applies fog after the output conversion.
 const SUN_DAY = lin(0xfff4dd),
   SUN_LOW = lin(0xffa860);
-const HEMI_DAY = new THREE.Color(0xffffff),
+const HEMI_DAY = lin(0xffffff),
   HEMI_LOW = lin(0xffd6b0);
-const TOP_DAY = new THREE.Color(0x5f97c9),
-  TOP_LOW = new THREE.Color(0x7c8cbf);
-const HOR_DAY = new THREE.Color(0xd6e4e6),
-  HOR_LOW = new THREE.Color(0xf2c39a);
-const GLOW_DAY = new THREE.Color(0xfff1d0),
-  GLOW_LOW = new THREE.Color(0xffa860);
+const TOP_DAY = srgb(0x5f97c9),
+  TOP_LOW = srgb(0x7c8cbf);
+const HOR_DAY = srgb(0xd6e4e6),
+  HOR_LOW = srgb(0xf2c39a);
+const GLOW_DAY = srgb(0xfff1d0),
+  GLOW_LOW = srgb(0xffa860);
 
 /** What the time of day changes in the scene. `sunDir` is shared with the sky dome's shader and the shadow camera. */
 export interface DaylightTargets {

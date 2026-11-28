@@ -22,7 +22,14 @@
   // The architecture rules in AGENTS.md that a linter can check. Rule 5 is here; rules 2 and 3 are in the overrides.
   "plugins": [
     // Rule 5: seeded randomness in the game and the world. The map page isn't gameplay, and neither are tools and tests.
-    { "path": "./tools/biome/no-math-random.grit", "includes": ["src/**", "!src/map/**"] }
+    { "path": "./tools/biome/no-math-random.grit", "includes": ["src/**", "!src/map/**"] },
+    // Not an architecture rule: with colour management off, a game colour needs converting by hand, or it comes out too
+    // light (#600). Not the map, whose output isn't converted to sRGB, so its colours are right as written;
+    // three-legacy.ts is where the helpers make their colours.
+    {
+      "path": "./tools/biome/no-unconverted-colour.grit",
+      "includes": ["src/**", "!src/map/**", "!src/world/three-legacy.ts"]
+    }
   ],
   // The wiki's Svelte files whole, markup and styles too, not only the script: Biome formats them (a block's clauses each on
   // a line of their own) and sees a name the markup uses. Experimental in Biome, so the wiki's own check and build are what
