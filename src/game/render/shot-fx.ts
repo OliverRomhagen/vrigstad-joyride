@@ -24,6 +24,14 @@ const IMPACT_S = 0.05,
   POP_S = 0.08, // a new splat grows to its size in this long,
   POP_FROM = 0.6, // from this share of it
   POPS_MAX = 48;
+// droplets: a few bits fly off where a shot stops, out from the surface and falling, and shrink away
+const DROPS_PER_HIT = 5,
+  DROPS_MAX = 120, // at once; the oldest goes first
+  DROP_R_M = 0.025,
+  DROP_S = [0.15, 0.25], // each lasts between these
+  DROP_OUT_MS = [1.5, 3.5], // out from the surface, between these
+  DROP_SIDE_MS = 2, // and along it, up to this
+  DROP_GRAVITY_MS2 = 9.8;
 const ARC_MAX = 64, // dots in a throw's arc
   ARC_DOT_M = 0.045;
 const ARM_M = 0.6, // the player's arm, shoulder to hand (models.ts)
@@ -63,6 +71,15 @@ interface Impact {
   leftS: number;
 }
 
+/** A droplet in the air. */
+interface Drop {
+  at: THREE.Vector3;
+  v: THREE.Vector3; // m/s
+  colour: THREE.Color;
+  lifeS: number;
+  leftS: number;
+}
+
 /** A splat growing to its size: an instance of the splats' mesh, or a mesh of its own on a car or a person. */
 interface Pop {
   index: number; // in the splats' mesh; -1 for `mesh`
@@ -95,6 +112,9 @@ export class ShotFx {
   private nextImpact = 0;
   private readonly pops: Pop[] = [];
   private nextPop = 0;
+  private readonly drops: Drop[] = [];
+  private nextDrop = 0;
+  private readonly dropMesh: THREE.InstancedMesh;
   private readonly splats: THREE.InstancedMesh;
   private readonly spikes: THREE.InstancedMesh;
   private readonly arc: THREE.InstancedMesh;
@@ -157,6 +177,17 @@ export class ShotFx {
     );
     this.gun.castShadow = true;
     g.scene.add(this.arc, this.arcEnd);
+    this.dropMesh = new THREE.InstancedMesh(
+      new THREE.IcosahedronGeometry(DROP_R_M, 0),
+      new THREE.MeshBasicMaterial(),
+      DROPS_MAX,
+    );
+    this.dropMesh.setColorAt(0, _c.set('#ffffff')); // the colour buffer, before the first frame compiles the material
+    this.dropMesh.count = 0;
+    this.dropMesh.visible = false; // none in the air: no draw call
+    this.dropMesh.frustumCulled = false;
+    this.dropMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    g.scene.add(this.dropMesh);
     for (const mesh of [this.shots, this.splats]) {
       mesh.setColorAt(0, _c.set('#ffffff')); // makes the colour buffer before the first frame compiles the material
       mesh.count = 0;
@@ -205,6 +236,7 @@ export class ShotFx {
     dt: number,
   ) {
     this.growSplats(dt);
+    this.flyDrops(dt);
     const n = Math.min(shots.length, SHOTS_MAX);
     if (!n && !this.shots.count && !this.tracers.count) return; // nothing in the air, and nothing was: no buffers to send
     let balls = 0,
@@ -293,6 +325,54 @@ export class ShotFx {
     e.colour.copy(this.linear(colour));
     e.leftS = IMPACT_S;
     this.shots.count = Math.max(this.shots.count, 1); // so the next drawShots doesn't take the air for empty
+  }
+
+  /**
+   * A few droplets fly off where a shot stopped: out from the surface `hit` faces and a little along it, falling, in
+   * `colour`. None for someone who asked for less motion.
+   */
+  spray(hit: Pick<ShotHit, 'x' | 'y' | 'z' | 'nx' | 'ny' | 'nz'>, colour: string) {
+    if (this.g.calmMotion.matches) return;
+    const { rnd } = this.g;
+    _n.set(hit.nx, hit.ny, hit.nz);
+    if (_n.lengthSq() < 1e-6) _n.copy(UP);
+    _n.normalize();
+    for (let k = 0; k < DROPS_PER_HIT; k++) {
+      if (this.drops.length < DROPS_MAX)
+        this.drops.push({
+          at: new THREE.Vector3(),
+          v: new THREE.Vector3(),
+          colour: new THREE.Color(),
+          lifeS: 0,
+          leftS: 0,
+        });
+      const d = this.drops[this.nextDrop];
+      this.nextDrop = (this.nextDrop + 1) % DROPS_MAX;
+      d.at.set(hit.x, hit.y, hit.z).addScaledVector(_n, DROP_R_M * 2);
+      d.v.set(rnd() * 2 - 1, rnd() * 2 - 1, rnd() * 2 - 1).multiplyScalar(DROP_SIDE_MS);
+      d.v.addScaledVector(_n, DROP_OUT_MS[0] + rnd() * (DROP_OUT_MS[1] - DROP_OUT_MS[0]) - d.v.dot(_n));
+      d.colour.copy(this.linear(colour));
+      d.lifeS = d.leftS = DROP_S[0] + rnd() * (DROP_S[1] - DROP_S[0]);
+    }
+    this.dropMesh.visible = true;
+  }
+
+  private flyDrops(dt: number) {
+    if (!this.dropMesh.visible) return;
+    let n = 0;
+    for (const d of this.drops) {
+      if (d.leftS <= 0) continue;
+      d.leftS -= dt;
+      d.v.y -= DROP_GRAVITY_MS2 * dt;
+      d.at.addScaledVector(d.v, dt);
+      const k = Math.max(0, d.leftS / d.lifeS); // shrinks away as it goes
+      this.dropMesh.setMatrixAt(n, _m.makeScale(k, k, k).setPosition(d.at));
+      this.dropMesh.setColorAt(n++, d.colour);
+    }
+    this.dropMesh.count = n;
+    this.dropMesh.visible = n > 0;
+    this.dropMesh.instanceMatrix.needsUpdate = true;
+    if (this.dropMesh.instanceColor) this.dropMesh.instanceColor.needsUpdate = true;
   }
 
   // a splat just left starts small and grows to its size, quick at first: `index` in the splats' mesh, or a mesh of its own

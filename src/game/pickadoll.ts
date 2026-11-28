@@ -848,6 +848,8 @@ export class Pickadoll {
           !effectOf(AMMOS[s.ammo], EffectKind.SPIKES)
         )
           fx.impact(hit, WEAPONS[s.weapon].shotM, this.flightColourOf(s));
+        // a few droplets fly off whatever it hit, in its splat's colour; not off one that went off, nor a fotangel
+        if (!hit.wentOff && !effectOf(AMMOS[s.ammo], EffectKind.SPIKES)) fx.spray(hit, this.colourOf(s));
       }
       this.spareShots.push(s);
       this.shots[i] = this.shots[this.shots.length - 1];
