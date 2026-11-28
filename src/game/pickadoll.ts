@@ -37,6 +37,7 @@ import {
   aimAtMoving,
   aimShot,
   assistTarget,
+  BURST_GAP_S,
   blastPush,
   flightPath,
   HitKind,
@@ -146,7 +147,7 @@ const RAISED_S = 1.2, // the arm stays up this long after a shot
 const GUN_M: Record<WeaponId, readonly [number, number]> = {
   [WeaponId.ARTPUFFRA]: [0.5, 0.04],
   [WeaponId.PICKADOLL]: [0.3, 0.08],
-  [WeaponId.PEPPRAPUFFRA]: [0.4, 0.1],
+  [WeaponId.KPISTEN]: [0.55, 0.08],
   [WeaponId.HAGELBOSSA]: [0.65, 0.09],
   [WeaponId.MINIGUN]: [0.75, 0.17],
   [WeaponId.GULDARTPUFFRA]: [0.5, 0.05],
@@ -264,6 +265,7 @@ export class Pickadoll {
   private readonly aimHold: Control; // held while the right mouse button is
   private pulledS = -1; // s since a pull that hasn't fired yet, -1 for none: a weapon that isn't automatic fires once per pull
   private coolS = 0;
+  private burstLeft = 0; // shots still to come in the burst a pull started
   private clockS = 0;
   private introS = INTRO_AFTER_S;
   private aimKept = false; // aiming was switched on with C or the Aim button
@@ -492,6 +494,7 @@ export class Pickadoll {
 
   private pickWeapon(index: number) {
     this.weapon = index;
+    this.burstLeft = 0; // a burst stops with its weapon
     this.holster(false); // changing the weapon takes it out
     this.coolS = Math.min(this.coolS, WEAPONS[this.weapon].coolS); // the wait left, at most the new weapon's own
     this.drawHud();
@@ -812,9 +815,17 @@ export class Pickadoll {
         weapon.blastM || ARC_RING_M,
       );
     } else fx.drawArc(this.arc, 0, 0);
-    if (armed && this.coolS <= 0 && (weapon.thrown ? thrown : weapon.auto ? pulling : this.pulledS >= 0)) {
+    if (!armed) this.burstLeft = 0;
+    if (
+      armed &&
+      this.coolS <= 0 &&
+      (this.burstLeft > 0 || (weapon.thrown ? thrown : weapon.auto ? pulling : this.pulledS >= 0))
+    ) {
       this.pulledS = -1;
-      this.coolS = Math.max(this.coolS, -dt) + weapon.coolS; // what this frame overshot comes off the next wait
+      // a pull fires the weapon's burst, BURST_GAP_S apart, and the weapon waits its coolS after the last of it
+      this.burstLeft = this.burstLeft > 0 ? this.burstLeft - 1 : weapon.burst - 1;
+      // what this frame overshot comes off the next wait
+      this.coolS = Math.max(this.coolS, -dt) + (this.burstLeft > 0 ? BURST_GAP_S : weapon.coolS);
       this.raisedS = RAISED_S;
       this.fire(car, yaw, pitch);
     }

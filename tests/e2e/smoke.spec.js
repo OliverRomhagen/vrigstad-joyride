@@ -325,7 +325,7 @@ test.describe('game (index.html)', () => {
     await expect
       .poll(async () => (await state(page)).pickadoll)
       .toMatchObject({
-        weapon: 'pepprapuffra',
+        weapon: 'kpisten',
         ammo: 'pang',
         aiming: true,
       });

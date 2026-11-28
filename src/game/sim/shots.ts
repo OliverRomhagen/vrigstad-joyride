@@ -10,7 +10,7 @@ import { SurfaceKind } from './physics-world';
 export const WeaponId = {
   ARTPUFFRA: 'artpuffra',
   PICKADOLL: 'pickadoll',
-  PEPPRAPUFFRA: 'pepprapuffra',
+  KPISTEN: 'kpisten',
   HAGELBOSSA: 'hagelbossa',
   MINIGUN: 'minigun',
   GULDARTPUFFRA: 'guldartpuffra',
@@ -30,6 +30,7 @@ export interface Weapon extends AmmoRule {
   coolS: number; // between shots
   auto: boolean; // fires for as long as the trigger is held
   pellets: number; // shots per pull
+  burst: number; // times a pull fires, BURST_GAP_S apart, before the weapon waits coolS: 1 for once
   spreadRad: number; // each shot leaves within this angle of the aim
   shotMassKg: number; // what a shot weighs, at the game's scale, not a real bullet's: times speedMs, the push its hit gives (knockbackOf)
   damage: number; // what a hit does to a car's damage, with an ammo that damages (EffectKind.DAMAGE)
@@ -55,6 +56,7 @@ export const WEAPONS = [
     coolS: 0.08,
     auto: false,
     pellets: 1,
+    burst: 1,
     spreadRad: 0.012,
     shotMassKg: 0.3125,
     damage: 0.5,
@@ -75,6 +77,7 @@ export const WEAPONS = [
     coolS: 0.1,
     auto: false,
     pellets: 1,
+    burst: 1,
     spreadRad: 0.006,
     shotMassKg: 0.571,
     damage: 2,
@@ -89,16 +92,17 @@ export const WEAPONS = [
     ammo: null,
   },
   {
-    id: WeaponId.PEPPRAPUFFRA,
-    name: 'Pepprapuffra',
-    speedMs: 60,
-    coolS: 0.07,
-    auto: true,
+    id: WeaponId.KPISTEN,
+    name: 'Kpisten',
+    speedMs: 70,
+    coolS: 0.4,
+    auto: false,
     pellets: 1,
-    spreadRad: 0.045,
-    shotMassKg: 0.333,
-    damage: 1,
-    splatM: 0.45,
+    burst: 3,
+    spreadRad: 0.015,
+    shotMassKg: 0.36,
+    damage: 1.2,
+    splatM: 0.42,
     blastM: 0,
     bounces: 0,
     thrown: false,
@@ -115,6 +119,7 @@ export const WEAPONS = [
     coolS: 0.8,
     auto: false,
     pellets: 8,
+    burst: 1,
     spreadRad: 0.09,
     shotMassKg: 0.436,
     damage: 1.2,
@@ -135,6 +140,7 @@ export const WEAPONS = [
     coolS: 0.03,
     auto: true,
     pellets: 1,
+    burst: 1,
     spreadRad: 0.055,
     shotMassKg: 0.213,
     damage: 0.8,
@@ -156,6 +162,7 @@ export const WEAPONS = [
     coolS: 0.08,
     auto: false,
     pellets: 1,
+    burst: 1,
     spreadRad: 0.012,
     shotMassKg: 0.4,
     damage: 0.6,
@@ -178,6 +185,7 @@ export const WEAPONS = [
     coolS: 0.6,
     auto: false,
     pellets: 1,
+    burst: 1,
     spreadRad: 0.002,
     shotMassKg: 0.375,
     damage: 6,
@@ -199,6 +207,7 @@ export const WEAPONS = [
     coolS: 0.7,
     auto: false,
     pellets: 1,
+    burst: 1,
     spreadRad: 0.001,
     shotMassKg: 0.141,
     damage: 1.2,
@@ -220,6 +229,7 @@ export const WEAPONS = [
     coolS: 1.4,
     auto: false,
     pellets: 1,
+    burst: 1,
     spreadRad: 0,
     shotMassKg: 0.263,
     damage: 10,
@@ -241,6 +251,7 @@ export const WEAPONS = [
     coolS: 0.9,
     auto: false,
     pellets: 1,
+    burst: 1,
     spreadRad: 0.01,
     shotMassKg: 8,
     damage: 6,
@@ -261,6 +272,7 @@ export const WEAPONS = [
     coolS: 1,
     auto: false,
     pellets: 7,
+    burst: 1,
     spreadRad: 0.16,
     shotMassKg: 0,
     damage: 0,
@@ -298,6 +310,7 @@ const WALL_PROBE_M = 0.05; // the radius of the circle that feels for a wall
 const SLOPE_STEP_M = 0.5; // the ground's slope where a shot lands is read over this distance
 const AIM_ROUNDS = 4; // aimAtMoving: the drift and the time in the air settle each other in this many rounds
 export const SHOTS_MAX = 256; // in the air at once
+export const BURST_GAP_S = 0.06; // between the shots of a burst
 
 /** One shot in the air. Metres and m/s; y is up. */
 export interface Shot {
