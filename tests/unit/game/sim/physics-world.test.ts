@@ -2,6 +2,7 @@ import RAPIER from '@dimforge/rapier3d-compat';
 import { beforeAll, describe, expect, it } from 'vitest';
 import type { CarBody } from '../../../../src/game/sim/car-body';
 import {
+  newSegmentHit,
   PHYSICS_STEP_S,
   PhysicsWorld,
   type PhysicsWorldOptions,
@@ -300,6 +301,68 @@ describe('PhysicsWorld', () => {
     expect(10 - (w.castRay(11, 10, 0, 0, -1, 0, 20) ?? 0)).toBeCloseTo(6, 2);
     // and not on the other side
     expect(10 - (w.castRay(9, 10, 0, 0, -1, 0, 20) ?? 0)).toBeCloseTo(0, 2);
+    w.dispose();
+  });
+
+  it('moves a standing prop along its path, where a shot meets it, and lets it fall on from there when knocked', () => {
+    // a board 1 m square on a post, 1.8 m tall, that the caller moves east at 4 m/s along z = 20
+    const board: PropSpec = {
+      ...mailbox(0, 20),
+      widthM: 0.1,
+      depthM: 0.1,
+      heightM: 1.8,
+      massKg: 6,
+      moves: true,
+      parts: [{ x: 0, y: 0.4, z: 0, hx: 0.5, hy: 0.5, hz: 0.025, massKg: 4 }],
+    };
+    const w = world(flat, [board]),
+      hit = newSegmentHit(),
+      p = pose(),
+      speed = 4;
+    expect(w.joined).toEqual([0]); // in the world from the start, with nothing near
+    let x = 0;
+    const frame = () => {
+      x += speed * PHYSICS_STEP_S;
+      w.moveStanding(0, x, 0, 20, 0);
+      w.step(PHYSICS_STEP_S);
+    };
+    for (let k = 0; k < 60; k++) frame();
+    expect(w.isLoose(0)).toBe(false);
+    expect(w.drawnPose(0, p).x).toBeCloseTo(4, 6); // drawn where it is: 4 m along after a second
+    expect(p.y).toBeCloseTo(0.9, 6); // standing
+    // a shot from the south, at the board's height, meets it where it is now, and not where it started
+    const at = (x: number) => w.castSegment(x, 1.3, 30, x, 1.3, 10, null, hit) && hit.prop === 0;
+    expect(at(4.3)).toBe(true); // beside the post
+    expect(hit.z).toBeCloseTo(20.025, 2); // the board's south face
+    expect(at(0.3)).toBe(false);
+    w.knockProp(0, 4.3, 1.3, 20.025, 0, 0, -10); // a shot from the south
+    for (let k = 0; k < 60; k++) frame(); // its path goes on without it
+    expect(w.isLoose(0)).toBe(true);
+    w.propPose(0, p);
+    expect(p.y).toBeLessThan(0.5); // down
+    expect(p.x).toBeGreaterThan(4.5); // having gone on east, as it was moving
+    expect(p.x).toBeLessThan(x - 1); // but not with its path
+    w.dispose();
+  });
+
+  it('puts a knocked moving target back on its path where the path has got to, and moves it on from there', () => {
+    const w = world(flat, [{ ...mailbox(0, 20), isTarget: true, moves: true }]),
+      p = pose();
+    let x = 0;
+    const frame = () => {
+      x += PHYSICS_STEP_S; // east at 1 m/s
+      w.moveStanding(0, x, 0, 20, Math.PI);
+      w.step(PHYSICS_STEP_S);
+    };
+    frame();
+    w.knockProp(0, x, 1, 20.1, 0, 0, -10);
+    for (let k = 0; k < 360; k++) frame(); // the target's reset time, 4 s, and the check once a second after it
+    expect(w.isLoose(0)).toBe(false);
+    for (let k = 0; k < 30; k++) frame();
+    w.propPose(0, p);
+    expect(p.x).toBeCloseTo(x, 6);
+    expect(p.y).toBeCloseTo(0.65, 6); // standing
+    expect(Math.abs(p.qy)).toBeCloseTo(1, 6); // turned as its path says: half a turn
     w.dispose();
   });
 
