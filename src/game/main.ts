@@ -191,7 +191,7 @@ ground.bakeTreeShadows(allTreeSpots, blobTex);
 // the getters are read when they are used, so they can name things declared further down
 const bodyMotion = new BodyMotion();
 const vehicleVisuals = new VehicleVisuals(coarse, (c, body) => bodyMotion.addNode(c as RenderedCar, body));
-const carMeshes = new CarMeshes({ scene, groundAt, normalAt, carGeo, carMat: carMatFor, blob, barGeo, barMat, vehicleVisuals, bodyMotion });
+const carMeshes = new CarMeshes({ scene, groundAt, normalAt, carGeo, carMat: carMatFor, blob, barGeo, barMat, vehicleVisuals, bodyMotion, repainted: c => cockpit?.reclip(c) });
 const flakeWarmer = new FlakeWarmer({ renderer, scene, camera, standInGeo: carGeo, standInMat: carMatFor });   // compiles the metallic paint's shader while Skroten offers it
 const placeCar = carMeshes.placeCar.bind(carMeshes);
 // every car has its meshes: addCar attaches them before the Fleet holds it, so the sim's Car is a RenderedCar here

@@ -4,7 +4,7 @@
 import * as THREE from 'three';
 import { DecalGeometry } from 'three/addons/geometries/DecalGeometry.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { type Decal, RALLY_NUMBER } from '../sim/paint-jobs';
+import { DECALS, type Decal, RALLY_NUMBER } from '../sim/paint-jobs';
 
 /** The name on a decal's meshes, so the driver's view clips them with the body they're painted on (cockpit.ts). */
 export const DECAL_NODE = 'decal';
@@ -128,7 +128,7 @@ function projectors(
     facing: new THREE.Vector3(0, 1, 0),
     tex,
   });
-  if (decal === 'flames') {
+  if (decal === DECALS.FLAMES) {
     const nose = min.z - AHEAD * L,
       zLen = 0.42 * L,
       yc = min.y + 0.32 * H,
@@ -144,7 +144,7 @@ function projectors(
       },
     ];
   }
-  if (decal === 'stripes') return [top((min.z + max.z) / 2, 1.02 * L, STRIPES_M, stripes(paint))];
+  if (decal === DECALS.STRIPES) return [top((min.z + max.z) / 2, 1.02 * L, STRIPES_M, stripes(paint))];
   const zc = min.z + (numberAt?.at ?? NUMBER_AT) * L,
     span = glass && sideSpan?.(zc, glass.min.y),
     door = span && span.high - span.low >= SPAN_MIN_M ? span : null,

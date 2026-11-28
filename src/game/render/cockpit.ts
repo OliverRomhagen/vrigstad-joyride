@@ -289,6 +289,14 @@ export class Cockpit {
     return this.car !== null;
   }
 
+  /** After a respray or a decal while you sit in `car`: clips its new paint and decal as it did the old, so the cabin stays open. */
+  reclip(car: RenderedCar) {
+    const body = this.body;
+    if (car !== this.car || !body) return;
+    this.leave();
+    this.enter(car, body);
+  }
+
   toggle = () => {
     if (this.g.game.inCar) this.on = !this.on;
   };
@@ -335,7 +343,7 @@ export class Cockpit {
     belt.set(new THREE.Vector3(0, -1, 0), cabin.belt + CLIP_OVER_BELT_M);
     screen.set(new THREE.Vector3(0, 0, -1), cabin.front);
     rearWindow.set(new THREE.Vector3(0, 0, 1), -cabin.rear);
-    // a decal bought while inside stays unclipped until you sit in again: the lift's menu is open then, the view hardly matters
+    // the paint and any decal on it; one bought while inside gets clipped too, as the repaint calls reclip
     const painted = (o: THREE.Object3D) => o === car.body || isPaintedPanel(o.name) || o.name === DECAL_NODE;
     body.traverse(o => {
       if (!(o instanceof THREE.Mesh) || !painted(o)) return;

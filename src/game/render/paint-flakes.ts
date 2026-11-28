@@ -54,6 +54,9 @@ function patchFlakes(shader: THREE.WebGLProgramParametersWithUniforms) {
 }
 const flakesKey = () => 'paint-flakes';
 
+/** Whether a material wears the flakes' patch: its colour is still its own, unlike a shader that draws its own (the water). */
+export const hasFlakes = (material: THREE.Material) => material.onBeforeCompile === patchFlakes;
+
 /** Puts the flakes in a model's paint, or takes them out (`on` false); a material the patch already matches is left alone. */
 export function setFlakes(material: THREE.MeshStandardMaterial, on: boolean) {
   if ((material.onBeforeCompile === patchFlakes) === on) return;
@@ -87,7 +90,8 @@ export class FlakeWarmer {
 
   /** Compiles what a metallic paint on this car would draw with: `body` is the car's mesh, with its model's body if loaded. */
   warm(type: string, body: THREE.Object3D) {
-    const meshes: THREE.Mesh[] = [];
+    const meshes: THREE.Mesh[] = [],
+      added: string[] = []; // the kinds this call keeps a copy of, forgotten again if compiling fails
     body.traverse(node => {
       if (!(node instanceof THREE.Mesh) || !isPaintedPanel(node.name)) return;
       for (const m of [node.material].flat()) {
@@ -124,17 +128,24 @@ export class FlakeWarmer {
         const copy = m.clone();
         setFlakes(copy, true);
         this.kept.set(key, copy);
+        added.push(key);
         meshes.push(new THREE.Mesh(node.geometry, copy));
       }
     });
-    if (!this.standInWarm)
+    const standIn = !this.standInWarm;
+    if (standIn)
       for (const { paint, metallic } of WORKSHOP_PAINTS)
         if (metallic) meshes.push(new THREE.Mesh(this.g.standInGeo(type, paint), this.g.standInMat(paint)));
     this.standInWarm = true;
     if (!meshes.length) return;
     const group = new THREE.Group();
     group.add(...meshes);
-    const failed = (err: unknown) => console.warn('Paint flakes: warm-up failed', err); // the paint still compiles when first drawn
+    // the paint still compiles when first drawn; what failed is tried again the next time he offers the paints
+    const failed = (err: unknown) => {
+      console.warn('Paint flakes: warm-up failed', err);
+      for (const key of added) this.kept.delete(key);
+      if (standIn) this.standInWarm = false;
+    };
     try {
       this.g.renderer.compileAsync(group, this.g.camera, this.g.scene).catch(failed);
     } catch (err) {

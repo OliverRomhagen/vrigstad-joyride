@@ -68,4 +68,28 @@ describe('FlakeWarmer', () => {
     expect(warn).toHaveBeenCalledOnce();
     warn.mockRestore();
   });
+
+  it('tries again, the next time he offers the paints, what failed to compile', () => {
+    let fails = true;
+    const compiled: number[] = [],
+      w = new FlakeWarmer({
+        renderer: {
+          compileAsync: (group: THREE.Object3D) => {
+            if (fails) throw new Error('context lost');
+            compiled.push(group.children.length);
+            return Promise.resolve(group);
+          },
+        } as unknown as Pick<THREE.WebGLRenderer, 'compileAsync'>,
+        scene: new THREE.Scene(),
+        camera: new THREE.PerspectiveCamera(),
+        standInGeo: () => new THREE.BufferGeometry(),
+        standInMat: () => new THREE.MeshStandardMaterial(),
+      });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    w.warm('volvo', carMesh().mesh);
+    fails = false;
+    w.warm('volvo', carMesh().mesh);
+    expect(compiled).toEqual([2]); // the car's flaked paint and the stand-in's, both again
+    warn.mockRestore();
+  });
 });

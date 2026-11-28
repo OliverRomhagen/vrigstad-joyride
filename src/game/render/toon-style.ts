@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { HOUSE_SHELLS_MATERIAL } from './house-materials';
 import { inkEdges } from './ink-edges';
 import { INK_COLOR, INK_FLAG, INK_NO_FEET_FLAG } from './ink-flag';
+import { hasFlakes } from './paint-flakes';
 
 // The look follows the "Kraftig" (bold) cel shading of the art direction lab (v20).
 // Light per quarter of MeshToonMaterial's ramp, which it samples at `dot * 0.5 + 0.5` (dot of normal and light
@@ -43,12 +44,13 @@ type LitMaterial = THREE.MeshLambertMaterial | THREE.MeshPhongMaterial | THREE.M
 type MeshMaterial = THREE.Material | THREE.Material[];
 type Renderer = Pick<THREE.WebGLRenderer, 'render'>;
 
-// a material with its own shader patch (the water) keeps it: a toon copy would draw it in its plain, often white, colour
+// a material with its own shader patch (the water) keeps it: a toon copy would draw it in its plain, often white, colour. A
+// metallic paint's flakes only add glints to its own colour, so it goes toon like any paint, without them, among the other cars
 const isLit = (material: THREE.Material): material is LitMaterial =>
   (material instanceof THREE.MeshLambertMaterial ||
     material instanceof THREE.MeshPhongMaterial ||
     material instanceof THREE.MeshStandardMaterial) &&
-  material.onBeforeCompile === THREE.Material.prototype.onBeforeCompile;
+  (material.onBeforeCompile === THREE.Material.prototype.onBeforeCompile || hasFlakes(material));
 const isOpaque = (material: MeshMaterial) =>
   Array.isArray(material) ? material.every(m => !m.transparent) : !material.transparent;
 

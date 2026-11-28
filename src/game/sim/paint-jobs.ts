@@ -3,7 +3,7 @@
 // or, on his lot, from the yard's (skroten-yard.ts), and gives it no decal. Plain data, no three.js, no DOM; render/paint-decals.ts draws the decals.
 
 /** The decals he paints on, by id. */
-const DECALS = { FLAMES: 'flames', STRIPES: 'stripes', RALLY_NUMBER: 'rally-number' } as const;
+export const DECALS = { FLAMES: 'flames', STRIPES: 'stripes', RALLY_NUMBER: 'rally-number' } as const;
 export type Decal = (typeof DECALS)[keyof typeof DECALS];
 export const DECAL_ORDER: readonly Decal[] = [DECALS.FLAMES, DECALS.STRIPES, DECALS.RALLY_NUMBER]; // as his menu lists them
 

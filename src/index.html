@@ -78,7 +78,9 @@ body { isolation: isolate; }
 #prompt { position: absolute; left: 50%; bottom: calc(22px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); padding: 7px 14px;
   font: 600 18px var(--display); letter-spacing: .03em; white-space: nowrap; }
 #prompt kbd, #kmenu kbd, #pets kbd { display: inline-block; min-width: 22px; text-align: center; background: var(--ink); color: #161c1a; border-radius: 3px; padding: 0 5px; margin-right: 6px; font: 700 15px var(--display); }
-#kmenu { position: absolute; left: 50%; bottom: calc(22px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); min-width: 230px; padding: 10px 12px 12px; pointer-events: auto; }
+#kmenu { position: absolute; left: 50%; bottom: calc(22px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); min-width: 230px; padding: 10px 12px 12px; pointer-events: auto;
+  box-sizing: border-box; max-height: calc(100vh - 22px - 12px - env(safe-area-inset-bottom, 0px) - env(safe-area-inset-top, 0px));
+  max-height: calc(100dvh - 22px - 12px - env(safe-area-inset-bottom, 0px) - env(safe-area-inset-top, 0px)); overflow-y: auto; overscroll-behavior: contain; }   /* a long menu (the lift's) scrolls on a short screen rather than run off its top */
 #kmenu p { margin: 0 0 4px; font: 600 17px var(--display); letter-spacing: .03em; color: var(--gold); }
 #kmenu button { display: block; width: 100%; margin-top: 6px; padding: 6px 10px; border: 0; border-radius: 3px; background: rgba(244, 241, 230, .08); color: var(--ink);
   font: 600 17px var(--display); letter-spacing: .03em; text-align: left; cursor: pointer; }
@@ -124,7 +126,7 @@ body { isolation: isolate; }
 #pets { border: 0; cursor: pointer; pointer-events: auto; }
 #pets kbd { font-size: 12px; min-width: 16px; padding: 0 4px; }
 @media (pointer: coarse) { #pets kbd { display: none; } #pets { min-height: 44px; padding: 0 16px; } }   /* a finger-sized target */
-@media (pointer: coarse) { #kmenu { bottom: calc(160px + env(safe-area-inset-bottom, 0px)); } }   /* above the joystick and the Use button */
+@media (pointer: coarse) { #kmenu { bottom: calc(160px + env(safe-area-inset-bottom, 0px)); max-height: calc(100vh - 160px - 12px - env(safe-area-inset-bottom, 0px) - env(safe-area-inset-top, 0px)); max-height: calc(100dvh - 160px - 12px - env(safe-area-inset-bottom, 0px) - env(safe-area-inset-top, 0px)); } }   /* above the joystick and the Use button */
 @media (max-width: 560px) { #mini { width: 108px; height: 108px; } #sign { font-size: 15px; } #speed > b { font-size: 30px; } }
 @media (prefers-reduced-motion: reduce) { #stars.evading b, #hp.bad i, #toast.win { animation: none; } #hp b { transition: none; } }
 </style>

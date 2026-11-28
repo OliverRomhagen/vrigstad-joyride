@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { expect, test, vi } from 'vitest';
 import { HOUSE_SHELLS_MATERIAL } from '../../../../src/game/render/house-materials';
 import { INK_FLAG, INK_NO_FEET_FLAG } from '../../../../src/game/render/ink-flag';
+import { setFlakes } from '../../../../src/game/render/paint-flakes';
 import {
   FINISH_LEVELS,
   finishOf,
@@ -299,9 +300,12 @@ test('material arrays, instanced trees and custom materials', () => {
     building = new THREE.Mesh(box, [walls, glass]),
     trees = new THREE.InstancedMesh(box, walls, 4),
     dome = new THREE.Mesh(box, sky),
-    lake = new THREE.Mesh(box, water);
+    lake = new THREE.Mesh(box, water),
+    gold = new THREE.MeshStandardMaterial({ color: '#d9c25a' }),
+    car = new THREE.Mesh(box, gold);
   water.onBeforeCompile = () => {}; // its colour comes from the patched shader, which a toon copy would lose
-  scene.add(building, trees, dome, lake);
+  setFlakes(gold, true); // a metallic paint: its colour is its own, the flakes only add glints
+  scene.add(building, trees, dome, lake, car);
   const renderer = recordingRenderer(scene);
   new ToonStyle(renderer).render(scene, camera);
   const [toonWalls, toonGlass] = renderer.seen.get(building) as THREE.MeshToonMaterial[];
@@ -311,6 +315,8 @@ test('material arrays, instanced trees and custom materials', () => {
   expect(trees.children).toHaveLength(0);
   expect(renderer.seen.get(dome)).toBe(sky);
   expect(renderer.seen.get(lake)).toBe(water);
+  expect(renderer.seen.get(car)).toBeInstanceOf(THREE.MeshToonMaterial); // goes toon among the other cars, without its flakes
+  expect((renderer.seen.get(car) as THREE.MeshToonMaterial).color.equals(gold.color)).toBe(true); // in its own paint
   expect(building.material).toEqual([walls, glass]);
   expect(trees.material).toBe(walls);
 });

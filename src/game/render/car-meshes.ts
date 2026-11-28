@@ -3,7 +3,7 @@
 import * as THREE from 'three';
 import { makeRnd } from '../../world/random';
 import type { Car } from '../cars';
-import type { Decal } from '../sim/paint-jobs';
+import { DECALS, type Decal } from '../sim/paint-jobs';
 import type { CarType } from '../sim/vehicle-spec';
 import type { BodyMotion } from './body-motion';
 import { INK_FLAG } from './ink-flag';
@@ -39,6 +39,7 @@ export interface CarMeshesDeps {
   barMat: THREE.Material;
   vehicleVisuals: VehicleVisuals;
   bodyMotion: BodyMotion;
+  repainted(c: RenderedCar): void; // after a respray or a decal: the driver's view clips the new paint and decal (Cockpit.reclip)
 }
 
 /** Makes, places and disposes the meshes of every car. It never adds a car to the list or removes one: the Fleet does (#297). */
@@ -70,7 +71,7 @@ export class CarMeshes {
   private repaint(c: RenderedCar, look: Look) {
     const { carGeo, vehicleVisuals } = this.g,
       recolour = look.paint !== c.color,
-      redecal = look.decal !== c.decal || (recolour && c.decal === 'stripes');
+      redecal = look.decal !== c.decal || (recolour && c.decal === DECALS.STRIPES);
     if (recolour) {
       c.body.geometry = carGeo(c.type, c.color);
       c.body.material = this.g.carMat(c.color);
@@ -85,6 +86,7 @@ export class CarMeshes {
     }
     look.paint = c.color;
     look.decal = c.decal;
+    this.g.repainted(c);
   }
   /** Which model a new car of this type wears, if one: rolled from the meshes' own stream. */
   pickModel(type: CarType): VehicleId | undefined {
