@@ -828,6 +828,12 @@ export class Pickadoll {
       if (this.isWindingUp) arms[1].rotation.x = WIND_UP_RAD;
       else if (raised) arms[1].rotation.x = Math.PI / 2 + this.armPitch;
     }
+    // while the arm is up you keep facing the aim, as aiming does: walking then moves you sideways or back. Otherwise
+    // the walk turned you to the way you walk between shots and each shot turned you back, a flicker with a quick weapon
+    if (!car && armed && raised && !aiming) {
+      player.h = yaw;
+      player.mesh.rotation.y = -yaw;
+    }
 
     for (let i = this.shots.length - 1; i >= 0; i--) {
       const s = this.shots[i],
