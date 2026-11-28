@@ -11,6 +11,8 @@ export const RANGE_X = 630,
   RANGE_Z = 0;
 /** how far apart the lanes are (m) */
 export const LANE_M = 4;
+/** the painted firing line reaches this far each side of its middle: a metre past the outer lanes (m) */
+export const FIRING_LINE_HALF_M = 13;
 /**
  * each lane's target, west to east (m from the firing line). Of every order of these, at 4 m apart, this one leaves the
  * most room between a far board and the near ones in front of it, seen from any lane's spot on the firing line: 0.8 m,
@@ -115,22 +117,53 @@ export interface MovingTarget {
   speedMps: number;
   pauseS: number;
   startS: number;
+  /** whether it faces the way it runs, turning about through each stop at the ends; false, it always faces the firing line */
+  turns: boolean;
 }
 
 /**
- * The moving targets. None hides a standing board from any lane's spot on the firing line (TARGET_DISTANCES_M):
+ * The moving targets. None hides a standing board from anywhere on the firing line, from inside the pavilion to the
+ * painted line's east end (TARGET_DISTANCES_M):
  * - The moose runs on the west side, in front of lanes 0 to 2 and the ground west of them, in front of the pavilion:
  *   at 80 m it is behind every board but the 100 m one, and the lines to that one cross 80 m east of where its muzzle
- *   reaches. Its track, with the silhouette's length, is about 21 m: 5 s at a moose's trot.
+ *   reaches, by 0.4 m from the pavilion's west wall and more from further east. Its track, with the silhouette's
+ *   length, is about 18.5 m: under 4 s at a moose's trot. It turns about while it stops at each end.
  * - The sliders are low: their boards' tops are below the standing boards' bottom edges (SLIDER_HEIGHT_M), and a line
  *   from a muzzle above those edges to a board passes over them, wherever they are. So they can cross the lanes, at 27 m
  *   and 52 m, clear of the boards at 25 m and 50 m. The near one slides one lane's width, the far one two: at 27 m, a
  *   shot at a board two lanes across would pass the bank.
  */
 export const MOVERS = {
-  RUNNING_MOOSE: { kind: MoverKind.MOOSE, distanceM: 80, fromM: -22, toM: -5, speedMps: 4, pauseS: 1.5, startS: 0 },
-  NEAR_SLIDER: { kind: MoverKind.SLIDER, distanceM: 27, fromM: -6, toM: -2, speedMps: 1, pauseS: 0.5, startS: 3 },
-  FAR_SLIDER: { kind: MoverKind.SLIDER, distanceM: 52, fromM: 0, toM: 8, speedMps: 1, pauseS: 0.5, startS: 11 },
+  RUNNING_MOOSE: {
+    kind: MoverKind.MOOSE,
+    distanceM: 80,
+    fromM: -22,
+    toM: -7.5,
+    speedMps: 4,
+    pauseS: 1.5,
+    startS: 0,
+    turns: true,
+  },
+  NEAR_SLIDER: {
+    kind: MoverKind.SLIDER,
+    distanceM: 27,
+    fromM: -6,
+    toM: -2,
+    speedMps: 1,
+    pauseS: 0.5,
+    startS: 3,
+    turns: false,
+  },
+  FAR_SLIDER: {
+    kind: MoverKind.SLIDER,
+    distanceM: 52,
+    fromM: 0,
+    toM: 8,
+    speedMps: 1,
+    pauseS: 0.5,
+    startS: 11,
+    turns: false,
+  },
 } as const satisfies Record<string, MovingTarget>;
 /** the moving targets, in the order their props are made */
 export const MOVING_TARGETS: readonly MovingTarget[] = Object.values(MOVERS);
@@ -170,8 +203,10 @@ export interface MoverPose {
 
 /**
  * Where mover `m` is `tS` seconds after the range was built, written to `out`: running east, stopped at the east end,
- * running back west, stopped at the west end, and round again. It faces the way it runs, and turns about at the start
- * of each run: rotationY 0 faces east, π west.
+ * running back west, stopped at the west end, and round again. One that `turns` faces the way it runs, rotationY 0
+ * east and π west, and turns about evenly through each stop, always the same way round, its head past the firing
+ * line: from 0 to π at the east end and from π to 2π at the west. All at once, its body would spin at 47 rad/s for the
+ * one step it turned in, flinging what is near.
  */
 export function moverPose(m: MovingTarget, tS: number, out: MoverPose) {
   const runS = (m.toM - m.fromM) / m.speedMps,
@@ -184,7 +219,12 @@ export function moverPose(m: MovingTarget, tS: number, out: MoverPose) {
   else eastM = 0;
   out.x = RANGE_X + m.fromM + eastM;
   out.z = RANGE_Z + m.distanceM;
-  out.rotationY = u < runS + m.pauseS ? 0 : Math.PI;
+  let turn: number; // in half turns
+  if (u < runS) turn = 0;
+  else if (u < runS + m.pauseS) turn = (u - runS) / m.pauseS;
+  else if (u < 2 * runS + m.pauseS) turn = 1;
+  else turn = 1 + (u - 2 * runS - m.pauseS) / m.pauseS;
+  out.rotationY = m.turns ? turn * Math.PI : 0;
   return out;
 }
 

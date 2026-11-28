@@ -6,7 +6,7 @@ import type { BoxPart } from '../box-part';
 import type { PhysicsWorld, PropPose } from '../sim/physics-world';
 import {
   BANK,
-  LANE_M,
+  FIRING_LINE_HALF_M,
   MOOSE,
   MOVING_TARGETS,
   MoverKind,
@@ -16,7 +16,6 @@ import {
   roofBox,
   SLIDER_HEIGHT_M,
   TARGET,
-  TARGET_DISTANCES_M,
 } from '../sim/shooting-range';
 
 const FALU = '#8b2a1e', // the red of a Swedish timbered house
@@ -72,7 +71,7 @@ export class ShootingRangeMeshes {
     // the firing line, as one mesh in 2 m pieces that follow the ground: one strip across the lanes would sink into a
     // slope at one end
     const lineY = groundAt(RANGE_X, RANGE_Z),
-      lineHalf = ((TARGET_DISTANCES_M.length - 1) / 2) * LANE_M + 1,
+      lineHalf = FIRING_LINE_HALF_M,
       line: BoxPart[] = [];
     for (let dx = -lineHalf + 1; dx < lineHalf; dx += 2)
       line.push([2, 0.04, 0.12, dx, groundAt(RANGE_X + dx, RANGE_Z) - lineY + 0.02, 0, WHITE]);

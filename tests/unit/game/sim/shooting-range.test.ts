@@ -4,6 +4,8 @@ import { registerPhysicsTunables } from '../../../../src/game/sim/physics-tunabl
 import { newSegmentHit, PHYSICS_STEP_S, PhysicsWorld, type PropPose } from '../../../../src/game/sim/physics-world';
 import {
   BANK,
+  FIRING_LINE_HALF_M,
+  LANE_M,
   MOOSE,
   MOVERS,
   MOVING_TARGETS,
@@ -179,26 +181,36 @@ describe('the moving targets', () => {
   const runS = (moose.toM - moose.fromM) / moose.speedMps,
     roundS = 2 * (runS + moose.pauseS);
 
-  it('runs the moose east along its rail, stops at the end, and runs back facing the other way', () => {
-    expect(roundS).toBeCloseTo(11.5, 6);
+  it('runs the moose east along its rail, turns about while it stops at the end, and runs back', () => {
+    expect(roundS).toBeCloseTo(10.25, 6); // 14.5 m each way at 4 m/s, and two stops of 1.5 s
     const start = at(moose, 0);
     expect(start).toEqual({ x: RANGE_X + moose.fromM, z: RANGE_Z + 80, rotationY: 0 });
     expect(at(moose, 1).x).toBeCloseTo(RANGE_X + moose.fromM + 4, 6);
     expect(at(moose, runS).x).toBeCloseTo(RANGE_X + moose.toM, 6); // at the east end,
-    expect(at(moose, runS + 1)).toMatchObject({ x: RANGE_X + moose.toM, rotationY: 0 }); // stopped, still facing east
+    const stopped = at(moose, runS + moose.pauseS / 2);
+    expect(stopped.x).toBeCloseTo(RANGE_X + moose.toM, 6); // stopped,
+    expect(stopped.rotationY).toBeCloseTo(Math.PI / 2, 6); // halfway round, facing the firing line
     const back = at(moose, runS + moose.pauseS + 1);
     expect(back.x).toBeCloseTo(RANGE_X + moose.toM - 4, 6); // running back
     expect(back.rotationY).toBeCloseTo(Math.PI, 6); // facing west
-    expect(at(moose, roundS - 0.5)).toMatchObject({ x: RANGE_X + moose.fromM, rotationY: Math.PI }); // stopped at the west end
+    const west = at(moose, roundS - moose.pauseS / 2); // stopped at the west end, turning on the same way round
+    expect(west.x).toBeCloseTo(RANGE_X + moose.fromM, 6);
+    expect(west.rotationY).toBeCloseTo(1.5 * Math.PI, 6);
     expect(at(moose, roundS).x).toBeCloseTo(start.x, 6); // and round again
     expect(at(moose, -1).x).toBeCloseTo(at(moose, roundS - 1).x, 6); // before 0 too
   });
 
   it('keeps every mover on its rail and never faster than its speed', () => {
     for (const m of MOVING_TARGETS) {
-      let last = at(m, 0).x;
+      let last = at(m, 0).x,
+        lastTurn = at(m, 0).rotationY;
       for (let tS = 0.1; tS < 60; tS += 0.1) {
-        const { x, z } = at(m, tS);
+        const { x, z, rotationY } = at(m, tS);
+        // it turns no faster than half a turn over its stop, the short way round
+        const turn = Math.atan2(Math.sin(rotationY - lastTurn), Math.cos(rotationY - lastTurn));
+        expect(Math.abs(turn)).toBeLessThanOrEqual((Math.PI / m.pauseS) * 0.1 + 1e-9);
+        if (!m.turns) expect(rotationY).toBe(0);
+        lastTurn = rotationY;
         expect(z).toBe(RANGE_Z + m.distanceM);
         expect(x).toBeGreaterThanOrEqual(RANGE_X + m.fromM - 1e-9);
         expect(x).toBeLessThanOrEqual(RANGE_X + m.toM + 1e-9);
@@ -211,16 +223,20 @@ describe('the moving targets', () => {
     expect(new Set(turns).size).toBe(turns.length);
   });
 
-  it('never lets the moose hide a standing board from any lane’s spot on the firing line', () => {
+  it('never lets the moose hide a standing board from anywhere on the firing line, the pavilion included', () => {
     const targets = rangeTargets(),
-      [west, east] = reach(moose);
-    for (const from of targets)
+      [west, east] = reach(moose),
+      // from inside the pavilion's west wall to the painted line's east end, every 10 cm
+      x0 = PAVILION.x - PAVILION.widthM / 2 + PAVILION.wallM,
+      x1 = RANGE_X + FIRING_LINE_HALF_M;
+    expect(FIRING_LINE_HALF_M).toBe(((TARGET_DISTANCES_M.length - 1) / 2) * LANE_M + 1); // a metre past the outer lanes
+    for (let fromX = x0; fromX <= x1; fromX += 0.1)
       for (const far of targets) {
         if (far.distanceM <= moose.distanceM) continue; // in front of the moose: it can't hide that
         // where the line from the shooter to the far board's middle crosses the moose's rail, past the moose's nose or
         // tail by more than half the board
-        const x = from.x + ((far.x - from.x) * moose.distanceM) / far.distanceM - RANGE_X;
-        expect(x + TARGET.boardM / 2 < west || x - TARGET.boardM / 2 > east).toBe(true);
+        const x = fromX + ((far.x - fromX) * moose.distanceM) / far.distanceM - RANGE_X;
+        expect(x + TARGET.boardM / 2 < west || x - TARGET.boardM / 2 > east, `from ${fromX.toFixed(1)}`).toBe(true);
       }
   });
 
