@@ -257,7 +257,8 @@ const driftFx = new DriftFx({ scene, groundAt, profiles: PROFILES, turboAt: TURB
 // ---------- pedestrians: walk the streets and footpaths, now and then stop for a while (src/game/pedestrians.ts) ----------
 // the getters are read when the pedestrians use them, so they can name things declared further down
 const crowd = new Crowd({ scene, roads, buildings, labels: D.labels, groundAt, walkOffset, coarse, rnd, pick, personParts, advance, cars,
-  get player() { return player; }, get inCar() { return game.inCar; }, get hit() { return ragdolls.hit; } });
+  get player() { return player; }, get inCar() { return game.inCar; }, get hit() { return ragdolls.hit; },
+  get pcar() { return game.inCar ? game.pcar : null; }, toast, hurtPlayer: n => { hurtPlayer(n); shake(n); } });
 const updateNpcs = crowd.update.bind(crowd);
 
 // ---------- ragdolls: people your car knocks over fly and tumble, get up again, and cost you a star (src/game/ragdolls.ts) ----------
