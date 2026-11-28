@@ -140,9 +140,9 @@ export class ToonStyle {
   // apart, so a geometry two meshes share gets each its own lines, whichever is inked first
   private readonly footlessInkGeometries = new WeakMap<THREE.BufferGeometry, THREE.BufferGeometry[]>();
   // every mesh the style has inked, or found under INK_FLAG and not to be inked (glass): a mesh added later (a car's
-  // model, once it loads) is inked when it first turns up, and nothing is walked twice a frame. A mesh with no flag
-  // above it isn't added, so it's looked at again each frame (a walk up its parents) and gets its lines once it's
-  // moved under a flagged group, or a group above it is flagged
+  // model, once it loads) is inked when it first turns up. A mesh with no flag above it isn't added, so each frame it
+  // walks up its parents again (a few reads per mesh), and gets its lines once it's moved under a flagged group, or a
+  // group above it is flagged
   private readonly inkChecked = new WeakSet<THREE.Mesh>();
   private readonly inkNearM: number;
   private readonly eye = new THREE.Vector3(); // the camera, this frame
@@ -224,14 +224,19 @@ export class ToonStyle {
   }
 
   render(scene: THREE.Scene, camera: THREE.Camera) {
-    // where the camera is this frame: three only updates its matrix inside render, after the ink is judged by it, so
-    // a respawn or a switch to the cockpit would otherwise hide the ink near the new place for a frame
+    // where everything is this frame: three only updates the scene's and the camera's matrices inside render, after
+    // the ink is judged by them, so a respawn or a switch to the cockpit would hide the ink near the new place for a
+    // frame. Updated here instead, and three is told not to do it again for this draw
+    const autoUpdate = scene.matrixWorldAutoUpdate;
+    if (autoUpdate) scene.updateMatrixWorld();
     camera.updateWorldMatrix(true, false);
     this.eye.setFromMatrixPosition(camera.matrixWorld);
     try {
+      scene.matrixWorldAutoUpdate = false;
       scene.traverse(this.swapIn); // inside the try: a throw halfway through the swap is put back too
       this.renderer.render(scene, camera);
     } finally {
+      scene.matrixWorldAutoUpdate = autoUpdate;
       for (let i = 0; i < this.swapped.length; i++) this.swapped[i].material = this.originals[i];
       for (let i = 0; i < this.lights.length; i++) this.lights[i].intensity = this.intensities[i];
       this.swapped.length = 0;

@@ -513,6 +513,21 @@ test('the ink is judged from where the camera is this frame, before three update
   eye.position.set(0, 0, 5); // a respawn beside it: the camera is moved, its matrix not yet updated
   style.render(scene, eye);
   expect(crate.children[0].visible).toBe(true);
+  expect(scene.matrixWorldAutoUpdate).toBe(true); // three's own update is back on after the draw
+});
+
+test('a thing that jumps with the camera, as the player does on a respawn, keeps its ink on that frame', () => {
+  const scene = new THREE.Scene(),
+    person = new THREE.Mesh(box, new THREE.MeshLambertMaterial()),
+    eye = new THREE.PerspectiveCamera(),
+    style = new ToonStyle({ render: () => {} });
+  person.userData[INK_FLAG] = true;
+  scene.add(person);
+  eye.position.set(0, 0, 5);
+  style.render(scene, eye); // builds the lines
+  for (const o of [person, eye]) o.position.x += 1000; // both moved, neither matrix updated yet
+  style.render(scene, eye);
+  expect(person.children[0].visible).toBe(true);
 });
 
 // two non-indexed geometries' positions as one
